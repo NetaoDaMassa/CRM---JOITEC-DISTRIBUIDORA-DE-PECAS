@@ -1,0 +1,36 @@
+# Dependências
+node_modules/
+
+# Banco de dados SQLite (arquivo local, não commitar)
+server/odin_crm.db
+server/odin_crm.db-shm
+server/odin_crm.db-wal
+server/odin_crm.db.bak-*
+
+# Uploads de arquivos
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Build
+dist/
+build/
+*.tsbuildinfo
+
+# Env com secrets
+server/.env
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Claude Code
+.claude/

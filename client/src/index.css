@@ -1,0 +1,71 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Paleta principal da marca (substitui gold) ───────────────────────── */
+  /* Azul claro principal: #24aff4 | Azul escuro / teal: #006584 */
+  --color-gold-50:  #edf7fe;
+  --color-gold-100: #d4edfc;
+  --color-gold-200: #a4d8f9;
+  --color-gold-300: #65bdf5;
+  --color-gold-400: #24aff4;   /* ← cor principal da marca */
+  --color-gold-500: #0d9de0;
+  --color-gold-600: #006584;   /* ← cor secundária / botões */
+  --color-gold-700: #005270;
+  --color-gold-800: #003d54;
+  --color-gold-900: #00273a;
+
+  /* ── Fundo escuro com tom azulado ─────────────────────────────────────── */
+  --color-dark-50:  #f0f4f8;
+  --color-dark-100: #dce5ee;
+  --color-dark-200: #b8c8d9;
+  --color-dark-300: #8fa8bf;
+  --color-dark-400: #6580a0;
+  --color-dark-500: #445a78;
+  --color-dark-600: #2b3d52;
+  --color-dark-700: #1b2b3d;
+  --color-dark-800: #111e2d;
+  --color-dark-900: #0b1520;
+  --color-dark-950: #070d16;
+
+  /* ── Creme da marca (para containers de logo e destaques) ─────────────── */
+  --color-cream: #fef8eb;
+
+  --font-heading: "Inter", sans-serif;
+  --font-body: "Inter", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  font-family: var(--font-body);
+  background-color: #070d16;
+  color: #dce5ee;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-family: var(--font-heading);
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #111e2d;
+}
+::-webkit-scrollbar-thumb {
+  background: #2b3d52;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #006584;
+}

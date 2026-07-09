@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1780952541390,
+      "tag": "0000_panoramic_swordsman",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1781009605813,
+      "tag": "0001_melodic_lyja",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782917955162,
+      "tag": "0002_legal_nekra",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1783030053817,
+      "tag": "0003_real_wendigo",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1783083445715,
+      "tag": "0004_lovely_maria_hill",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1783106648949,
+      "tag": "0005_purple_doctor_octopus",
+      "breakpoints": true
+    }
+  ]
+}
