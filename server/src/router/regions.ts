@@ -105,9 +105,10 @@ export const regionsRouter = router({
       })
       if (existing) throw new Error('Já existe uma região com esse nome')
 
-      const [result] = await db.insert(regions).values({ name: input.name, companyId: ctx.user.companyId })
-      await db.insert(roundRobinState).values({ regionId: result.insertId, nextIndex: 0 })
-      return { id: result.insertId }
+      const result = await db.insert(regions).values({ name: input.name, companyId: ctx.user.companyId })
+      const regionId = Number(result.lastInsertRowid)
+      await db.insert(roundRobinState).values({ regionId, nextIndex: 0 })
+      return { id: regionId }
     }),
 
   delete: adminProcedure

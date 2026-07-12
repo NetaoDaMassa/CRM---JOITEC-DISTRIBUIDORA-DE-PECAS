@@ -17,7 +17,9 @@ build/
 *.tsbuildinfo
 
 # Env com secrets
+.env
 server/.env
+!.env.example
 
 # Logs
 *.log

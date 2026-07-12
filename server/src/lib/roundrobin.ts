@@ -27,8 +27,11 @@ export async function assignNextVendor(regionId: number): Promise<number | null>
 
   if (!state) {
     await db.insert(roundRobinState).values({ regionId, nextIndex: 0 })
-    state = { id: 0, regionId, nextIndex: 0, updatedAt: new Date() }
+    state = await db.query.roundRobinState.findFirst({
+      where: eq(roundRobinState.regionId, regionId),
+    })
   }
+  if (!state) return null
 
   const currentIndex = state.nextIndex % activeVendors.length
   const chosenVendor = activeVendors[currentIndex]

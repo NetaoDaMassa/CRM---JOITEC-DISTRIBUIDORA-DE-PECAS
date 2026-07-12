@@ -1,21 +1,45 @@
-version: '3.8'
-
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: odin_crm_db
+  backend:
+    build:
+      context: ./server
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: odin_root_2024
-      MYSQL_DATABASE: odin_crm
-      MYSQL_USER: odin_user
-      MYSQL_PASSWORD: Odin@DB2024
-    ports:
-      - "3306:3306"
+      DATABASE_URL: file:/app/data/odin_crm.db
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
+      PORT: 3001
+      UPLOADS_DIR: /app/uploads
+      CLIENT_URL: ${CLIENT_URL:-*}
     volumes:
-      - mysql_data:/var/lib/mysql
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --default-authentication-plugin=mysql_native_password
+      - db_data:/app/data
+      - uploads:/app/uploads
+    expose:
+      - "3001"
+    networks:
+      - internal
+
+  frontend:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    expose:
+      - "80"
+    networks:
+      internal: {}
+      # Rede compartilhada com o Caddy do outro projeto (projeto-leads).
+      # O Caddy encontra este container pelo alias "crm-frontend".
+      web:
+        aliases:
+          - crm-frontend
+
+networks:
+  internal:
+  # Criada uma única vez no VPS:  docker network create web
+  web:
+    external: true
 
 volumes:
-  mysql_data:
-    name: odin_crm_mysql_data
+  db_data:
+  uploads:

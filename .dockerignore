@@ -1,0 +1,23 @@
+# Contexto de build do frontend = raiz do repo. Mantém client/ e server/src
+# (tipos), exclui o resto.
+**/node_modules
+**/dist
+**/.vite
+**/*.tsbuildinfo
+.git
+.github
+.claude
+*.log
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+server/.env
+
+# Dados locais (nunca entram na imagem)
+server/uploads
+server/*.db
+server/*.db-shm
+server/*.db-wal
+server/*.db.bak-*
