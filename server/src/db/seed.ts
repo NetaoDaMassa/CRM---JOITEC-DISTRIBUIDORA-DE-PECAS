@@ -142,7 +142,7 @@ async function seed() {
   console.log('✅ Mensagens automáticas da Odin Tubos criadas')
 
   // Odin Compressores
-  await createCompany({
+  const odinCompId = await createCompany({
     name: 'Odin Compressores',
     slug: 'odin-compressores',
     adminUsername: 'admin',
@@ -163,8 +163,39 @@ async function seed() {
     ],
   })
 
+  await db.insert(messageTemplates).values([
+    {
+      companyId: odinCompId,
+      label: 'Retomada direta',
+      whatsappText:
+        'Olá, {{nome}}! Tudo bem? Aqui é da Odin Compressores. Vi que você se interessou por um compressor de ar e fiquei sem retorno seu. Ainda faz sentido pra você? Posso te ajudar a fechar a melhor condição.',
+      emailSubject: 'Ainda posso te ajudar, {{nome}}?',
+      emailBody:
+        'Olá, {{nome}},\n\nTudo bem? Sou da equipe comercial da Odin Compressores. Vi que você demonstrou interesse em um dos nossos compressores, mas ainda não conseguimos falar.\n\nFico à disposição para entender sua necessidade e te apresentar a melhor solução. Podemos conversar?\n\nAtenciosamente,\nEquipe Odin Compressores',
+    },
+    {
+      companyId: odinCompId,
+      label: 'Consultiva',
+      whatsappText:
+        'Oi, {{nome}}! Aqui é da Odin Compressores. Notei seu interesse e queria entender melhor sua aplicação — é uso industrial, oficina, ou linha de produção? Quantos HP ou litros você precisa? Assim já te indico o modelo certo.',
+      emailSubject: 'Vamos entender sua necessidade, {{nome}}?',
+      emailBody:
+        'Olá, {{nome}},\n\nVi que você teve interesse nos compressores da Odin Compressores. Antes de te enviar qualquer proposta, gostaria de entender melhor sua aplicação: é uso industrial, oficina ou linha de produção? E qual a capacidade que você precisa?\n\nCom essas informações, consigo te indicar o modelo mais adequado.\n\nFico no aguardo do seu retorno.\n\nAtenciosamente,\nEquipe Odin Compressores',
+    },
+    {
+      companyId: odinCompId,
+      label: 'Oferta especial',
+      whatsappText:
+        'Olá, {{nome}}! Aqui é da Odin Compressores. Estamos com uma condição especial este mês para quem já demonstrou interesse nos nossos compressores — não queria que você perdesse. Posso te enviar os detalhes?',
+      emailSubject: 'Condição especial pra você, {{nome}}',
+      emailBody:
+        'Olá, {{nome}},\n\nComo você já demonstrou interesse nos compressores da Odin Compressores, quero te avisar que estamos com uma condição especial disponível este mês.\n\nPosso te enviar os detalhes e ver se faz sentido para o seu momento?\n\nAtenciosamente,\nEquipe Odin Compressores',
+    },
+  ])
+  console.log('✅ Mensagens automáticas da Odin Compressores criadas')
+
   // Joitec Distribuidora de Peças
-  await createCompany({
+  const joitecId = await createCompany({
     name: 'Joitec Distribuidora de Peças',
     slug: 'joitec',
     adminUsername: 'admin',
@@ -179,6 +210,37 @@ async function seed() {
       { name: 'Sul', ddds: dddsForStates(['PR', 'RS', 'SC']), vendorNames: ['Gustavo', 'Kati', 'Yuri'] },
     ],
   })
+
+  await db.insert(messageTemplates).values([
+    {
+      companyId: joitecId,
+      label: 'Retomada direta',
+      whatsappText:
+        'Olá, {{nome}}! Tudo bem? Aqui é da Joitec Distribuidora de Peças. Vi que você se interessou pelas nossas peças pneumáticas e fiquei sem retorno seu. Ainda faz sentido pra você? Posso te ajudar com mais informações.',
+      emailSubject: 'Ainda posso te ajudar, {{nome}}?',
+      emailBody:
+        'Olá, {{nome}},\n\nTudo bem? Sou da equipe comercial da Joitec Distribuidora de Peças. Vi que você demonstrou interesse em nossas peças, mas ainda não conseguimos falar.\n\nFico à disposição para entender sua necessidade e te apresentar a melhor solução. Podemos conversar?\n\nAtenciosamente,\nEquipe Joitec',
+    },
+    {
+      companyId: joitecId,
+      label: 'Consultiva',
+      whatsappText:
+        'Oi, {{nome}}! Aqui é da Joitec Distribuidora de Peças. Notei seu interesse e queria entender melhor o que você precisa — é pra oficina, indústria ou revenda? Assim já te indico as peças certas e a rosca certa (1/4" ou M11).',
+      emailSubject: 'Vamos entender sua necessidade, {{nome}}?',
+      emailBody:
+        'Olá, {{nome}},\n\nVi que você teve interesse nas peças da Joitec. Antes de te enviar qualquer proposta, gostaria de entender melhor sua necessidade: é pra oficina, indústria ou revenda?\n\nCom essas informações, consigo te indicar a solução mais adequada.\n\nFico no aguardo do seu retorno.\n\nAtenciosamente,\nEquipe Joitec',
+    },
+    {
+      companyId: joitecId,
+      label: 'Oferta especial',
+      whatsappText:
+        'Olá, {{nome}}! Aqui é da Joitec Distribuidora de Peças. Estamos com uma condição especial este mês para quem já demonstrou interesse nas nossas peças — não queria que você perdesse. Posso te enviar os detalhes?',
+      emailSubject: 'Condição especial pra você, {{nome}}',
+      emailBody:
+        'Olá, {{nome}},\n\nComo você já demonstrou interesse nas peças da Joitec Distribuidora de Peças, quero te avisar que estamos com uma condição especial disponível este mês.\n\nPosso te enviar os detalhes e ver se faz sentido para o seu momento?\n\nAtenciosamente,\nEquipe Joitec',
+    },
+  ])
+  console.log('✅ Mensagens automáticas da Joitec criadas')
 
   console.log('\n🎉 Seed concluído com sucesso!')
   console.log('\n📋 Credenciais:')

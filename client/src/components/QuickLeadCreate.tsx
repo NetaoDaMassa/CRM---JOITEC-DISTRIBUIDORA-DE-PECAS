@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Zap, ClipboardPaste, User, Phone, Mail, Building2, ChevronDown } from 'lucide-react'
+import { Zap, ClipboardPaste, User, Phone, Mail, Building2, MapPin, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import Modal from './ui/Modal'
@@ -28,6 +28,7 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
   const [ddd, setDdd] = useState('')
   const [email, setEmail] = useState('')
   const [company, setCompany] = useState('')
+  const [city, setCity] = useState('')
   const [segment, setSegment] = useState('')
   const [source, setSource] = useState('')
   const [observations, setObservations] = useState('')
@@ -59,12 +60,14 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
     if (parsed.ddd) setDdd(parsed.ddd)
     if (parsed.email) setEmail(parsed.email)
     if (parsed.company) setCompany(parsed.company)
+    if (parsed.city) setCity(parsed.city)
+    if (parsed.observations) setObservations(parsed.observations)
     toast.success('Campos preenchidos automaticamente!')
   }
 
   function handleClose() {
     setPasteText(''); setName(''); setPhone(''); setDdd(''); setEmail('')
-    setCompany(''); setSegment(''); setSource(''); setObservations('')
+    setCompany(''); setCity(''); setSegment(''); setSource(''); setObservations('')
     setVendorId(defaultVendorId?.toString() ?? ''); setAutoAssign(true); setCampaignId('')
     onClose()
   }
@@ -78,6 +81,7 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
       ddd: parseInt(ddd),
       email: email || undefined,
       company: company || undefined,
+      city: city || undefined,
       segment: (segment || 'outros') as any,
       source: source || undefined,
       observations: observations || undefined,
@@ -118,6 +122,7 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
           <Input label="Telefone *" placeholder="99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} icon={<Phone size={14} />} />
           <Input label="Email" placeholder="email@empresa.com" value={email} onChange={(e) => setEmail(e.target.value)} type="email" icon={<Mail size={14} />} />
           <Input label="Empresa" placeholder="Empresa Ltda" value={company} onChange={(e) => setCompany(e.target.value)} icon={<Building2 size={14} />} />
+          <Input label="Cidade" placeholder="São Paulo" value={city} onChange={(e) => setCity(e.target.value)} icon={<MapPin size={14} />} />
           <Select
             label="Segmento"
             options={SEGMENT_OPTIONS}

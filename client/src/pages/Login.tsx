@@ -1,12 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Building2 } from 'lucide-react'
+import { Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
+
+const COMPANY_LOGOS: Record<string, string> = {
+  'odin-tubos': '/logos/odin-tubos.png',
+  'odin-compressores': '/logos/odin-compressores.png',
+  joitec: '/logos/joitec.png',
+}
 
 export default function Login() {
   const [companyId, setCompanyId] = useState('')
@@ -55,7 +61,11 @@ export default function Login() {
               className="rounded-2xl p-3 shadow-lg w-20 h-20 flex items-center justify-center"
               style={{ background: '#fef8eb' }}
             >
-              <Building2 size={36} className="text-dark-800" />
+              <img
+                src={selectedCompany && COMPANY_LOGOS[selectedCompany.slug] ? COMPANY_LOGOS[selectedCompany.slug] : '/logos/grupo-odin.png'}
+                alt={selectedCompany ? selectedCompany.name : 'Grupo Odin'}
+                className="w-full h-full object-contain"
+              />
             </div>
             <div className="text-center">
               <h1 className="font-heading text-lg text-gold-400 font-bold">

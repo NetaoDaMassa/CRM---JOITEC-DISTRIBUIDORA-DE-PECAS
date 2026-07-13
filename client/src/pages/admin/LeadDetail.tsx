@@ -41,6 +41,7 @@ export default function AdminLeadDetail() {
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
   const [editCompany, setEditCompany] = useState('')
+  const [editCity, setEditCity] = useState('')
   const [editSegment, setEditSegment] = useState('')
   const [editObs, setEditObs] = useState('')
   const [editNextContact, setEditNextContact] = useState('')
@@ -51,6 +52,7 @@ export default function AdminLeadDetail() {
       setEditName(data.name)
       setEditEmail(data.email ?? '')
       setEditCompany(data.company ?? '')
+      setEditCity(data.city ?? '')
       setEditSegment(data.segment ?? '')
       setEditObs(data.observations ?? '')
       setEditNextContact(data.nextContactAt ? new Date(data.nextContactAt).toISOString().slice(0, 16) : '')
@@ -111,6 +113,7 @@ export default function AdminLeadDetail() {
       name: editName,
       email: editEmail,
       company: editCompany,
+      city: editCity,
       segment: editSegment as any,
       observations: editObs,
       nextContactAt: editNextContact || null,
@@ -164,6 +167,7 @@ export default function AdminLeadDetail() {
               <Input label="Nome" value={editName} onChange={(e) => setEditName(e.target.value)} />
               <Input label="Email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
               <Input label="Empresa" value={editCompany} onChange={(e) => setEditCompany(e.target.value)} />
+              <Input label="Cidade" value={editCity} onChange={(e) => setEditCity(e.target.value)} />
               <Select label="Segmento" value={editSegment} onChange={(e) => setEditSegment(e.target.value)}
                 options={[
                   { value: 'assistente_tecnico', label: 'Assistente Técnico' },
@@ -194,6 +198,7 @@ export default function AdminLeadDetail() {
                   }
                 />
                 <InfoRow icon={<Building2 size={14} />} label="Empresa" value={lead.company ?? '—'} />
+                <InfoRow icon={<MapPin size={14} />} label="Cidade" value={lead.city ?? '—'} />
                 <InfoRow icon={null} label="Segmento" value={SEGMENT_LABELS[lead.segment ?? ''] ?? '—'} />
                 <InfoRow icon={<MapPin size={14} />} label="Região" value={lead.region?.name ?? '—'} />
                 <InfoRow icon={null} label="Vendedor" value={lead.vendor?.name ?? '—'} />

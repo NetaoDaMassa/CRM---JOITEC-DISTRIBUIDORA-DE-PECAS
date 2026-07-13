@@ -72,6 +72,10 @@ export function parseLeadText(text: string): Record<string, string> {
     [['email', 'e-mail'], 'email'],
     [['empresa', 'company', 'razão social', 'razao social', 'cnpj'], 'company'],
     [['cidade', 'city'], 'city'],
+    [
+      ['observação', 'observacao', 'observações', 'observacoes', 'obs', 'complemento', 'dados complementares', 'mensagem', 'comentário', 'comentario'],
+      'observations',
+    ],
   ]
 
   const lines = text.split('\n')
@@ -89,9 +93,12 @@ export function parseLeadText(text: string): Record<string, string> {
     }
   }
 
-  // Extract DDD from phone
+  // Extract DDD from phone (removendo o código do país +55, se vier junto)
   if (result.phone) {
-    const digits = result.phone.replace(/\D/g, '')
+    let digits = result.phone.replace(/\D/g, '')
+    if (digits.startsWith('55') && (digits.length === 12 || digits.length === 13)) {
+      digits = digits.slice(2)
+    }
     if (digits.length >= 10) {
       result.ddd = digits.slice(0, 2)
       result.phone = digits.slice(2)
