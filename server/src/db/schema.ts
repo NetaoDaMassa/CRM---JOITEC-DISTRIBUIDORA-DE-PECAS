@@ -83,6 +83,7 @@ export const leads = sqliteTable('leads', {
   ddd: integer('ddd').notNull(),
   email: text('email'),
   company: text('company'),
+  city: text('city'),
   segment: text('segment', {
     enum: ['assistente_tecnico', 'instalador', 'revendedor_lojista', 'outros'],
   }).default('outros'),

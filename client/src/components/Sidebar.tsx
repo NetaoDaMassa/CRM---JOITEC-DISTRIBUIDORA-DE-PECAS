@@ -6,6 +6,12 @@ import {
 import { useAuth } from '../contexts/AuthContext'
 import { trpc } from '../lib/trpc'
 
+const COMPANY_LOGOS: Record<string, string> = {
+  'Odin Tubos e Conexões': '/logos/odin-tubos.png',
+  'Odin Compressores': '/logos/odin-compressores.png',
+  'Joitec Distribuidora de Peças': '/logos/joitec.png',
+}
+
 const ADMIN_LINKS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/admin/leads', label: 'Leads', icon: List },
@@ -51,8 +57,8 @@ export default function Sidebar() {
           style={{ background: '#fef8eb' }}
         >
           <img
-            src="/odin-logo.png"
-            alt="Odin CRM"
+            src={(user?.companyName && COMPANY_LOGOS[user.companyName]) || '/logos/grupo-odin.png'}
+            alt={user?.companyName ?? 'Odin CRM'}
             className="h-10 w-auto object-contain"
           />
         </div>

@@ -43,6 +43,13 @@
       "when": 1783106648949,
       "tag": "0005_purple_doctor_octopus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1783945712011,
+      "tag": "0006_unique_agent_zero",
+      "breakpoints": true
     }
   ]
 }

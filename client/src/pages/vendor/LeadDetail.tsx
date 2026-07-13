@@ -36,6 +36,7 @@ export default function VendorLeadDetail() {
   const [editObs, setEditObs] = useState('')
   const [editNextContact, setEditNextContact] = useState('')
   const [editCompany, setEditCompany] = useState('')
+  const [editCity, setEditCity] = useState('')
   const [editSegment, setEditSegment] = useState('')
 
   const { data: lead, isLoading } = trpc.leads.get.useQuery({ id: leadId }, {
@@ -44,6 +45,7 @@ export default function VendorLeadDetail() {
       setEditObs(data.observations ?? '')
       setEditNextContact(data.nextContactAt ? new Date(data.nextContactAt).toISOString().slice(0, 16) : '')
       setEditCompany(data.company ?? '')
+      setEditCity(data.city ?? '')
       setEditSegment(data.segment ?? '')
     },
   } as any)
@@ -97,7 +99,7 @@ export default function VendorLeadDetail() {
         <Button
           variant={editMode ? 'primary' : 'secondary'}
           size="sm"
-          onClick={editMode ? () => updateMut.mutate({ id: leadId, observations: editObs, company: editCompany, segment: editSegment as any, nextContactAt: editNextContact || null }) : () => setEditMode(true)}
+          onClick={editMode ? () => updateMut.mutate({ id: leadId, observations: editObs, company: editCompany, city: editCity, segment: editSegment as any, nextContactAt: editNextContact || null }) : () => setEditMode(true)}
           loading={updateMut.isPending}
         >
           <Edit3 size={14} />{editMode ? 'Salvar' : 'Editar'}
@@ -121,6 +123,7 @@ export default function VendorLeadDetail() {
           {editMode ? (
             <div className="grid grid-cols-2 gap-4">
               <Input label="Empresa" value={editCompany} onChange={(e) => setEditCompany(e.target.value)} />
+              <Input label="Cidade" value={editCity} onChange={(e) => setEditCity(e.target.value)} />
               <Select label="Segmento" value={editSegment} onChange={(e) => setEditSegment(e.target.value)}
                 options={[
                   { value: 'assistente_tecnico', label: 'Assistente Técnico' },
@@ -149,6 +152,7 @@ export default function VendorLeadDetail() {
                   ),
                 },
                 { icon: <Building2 size={14} />, label: 'Empresa', value: lead.company ?? '—' },
+                { icon: <MapPin size={14} />, label: 'Cidade', value: lead.city ?? '—' },
                 { icon: null, label: 'Segmento', value: SEGMENT_LABELS[lead.segment ?? ''] ?? '—' },
                 { icon: <MapPin size={14} />, label: 'Região', value: lead.region?.name ?? '—' },
                 { icon: <Calendar size={14} />, label: 'Próximo contato', value: lead.nextContactAt ? formatDateTime(lead.nextContactAt) : '—' },
@@ -200,6 +204,12 @@ export default function VendorLeadDetail() {
                   <p className="text-sm text-dark-100">{lead.disqualifyReason}</p>
                 </div>
               )}
+            </div>
+          )}
+          {!editMode && lead.observations && (
+            <div className="pt-3 border-t border-dark-600">
+              <p className="text-xs text-dark-400 mb-1">Observações</p>
+              <p className="text-sm text-dark-200">{lead.observations}</p>
             </div>
           )}
         </div>
