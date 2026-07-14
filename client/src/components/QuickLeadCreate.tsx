@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Zap, ClipboardPaste, User, Phone, Mail, Building2, MapPin, ChevronDown } from 'lucide-react'
+import { Zap, ClipboardPaste, User, Phone, Mail, Building2, MapPin, Paperclip, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import Modal from './ui/Modal'
@@ -19,9 +19,10 @@ interface QuickLeadCreateProps {
   open: boolean
   onClose: () => void
   defaultVendorId?: number
+  vendorLocked?: boolean
 }
 
-export default function QuickLeadCreate({ open, onClose, defaultVendorId }: QuickLeadCreateProps) {
+export default function QuickLeadCreate({ open, onClose, defaultVendorId, vendorLocked }: QuickLeadCreateProps) {
   const [pasteText, setPasteText] = useState('')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -33,15 +34,35 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
   const [source, setSource] = useState('')
   const [observations, setObservations] = useState('')
   const [vendorId, setVendorId] = useState(defaultVendorId?.toString() ?? '')
-  const [autoAssign, setAutoAssign] = useState(true)
+  const [autoAssign, setAutoAssign] = useState(!vendorLocked)
   const [campaignId, setCampaignId] = useState('')
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null)
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
 
   const utils = trpc.useUtils()
   const { data: vendors } = trpc.users.vendors.useQuery()
   const { data: campaigns } = trpc.campaigns.listActive.useQuery()
 
   const createMut = trpc.leads.create.useMutation({
-    onSuccess() {
+    async onSuccess(data) {
+      if (attachmentFile) {
+        setUploadingAttachment(true)
+        try {
+          const form = new FormData()
+          form.append('file', attachmentFile)
+          const token = localStorage.getItem('odin_token')
+          const res = await fetch(`/upload/${data.id}`, {
+            method: 'POST',
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+            body: form,
+          })
+          if (!res.ok) toast.error('Lead criado, mas houve erro ao anexar o arquivo')
+        } catch {
+          toast.error('Lead criado, mas houve erro ao anexar o arquivo')
+        } finally {
+          setUploadingAttachment(false)
+        }
+      }
       toast.success('Lead criado e distribuído com sucesso!')
       utils.leads.list.invalidate()
       utils.leads.stats.invalidate()
@@ -68,7 +89,8 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
   function handleClose() {
     setPasteText(''); setName(''); setPhone(''); setDdd(''); setEmail('')
     setCompany(''); setCity(''); setSegment(''); setSource(''); setObservations('')
-    setVendorId(defaultVendorId?.toString() ?? ''); setAutoAssign(true); setCampaignId('')
+    setVendorId(defaultVendorId?.toString() ?? ''); setAutoAssign(!vendorLocked); setCampaignId('')
+    setAttachmentFile(null)
     onClose()
   }
 
@@ -85,8 +107,8 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
       segment: (segment || 'outros') as any,
       source: source || undefined,
       observations: observations || undefined,
-      vendorId: !autoAssign && vendorId ? parseInt(vendorId) : undefined,
-      autoAssign,
+      vendorId: vendorLocked ? defaultVendorId : (!autoAssign && vendorId ? parseInt(vendorId) : undefined),
+      autoAssign: vendorLocked ? false : autoAssign,
       campaignId: campaignId ? parseInt(campaignId) : undefined,
     })
   }
@@ -151,35 +173,54 @@ export default function QuickLeadCreate({ open, onClose, defaultVendorId }: Quic
           onChange={(e) => setObservations(e.target.value)}
         />
 
-        {/* Assignment */}
-        <div className="bg-dark-700/30 border border-dark-600 rounded-xl p-4 space-y-3">
-          <label className="flex items-center gap-3 cursor-pointer">
+        <div className="flex flex-col gap-1">
+          <label className="text-sm text-dark-200 font-medium">Anexo (opcional)</label>
+          <label className="cursor-pointer flex items-center gap-2 bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-dark-300 hover:border-gold-600 transition-colors">
+            <Paperclip size={14} />
+            <span className="truncate">{attachmentFile ? attachmentFile.name : 'Selecionar arquivo para o vendedor visualizar'}</span>
             <input
-              type="checkbox"
-              checked={autoAssign}
-              onChange={(e) => setAutoAssign(e.target.checked)}
-              className="w-4 h-4 accent-gold-500"
+              type="file"
+              className="hidden"
+              onChange={(e) => setAttachmentFile(e.target.files?.[0] ?? null)}
             />
-            <span className="text-sm text-dark-200">
-              Distribuição automática por rodízio (baseada no DDD)
-            </span>
           </label>
-          {!autoAssign && (
-            <Select
-              label="Vendedor"
-              options={vendors?.map((v) => ({ value: v.id, label: v.name })) ?? []}
-              placeholder="Selecione o vendedor..."
-              value={vendorId}
-              onChange={(e) => setVendorId(e.target.value)}
-            />
-          )}
         </div>
+
+        {/* Assignment */}
+        {vendorLocked ? (
+          <div className="bg-dark-700/30 border border-dark-600 rounded-xl p-4">
+            <p className="text-sm text-dark-200">Este lead será cadastrado para você.</p>
+          </div>
+        ) : (
+          <div className="bg-dark-700/30 border border-dark-600 rounded-xl p-4 space-y-3">
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoAssign}
+                onChange={(e) => setAutoAssign(e.target.checked)}
+                className="w-4 h-4 accent-gold-500"
+              />
+              <span className="text-sm text-dark-200">
+                Distribuição automática por rodízio (baseada no DDD)
+              </span>
+            </label>
+            {!autoAssign && (
+              <Select
+                label="Vendedor"
+                options={vendors?.map((v) => ({ value: v.id, label: v.name })) ?? []}
+                placeholder="Selecione o vendedor..."
+                value={vendorId}
+                onChange={(e) => setVendorId(e.target.value)}
+              />
+            )}
+          </div>
+        )}
 
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="secondary" className="flex-1" onClick={handleClose}>
             Cancelar
           </Button>
-          <Button type="submit" className="flex-1" loading={createMut.isPending}>
+          <Button type="submit" className="flex-1" loading={createMut.isPending || uploadingAttachment}>
             Cadastrar Lead
           </Button>
         </div>

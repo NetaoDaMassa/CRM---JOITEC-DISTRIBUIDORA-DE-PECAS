@@ -9,7 +9,7 @@ import { appRouter } from './router/index.js'
 import { verifyToken } from './lib/jwt.js'
 import { db } from './db/client.js'
 import { leadAttachments, leads } from './db/schema.js'
-import { eq } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { startScheduler } from './lib/scheduler.js'
 
@@ -57,7 +57,7 @@ app.post('/upload/:leadId', upload.single('file'), async (req, res) => {
     if (!user) return res.status(401).json({ error: 'Não autenticado' })
 
     const leadId = parseInt(String(req.params.leadId), 10)
-    const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
+    const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, leadId), isNull(leads.deletedAt)) })
     if (!lead) return res.status(404).json({ error: 'Lead não encontrado' })
     if (lead.companyId !== user.companyId)
       return res.status(403).json({ error: 'Acesso negado' })

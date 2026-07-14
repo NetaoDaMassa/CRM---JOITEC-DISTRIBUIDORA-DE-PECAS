@@ -34,11 +34,37 @@ export default function NotificationBell() {
   const unreadCount = items?.filter((n) => !n.read).length ?? 0
 
   useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  useEffect(() => {
     if (!items) return
-    const unreadIds = new Set(items.filter((n) => !n.read).map((n) => n.id))
+    const unread = items.filter((n) => !n.read)
+    const unreadIds = new Set(unread.map((n) => n.id))
     if (seenIds.current !== null) {
-      const hasNew = [...unreadIds].some((id) => !seenIds.current!.has(id))
-      if (hasNew) playBeep()
+      const newOnes = unread.filter((n) => !seenIds.current!.has(n.id))
+      if (newOnes.length > 0) {
+        playBeep()
+        if ('Notification' in window && Notification.permission === 'granted') {
+          for (const n of newOnes) {
+            const desktopNotification = new Notification(n.title, {
+              body: n.message,
+              icon: '/logos/grupo-odin.png',
+              tag: `odin-crm-notification-${n.id}`,
+            })
+            desktopNotification.onclick = () => {
+              window.focus()
+              if (n.leadId) {
+                const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
+                navigate(`${basePath}/leads/${n.leadId}`)
+              }
+              desktopNotification.close()
+            }
+          }
+        }
+      }
     }
     seenIds.current = unreadIds
   }, [items])

@@ -1,19 +1,40 @@
-import { format, formatDistanceToNow } from 'date-fns'
+import { format, formatDistanceToNow, intervalToDuration } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+
+// O SQLite grava os timestamps padrão (`datetime('now')`) como "YYYY-MM-DD HH:MM:SS"
+// (UTC, sem sufixo de fuso). Sem o "Z", o navegador interpreta a string como hora local
+// do computador do usuário, deslocando a exibição pelo fuso local. Normalizamos para ISO
+// UTC explícito antes de parsear — mesma correção já aplicada no backend (businessHours.ts).
+function toUtcDate(date: string | Date): Date {
+  if (date instanceof Date) return date
+  if (/[zZ]|[+-]\d{2}:\d{2}$/.test(date)) return new Date(date)
+  return new Date(date.replace(' ', 'T') + 'Z')
+}
 
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '—'
-  return format(new Date(date), 'dd/MM/yyyy', { locale: ptBR })
+  return format(toUtcDate(date), 'dd/MM/yyyy', { locale: ptBR })
 }
 
 export function formatDateTime(date: string | Date | null | undefined): string {
   if (!date) return '—'
-  return format(new Date(date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+  return format(toUtcDate(date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
 }
 
 export function timeAgo(date: string | Date | null | undefined): string {
   if (!date) return '—'
-  return formatDistanceToNow(new Date(date), { addSuffix: true, locale: ptBR })
+  return formatDistanceToNow(toUtcDate(date), { addSuffix: true, locale: ptBR })
+}
+
+export function formatElapsed(from: string | Date, to?: string | Date | null): string {
+  const start = toUtcDate(from)
+  const end = to ? toUtcDate(to) : new Date()
+  const duration = intervalToDuration({ start, end })
+  const parts: string[] = []
+  if (duration.days) parts.push(`${duration.days}d`)
+  if (duration.hours) parts.push(`${duration.hours}h`)
+  if (!duration.days && duration.minutes) parts.push(`${duration.minutes}min`)
+  return parts.length ? parts.join(' ') : 'menos de 1min'
 }
 
 export function formatPhone(ddd: number, phone: string): string {

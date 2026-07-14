@@ -1,11 +1,11 @@
 import { z } from 'zod'
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, and, inArray, isNull, desc } from 'drizzle-orm'
 import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadHistory } from '../db/schema.js'
 import { exportLeadsToExcel } from '../lib/excel.js'
 import { STATUS_ORDER, STATUS_LABELS } from '../lib/status.js'
-import { businessHoursElapsedMs } from '../lib/businessHours.js'
+import { businessHoursElapsedMs, toUtcISO } from '../lib/businessHours.js'
 
 const SEGMENT_LABELS: Record<string, string> = {
   assistente_tecnico: 'Assistente Técnico',
@@ -25,7 +25,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 }
 
 function daysBetween(from: string, to: string): number {
-  const ms = new Date(to).getTime() - new Date(from).getTime()
+  const ms = new Date(toUtcISO(to)).getTime() - new Date(toUtcISO(from)).getTime()
   return ms / (1000 * 60 * 60 * 24)
 }
 
@@ -44,7 +44,7 @@ export const reportsRouter = router({
     )
     .query(async ({ ctx, input }) => {
       const allLeads = await db.query.leads.findMany({
-        where: eq(leads.companyId, ctx.user.companyId),
+        where: and(eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
         with: {
           vendor: { columns: { passwordHash: false } },
           region: true,
@@ -56,12 +56,12 @@ export const reportsRouter = router({
       let scopedLeads = allLeads
       if (input.dateFrom) {
         const from = new Date(input.dateFrom)
-        scopedLeads = scopedLeads.filter((l) => new Date(l.createdAt) >= from)
+        scopedLeads = scopedLeads.filter((l) => new Date(toUtcISO(l.createdAt)) >= from)
       }
       if (input.dateTo) {
         const to = new Date(input.dateTo)
         to.setHours(23, 59, 59, 999)
-        scopedLeads = scopedLeads.filter((l) => new Date(l.createdAt) <= to)
+        scopedLeads = scopedLeads.filter((l) => new Date(toUtcISO(l.createdAt)) <= to)
       }
 
       const total = scopedLeads.length
@@ -74,7 +74,7 @@ export const reportsRouter = router({
       const taxaConversao = total > 0 ? (ganhos.length / total) * 100 : 0
       const taxaPerda = total > 0 ? ((perdidos.length + desqualificados.length) / total) * 100 : 0
       const tempoMedioFechamentoDias = avg(
-        encerrados.map((l) => daysBetween(l.createdAt, l.updatedAt))
+        encerrados.map((l) => daysBetween(l.assignedAt ?? l.createdAt, l.statusChangedAt ?? l.updatedAt))
       )
 
       // Funil de conversão
@@ -161,7 +161,7 @@ export const reportsRouter = router({
         entry.total++
         if (l.status === 'ganho') {
           entry.ganho++
-          entry.temposFechamento.push(daysBetween(l.createdAt, l.updatedAt))
+          entry.temposFechamento.push(daysBetween(l.assignedAt ?? l.createdAt, l.statusChangedAt ?? l.updatedAt))
         }
         if (l.status === 'perdido' || l.status === 'desqualificado') entry.perdido++
       }
@@ -251,7 +251,7 @@ export const reportsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const allLeads = await db.query.leads.findMany({
-        where: eq(leads.companyId, ctx.user.companyId),
+        where: and(eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
         with: {
           vendor: { columns: { passwordHash: false } },
           region: true,
@@ -269,12 +269,12 @@ export const reportsRouter = router({
       }
       if (input.dateFrom) {
         const from = new Date(input.dateFrom)
-        filtered = filtered.filter((l) => new Date(l.createdAt) >= from)
+        filtered = filtered.filter((l) => new Date(toUtcISO(l.createdAt)) >= from)
       }
       if (input.dateTo) {
         const to = new Date(input.dateTo)
         to.setHours(23, 59, 59)
-        filtered = filtered.filter((l) => new Date(l.createdAt) <= to)
+        filtered = filtered.filter((l) => new Date(toUtcISO(l.createdAt)) <= to)
       }
 
       const buffer = exportLeadsToExcel(filtered)
@@ -287,7 +287,7 @@ export const reportsRouter = router({
 
   slaOverview: adminProcedure.query(async ({ ctx }) => {
     const abordagemLeads = await db.query.leads.findMany({
-      where: and(eq(leads.status, 'abordagem'), eq(leads.companyId, ctx.user.companyId)),
+      where: and(eq(leads.status, 'abordagem'), eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
       with: { vendor: { columns: { passwordHash: false } } },
     })
 
@@ -365,5 +365,22 @@ export const reportsRouter = router({
     const reassignmentHistory = Array.from(reassignMap.values()).sort((a, b) => b.received - a.received)
 
     return { overdueByVendor, avgTimeStuckByStage, criticalAlertVendors, reassignmentHistory }
+  }),
+
+  transferHistory: adminProcedure.query(async ({ ctx }) => {
+    const rows = await db.query.leadHistory.findMany({
+      where: and(
+        inArray(leadHistory.action, ['transferido', 'reatribuicao_automatica', 'excluido']),
+        eq(leadHistory.companyId, ctx.user.companyId)
+      ),
+      with: {
+        lead: { columns: { id: true, name: true, ddd: true, phone: true } },
+        user: { columns: { passwordHash: false } },
+        fromVendor: { columns: { passwordHash: false } },
+        toVendor: { columns: { passwordHash: false } },
+      },
+      orderBy: (h, { desc }) => [desc(h.createdAt)],
+    })
+    return rows
   }),
 })
