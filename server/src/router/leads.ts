@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { eq, and } from 'drizzle-orm'
+import { eq, and, isNull } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { leads, leadNotes, leadHistory, leadAttachments, leadContactAttempts, users } from '../db/schema.js'
+import { leads, leadNotes, leadHistory, leadAttachments, leadContactAttempts, users, notifications } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD } from '../lib/roundrobin.js'
 import {
   STATUS_VALUES,
@@ -44,7 +44,7 @@ export const leadsRouter = router({
       const offset = (page - 1) * pageSize
 
       const allLeads = await db.query.leads.findMany({
-        where: eq(leads.companyId, ctx.user.companyId),
+        where: and(eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
         with: {
           vendor: { columns: { passwordHash: false } },
           region: true,
@@ -92,7 +92,7 @@ export const leadsRouter = router({
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
       const lead = await db.query.leads.findFirst({
-        where: eq(leads.id, input.id),
+        where: and(eq(leads.id, input.id), isNull(leads.deletedAt)),
         with: {
           vendor: { columns: { passwordHash: false } },
           region: true,
@@ -139,7 +139,15 @@ export const leadsRouter = router({
       let vendorId: number | null = null
       let regionId: number | null = null
 
-      if (input.vendorId) {
+      if (ctx.user.role === 'vendor') {
+        // Vendedor só pode cadastrar lead para si mesmo — nunca escolhe outro vendedor nem rodízio
+        vendorId = ctx.user.id
+        regionId = await getRegionIdByDDD(input.ddd, ctx.user.companyId)
+      } else if (input.vendorId) {
+        const targetVendor = await db.query.users.findFirst({ where: eq(users.id, input.vendorId) })
+        if (!targetVendor || targetVendor.companyId !== ctx.user.companyId || targetVendor.role !== 'vendor') {
+          throw new Error('Vendedor inválido')
+        }
         vendorId = input.vendorId
         regionId = await getRegionIdByDDD(input.ddd, ctx.user.companyId)
       } else if (input.autoAssign) {
@@ -176,6 +184,16 @@ export const leadsRouter = router({
         details: `Lead criado${vendorId ? ` e atribuído ao vendedor` : ' sem vendedor'}`,
       })
 
+      if (vendorId && vendorId !== ctx.user.id) {
+        await db.insert(notifications).values({
+          vendorId,
+          leadId,
+          type: 'lead_assigned',
+          title: 'Novo lead atribuído',
+          message: `${input.name} foi distribuído para você agora.`,
+        })
+      }
+
       return { id: leadId }
     }),
 
@@ -198,7 +216,7 @@ export const leadsRouter = router({
     .mutation(async ({ ctx, input }) => {
       const { id, nextContactAt, ...rest } = input
 
-      const existing = await db.query.leads.findFirst({ where: eq(leads.id, id) })
+      const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.companyId !== ctx.user.companyId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id)
@@ -249,7 +267,7 @@ export const leadsRouter = router({
         })
     )
     .mutation(async ({ ctx, input }) => {
-      const existing = await db.query.leads.findFirst({ where: eq(leads.id, input.id) })
+      const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.companyId !== ctx.user.companyId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id)
@@ -314,7 +332,7 @@ export const leadsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.leadId) })
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.companyId !== ctx.user.companyId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id)
@@ -341,7 +359,7 @@ export const leadsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.leadId) })
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.companyId !== ctx.user.companyId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id)
@@ -392,7 +410,7 @@ export const leadsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.leadId) })
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.companyId !== ctx.user.companyId) throw new Error('Acesso negado')
 
@@ -417,34 +435,71 @@ export const leadsRouter = router({
         details: `Transferido do vendedor #${previousVendor} para #${input.newVendorId}. ${input.reason ?? ''}`,
       })
 
+      await db.insert(notifications).values({
+        vendorId: input.newVendorId,
+        leadId: input.leadId,
+        type: 'lead_assigned',
+        title: 'Lead transferido para você',
+        message: `${lead.name} foi transferido para você agora.`,
+      })
+
       return { success: true }
     }),
 
   delete: adminProcedure
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      const existing = await db.query.leads.findFirst({
+        where: and(eq(leads.id, input.id), eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
+      })
+      if (!existing) throw new Error('Lead não encontrado')
+
+      const now = new Date().toISOString()
       await db
-        .delete(leads)
-        .where(and(eq(leads.id, input.id), eq(leads.companyId, ctx.user.companyId)))
+        .update(leads)
+        .set({ deletedAt: now, deletedBy: ctx.user.id })
+        .where(eq(leads.id, input.id))
+
+      await db.insert(leadHistory).values({
+        companyId: ctx.user.companyId,
+        leadId: input.id,
+        userId: ctx.user.id,
+        action: 'excluido',
+        details: `Lead "${existing.name}" excluído por ${ctx.user.name}`,
+      })
+
       return { success: true }
     }),
 
   deleteAll: adminProcedure
     .input(z.object({ vendorId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
-      if (input.vendorId) {
-        await db
-          .delete(leads)
-          .where(and(eq(leads.vendorId, input.vendorId), eq(leads.companyId, ctx.user.companyId)))
-      } else {
-        await db.delete(leads).where(eq(leads.companyId, ctx.user.companyId))
-      }
+      const where = input.vendorId
+        ? and(eq(leads.vendorId, input.vendorId), eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt))
+        : and(eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt))
+
+      const toDelete = await db.query.leads.findMany({ where })
+      if (toDelete.length === 0) return { success: true }
+
+      const now = new Date().toISOString()
+      await db.update(leads).set({ deletedAt: now, deletedBy: ctx.user.id }).where(where)
+
+      await db.insert(leadHistory).values(
+        toDelete.map((l) => ({
+          companyId: ctx.user.companyId,
+          leadId: l.id,
+          userId: ctx.user.id,
+          action: 'excluido' as const,
+          details: `Lead "${l.name}" excluído por ${ctx.user.name} (limpeza em massa)`,
+        }))
+      )
+
       return { success: true }
     }),
 
   todayQueue: protectedProcedure.query(async ({ ctx }) => {
     const abordagemLeads = await db.query.leads.findMany({
-      where: and(eq(leads.status, 'abordagem'), eq(leads.companyId, ctx.user.companyId)),
+      where: and(eq(leads.status, 'abordagem'), eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
       with: { vendor: { columns: { passwordHash: false } } },
     })
 
@@ -469,7 +524,8 @@ export const leadsRouter = router({
       where: and(
         eq(leads.status, 'abordagem'),
         eq(leads.slaStatus, 'critico'),
-        eq(leads.companyId, ctx.user.companyId)
+        eq(leads.companyId, ctx.user.companyId),
+        isNull(leads.deletedAt)
       ),
     })
     const count =
@@ -481,7 +537,7 @@ export const leadsRouter = router({
 
   stats: protectedProcedure.query(async ({ ctx }) => {
     const allLeads = await db.query.leads.findMany({
-      where: eq(leads.companyId, ctx.user.companyId),
+      where: and(eq(leads.companyId, ctx.user.companyId), isNull(leads.deletedAt)),
       with: { vendor: { columns: { passwordHash: false } } },
     })
 

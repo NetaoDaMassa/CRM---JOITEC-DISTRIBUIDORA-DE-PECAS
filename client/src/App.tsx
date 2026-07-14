@@ -15,6 +15,7 @@ import AdminUsers from './pages/admin/Users'
 import AdminRegions from './pages/admin/Regions'
 import AdminSlaDashboard from './pages/admin/SlaDashboard'
 import AdminMessageTemplates from './pages/admin/MessageTemplates'
+import AdminTransferHistory from './pages/admin/TransferHistory'
 
 // Vendor pages
 import VendorDashboard from './pages/vendor/Dashboard'
@@ -102,6 +103,10 @@ export default function App() {
           <Route
             path="admin/mensagens"
             element={<AdminGuard><AdminMessageTemplates /></AdminGuard>}
+          />
+          <Route
+            path="admin/transferencias"
+            element={<AdminGuard><AdminTransferHistory /></AdminGuard>}
           />
 
           {/* Vendor routes */}

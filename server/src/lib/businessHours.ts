@@ -6,7 +6,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 // SQLite grava `datetime('now')` como "YYYY-MM-DD HH:MM:SS" (UTC, sem sufixo de fuso).
 // Sem o "Z", o Node interpretaria essa string como hora local do processo — normalizamos
 // para ISO UTC explícito antes de parsear, senão o resultado sai deslocado pelo fuso local.
-function toUtcISO(raw: string): string {
+export function toUtcISO(raw: string): string {
   if (/[zZ]|[+-]\d{2}:\d{2}$/.test(raw)) return raw
   return raw.replace(' ', 'T') + 'Z'
 }

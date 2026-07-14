@@ -117,6 +117,8 @@ export const leads = sqliteTable('leads', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   assignedAt: text('assigned_at'),
+  deletedAt: text('deleted_at'),
+  deletedBy: integer('deleted_by').references(() => users.id, { onDelete: 'set null' }),
 })
 
 export const leadNotes = sqliteTable('lead_notes', {
@@ -158,6 +160,7 @@ export const notifications = sqliteTable('notifications', {
     .references(() => leads.id, { onDelete: 'cascade' }),
   type: text('type', {
     enum: [
+      'lead_assigned',
       'lead_idle_1h',
       'lead_reassigned',
       'lead_auto_reverted',

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Calendar, Edit3,
-  MessageSquare, Repeat2, Bell, Paperclip, AlertCircle, ArrowRightLeft, Trash2, Plus,
+  MessageSquare, Repeat2, Bell, Paperclip, AlertCircle, ArrowRightLeft, Trash2, Plus, Clock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
@@ -16,7 +16,7 @@ import MessageTemplateMenu from '../../components/MessageTemplateMenu'
 import WhatsAppButton from '../../components/ui/WhatsAppButton'
 import EmailButton from '../../components/ui/EmailButton'
 import { StatusBadge } from '../../components/ui/Badge'
-import { STATUS_LABELS, STATUS_ORDER, SEGMENT_LABELS, formatDateTime, timeAgo } from '../../lib/utils'
+import { STATUS_LABELS, STATUS_ORDER, SEGMENT_LABELS, formatDateTime, timeAgo, formatElapsed, isTerminalStatus } from '../../lib/utils'
 import { PAYMENT_METHOD_OPTIONS } from '../../lib/statusFields'
 
 const NOTE_ICONS = { nota: MessageSquare, followup: Repeat2, lembrete: Bell }
@@ -205,6 +205,13 @@ export default function AdminLeadDetail() {
                 <InfoRow icon={null} label="Fonte" value={lead.source ?? '—'} />
                 <InfoRow icon={<Calendar size={14} />} label="Próximo contato"
                   value={lead.nextContactAt ? formatDateTime(lead.nextContactAt) : '—'} />
+                <InfoRow icon={<Calendar size={14} />} label="Distribuído em"
+                  value={lead.assignedAt ? formatDateTime(lead.assignedAt) : '—'} />
+                {lead.assignedAt && (
+                  <InfoRow icon={<Clock size={14} />}
+                    label={isTerminalStatus(lead.status) ? 'Tempo de atendimento' : 'Em atendimento há'}
+                    value={formatElapsed(lead.assignedAt, isTerminalStatus(lead.status) ? lead.statusChangedAt : null)} />
+                )}
               </div>
               {(lead.codSap || lead.orderValue || lead.finalOrderValue || lead.paymentMethod || lead.lossReason || lead.disqualifyReason) && (
                 <div className="pt-3 border-t border-dark-600 grid grid-cols-2 gap-4">

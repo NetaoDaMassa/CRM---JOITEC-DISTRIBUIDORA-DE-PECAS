@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Phone, Mail, Building2, MapPin, Calendar, Edit3,
-  MessageSquare, Repeat2, Bell, Paperclip, AlertCircle, Plus,
+  MessageSquare, Repeat2, Bell, Paperclip, AlertCircle, Plus, Clock,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
@@ -15,7 +15,7 @@ import MessageTemplateMenu from '../../components/MessageTemplateMenu'
 import WhatsAppButton from '../../components/ui/WhatsAppButton'
 import EmailButton from '../../components/ui/EmailButton'
 import { StatusBadge } from '../../components/ui/Badge'
-import { STATUS_LABELS, STATUS_ORDER, SEGMENT_LABELS, formatDateTime, timeAgo } from '../../lib/utils'
+import { STATUS_LABELS, STATUS_ORDER, SEGMENT_LABELS, formatDateTime, timeAgo, formatElapsed, isTerminalStatus } from '../../lib/utils'
 import { PAYMENT_METHOD_OPTIONS } from '../../lib/statusFields'
 
 const NOTE_ICONS = { nota: MessageSquare, followup: Repeat2, lembrete: Bell }
@@ -156,6 +156,14 @@ export default function VendorLeadDetail() {
                 { icon: null, label: 'Segmento', value: SEGMENT_LABELS[lead.segment ?? ''] ?? '—' },
                 { icon: <MapPin size={14} />, label: 'Região', value: lead.region?.name ?? '—' },
                 { icon: <Calendar size={14} />, label: 'Próximo contato', value: lead.nextContactAt ? formatDateTime(lead.nextContactAt) : '—' },
+                { icon: <Calendar size={14} />, label: 'Distribuído em', value: lead.assignedAt ? formatDateTime(lead.assignedAt) : '—' },
+                ...(lead.assignedAt
+                  ? [{
+                      icon: <Clock size={14} />,
+                      label: isTerminalStatus(lead.status) ? 'Tempo de atendimento' : 'Em atendimento há',
+                      value: formatElapsed(lead.assignedAt, isTerminalStatus(lead.status) ? lead.statusChangedAt : null),
+                    }]
+                  : []),
               ].map((item) => (
                 <div key={item.label}>
                   <div className="flex items-center gap-1.5 text-xs text-dark-400 mb-0.5">{item.icon}{item.label}</div>

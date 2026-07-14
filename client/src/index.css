@@ -42,10 +42,27 @@ html {
   color-scheme: dark;
 }
 
+/* ── Modo claro: inverte a rampa neutra "dark-*" (mesmos nomes de classe,
+   valores diferentes). O gold/cream da marca não muda entre os temas. ──── */
+html.light {
+  color-scheme: light;
+  --color-dark-50:  #0b1520;
+  --color-dark-100: #1a2332;
+  --color-dark-200: #334155;
+  --color-dark-300: #475569;
+  --color-dark-400: #64748b;
+  --color-dark-500: #94a3b3;
+  --color-dark-600: #d7dee6;
+  --color-dark-700: #e7ecf1;
+  --color-dark-800: #ffffff;
+  --color-dark-900: #f7f9fb;
+  --color-dark-950: #eef2f6;
+}
+
 body {
   font-family: var(--font-body);
-  background-color: #070d16;
-  color: #dce5ee;
+  background-color: var(--color-dark-950);
+  color: var(--color-dark-100);
   margin: 0;
   padding: 0;
   -webkit-font-smoothing: antialiased;
@@ -60,12 +77,12 @@ h1, h2, h3 {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #111e2d;
+  background: var(--color-dark-800);
 }
 ::-webkit-scrollbar-thumb {
-  background: #2b3d52;
+  background: var(--color-dark-600);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #006584;
+  background: var(--color-gold-600);
 }

@@ -39,7 +39,7 @@ function noAttemptsYet(lead: { attemptCount: number | null }): boolean {
 
 async function notifyIdleNovoLeads() {
   const idleLeads = await db.query.leads.findMany({
-    where: and(eq(leads.status, 'novo'), isNull(leads.idleAlertSentAt), statusChangedCutoff(ONE_HOUR_MS)),
+    where: and(eq(leads.status, 'novo'), isNull(leads.idleAlertSentAt), isNull(leads.deletedAt), statusChangedCutoff(ONE_HOUR_MS)),
   })
 
   for (const lead of idleLeads) {
@@ -59,7 +59,7 @@ async function notifyIdleNovoLeads() {
 
 async function reassignIdleNovoLeads() {
   const idleLeads = await db.query.leads.findMany({
-    where: and(eq(leads.status, 'novo'), isNull(leads.autoReassignedAt), statusChangedCutoff(ONE_DAY_MS)),
+    where: and(eq(leads.status, 'novo'), isNull(leads.autoReassignedAt), isNull(leads.deletedAt), statusChangedCutoff(ONE_DAY_MS)),
   })
 
   for (const lead of idleLeads) {
@@ -105,6 +105,7 @@ async function notifyAbordagemFirstContactPending() {
     where: and(
       eq(leads.status, 'abordagem'),
       isNull(leads.abordagem4hAlertSentAt),
+      isNull(leads.deletedAt),
       statusChangedCutoff(FOUR_BUSINESS_HOURS_MS)
     ),
   })
@@ -127,7 +128,7 @@ async function notifyAbordagemFirstContactPending() {
 
 async function notifyAbordagemEmRisco() {
   const candidates = await db.query.leads.findMany({
-    where: and(eq(leads.status, 'abordagem'), isNull(leads.slaStatus), statusChangedCutoff(TWELVE_BUSINESS_HOURS_MS)),
+    where: and(eq(leads.status, 'abordagem'), isNull(leads.slaStatus), isNull(leads.deletedAt), statusChangedCutoff(TWELVE_BUSINESS_HOURS_MS)),
   })
 
   for (const lead of candidates) {
@@ -151,6 +152,7 @@ async function notifyAbordagemCritico() {
     where: and(
       eq(leads.status, 'abordagem'),
       or(isNull(leads.slaStatus), ne(leads.slaStatus, 'critico')),
+      isNull(leads.deletedAt),
       statusChangedCutoff(SIXTEEN_BUSINESS_HOURS_MS)
     ),
   })
@@ -189,6 +191,7 @@ async function notifyLeadCooling() {
     where: and(
       eq(leads.status, 'abordagem'),
       isNull(leads.lastContactStaleAlertSentAt),
+      isNull(leads.deletedAt),
       lte(leads.lastContactAt, isoMinusMs(THREE_DAYS_MS))
     ),
   })
@@ -210,7 +213,7 @@ async function notifyLeadCooling() {
 
 async function revertStaleAbordagemLeads() {
   const staleLeads = await db.query.leads.findMany({
-    where: and(eq(leads.status, 'abordagem'), statusChangedCutoff(TWO_DAYS_MS)),
+    where: and(eq(leads.status, 'abordagem'), isNull(leads.deletedAt), statusChangedCutoff(TWO_DAYS_MS)),
   })
 
   for (const lead of staleLeads) {

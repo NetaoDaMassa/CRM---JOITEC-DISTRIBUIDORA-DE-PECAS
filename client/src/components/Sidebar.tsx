@@ -2,8 +2,10 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, MapPin, BarChart3,
   KanbanSquare, List, LogOut, CalendarDays, Megaphone, AlarmClock, AlertTriangle, MessageSquareText,
+  Sun, Moon, ArrowRightLeft,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
+import { useTheme } from '../contexts/ThemeContext'
 import { trpc } from '../lib/trpc'
 
 const COMPANY_LOGOS: Record<string, string> = {
@@ -23,6 +25,7 @@ const ADMIN_LINKS = [
   { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
   { to: '/admin/usuarios', label: 'Vendedores', icon: Users },
   { to: '/admin/regioes', label: 'Regiões & Rodízio', icon: MapPin },
+  { to: '/admin/transferencias', label: 'Histórico de Transferências', icon: ArrowRightLeft },
 ]
 
 const VENDOR_LINKS = [
@@ -35,6 +38,7 @@ const VENDOR_LINKS = [
 
 export default function Sidebar() {
   const { user, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
   const links = user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS
 
@@ -106,6 +110,13 @@ export default function Sidebar() {
             <div className="text-[11px] text-gold-500/80 truncate">{user?.companyName}</div>
           </div>
         </div>
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-dark-400 hover:text-gold-400 hover:bg-dark-800 transition-all mb-1"
+        >
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+          {theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+        </button>
         <button
           onClick={handleLogout}
           className="flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm text-dark-400 hover:text-red-400 hover:bg-red-900/20 transition-all"

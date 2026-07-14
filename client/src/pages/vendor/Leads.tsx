@@ -1,12 +1,15 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, AlertCircle } from 'lucide-react'
+import { Search, AlertCircle, Plus } from 'lucide-react'
 import WhatsAppButton from '../../components/ui/WhatsAppButton'
 import EmailButton from '../../components/ui/EmailButton'
 import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
+import Button from '../../components/ui/Button'
+import QuickLeadCreate from '../../components/QuickLeadCreate'
 import { StatusBadge } from '../../components/ui/Badge'
+import { useAuth } from '../../contexts/AuthContext'
 import { STATUS_LABELS, STATUS_ORDER, formatDate, SEGMENT_LABELS } from '../../lib/utils'
 
 const STATUS_OPTIONS = [
@@ -16,9 +19,11 @@ const STATUS_OPTIONS = [
 
 export default function VendorLeads() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [createOpen, setCreateOpen] = useState(false)
 
   const { data, isLoading } = trpc.leads.list.useQuery({
     search: search || undefined,
@@ -29,9 +34,15 @@ export default function VendorLeads() {
 
   return (
     <div className="p-6 space-y-5">
-      <div>
-        <h1 className="font-heading text-2xl text-gold-400 font-bold">Meus Leads</h1>
-        <p className="text-dark-400 text-sm">{data?.total ?? 0} leads</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="font-heading text-2xl text-gold-400 font-bold">Meus Leads</h1>
+          <p className="text-dark-400 text-sm">{data?.total ?? 0} leads</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus size={16} />
+          Novo Lead
+        </Button>
       </div>
 
       <div className="flex gap-3">
@@ -120,6 +131,13 @@ export default function VendorLeads() {
           </div>
         )}
       </div>
+
+      <QuickLeadCreate
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        defaultVendorId={user?.id}
+        vendorLocked
+      />
     </div>
   )
 }
