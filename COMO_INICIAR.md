@@ -1,15 +1,17 @@
-# Odin CRM — Como Iniciar
+# CRM Joitec — Como Iniciar (desenvolvimento local)
+
+O banco é **SQLite** (arquivo local), então **não precisa de Docker nem MySQL** para
+rodar em desenvolvimento. Para subir na VPS, veja o **[DEPLOY.md](./DEPLOY.md)**.
 
 ## Pré-requisitos
 - Node.js 20+
-- Docker Desktop (para o MySQL)
 - npm 10+
 
 ---
 
 ## 1. Instalar dependências
 
-Abra o terminal na pasta do projeto e execute:
+Na raiz do projeto:
 
 ```bash
 npm install
@@ -17,22 +19,25 @@ npm install
 
 ---
 
-## 2. Subir o banco de dados (MySQL via Docker)
+## 2. Configurar o `.env` do backend
 
 ```bash
-docker-compose up -d
+cp server/.env.example server/.env
 ```
 
-Aguarde ~10 segundos para o MySQL inicializar.
+Abra `server/.env` e defina um `JWT_SECRET` qualquer (em dev pode ser simples). O
+`DATABASE_URL` padrão (`file:./joitec_crm.db`) já cria o banco na pasta `server/`.
 
 ---
 
-## 3. Criar as tabelas
+## 3. Criar as tabelas (migrações)
 
 ```bash
-npm run db:generate
 npm run db:migrate
 ```
+
+> As migrações também rodam sozinhas ao iniciar o backend; este passo é para já ter
+> as tabelas antes do seed.
 
 ---
 
@@ -42,12 +47,8 @@ npm run db:migrate
 npm run db:seed
 ```
 
-Isso vai criar:
-- Admin: `admin` / `admin123`
-- Vendedor Carlos: `carlos` / `Odin@2024`
-- Vendedora Ana: `ana` / `Odin@2024`
-- Vendedor Pedro: `pedro` / `Odin@2024`
-- 5 regiões (Norte, Nordeste, Centro-Oeste, Sudeste, Sul) com DDDs configurados
+Cria a empresa **Joitec Distribuidora de Peças**, o admin e os vendedores (cada um
+com sua região fixa — modelo de **carteira fixa**, sem rodízio).
 
 ---
 
@@ -57,7 +58,7 @@ Isso vai criar:
 npm run dev
 ```
 
-Abre dois servidores:
+Sobe os dois servidores em paralelo:
 - **Backend (API):** http://localhost:3001
 - **Frontend (CRM):** http://localhost:5173
 
@@ -65,29 +66,29 @@ Acesse: **http://localhost:5173**
 
 ---
 
-## Credenciais
+## Credenciais (desenvolvimento)
+
+Todas as senhas do seed são `Joitec@2026` (troque em produção).
 
 | Perfil | Usuário | Senha |
 |--------|---------|-------|
-| Administrador | admin | admin123 |
-| Vendedor | carlos | Odin@2024 |
-| Vendedora | ana | Odin@2024 |
-| Vendedor | pedro | Odin@2024 |
+| Administrador | `admin` | `Joitec@2026` |
+| Vendedores | `guilherme`, `camila`, `antonio`, `douglas`, `claudia`, `gino`, `enzo`, `sarah`, `gustavo`, `kati`, `yuri`, `caio`, `jean`, `sergio` | `Joitec@2026` |
 
 ---
 
 ## Funcionalidades principais
 
 ### Painel Admin
-- **Dashboard** com métricas e rodízio
+- **Dashboard** com métricas
 - **Leads** — lista com filtros, transferência, exclusão, limpeza em massa
 - **Kanban** — arrastar e soltar entre status
 - **Relatórios** — exportar Excel com filtros
 - **Vendedores** — criar, editar, ativar/desativar
-- **Regiões & Rodízio** — configurar DDDs e acompanhar próximo vendedor
+- **Multi-empresa** — separação de dados por empresa
 
 ### Painel Vendedor
-- **Meu Painel** — leads, alertas de anexo obrigatório
+- **Meu Painel** — leads da carteira, alertas de anexo obrigatório
 - **Meus Leads** — lista filtrada
 - **Kanban** pessoal
 - **Follow-ups** com agendamento de próximo contato
@@ -97,15 +98,12 @@ Acesse: **http://localhost:5173**
 Novo → Abordagem → Qualificado → Em Negociação → Ganho / Perdido / Desqualificado
 ```
 
-### Rodízio automático
-Ao cadastrar um lead, o sistema identifica a região pelo DDD e distribui para o próximo vendedor da fila.
+### Carteira fixa por região
+Cada vendedor atende uma **região fixa** — os leads são atribuídos conforme a região,
+sem rodízio round-robin.
 
 ---
 
 ## Parar o sistema
 
-```bash
-# Parar servidores: Ctrl+C no terminal
-# Parar banco:
-docker-compose down
-```
+Pressione **Ctrl+C** no terminal onde o `npm run dev` está rodando.

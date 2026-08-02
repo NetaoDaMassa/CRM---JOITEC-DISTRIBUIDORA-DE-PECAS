@@ -1,15 +1,15 @@
-name: Deploy CRM Grupo Odin
+name: Deploy CRM Joitec
 
 on:
   workflow_dispatch:
 
 concurrency:
-  group: deploy-crm-odin
+  group: deploy-joitec-crm
   cancel-in-progress: true
 
 jobs:
   deploy:
-    name: Atualizar CRM na VPS
+    name: Atualizar CRM Joitec na VPS
     runs-on: ubuntu-latest
     steps:
       - name: Conectar na VPS e atualizar

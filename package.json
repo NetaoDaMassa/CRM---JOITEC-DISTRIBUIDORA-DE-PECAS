@@ -1,5 +1,5 @@
 {
-  "name": "odin-crm",
+  "name": "joitec-crm",
   "version": "1.0.0",
   "private": true,
   "workspaces": ["server", "client"],

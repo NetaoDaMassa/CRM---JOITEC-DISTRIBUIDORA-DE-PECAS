@@ -1,14 +1,22 @@
+# Nome fixo do projeto → prefixa containers/volumes/redes como "joitec-crm_*",
+# independente do nome da pasta no VPS. Garante que NÃO colida com o Odin CRM
+# (que roda no mesmo servidor com seus próprios volumes/containers).
+name: joitec-crm
+
 services:
   backend:
     build:
       context: ./server
     restart: unless-stopped
     environment:
-      DATABASE_URL: file:/app/data/odin_crm.db
+      DATABASE_URL: file:/app/data/joitec_crm.db
       JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env}
       PORT: 3001
       UPLOADS_DIR: /app/uploads
       CLIENT_URL: ${CLIENT_URL:-*}
+      # Opcional — extração de itens do PDF do pedido via IA. Se vazio, o recurso
+      # de extração automática fica desabilitado (o resto do CRM funciona normal).
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads
@@ -28,15 +36,16 @@ services:
       - "80"
     networks:
       internal: {}
-      # Rede compartilhada com o Caddy do outro projeto (projeto-leads).
-      # O Caddy encontra este container pelo alias "crm-frontend".
+      # Rede compartilhada com o Caddy do projeto-leads (o mesmo que já serve o
+      # Odin CRM). O Caddy encontra este container pelo alias "joitec-frontend".
       web:
         aliases:
-          - crm-frontend
+          - joitec-frontend
 
 networks:
   internal:
   # Criada uma única vez no VPS:  docker network create web
+  # (provavelmente já existe, pois o Odin CRM também a usa).
   web:
     external: true
 

@@ -6,7 +6,7 @@ import { config } from 'dotenv'
 config()
 
 const client = createClient({
-  url: process.env.DATABASE_URL ?? 'file:./odin_crm.db',
+  url: process.env.DATABASE_URL ?? 'file:./joitec_crm.db',
 })
 
 export const db = drizzle(client, { schema })
