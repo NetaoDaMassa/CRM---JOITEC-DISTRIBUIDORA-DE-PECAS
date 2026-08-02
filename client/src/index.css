@@ -86,3 +86,42 @@ h1, h2, h3 {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-gold-600);
 }
+
+/* ── Comemoração de meta do dia batida (AvatarMeta) ────────────────────── */
+@keyframes festa-ring {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.55); }
+  50% { box-shadow: 0 0 0 6px rgba(12, 163, 12, 0); }
+}
+
+@keyframes festa-particula {
+  0%, 100% { transform: translateY(0) rotate(-8deg); opacity: 0.9; }
+  50% { transform: translateY(-6px) rotate(8deg); opacity: 1; }
+}
+
+.festa-ring {
+  animation: festa-ring 1.6s ease-out infinite;
+}
+
+.festa-particula {
+  animation: festa-particula 1.2s ease-in-out infinite;
+}
+
+/* ── Pop-up grande de meta batida (dia ou mês) ─────────────────────────── */
+@keyframes popup-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes popup-pop-in {
+  0% { opacity: 0; transform: scale(0.7); }
+  60% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.popup-overlay {
+  animation: popup-fade-in 0.25s ease-out;
+}
+
+.popup-card {
+  animation: popup-pop-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+}

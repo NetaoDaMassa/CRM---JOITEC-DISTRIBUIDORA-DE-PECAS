@@ -1,11 +1,12 @@
 # Dependências
 node_modules/
 
-# Banco de dados SQLite (arquivo local, não commitar)
-server/odin_crm.db
-server/odin_crm.db-shm
-server/odin_crm.db-wal
-server/odin_crm.db.bak-*
+# Banco de dados SQLite (arquivo local, não commitar — dados reais de clientes)
+server/*.db
+server/*.db-shm
+server/*.db-wal
+server/*.db.bak-*
+server/backups/
 
 # Uploads de arquivos
 server/uploads/*

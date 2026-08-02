@@ -1,51 +1,77 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, MapPin, BarChart3,
-  KanbanSquare, List, LogOut, CalendarDays, Megaphone, AlarmClock, AlertTriangle, MessageSquareText,
-  Sun, Moon, ArrowRightLeft,
+  LayoutDashboard, Users, BarChart3,
+  KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { trpc } from '../lib/trpc'
 
-const COMPANY_LOGOS: Record<string, string> = {
-  'Odin Tubos e Conexões': '/logos/odin-tubos.png',
-  'Odin Compressores': '/logos/odin-compressores.png',
-  'Joitec Distribuidora de Peças': '/logos/joitec.png',
+// CRM de marketing do Grupo Odin (sistema à parte, fora deste projeto) — o
+// vendedor usa pra atender os leads que chegam por marketing. Link externo
+// mesmo, sem nada embutido aqui.
+const MARKETING_URL = 'https://crm-odin.duckdns.org/login'
+
+// Joitec Automação é uma divisão da mesma marca Joitec — reaproveita a logo
+// padrão, sem arte própria (confirmado com o João).
+const LOGO_POR_EMPRESA: Record<string, string> = {
+  joitec: '/logos/joitec-sidebar.png',
+  'joitec-automacao': '/logos/joitec-sidebar.png',
+  'odin-tubos': '/logos/odin-tubos-sidebar.png',
 }
+
+// Pós-venda por horas de filtro (ar/óleo) só faz sentido pro modelo de
+// negócio da Odin Compressores (revenda que já comprou compressor) — as
+// outras empresas não têm essa tela.
+const SO_ODIN_COMPRESSORES = 'odin-compressores'
 
 const ADMIN_LINKS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/leads', label: 'Leads', icon: List },
   { to: '/admin/kanban', label: 'Kanban', icon: KanbanSquare },
-  { to: '/admin/calendario', label: 'Calendário', icon: CalendarDays },
-  { to: '/admin/sla', label: 'SLA Abordagem', icon: AlertTriangle },
-  { to: '/admin/campanhas', label: 'Campanhas', icon: Megaphone },
-  { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText },
+  { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES },
+  { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays },
+  { to: '/admin/clientes', label: 'Clientes', icon: List },
+  { to: '/admin/prospeccao', label: 'Prospecção', icon: Search },
+  { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare },
+  { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft },
+  { to: '/admin/banco-clientes', label: 'Banco de Clientes', icon: Landmark },
+  { to: '/admin/importar', label: 'Importar', icon: Upload },
   { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
   { to: '/admin/usuarios', label: 'Vendedores', icon: Users },
-  { to: '/admin/regioes', label: 'Regiões & Rodízio', icon: MapPin },
-  { to: '/admin/transferencias', label: 'Histórico de Transferências', icon: ArrowRightLeft },
+  { to: '/admin/metas', label: 'Metas', icon: Target },
+  { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText },
+  { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2 },
+  { to: '/admin/configuracoes', label: 'Configurações', icon: Settings },
+  { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup },
 ]
 
 const VENDOR_LINKS = [
-  { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: AlarmClock, end: true },
   { to: '/vendedor', label: 'Meu Painel', icon: LayoutDashboard, end: true },
-  { to: '/vendedor/leads', label: 'Meus Leads', icon: List },
+  { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: ListChecks },
+  { to: '/vendedor/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES },
   { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare },
-  { to: '/vendedor/calendario', label: 'Calendário', icon: CalendarDays },
+  { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays },
+  { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List },
+  { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search },
+  { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3 },
 ]
 
 export default function Sidebar() {
-  const { user, logout } = useAuth()
+  const { user, logout, empresaAtivaId, trocarEmpresa } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
-  const links = user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS
 
-  const { data: slaCritical } = trpc.leads.slaCriticalCount.useQuery(undefined, {
-    enabled: user?.role === 'vendor',
-    refetchInterval: 60000,
-  })
+  // Pra superAdmin devolve todas as empresas (seletor de troca); pra
+  // qualquer outro usuário devolve só a própria (só pra mostrar o nome dela
+  // aqui em cima, sem seletor).
+  const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
+  const empresaAtiva = empresas?.find((e) => e.id === empresaAtivaId)
+  const logoEmpresa = empresaAtiva ? LOGO_POR_EMPRESA[empresaAtiva.slug] : undefined
+
+  const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
+    (l) => !l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug
+  )
 
   function handleLogout() {
     logout()
@@ -54,21 +80,34 @@ export default function Sidebar() {
 
   return (
     <aside className="w-64 shrink-0 bg-dark-900 border-r border-dark-700 flex flex-col h-screen sticky top-0">
-      {/* Logo */}
       <div className="px-4 py-4 border-b border-dark-700">
-        <div
-          className="rounded-xl px-3 py-2 flex items-center justify-center"
-          style={{ background: '#fef8eb' }}
-        >
-          <img
-            src={(user?.companyName && COMPANY_LOGOS[user.companyName]) || '/logos/grupo-odin.png'}
-            alt={user?.companyName ?? 'Odin CRM'}
-            className="h-10 w-auto object-contain"
-          />
-        </div>
+        {logoEmpresa ? (
+          <div className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-center">
+            <img src={logoEmpresa} alt={empresaAtiva?.nome ?? 'Logo da empresa'} className="h-9 w-auto object-contain" />
+          </div>
+        ) : (
+          <p className="font-heading text-gold-400 font-bold text-lg">CRM</p>
+        )}
+        <p className="text-xs text-dark-400 truncate mt-2 text-center">{empresaAtiva?.nome ?? '...'}</p>
       </div>
 
-      {/* Navigation */}
+      {user?.superAdmin && empresas && empresas.length > 1 && (
+        <div className="px-4 pt-3">
+          <label className="text-xs text-dark-500 block mb-1">Empresa</label>
+          <select
+            value={empresaAtivaId ?? ''}
+            onChange={(e) => trocarEmpresa(Number(e.target.value))}
+            className="w-full bg-dark-800 border border-dark-700 rounded-lg text-sm text-dark-100 px-2 py-1.5"
+          >
+            {empresas.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         <div className="space-y-1">
           {links.map(({ to, label, icon: Icon, end }) => (
@@ -86,17 +125,31 @@ export default function Sidebar() {
             >
               <Icon size={17} />
               <span className="flex-1">{label}</span>
-              {to === '/vendedor/fila-hoje' && !!slaCritical?.count && (
-                <span className="bg-red-500 text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] px-1 flex items-center justify-center">
-                  {slaCritical.count}
-                </span>
-              )}
             </NavLink>
           ))}
+          {user?.role === 'admin' && (
+            <a
+              href="/painel-tv"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
+            >
+              <Tv size={17} />
+              <span className="flex-1">Painel de TV</span>
+            </a>
+          )}
+          <a
+            href={MARKETING_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
+          >
+            <Megaphone size={17} />
+            <span className="flex-1">Marketing</span>
+          </a>
         </div>
       </nav>
 
-      {/* User info + Logout */}
       <div className="px-4 py-4 border-t border-dark-700">
         <div className="flex items-center gap-3 px-2 py-2 mb-2">
           <div className="w-8 h-8 rounded-full bg-gold-700/30 border border-gold-600/30 flex items-center justify-center text-gold-400 text-xs font-semibold">
@@ -107,7 +160,6 @@ export default function Sidebar() {
             <div className="text-xs text-dark-400 capitalize">
               {user?.role === 'admin' ? 'Administrador' : 'Vendedor'}
             </div>
-            <div className="text-[11px] text-gold-500/80 truncate">{user?.companyName}</div>
           </div>
         </div>
         <button

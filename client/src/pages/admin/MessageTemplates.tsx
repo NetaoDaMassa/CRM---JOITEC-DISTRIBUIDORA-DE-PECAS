@@ -85,8 +85,9 @@ export default function AdminMessageTemplates() {
         <div>
           <h1 className="font-heading text-2xl text-gold-400 font-bold">Mensagens Automáticas</h1>
           <p className="text-dark-400 text-sm mt-0.5">
-            Modelos usados para iniciar contato por WhatsApp/Email em leads na etapa Abordagem · use{' '}
-            <code className="text-gold-500">{'{{nome}}'}</code> pra personalizar com o nome do lead
+            Modelos usados para iniciar contato por WhatsApp/Email em leads na etapa Abordagem · variáveis disponíveis:{' '}
+            <code className="text-gold-500">{'{{nome}}'}</code>, <code className="text-gold-500">{'{{cidade}}'}</code>,{' '}
+            <code className="text-gold-500">{'{{dias_sem_contato}}'}</code> e <code className="text-gold-500">{'{{ultimo_contato}}'}</code>
           </p>
         </div>
         <Button onClick={openCreate}>
@@ -164,20 +165,20 @@ export default function AdminMessageTemplates() {
           />
           <Textarea
             label="Texto do WhatsApp *"
-            placeholder="Use {{nome}} pra personalizar"
+            placeholder="Use {{nome}}, {{cidade}}, {{dias_sem_contato}} ou {{ultimo_contato}}"
             value={form.whatsappText}
             onChange={(e) => setForm((f) => ({ ...f, whatsappText: e.target.value }))}
             rows={3}
           />
           <Input
             label="Assunto do Email *"
-            placeholder="Use {{nome}} pra personalizar"
+            placeholder="Use {{nome}}, {{cidade}}, {{dias_sem_contato}} ou {{ultimo_contato}}"
             value={form.emailSubject}
             onChange={(e) => setForm((f) => ({ ...f, emailSubject: e.target.value }))}
           />
           <Textarea
             label="Corpo do Email *"
-            placeholder="Use {{nome}} pra personalizar"
+            placeholder="Use {{nome}}, {{cidade}}, {{dias_sem_contato}} ou {{ultimo_contato}}"
             value={form.emailBody}
             onChange={(e) => setForm((f) => ({ ...f, emailBody: e.target.value }))}
             rows={6}

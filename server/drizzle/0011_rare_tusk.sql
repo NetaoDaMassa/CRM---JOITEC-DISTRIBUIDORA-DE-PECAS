@@ -1,0 +1,1 @@
+ALTER TABLE `clientes` ADD `origem_banco` text;

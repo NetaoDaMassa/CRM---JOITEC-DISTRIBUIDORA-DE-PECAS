@@ -2,28 +2,33 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout'
 import Login from './pages/Login'
+import TrocarSenha from './pages/TrocarSenha'
+import Clientes from './pages/Clientes'
+import ClienteNovo from './pages/ClienteNovo'
+import ClienteDetail from './pages/ClienteDetail'
+import Prospeccao from './pages/Prospeccao'
+import AdminAprovacoes from './pages/admin/Aprovacoes'
 
-// Admin pages
 import AdminDashboard from './pages/admin/Dashboard'
-import AdminLeads from './pages/admin/Leads'
-import AdminLeadDetail from './pages/admin/LeadDetail'
-import AdminKanban from './pages/admin/Kanban'
-import AdminCalendar from './pages/admin/Calendar'
-import AdminCampaigns from './pages/admin/Campaigns'
-import AdminReports from './pages/admin/Reports'
 import AdminUsers from './pages/admin/Users'
-import AdminRegions from './pages/admin/Regions'
-import AdminSlaDashboard from './pages/admin/SlaDashboard'
+import AdminCarteira from './pages/admin/Carteira'
+import AdminBancoClientes from './pages/admin/BancoClientes'
+import AdminImportar from './pages/admin/Importar'
+import AdminLixeira from './pages/admin/Lixeira'
+import AdminReports from './pages/admin/Reports'
 import AdminMessageTemplates from './pages/admin/MessageTemplates'
-import AdminTransferHistory from './pages/admin/TransferHistory'
+import AdminConfiguracoes from './pages/admin/Configuracoes'
+import AdminBackup from './pages/admin/Backup'
+import AdminMetas from './pages/admin/Metas'
+import AdminKanban from './pages/admin/Kanban'
+import AdminCalendario from './pages/admin/Calendario'
 
-// Vendor pages
 import VendorDashboard from './pages/vendor/Dashboard'
-import VendorLeads from './pages/vendor/Leads'
-import VendorLeadDetail from './pages/vendor/LeadDetail'
 import VendorKanban from './pages/vendor/Kanban'
-import VendorCalendar from './pages/vendor/Calendar'
-import VendorTodayQueue from './pages/vendor/TodayQueue'
+import VendorCalendario from './pages/vendor/Calendario'
+import FilaHoje from './pages/vendor/FilaHoje'
+import FilaPosVenda from './pages/FilaPosVenda'
+import PainelTV from './pages/PainelTV'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -40,7 +45,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  if (user?.role !== 'admin') return <Navigate to="/vendedor/fila-hoje" replace />
+  if (user?.role !== 'admin') return <Navigate to="/vendedor" replace />
   return <>{children}</>
 }
 
@@ -51,6 +56,15 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/trocar-senha" element={<TrocarSenha />} />
+        <Route
+          path="/painel-tv"
+          element={
+            <AuthGuard>
+              <PainelTV />
+            </AuthGuard>
+          }
+        />
         <Route
           path="/"
           element={
@@ -60,72 +74,41 @@ export default function App() {
           }
         >
           {/* Admin routes */}
-          <Route
-            path="admin"
-            element={<AdminGuard><AdminDashboard /></AdminGuard>}
-          />
-          <Route
-            path="admin/leads"
-            element={<AdminGuard><AdminLeads /></AdminGuard>}
-          />
-          <Route
-            path="admin/leads/:id"
-            element={<AdminGuard><AdminLeadDetail /></AdminGuard>}
-          />
-          <Route
-            path="admin/kanban"
-            element={<AdminGuard><AdminKanban /></AdminGuard>}
-          />
-          <Route
-            path="admin/calendario"
-            element={<AdminGuard><AdminCalendar /></AdminGuard>}
-          />
-          <Route
-            path="admin/campanhas"
-            element={<AdminGuard><AdminCampaigns /></AdminGuard>}
-          />
-          <Route
-            path="admin/relatorios"
-            element={<AdminGuard><AdminReports /></AdminGuard>}
-          />
-          <Route
-            path="admin/usuarios"
-            element={<AdminGuard><AdminUsers /></AdminGuard>}
-          />
-          <Route
-            path="admin/regioes"
-            element={<AdminGuard><AdminRegions /></AdminGuard>}
-          />
-          <Route
-            path="admin/sla"
-            element={<AdminGuard><AdminSlaDashboard /></AdminGuard>}
-          />
-          <Route
-            path="admin/mensagens"
-            element={<AdminGuard><AdminMessageTemplates /></AdminGuard>}
-          />
-          <Route
-            path="admin/transferencias"
-            element={<AdminGuard><AdminTransferHistory /></AdminGuard>}
-          />
+          <Route path="admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
+          <Route path="admin/kanban" element={<AdminGuard><AdminKanban /></AdminGuard>} />
+          <Route path="admin/calendario" element={<AdminGuard><AdminCalendario /></AdminGuard>} />
+          <Route path="admin/clientes" element={<AdminGuard><Clientes /></AdminGuard>} />
+          <Route path="admin/prospeccao" element={<AdminGuard><Prospeccao /></AdminGuard>} />
+          <Route path="admin/aprovacoes" element={<AdminGuard><AdminAprovacoes /></AdminGuard>} />
+          <Route path="admin/clientes/novo" element={<AdminGuard><ClienteNovo /></AdminGuard>} />
+          <Route path="admin/clientes/:id" element={<AdminGuard><ClienteDetail /></AdminGuard>} />
+          <Route path="admin/carteira" element={<AdminGuard><AdminCarteira /></AdminGuard>} />
+          <Route path="admin/banco-clientes" element={<AdminGuard><AdminBancoClientes /></AdminGuard>} />
+          <Route path="admin/importar" element={<AdminGuard><AdminImportar /></AdminGuard>} />
+          <Route path="admin/lixeira" element={<AdminGuard><AdminLixeira /></AdminGuard>} />
+          <Route path="admin/relatorios" element={<AdminGuard><AdminReports /></AdminGuard>} />
+          <Route path="admin/usuarios" element={<AdminGuard><AdminUsers /></AdminGuard>} />
+          <Route path="admin/mensagens" element={<AdminGuard><AdminMessageTemplates /></AdminGuard>} />
+          <Route path="admin/configuracoes" element={<AdminGuard><AdminConfiguracoes /></AdminGuard>} />
+          <Route path="admin/backup" element={<AdminGuard><AdminBackup /></AdminGuard>} />
+          <Route path="admin/metas" element={<AdminGuard><AdminMetas /></AdminGuard>} />
+          <Route path="admin/pos-venda" element={<AdminGuard><FilaPosVenda /></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
-          <Route path="vendedor/fila-hoje" element={<VendorTodayQueue />} />
-          <Route path="vendedor/leads" element={<VendorLeads />} />
-          <Route path="vendedor/leads/:id" element={<VendorLeadDetail />} />
+          <Route path="vendedor/fila-hoje" element={<FilaHoje />} />
+          <Route path="vendedor/pos-venda" element={<FilaPosVenda />} />
           <Route path="vendedor/kanban" element={<VendorKanban />} />
-          <Route path="vendedor/calendario" element={<VendorCalendar />} />
+          <Route path="vendedor/clientes" element={<Clientes />} />
+          <Route path="vendedor/prospeccao" element={<Prospeccao />} />
+          <Route path="vendedor/clientes/novo" element={<ClienteNovo />} />
+          <Route path="vendedor/clientes/:id" element={<ClienteDetail />} />
+          <Route path="vendedor/relatorios" element={<AdminReports />} />
+          <Route path="vendedor/calendario" element={<VendorCalendario />} />
 
-          {/* Default redirect */}
           <Route
             index
-            element={
-              <Navigate
-                to={user?.role === 'admin' ? '/admin' : '/vendedor/fila-hoje'}
-                replace
-              />
-            }
+            element={<Navigate to={user?.role === 'admin' ? '/admin' : '/vendedor'} replace />}
           />
         </Route>
 

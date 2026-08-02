@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
+import LembretesCompromisso from './LembretesCompromisso'
 
 export default function Layout() {
   return (
@@ -12,6 +13,7 @@ export default function Layout() {
         </header>
         <Outlet />
       </main>
+      <LembretesCompromisso />
     </div>
   )
 }

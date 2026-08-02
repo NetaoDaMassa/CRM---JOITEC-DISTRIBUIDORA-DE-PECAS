@@ -1,0 +1,1 @@
+ALTER TABLE `clientes` ADD `em_prospeccao` integer DEFAULT false NOT NULL;

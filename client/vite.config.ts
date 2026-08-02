@@ -11,11 +11,11 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 5183,
     proxy: {
-      '/trpc': 'http://localhost:3001',
-      '/upload': 'http://localhost:3001',
-      '/uploads': 'http://localhost:3001',
+      '/trpc': 'http://localhost:3011',
+      '/upload': 'http://localhost:3011',
+      '/uploads': 'http://localhost:3011',
     },
   },
 })

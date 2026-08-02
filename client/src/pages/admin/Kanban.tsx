@@ -1,59 +1,48 @@
-import { useState } from 'react'
-import { Plus, Filter } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { trpc } from '../../lib/trpc'
-import Button from '../../components/ui/Button'
 import Select from '../../components/ui/Select'
-import KanbanBoard from '../../components/KanbanBoard'
-import QuickLeadCreate from '../../components/QuickLeadCreate'
+import FunilBoard from '../../components/FunilBoard'
+import { primeiroDiaMesString } from '../../lib/utils'
 
 export default function AdminKanban() {
-  const [createOpen, setCreateOpen] = useState(false)
-  const [vendorId, setVendorId] = useState('')
+  const { data: vendedores } = trpc.users.vendors.useQuery()
+  const [vendedorId, setVendedorId] = useState<number | null>(null)
+  const [mesReferencia, setMesReferencia] = useState(primeiroDiaMesString())
 
-  const { data, isLoading } = trpc.leads.list.useQuery({ page: 1, pageSize: 500,
-    vendorId: vendorId ? parseInt(vendorId) : undefined })
-  const { data: vendors } = trpc.users.vendors.useQuery()
+  useEffect(() => {
+    if (vendedores && vendedores.length > 0 && vendedorId === null) {
+      setVendedorId(vendedores[0].id)
+    }
+  }, [vendedores, vendedorId])
 
-  const vendorOptions = [
-    { value: '', label: 'Todos os vendedores' },
-    ...(vendors?.map((v) => ({ value: v.id.toString(), label: v.name })) ?? []),
-  ]
+  const { data: cards, isLoading } = trpc.funil.funilPorVendedor.useQuery(
+    { vendedorId: vendedorId!, mesReferencia },
+    { enabled: vendedorId !== null }
+  )
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-2xl text-gold-400 font-bold">Kanban</h1>
-          <p className="text-dark-400 text-sm">{data?.total ?? 0} leads · visão por colunas</p>
-        </div>
-        <div className="flex gap-3">
-          <div className="w-48">
-            <Select options={vendorOptions} value={vendorId} onChange={(e) => setVendorId(e.target.value)} />
+    <div className="p-6">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h1 className="font-heading text-xl text-dark-50">Kanban por vendedor</h1>
+        <div className="flex items-center gap-2">
+          <input
+            type="month"
+            value={mesReferencia.slice(0, 7)}
+            onChange={(e) => setMesReferencia(e.target.value + '-01')}
+            className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5"
+          />
+          <div className="w-64">
+            <Select
+              value={vendedorId ?? ''}
+              onChange={(e) => setVendedorId(Number(e.target.value))}
+              options={(vendedores ?? []).map((v) => ({ value: v.id, label: v.name }))}
+            />
           </div>
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus size={16} />Novo Lead
-          </Button>
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="flex gap-4">
-          {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="w-72 shrink-0">
-              <div className="h-8 bg-dark-800 rounded-lg mb-3 animate-pulse" />
-              <div className="space-y-2">
-                {Array.from({ length: 3 }).map((_, j) => (
-                  <div key={j} className="h-24 bg-dark-800 rounded-xl animate-pulse" />
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <KanbanBoard leads={data?.data ?? []} isAdmin={true} basePath="/admin" />
-      )}
-
-      <QuickLeadCreate open={createOpen} onClose={() => setCreateOpen(false)} />
+      {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
+      {!isLoading && vendedorId !== null && <FunilBoard cards={cards ?? []} />}
     </div>
   )
 }

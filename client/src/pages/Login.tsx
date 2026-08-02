@@ -6,29 +6,22 @@ import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
-import Select from '../components/ui/Select'
-
-const COMPANY_LOGOS: Record<string, string> = {
-  'odin-tubos': '/logos/odin-tubos.png',
-  'odin-compressores': '/logos/odin-compressores.png',
-  joitec: '/logos/joitec.png',
-}
 
 export default function Login() {
-  const [companyId, setCompanyId] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const { login } = useAuth()
   const navigate = useNavigate()
 
-  const { data: companies } = trpc.companies.list.useQuery()
-  const selectedCompany = companies?.find((c) => String(c.id) === companyId)
-
   const loginMut = trpc.auth.login.useMutation({
     onSuccess(data) {
-      login(data.token, data.user as any)
-      navigate(data.user.role === 'admin' ? '/admin' : '/vendedor/fila-hoje')
+      login(data.token, data.user)
+      if (data.user.senhaTrocarNoLogin) {
+        navigate('/trocar-senha')
+      } else {
+        navigate(data.user.role === 'admin' ? '/admin' : '/vendedor/fila-hoje')
+      }
     },
     onError(err) {
       toast.error(err.message || 'Credenciais inválidas')
@@ -37,14 +30,12 @@ export default function Login() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!companyId) return toast.error('Selecione a empresa')
     if (!username || !password) return toast.error('Preencha todos os campos')
-    loginMut.mutate({ companyId: Number(companyId), username, password })
+    loginMut.mutate({ username, password })
   }
 
   return (
     <div className="min-h-screen bg-dark-950 flex items-center justify-center p-4">
-      {/* Background glow */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -53,36 +44,18 @@ export default function Login() {
       />
 
       <div className="relative w-full max-w-md">
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-8 shadow-2xl" style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(36,175,244,0.05)' }}>
-
-          {/* Logo */}
+        <div
+          className="bg-dark-800 border border-dark-600 rounded-2xl p-8 shadow-2xl"
+          style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(36,175,244,0.05)' }}
+        >
           <div className="flex flex-col items-center gap-5 mb-8">
-            <div
-              className="rounded-2xl p-3 shadow-lg w-20 h-20 flex items-center justify-center"
-              style={{ background: '#fef8eb' }}
-            >
-              <img
-                src={selectedCompany && COMPANY_LOGOS[selectedCompany.slug] ? COMPANY_LOGOS[selectedCompany.slug] : '/logos/grupo-odin.png'}
-                alt={selectedCompany ? selectedCompany.name : 'Grupo Odin'}
-                className="w-full h-full object-contain"
-              />
-            </div>
             <div className="text-center">
-              <h1 className="font-heading text-lg text-gold-400 font-bold">
-                {selectedCompany ? selectedCompany.name : 'Sistema de CRM Interno'}
-              </h1>
-              <p className="text-dark-400 text-sm">Selecione sua empresa para continuar</p>
+              <h1 className="font-heading text-lg text-gold-400 font-bold">Joitec CRM</h1>
+              <p className="text-dark-400 text-sm">Entre com seu usuário e senha</p>
             </div>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Select
-              label="Empresa"
-              placeholder="Selecione..."
-              options={(companies ?? []).map((c) => ({ value: c.id, label: c.name }))}
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-            />
             <Input
               label="Usuário"
               placeholder="seu.usuario"
@@ -111,19 +84,12 @@ export default function Login() {
               </div>
             </div>
 
-            <Button
-              type="submit"
-              size="lg"
-              className="w-full mt-2"
-              loading={loginMut.isPending}
-            >
+            <Button type="submit" size="lg" className="w-full mt-2" loading={loginMut.isPending}>
               Entrar
             </Button>
           </form>
 
-          <p className="text-center text-dark-500 text-xs mt-6">
-            Odin CRM · v1.0
-          </p>
+          <p className="text-center text-dark-500 text-xs mt-6">Joitec CRM · v1.0</p>
         </div>
       </div>
     </div>

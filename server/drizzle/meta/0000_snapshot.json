@@ -1,11 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "55c9dff4-3aa0-4fb2-a602-9b82e84b1147",
+  "id": "eeb372f0-1db9-4900-ac85-f3932bdeee53",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "ddds": {
-      "name": "ddds",
+    "carteira_historico": {
+      "name": "carteira_historico",
       "columns": {
         "id": {
           "name": "id",
@@ -14,225 +14,238 @@
           "notNull": true,
           "autoincrement": true
         },
-        "ddd": {
-          "name": "ddd",
+        "cliente_id": {
+          "name": "cliente_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "region_id": {
-          "name": "region_id",
+        "vendedor_id": {
+          "name": "vendedor_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "carteira_historico_cliente_id_clientes_id_fk": {
+          "name": "carteira_historico_cliente_id_clientes_id_fk",
+          "tableFrom": "carteira_historico",
+          "tableTo": "clientes",
+          "columnsFrom": [
+            "cliente_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "carteira_historico_vendedor_id_users_id_fk": {
+          "name": "carteira_historico_vendedor_id_users_id_fk",
+          "tableFrom": "carteira_historico",
+          "tableTo": "users",
+          "columnsFrom": [
+            "vendedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "clientes": {
+      "name": "clientes",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "razao_social": {
+          "name": "razao_social",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cnpj": {
+          "name": "cnpj",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "codigo": {
+          "name": "codigo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "codigo_antigo": {
+          "name": "codigo_antigo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "inscricao_estadual": {
+          "name": "inscricao_estadual",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "regiao": {
+          "name": "regiao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "estado": {
+          "name": "estado",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cidade": {
+          "name": "cidade",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "telefone_whatsapp": {
+          "name": "telefone_whatsapp",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "vendedor_atual_id": {
+          "name": "vendedor_atual_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "data_ultima_compra": {
+          "name": "data_ultima_compra",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "ticket_medio_historico": {
+          "name": "ticket_medio_historico",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cadastrado_por": {
+          "name": "cadastrado_por",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "versao": {
+          "name": "versao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {
-        "ddds_ddd_unique": {
-          "name": "ddds_ddd_unique",
+        "clientes_cnpj_unique": {
+          "name": "clientes_cnpj_unique",
           "columns": [
-            "ddd"
+            "cnpj"
+          ],
+          "isUnique": true
+        },
+        "clientes_codigo_unique": {
+          "name": "clientes_codigo_unique",
+          "columns": [
+            "codigo"
           ],
           "isUnique": true
         }
       },
       "foreignKeys": {
-        "ddds_region_id_regions_id_fk": {
-          "name": "ddds_region_id_regions_id_fk",
-          "tableFrom": "ddds",
-          "tableTo": "regions",
-          "columnsFrom": [
-            "region_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "lead_attachments": {
-      "name": "lead_attachments",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "lead_id": {
-          "name": "lead_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "filename": {
-          "name": "filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "original_name": {
-          "name": "original_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "mime_type": {
-          "name": "mime_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "size": {
-          "name": "size",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "lead_attachments_lead_id_leads_id_fk": {
-          "name": "lead_attachments_lead_id_leads_id_fk",
-          "tableFrom": "lead_attachments",
-          "tableTo": "leads",
-          "columnsFrom": [
-            "lead_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "lead_attachments_user_id_users_id_fk": {
-          "name": "lead_attachments_user_id_users_id_fk",
-          "tableFrom": "lead_attachments",
+        "clientes_vendedor_atual_id_users_id_fk": {
+          "name": "clientes_vendedor_atual_id_users_id_fk",
+          "tableFrom": "clientes",
           "tableTo": "users",
           "columnsFrom": [
-            "user_id"
+            "vendedor_atual_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "lead_history": {
-      "name": "lead_history",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "lead_id": {
-          "name": "lead_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "action": {
-          "name": "action",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "from_status": {
-          "name": "from_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "to_status": {
-          "name": "to_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "details": {
-          "name": "details",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "lead_history_lead_id_leads_id_fk": {
-          "name": "lead_history_lead_id_leads_id_fk",
-          "tableFrom": "lead_history",
-          "tableTo": "leads",
-          "columnsFrom": [
-            "lead_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
+          "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "lead_history_user_id_users_id_fk": {
-          "name": "lead_history_user_id_users_id_fk",
-          "tableFrom": "lead_history",
+        "clientes_cadastrado_por_users_id_fk": {
+          "name": "clientes_cadastrado_por_users_id_fk",
+          "tableFrom": "clientes",
           "tableTo": "users",
           "columnsFrom": [
-            "user_id"
+            "cadastrado_por"
           ],
           "columnsTo": [
             "id"
@@ -245,8 +258,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "lead_notes": {
-      "name": "lead_notes",
+    "funil_mensal": {
+      "name": "funil_mensal",
       "columns": {
         "id": {
           "name": "id",
@@ -255,41 +268,129 @@
           "notNull": true,
           "autoincrement": true
         },
-        "lead_id": {
-          "name": "lead_id",
+        "cliente_id": {
+          "name": "cliente_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "user_id": {
-          "name": "user_id",
+        "vendedor_id": {
+          "name": "vendedor_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "type": {
-          "name": "type",
+        "mes_referencia": {
+          "name": "mes_referencia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "etapa": {
+          "name": "etapa",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'nota'"
+          "default": "'novo'"
         },
-        "content": {
-          "name": "content",
+        "data_entrada_etapa": {
+          "name": "data_entrada_etapa",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false
+          "autoincrement": false,
+          "default": "(datetime('now'))"
         },
-        "next_contact_at": {
-          "name": "next_contact_at",
+        "qtd_tentativas_contato": {
+          "name": "qtd_tentativas_contato",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "data_ultimo_contato": {
+          "name": "data_ultimo_contato",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
+        },
+        "valor_orcado": {
+          "name": "valor_orcado",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "valor_fechado": {
+          "name": "valor_fechado",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "condicao_pagamento": {
+          "name": "condicao_pagamento",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pdf_pedido_path": {
+          "name": "pdf_pedido_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "motivo_perda_categoria": {
+          "name": "motivo_perda_categoria",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "motivo_perda_opcao": {
+          "name": "motivo_perda_opcao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "motivo_perda_item": {
+          "name": "motivo_perda_item",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "motivo_perda_observacao": {
+          "name": "motivo_perda_observacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "carregado_mes_anterior": {
+          "name": "carregado_mes_anterior",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "versao": {
+          "name": "versao",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
         },
         "created_at": {
           "name": "created_at",
@@ -298,16 +399,40 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(datetime('now'))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "funil_mensal_cliente_id_mes_referencia_unique": {
+          "name": "funil_mensal_cliente_id_mes_referencia_unique",
+          "columns": [
+            "cliente_id",
+            "mes_referencia"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {
-        "lead_notes_lead_id_leads_id_fk": {
-          "name": "lead_notes_lead_id_leads_id_fk",
-          "tableFrom": "lead_notes",
-          "tableTo": "leads",
+        "funil_mensal_cliente_id_clientes_id_fk": {
+          "name": "funil_mensal_cliente_id_clientes_id_fk",
+          "tableFrom": "funil_mensal",
+          "tableTo": "clientes",
           "columnsFrom": [
-            "lead_id"
+            "cliente_id"
           ],
           "columnsTo": [
             "id"
@@ -315,12 +440,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "lead_notes_user_id_users_id_fk": {
-          "name": "lead_notes_user_id_users_id_fk",
-          "tableFrom": "lead_notes",
+        "funil_mensal_vendedor_id_users_id_fk": {
+          "name": "funil_mensal_vendedor_id_users_id_fk",
+          "tableFrom": "funil_mensal",
           "tableTo": "users",
           "columnsFrom": [
-            "user_id"
+            "vendedor_id"
           ],
           "columnsTo": [
             "id"
@@ -333,8 +458,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "leads": {
-      "name": "leads",
+    "itens_pedido": {
+      "name": "itens_pedido",
       "columns": {
         "id": {
           "name": "id",
@@ -343,102 +468,377 @@
           "notNull": true,
           "autoincrement": true
         },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "phone": {
-          "name": "phone",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "ddd": {
-          "name": "ddd",
+        "funil_mensal_id": {
+          "name": "funil_mensal_id",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "email": {
-          "name": "email",
-          "type": "text",
+        "cliente_id": {
+          "name": "cliente_id",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "autoincrement": false
         },
-        "company": {
-          "name": "company",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "segment": {
-          "name": "segment",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false,
-          "default": "'outros'"
-        },
-        "status": {
-          "name": "status",
+        "descricao": {
+          "name": "descricao",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": "'novo'"
+          "autoincrement": false
         },
-        "vendor_id": {
-          "name": "vendor_id",
-          "type": "integer",
+        "quantidade": {
+          "name": "quantidade",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "region_id": {
-          "name": "region_id",
-          "type": "integer",
+        "valor_unitario": {
+          "name": "valor_unitario",
+          "type": "real",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "source": {
-          "name": "source",
+        "valor_total": {
+          "name": "valor_total",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "observations": {
-          "name": "observations",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "next_contact_at": {
-          "name": "next_contact_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "follow_up_count": {
-          "name": "follow_up_count",
-          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": 0
+          "default": "(datetime('now'))"
         },
-        "requires_attachment": {
-          "name": "requires_attachment",
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "itens_pedido_funil_mensal_id_funil_mensal_id_fk": {
+          "name": "itens_pedido_funil_mensal_id_funil_mensal_id_fk",
+          "tableFrom": "itens_pedido",
+          "tableTo": "funil_mensal",
+          "columnsFrom": [
+            "funil_mensal_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "itens_pedido_cliente_id_clientes_id_fk": {
+          "name": "itens_pedido_cliente_id_clientes_id_fk",
+          "tableFrom": "itens_pedido",
+          "tableTo": "clientes",
+          "columnsFrom": [
+            "cliente_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "log_auditoria": {
+      "name": "log_auditoria",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "tabela": {
+          "name": "tabela",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "registro_id": {
+          "name": "registro_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "acao": {
+          "name": "acao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "campo": {
+          "name": "campo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "valor_anterior": {
+          "name": "valor_anterior",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "valor_novo": {
+          "name": "valor_novo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "alterado_por": {
+          "name": "alterado_por",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "alterado_em": {
+          "name": "alterado_em",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "log_auditoria_alterado_por_users_id_fk": {
+          "name": "log_auditoria_alterado_por_users_id_fk",
+          "tableFrom": "log_auditoria",
+          "tableTo": "users",
+          "columnsFrom": [
+            "alterado_por"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "message_templates": {
+      "name": "message_templates",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "whatsapp_text": {
+          "name": "whatsapp_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email_subject": {
+          "name": "email_subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "email_body": {
+          "name": "email_body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "metas_mensais": {
+      "name": "metas_mensais",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "vendedor_id": {
+          "name": "vendedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "mes_referencia": {
+          "name": "mes_referencia",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "meta_faturamento": {
+          "name": "meta_faturamento",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "meta_pct_carteira_ativada": {
+          "name": "meta_pct_carteira_ativada",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "meta_ligacoes_dia": {
+          "name": "meta_ligacoes_dia",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 25
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {
+        "metas_mensais_vendedor_id_mes_referencia_unique": {
+          "name": "metas_mensais_vendedor_id_mes_referencia_unique",
+          "columns": [
+            "vendedor_id",
+            "mes_referencia"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "metas_mensais_vendedor_id_users_id_fk": {
+          "name": "metas_mensais_vendedor_id_users_id_fk",
+          "tableFrom": "metas_mensais",
+          "tableTo": "users",
+          "columnsFrom": [
+            "vendedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "notifications": {
+      "name": "notifications",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "vendedor_id": {
+          "name": "vendedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cliente_id": {
+          "name": "cliente_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "message": {
+          "name": "message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "read": {
+          "name": "read",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -452,17 +852,96 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(datetime('now'))"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "notifications_vendedor_id_users_id_fk": {
+          "name": "notifications_vendedor_id_users_id_fk",
+          "tableFrom": "notifications",
+          "tableTo": "users",
+          "columnsFrom": [
+            "vendedor_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "notifications_cliente_id_clientes_id_fk": {
+          "name": "notifications_cliente_id_clientes_id_fk",
+          "tableFrom": "notifications",
+          "tableTo": "clientes",
+          "columnsFrom": [
+            "cliente_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "registro_contato": {
+      "name": "registro_contato",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
+        "funil_mensal_id": {
+          "name": "funil_mensal_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "vendedor_id": {
+          "name": "vendedor_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "resultado": {
+          "name": "resultado",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "observacao": {
+          "name": "observacao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "data_hora": {
+          "name": "data_hora",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
           "default": "(datetime('now'))"
         },
-        "assigned_at": {
-          "name": "assigned_at",
+        "deleted_at": {
+          "name": "deleted_at",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -471,78 +950,12 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "leads_vendor_id_users_id_fk": {
-          "name": "leads_vendor_id_users_id_fk",
-          "tableFrom": "leads",
-          "tableTo": "users",
+        "registro_contato_funil_mensal_id_funil_mensal_id_fk": {
+          "name": "registro_contato_funil_mensal_id_funil_mensal_id_fk",
+          "tableFrom": "registro_contato",
+          "tableTo": "funil_mensal",
           "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "leads_region_id_regions_id_fk": {
-          "name": "leads_region_id_regions_id_fk",
-          "tableFrom": "leads",
-          "tableTo": "regions",
-          "columnsFrom": [
-            "region_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "region_vendors": {
-      "name": "region_vendors",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "region_id": {
-          "name": "region_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "vendor_id": {
-          "name": "vendor_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "region_vendors_region_id_regions_id_fk": {
-          "name": "region_vendors_region_id_regions_id_fk",
-          "tableFrom": "region_vendors",
-          "tableTo": "regions",
-          "columnsFrom": [
-            "region_id"
+            "funil_mensal_id"
           ],
           "columnsTo": [
             "id"
@@ -550,122 +963,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "region_vendors_vendor_id_users_id_fk": {
-          "name": "region_vendors_vendor_id_users_id_fk",
-          "tableFrom": "region_vendors",
+        "registro_contato_vendedor_id_users_id_fk": {
+          "name": "registro_contato_vendedor_id_users_id_fk",
+          "tableFrom": "registro_contato",
           "tableTo": "users",
           "columnsFrom": [
-            "vendor_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "regions": {
-      "name": "regions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        }
-      },
-      "indexes": {
-        "regions_name_unique": {
-          "name": "regions_name_unique",
-          "columns": [
-            "name"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "round_robin_state": {
-      "name": "round_robin_state",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "region_id": {
-          "name": "region_id",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "next_index": {
-          "name": "next_index",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(datetime('now'))"
-        }
-      },
-      "indexes": {
-        "round_robin_state_region_id_unique": {
-          "name": "round_robin_state_region_id_unique",
-          "columns": [
-            "region_id"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "round_robin_state_region_id_regions_id_fk": {
-          "name": "round_robin_state_region_id_regions_id_fk",
-          "tableFrom": "round_robin_state",
-          "tableTo": "regions",
-          "columnsFrom": [
-            "region_id"
+            "vendedor_id"
           ],
           "columnsTo": [
             "id"
@@ -716,6 +1019,51 @@
           "notNull": true,
           "autoincrement": false,
           "default": "'vendor'"
+        },
+        "regiao": {
+          "name": "regiao",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "foto_url": {
+          "name": "foto_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "tema_preferido": {
+          "name": "tema_preferido",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'claro'"
+        },
+        "senha_trocar_no_login": {
+          "name": "senha_trocar_no_login",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "tentativas_login_falhas": {
+          "name": "tentativas_login_falhas",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "bloqueado_ate": {
+          "name": "bloqueado_ate",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         },
         "is_active": {
           "name": "is_active",

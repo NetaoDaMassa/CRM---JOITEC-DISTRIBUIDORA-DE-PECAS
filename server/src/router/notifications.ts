@@ -7,7 +7,7 @@ import { notifications } from '../db/schema.js'
 export const notificationsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     return db.query.notifications.findMany({
-      where: eq(notifications.vendorId, ctx.user.id),
+      where: eq(notifications.vendedorId, ctx.user.id),
       orderBy: [desc(notifications.createdAt)],
       limit: 50,
     })
@@ -19,7 +19,7 @@ export const notificationsRouter = router({
       await db
         .update(notifications)
         .set({ read: true })
-        .where(and(eq(notifications.id, input.id), eq(notifications.vendorId, ctx.user.id)))
+        .where(and(eq(notifications.id, input.id), eq(notifications.vendedorId, ctx.user.id)))
       return { success: true }
     }),
 
@@ -27,7 +27,7 @@ export const notificationsRouter = router({
     await db
       .update(notifications)
       .set({ read: true })
-      .where(and(eq(notifications.vendorId, ctx.user.id), eq(notifications.read, false)))
+      .where(and(eq(notifications.vendedorId, ctx.user.id), eq(notifications.read, false)))
     return { success: true }
   }),
 })

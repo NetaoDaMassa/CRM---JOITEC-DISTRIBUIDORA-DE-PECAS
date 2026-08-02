@@ -1,270 +1,294 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Plus, TrendingUp, Users, Target, Award, RefreshCw } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import toast from 'react-hot-toast'
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
-import { StatusBadge } from '../../components/ui/Badge'
-import QuickLeadCreate from '../../components/QuickLeadCreate'
-import { STATUS_LABELS, STATUS_ORDER, timeAgo } from '../../lib/utils'
-import { useAuth } from '../../contexts/AuthContext'
+import AvatarMeta from '../../components/ui/AvatarMeta'
+import { useCelebrarMeta } from '../../lib/useCelebrarMeta'
+import CelebracaoPopup from '../../components/ui/CelebracaoPopup'
 
-function StatCard({ label, value, sub, icon: Icon, color }: any) {
-  return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-dark-400 text-sm">{label}</span>
-        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}>
-          <Icon size={18} />
-        </div>
-      </div>
-      <div className="font-heading text-3xl font-bold text-dark-100">{value}</div>
-      {sub && <div className="text-dark-400 text-xs mt-1">{sub}</div>}
-    </div>
-  )
+const COR_VENDAS = '#3987e5'
+const COR_CONTATOS = '#c2691a'
+const COR_META_BATIDA = '#0ca30c'
+
+function formatarMoeda(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
-const FUNNEL_STAGES = [
-  { key: 'novo', label: 'Novo', color: 'from-blue-600 to-blue-500', text: 'text-blue-300' },
-  { key: 'abordagem', label: 'Abordagem', color: 'from-yellow-600 to-yellow-500', text: 'text-yellow-300' },
-  { key: 'qualificado', label: 'Qualificado', color: 'from-purple-600 to-purple-500', text: 'text-purple-300' },
-  { key: 'em_negociacao', label: 'Em Negociação', color: 'from-orange-600 to-orange-500', text: 'text-orange-300' },
-  { key: 'ganho', label: 'Ganho', color: 'from-green-600 to-green-500', text: 'text-green-300' },
-]
-
-function SalesFunnel({ byStatus }: { byStatus: Record<string, number> }) {
-  const top = byStatus['novo'] ?? 1
-  const exits = (byStatus['perdido'] ?? 0) + (byStatus['desqualificado'] ?? 0)
-
+function TooltipHistorico({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
+  if (!active || !payload?.length) return null
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="font-heading text-gold-400 font-semibold">Funil de Vendas</h3>
-        {exits > 0 && (
-          <span className="text-xs text-dark-500">
-            {exits} saída{exits > 1 ? 's' : ''} (perdido/desqualificado)
-          </span>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        {FUNNEL_STAGES.map((stage, i) => {
-          const count = byStatus[stage.key] ?? 0
-          const pct = top > 0 ? Math.round((count / top) * 100) : 0
-          // Bar width: clamp between 20% and 100%, narrowing as funnel progresses
-          const maxWidth = 100 - i * 10
-          const barWidth = Math.max(pct * maxWidth / 100, count > 0 ? 8 : 0)
-          const prevCount = i > 0 ? (byStatus[FUNNEL_STAGES[i - 1].key] ?? 0) : null
-          const convRate = prevCount && prevCount > 0 ? Math.round((count / prevCount) * 100) : null
-
-          return (
-            <div key={stage.key}>
-              <div className="flex items-center gap-3 mb-1">
-                <div className="w-28 shrink-0 text-right">
-                  <span className={`text-xs font-medium ${stage.text}`}>{stage.label}</span>
-                </div>
-                <div className="flex-1 relative h-8 bg-dark-700 rounded-lg overflow-hidden">
-                  <div
-                    className={`h-full bg-gradient-to-r ${stage.color} rounded-lg transition-all duration-700`}
-                    style={{ width: `${barWidth}%` }}
-                  />
-                  <div className="absolute inset-0 flex items-center px-3">
-                    <span className="text-xs font-bold text-white drop-shadow">
-                      {count}
-                    </span>
-                  </div>
-                </div>
-                <div className="w-16 shrink-0 text-right">
-                  <span className="text-xs text-dark-400">{pct}%</span>
-                  {convRate !== null && convRate < 100 && i > 0 && (
-                    <div className="text-xs text-dark-600">↓{convRate}%</div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Exit indicator */}
-      {exits > 0 && (
-        <div className="mt-3 pt-3 border-t border-dark-700 flex gap-4">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="text-xs text-dark-500">Perdido: {byStatus['perdido'] ?? 0}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-zinc-500" />
-            <span className="text-xs text-dark-500">Desqualificado: {byStatus['desqualificado'] ?? 0}</span>
-          </div>
-        </div>
-      )}
+    <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
+      <p className="text-dark-100 font-medium mb-1">{label}</p>
+      {payload.map((p) => (
+        <p key={p.name} style={{ color: p.color }}>
+          {p.name}: {p.value}
+        </p>
+      ))}
     </div>
   )
 }
 
 export default function AdminDashboard() {
-  const [createOpen, setCreateOpen] = useState(false)
-  const navigate = useNavigate()
   const { user } = useAuth()
+  const { data } = trpc.painel.resumo.useQuery(undefined, { refetchInterval: 30000, refetchIntervalInBackground: true })
 
-  const { data: stats } = trpc.leads.stats.useQuery()
-  const { data: leadsData } = trpc.leads.list.useQuery({ page: 1, pageSize: 8 })
-  const { data: roundRobin } = trpc.regions.roundRobinStatus.useQuery()
+  const resetMut = trpc.funil.rodarResetMensal.useMutation({
+    onSuccess(data) {
+      toast.success(data.criados > 0 ? `${data.criados} funil(is) criado(s) para o mês corrente.` : 'Nada pra criar — todos os clientes já têm funil este mês.')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
 
-  const recentLeads = leadsData?.data ?? []
+  const resumoMut = trpc.resumoDiario.rodarAgora.useMutation({
+    onSuccess(data) {
+      toast.success(data.criadas > 0 ? `${data.criadas} resumo(s) diário(s) enviado(s) pro sino de notificações.` : 'Nada pra enviar.')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const top5Vendas = data?.vendedores.slice(0, 5) ?? []
+  const noRitmoHoje = data?.vendedores.filter((v) => v.bateuMetaDia).length ?? 0
+
+  const { celebracao, fecharCelebracao } = useCelebrarMeta(data?.vendedores)
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-heading text-2xl text-gold-400 font-bold">Dashboard</h1>
-          <p className="text-dark-400 text-sm mt-0.5">Visão geral do CRM · {user?.companyName}</p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus size={16} />
-          Novo Lead
-        </Button>
+    <div className="p-6 space-y-6 max-w-5xl">
+      <div>
+        <h1 className="font-heading text-xl text-dark-50">Olá, {user?.name}</h1>
+        <p className="text-dark-400 text-sm">Visão geral da produção da Joitec, num relance.</p>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
-        <StatCard
-          label="Total de Leads"
-          value={stats?.total ?? 0}
-          icon={Users}
-          color="bg-blue-500/20 text-blue-400"
-        />
-        <StatCard
-          label="Em Negociação"
-          value={stats?.byStatus?.em_negociacao ?? 0}
-          sub="leads ativos"
-          icon={TrendingUp}
-          color="bg-orange-500/20 text-orange-400"
-        />
-        <StatCard
-          label="Ganhos"
-          value={stats?.byStatus?.ganho ?? 0}
-          sub="conversões"
-          icon={Award}
-          color="bg-green-500/20 text-green-400"
-        />
-        <StatCard
-          label="Taxa de Conversão"
-          value={`${stats?.conversion ?? 0}%`}
-          sub="leads ganhos / total"
-          icon={Target}
-          color="bg-gold-600/20 text-gold-400"
-        />
-      </div>
-
-      {/* Funnel + Sidebar */}
-      <div className="grid grid-cols-3 gap-6">
-        {/* Funil visual — ocupa 2 colunas */}
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 col-span-2">
-          <SalesFunnel byStatus={stats?.byStatus ?? {}} />
-        </div>
-
-        {/* Rodízio */}
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <RefreshCw size={16} className="text-gold-400" />
-            <h3 className="font-heading text-gold-400 font-semibold">Próximo no Rodízio</h3>
+      {data?.metaEmpresa && (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5" style={{ borderLeft: '4px solid #24aff4' }}>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <h2 className="text-sm font-semibold text-gold-400">🏢 Meta geral da empresa (mês)</h2>
+            <span
+              className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
+                data.metaEmpresa.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
+              }`}
+            >
+              Ritmo do dia {data.metaEmpresa.percentualMetaDia}% {data.metaEmpresa.bateuMetaDia ? '✅' : '❌'}
+            </span>
           </div>
-          <div className="space-y-3">
-            {roundRobin?.map((r) => (
-              <div key={r.regionId} className="flex items-center justify-between">
+          <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums">
+            {data.metaEmpresa.percentualMetaFaturamento}%
+            {data.metaEmpresa.bateuMetaFaturamento && <span className="text-lg ml-1">✅</span>}
+          </p>
+          <p className="text-sm text-dark-400 mt-1">
+            {formatarMoeda(data.metaEmpresa.valorFechadoMes)} / {formatarMoeda(data.metaEmpresa.metaFaturamento)}
+          </p>
+          <div className="h-2.5 bg-dark-900 rounded-full mt-3 overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.min(100, data.metaEmpresa.percentualMetaFaturamento)}%`,
+                background: data.metaEmpresa.bateuMetaFaturamento ? COR_META_BATIDA : '#24aff4',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-xs text-dark-400">Vendas hoje</p>
+          <p className="text-2xl font-bold text-dark-50">{data?.vendasHoje.quantidade ?? 0}</p>
+          <p className="text-sm text-green-400">{formatarMoeda(data?.vendasHoje.valor ?? 0)}</p>
+        </div>
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-xs text-dark-400">Vendas no mês</p>
+          <p className="text-2xl font-bold text-dark-50">{data?.vendasMes.quantidade ?? 0}</p>
+          <p className="text-sm text-green-400">{formatarMoeda(data?.vendasMes.valor ?? 0)}</p>
+        </div>
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-xs text-dark-400">Ticket médio (mês)</p>
+          <p className="text-2xl font-bold text-dark-50">{formatarMoeda(data?.vendasMes.ticketMedio ?? 0)}</p>
+        </div>
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-xs text-dark-400">No ritmo da meta hoje</p>
+          <p className="text-2xl font-bold text-gold-400">
+            {noRitmoHoje}
+            <span className="text-sm text-dark-400 font-normal">/{data?.vendedores.length ?? 0}</span>
+          </p>
+        </div>
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-xs text-dark-400">Orçamentos em aberto</p>
+          <p className="text-2xl font-bold text-dark-50">{data?.orcamentosAbertos.quantidade ?? 0}</p>
+          <p className="text-sm text-amber-400">{formatarMoeda(data?.orcamentosAbertos.valor ?? 0)}</p>
+        </div>
+      </div>
+
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <h2 className="text-sm font-semibold text-dark-100 mb-3">🎯 Meta do dia e do mês — equipe</h2>
+        <div className="space-y-1.5">
+          {data?.vendedores.map((v) => {
+            const falta = v.metaFaturamento ? Math.max(0, v.metaFaturamento - v.valorFechadoMes) : 0
+            const vendasFaltantes = v.ticketMedioMes > 0 && falta > 0 ? Math.ceil(falta / v.ticketMedioMes) : null
+            return (
+            <div key={v.id} className="flex items-center justify-between text-sm py-1.5 px-2 rounded-lg bg-dark-900/40">
+              <div className="flex items-center gap-3">
+                <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} size="sm" />
                 <div>
-                  <div className="text-xs text-dark-400">{r.regionName}</div>
-                  <div className="text-sm text-dark-100 font-medium">
-                    {r.nextVendor?.name ?? 'Sem vendedor'}
-                  </div>
+                  <span className="text-dark-100 font-medium">{v.nome}</span>
+                  {v.sequenciaDiasVendendo >= 2 && (
+                    <span
+                      className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full ml-2"
+                      title="Dias seguidos vendendo"
+                    >
+                      🔥{v.sequenciaDiasVendendo}
+                    </span>
+                  )}
+                  {vendasFaltantes !== null && (
+                    <p className="text-[11px] text-dark-500">
+                      Faltam ~{vendasFaltantes} venda{vendasFaltantes > 1 ? 's' : ''} pra bater a meta
+                    </p>
+                  )}
                 </div>
-                <div className="text-xs text-dark-500">#{r.nextIndex + 1}</div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <span
+                  className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                    v.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
+                  }`}
+                  title="Ritmo acumulado do dia"
+                >
+                  {formatarMoeda(v.valorFechadoMes)} {v.bateuMetaDia ? '✅' : '❌'}
+                </span>
+                <span className="text-[11px] text-dark-400" title="Meta do mês">
+                  Meta: {v.metaFaturamento ? formatarMoeda(v.metaFaturamento) : '—'}
+                </span>
+              </div>
+            </div>
+            )
+          })}
+          {!data?.vendedores.length && <p className="text-xs text-dark-500">Nenhum vendedor ativo.</p>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <h2 className="text-sm font-semibold text-dark-100 mb-3">🏆 Top 5 vendas do mês</h2>
+          <div className="space-y-2">
+            {top5Vendas.map((v, i) => (
+              <div key={v.id} className="flex items-center justify-between text-sm py-1">
+                <span className="text-dark-200 flex items-center gap-1.5">
+                  {i + 1}º {v.nome}
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      v.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
+                    }`}
+                    title="Meta diária (ritmo acumulado)"
+                  >
+                    {v.bateuMetaDia ? '✅ dia' : '❌ dia'}
+                  </span>
+                </span>
+                <span className={v.bateuMetaFaturamento ? 'text-gold-400 font-medium' : 'text-dark-400'}>
+                  {formatarMoeda(v.valorFechadoMes)} ({v.percentualMetaFaturamento}%)
+                </span>
               </div>
             ))}
+            {!top5Vendas.length && <p className="text-xs text-dark-500">Nenhuma venda registrada ainda este mês.</p>}
           </div>
+          <a href="/painel-tv" target="_blank" rel="noopener noreferrer" className="text-xs text-gold-400 underline mt-3 inline-block">
+            Ver Painel de TV completo →
+          </a>
+        </div>
+
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-dark-100">⏱ Orçamentos em aberto</h2>
+            <span className="text-xs font-semibold text-amber-400">{formatarMoeda(data?.orcamentosAbertos.valor ?? 0)}</span>
+          </div>
+          <div className="space-y-2">
+            {data?.negociosAbertos.slice(0, 5).map((n) => (
+              <div key={n.clienteId} className="flex items-center justify-between text-sm py-1">
+                <span className="text-dark-200 truncate">{n.razaoSocial}</span>
+                <span className="text-xs text-dark-400 shrink-0 ml-2">
+                  {n.valorOrcado != null ? formatarMoeda(n.valorOrcado) : '—'} · {n.vendedorNome}
+                </span>
+              </div>
+            ))}
+            {!data?.negociosAbertos.length && <p className="text-xs text-dark-500">Nenhuma negociação em andamento.</p>}
+          </div>
+          <Link to="/admin/kanban" className="text-xs text-gold-400 underline mt-3 inline-block">
+            Ver Kanban →
+          </Link>
         </div>
       </div>
 
-      {/* Leads por vendedor */}
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-        <h3 className="font-heading text-gold-400 font-semibold mb-4">Performance por Vendedor</h3>
-        <div className="space-y-3">
-          {Object.entries(stats?.byVendor ?? {})
-            .sort(([, a], [, b]) => (b as number) - (a as number))
-            .map(([name, count]) => {
-              const total = stats?.total ?? 1
-              const pct = Math.round(((count as number) / total) * 100)
-              return (
-                <div key={name}>
-                  <div className="flex items-center justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gold-700/30 border border-gold-600/30 flex items-center justify-center text-gold-400 text-xs font-semibold">
-                        {name.charAt(0)}
-                      </div>
-                      <span className="text-sm text-dark-200">{name}</span>
-                    </div>
-                    <span className="text-gold-400 font-semibold text-sm">{count as number}</span>
-                  </div>
-                  <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden ml-9">
-                    <div
-                      className="h-full bg-gold-600 rounded-full transition-all"
-                      style={{ width: `${pct}%` }}
-                    />
-                  </div>
-                </div>
-              )
-            })}
-          {Object.keys(stats?.byVendor ?? {}).length === 0 && (
-            <p className="text-dark-500 text-sm">Nenhum lead ainda</p>
-          )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <h2 className="text-sm font-semibold text-dark-100 mb-3">📈 Vendas da equipe (últimos 14 dias)</h2>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={data?.historico ?? []} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
+              <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
+              <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
+              <Line type="monotone" dataKey="vendas" name="Vendas" stroke={COR_VENDAS} strokeWidth={2} dot={{ r: 2 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <h2 className="text-sm font-semibold text-dark-100 mb-3">📞 Ligações da equipe (últimos 14 dias)</h2>
+          <ResponsiveContainer width="100%" height={180}>
+            <LineChart data={data?.historico ?? []} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
+              <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
+              <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
+              <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
+              <Line type="monotone" dataKey="contatos" name="Contatos" stroke={COR_CONTATOS} strokeWidth={2} dot={{ r: 2 }} />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Recent leads */}
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-heading text-gold-400 font-semibold">Leads Recentes</h3>
-          <button
-            onClick={() => navigate('/admin/leads')}
-            className="text-sm text-gold-500 hover:text-gold-400 transition-colors"
-          >
-            Ver todos →
-          </button>
+      <div className="flex flex-wrap gap-4">
+        <Link to="/admin/clientes" className="text-sm text-gold-400 underline">
+          Clientes →
+        </Link>
+        <Link to="/admin/usuarios" className="text-sm text-gold-400 underline">
+          Gerenciar vendedores →
+        </Link>
+        <Link to="/admin/carteira" className="text-sm text-gold-400 underline">
+          Atribuição de carteira →
+        </Link>
+        <Link to="/admin/importar" className="text-sm text-gold-400 underline">
+          Importar clientes →
+        </Link>
+        <Link to="/admin/lixeira" className="text-sm text-gold-400 underline">
+          Lixeira →
+        </Link>
+      </div>
+
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-4">
+        <div>
+          <p className="text-xs text-dark-500 mb-2">
+            O reset mensal roda sozinho a cada hora, mas você pode forçar manualmente (útil logo após importar
+            clientes novos, pra já criar o funil deles no mês corrente).
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => resetMut.mutate()} loading={resetMut.isPending}>
+            Rodar reset mensal agora
+          </Button>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-dark-600">
-                {['Nome', 'DDD/Tel', 'Status', 'Vendedor', 'Criado'].map((h) => (
-                  <th key={h} className="text-left text-dark-400 font-medium pb-2 pr-4">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-dark-700">
-              {recentLeads.map((lead: any) => (
-                <tr
-                  key={lead.id}
-                  onClick={() => navigate(`/admin/leads/${lead.id}`)}
-                  className="hover:bg-dark-700/50 cursor-pointer transition-colors"
-                >
-                  <td className="py-2.5 pr-4 text-dark-100 font-medium">{lead.name}</td>
-                  <td className="py-2.5 pr-4 text-dark-400">({lead.ddd}) {lead.phone}</td>
-                  <td className="py-2.5 pr-4"><StatusBadge status={lead.status} /></td>
-                  <td className="py-2.5 pr-4 text-dark-300">{lead.vendor?.name ?? '—'}</td>
-                  <td className="py-2.5 text-dark-500">{timeAgo(lead.createdAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {recentLeads.length === 0 && (
-            <p className="text-center text-dark-500 py-8">Nenhum lead cadastrado ainda</p>
-          )}
+        <div>
+          <p className="text-xs text-dark-500 mb-2">
+            O resumo diário é enviado sozinho (notificação no sino) a partir das 18h pra cada vendedor e pro admin.
+            Forçar aqui envia na hora, útil pra testar.
+          </p>
+          <Button size="sm" variant="secondary" onClick={() => resumoMut.mutate()} loading={resumoMut.isPending}>
+            Enviar resumo diário agora
+          </Button>
         </div>
       </div>
 
-      <QuickLeadCreate open={createOpen} onClose={() => setCreateOpen(false)} />
+      <CelebracaoPopup celebracao={celebracao} onFechar={fecharCelebracao} />
     </div>
   )
 }

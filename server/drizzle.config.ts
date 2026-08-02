@@ -1,10 +1,13 @@
 import { defineConfig } from 'drizzle-kit'
+import { config } from 'dotenv'
+
+config()
 
 export default defineConfig({
   schema: './src/db/schema.ts',
   out: './drizzle',
   dialect: 'sqlite',
   dbCredentials: {
-    url: 'file:./odin_crm.db',
+    url: process.env.DATABASE_URL ?? 'file:./odin_crm.db',
   },
 })

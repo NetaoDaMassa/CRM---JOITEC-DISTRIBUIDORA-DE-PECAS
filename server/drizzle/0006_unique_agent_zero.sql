@@ -1,1 +1,0 @@
-ALTER TABLE `leads` ADD `city` text;

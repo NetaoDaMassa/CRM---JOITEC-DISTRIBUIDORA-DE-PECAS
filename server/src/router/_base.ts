@@ -8,7 +8,8 @@ export const publicProcedure = t.procedure
 
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Não autenticado' })
-  return next({ ctx: { ...ctx, user: ctx.user } })
+  if (!ctx.empresaId) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Empresa não resolvida' })
+  return next({ ctx: { ...ctx, user: ctx.user, empresaId: ctx.empresaId } })
 })
 
 export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {

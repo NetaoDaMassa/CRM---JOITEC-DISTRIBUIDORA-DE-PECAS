@@ -11,7 +11,13 @@ export function createTRPCClient() {
         url: '/trpc',
         headers() {
           const token = localStorage.getItem('odin_token')
-          return token ? { Authorization: `Bearer ${token}` } : {}
+          const empresaAtivaId = localStorage.getItem('empresa_ativa_id')
+          return {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            // Só tem efeito no backend se o usuário logado for superAdmin —
+            // ignorado silenciosamente pra todo mundo mais.
+            ...(empresaAtivaId ? { 'x-empresa-id': empresaAtivaId } : {}),
+          }
         },
       }),
     ],

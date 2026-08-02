@@ -10,8 +10,8 @@ export interface JwtPayload {
   username: string
   name: string
   role: 'admin' | 'vendor'
-  companyId: number
-  companyName: string
+  empresaId: number
+  superAdmin: boolean
 }
 
 export function signToken(payload: JwtPayload): string {
