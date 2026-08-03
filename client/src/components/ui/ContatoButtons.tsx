@@ -3,8 +3,18 @@ import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import EmailButton from './EmailButton'
 
+// Alguns números já foram salvos com "55" na frente (ex: importação antiga) —
+// se simplesmente prefixássemos "55" de novo, viraria "5555..." e o link do
+// WhatsApp/discador abre um número errado. Detecta esse caso pelo tamanho:
+// só um número BR completo com DDI (12-13 dígitos) começando em "55" pode ser
+// o DDI duplicado — um DDD 55 (Rio Grande do Sul) sozinho tem 10-11 dígitos e
+// não deve ser mexido.
 function soDigitos(v: string): string {
-  return v.replace(/\D/g, '')
+  const digitos = v.replace(/\D/g, '')
+  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {
+    return digitos.slice(2)
+  }
+  return digitos
 }
 
 export function WhatsappButton({

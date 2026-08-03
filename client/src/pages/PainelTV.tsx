@@ -14,7 +14,7 @@ import {
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
-import { formatElapsed } from '../lib/utils'
+import { formatElapsed, formatarPercentual } from '../lib/utils'
 import AvatarMeta from '../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../lib/useCelebrarMeta'
 import CelebracaoPopup from '../components/ui/CelebracaoPopup'
@@ -184,19 +184,19 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
                   meta.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
                 }`}
               >
-                Ritmo do dia {meta.percentualMetaDia}% {meta.bateuMetaDia ? '✅' : '❌'}
+                Ritmo do dia {formatarPercentual(meta.percentualMetaDia)}% {meta.bateuMetaDia ? '✅' : '❌'}
               </span>
               <span
                 className={`text-xs font-bold px-3 py-1 rounded-full ${
                   meta.bateuMetaFaturamento ? 'text-gold-400 bg-gold-900/20' : 'text-dark-400 bg-dark-700'
                 }`}
               >
-                Mês {meta.percentualMetaFaturamento}% {meta.bateuMetaFaturamento ? '✅' : ''}
+                Mês {formatarPercentual(meta.percentualMetaFaturamento)}% {meta.bateuMetaFaturamento ? '✅' : ''}
               </span>
             </div>
           </div>
           <p className="text-4xl font-bold text-dark-50 font-mono tabular-nums">
-            {meta.percentualMetaFaturamento}% <span className="text-lg text-dark-400 font-normal">da meta do mês</span>
+            {formatarPercentual(meta.percentualMetaFaturamento)}% <span className="text-lg text-dark-400 font-normal">da meta do mês</span>
           </p>
           <div className="h-3 bg-dark-900 rounded-full mt-4 overflow-hidden">
             <div
@@ -280,7 +280,7 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
                 <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
                   {formatarMoeda(v.valorFechadoMes)}
                 </td>
-                <td className="text-right font-mono tabular-nums text-dark-300">{v.percentualMetaFaturamento}%</td>
+                <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualMetaFaturamento)}%</td>
               </tr>
             ))}
           </tbody>
@@ -417,7 +417,7 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
                   v.bateuMetaLigacoesHoje ? 'text-green-400 font-semibold' : 'text-dark-300'
                 }`}
               >
-                {v.percentualMetaLigacoes}%
+                {formatarPercentual(v.percentualMetaLigacoes)}%
               </td>
               <td className="text-right font-mono tabular-nums text-dark-400">{v.ligacoesMes}</td>
             </tr>
@@ -451,13 +451,13 @@ const SlideConversao = memo(function SlideConversao({ data }: { data: PainelData
           >
             <XAxis type="number" hide domain={[0, 100]} />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={(v) => `${v}%`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+            <Tooltip content={<TooltipGrafico formatarValor={(v: number) => `${formatarPercentual(v)}%`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
             <Bar
               dataKey="valor"
               radius={[0, 4, 4, 0]}
               maxBarSize={20}
               isAnimationActive={false}
-              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}%`} />}
+              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${formatarPercentual(v)}%`} />}
             >
               {conversao.map((v) => (
                 <Cell key={v.id} fill={(v.taxaConversao ?? 0) >= 50 ? COR_META_BATIDA : COR_VENDAS} />
@@ -475,7 +475,7 @@ const SlideConversao = memo(function SlideConversao({ data }: { data: PainelData
             <span className="text-xs text-dark-500 font-mono">
               {v.qtdVendasMes} fechado{v.qtdVendasMes !== 1 ? 's' : ''} · {v.qtdPerdidosMes} perdido{v.qtdPerdidosMes !== 1 ? 's' : ''}
             </span>
-            <span className="text-sm font-mono tabular-nums text-dark-100 w-14 text-right">{v.taxaConversao}%</span>
+            <span className="text-sm font-mono tabular-nums text-dark-100 w-14 text-right">{formatarPercentual(v.taxaConversao)}%</span>
           </div>
         ))}
       </div>

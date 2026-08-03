@@ -11,6 +11,12 @@ function toUtcDate(date: string | Date): Date {
   return new Date(date.replace(' ', 'T') + 'Z')
 }
 
+// Percentuais de meta vêm do backend com 1 casa decimal (ex: 5.3) — formata
+// com vírgula (padrão BR) igual ao resto do app, em vez do ponto do JS puro.
+export function formatarPercentual(v: number | null | undefined): string {
+  return (v ?? 0).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+}
+
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '—'
   return format(toUtcDate(date), 'dd/MM/yyyy', { locale: ptBR })

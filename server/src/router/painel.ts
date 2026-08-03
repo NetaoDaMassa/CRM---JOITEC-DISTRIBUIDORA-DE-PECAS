@@ -155,7 +155,7 @@ export const painelRouter = router({
         // Isso evita punir quem tem uma carteira gigante e ainda intocada
         // (a maioria só entra "Novo" e nunca vira decisão nenhuma).
         const decididos = qtdVendasMes + qtdPerdidosMes
-        const taxaConversao = decididos > 0 ? Math.round((qtdVendasMes / decididos) * 100) : null
+        const taxaConversao = decididos > 0 ? Math.round((qtdVendasMes / decididos) * 1000) / 10 : null
 
         // Meta do dia = ritmo acumulado, não um valor isolado por dia: é a
         // meta mensal dividida pelos dias úteis do mês, multiplicada pelos
@@ -171,7 +171,7 @@ export const painelRouter = router({
           ligacoesHoje,
           metaLigacoesDia,
           bateuMetaLigacoesHoje: ligacoesHoje >= metaLigacoesDia,
-          percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 100) : 0,
+          percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 1000) / 10 : 0,
           qtdVendasMes,
           qtdPerdidosMes,
           taxaConversao,
@@ -184,11 +184,11 @@ export const painelRouter = router({
           ticketMedioMes: qtdVendasMes > 0 ? valorMes / qtdVendasMes : 0,
           metaFaturamento: meta?.metaFaturamento ?? null,
           bateuMetaFaturamento: meta?.metaFaturamento ? valorMes >= meta.metaFaturamento : false,
-          percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 100) : 0,
+          percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 1000) / 10 : 0,
           metaFaturamentoDia,
           metaAcumuladaAteHoje,
           bateuMetaDia: metaAcumuladaAteHoje ? valorMes >= metaAcumuladaAteHoje : false,
-          percentualMetaDia: metaAcumuladaAteHoje ? Math.round((valorMes / metaAcumuladaAteHoje) * 100) : 0,
+          percentualMetaDia: metaAcumuladaAteHoje ? Math.round((valorMes / metaAcumuladaAteHoje) * 1000) / 10 : 0,
         }
       })
     )
@@ -295,10 +295,10 @@ export const painelRouter = router({
     const metaEmpresa = {
       metaFaturamento: metaFaturamentoEmpresa,
       valorFechadoMes: vendasMesValorNum,
-      percentualMetaFaturamento: metaFaturamentoEmpresa > 0 ? Math.round((vendasMesValorNum / metaFaturamentoEmpresa) * 100) : 0,
+      percentualMetaFaturamento: metaFaturamentoEmpresa > 0 ? Math.round((vendasMesValorNum / metaFaturamentoEmpresa) * 1000) / 10 : 0,
       bateuMetaFaturamento: vendasMesValorNum >= metaFaturamentoEmpresa,
       metaAcumuladaAteHoje: metaAcumuladaAteHojeEmpresa,
-      percentualMetaDia: metaAcumuladaAteHojeEmpresa > 0 ? Math.round((vendasMesValorNum / metaAcumuladaAteHojeEmpresa) * 100) : 0,
+      percentualMetaDia: metaAcumuladaAteHojeEmpresa > 0 ? Math.round((vendasMesValorNum / metaAcumuladaAteHojeEmpresa) * 1000) / 10 : 0,
       bateuMetaDia: vendasMesValorNum >= metaAcumuladaAteHojeEmpresa,
     }
 
@@ -452,11 +452,11 @@ export const painelRouter = router({
       vendasMes: { quantidade: vendasMesQtd, valor: valorMes, ticketMedio: vendasMesQtd > 0 ? valorMes / vendasMesQtd : 0 },
       ligacoesHoje,
       metaLigacoesDia,
-      percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 100) : 0,
+      percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 1000) / 10 : 0,
       metaFaturamento: meta?.metaFaturamento ?? null,
-      percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 100) : 0,
+      percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 1000) / 10 : 0,
       metaAcumuladaAteHoje,
-      percentualRitmo: metaAcumuladaAteHoje ? Math.round((valorMes / metaAcumuladaAteHoje) * 100) : 0,
+      percentualRitmo: metaAcumuladaAteHoje ? Math.round((valorMes / metaAcumuladaAteHoje) * 1000) / 10 : 0,
       posicaoRanking,
       totalVendedores: todosVendedores.length,
       historico,

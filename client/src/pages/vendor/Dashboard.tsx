@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
+import { formatarPercentual } from '../../lib/utils'
 import { hojeBrString } from '../../lib/utils'
 
 // Mesma paleta validada (skill de dataviz) já usada no Painel de TV — azul
@@ -102,7 +103,7 @@ export default function VendorDashboard() {
               <span className="text-xs font-bold text-amber-400 bg-amber-900/20 px-2 py-1 rounded-full">EM ANDAMENTO</span>
             )}
           </div>
-          <p className="text-3xl font-bold text-dark-50 mt-1">{data?.percentualMetaFaturamento ?? 0}%</p>
+          <p className="text-3xl font-bold text-dark-50 mt-1">{formatarPercentual(data?.percentualMetaFaturamento)}%</p>
           <BarraProgresso percentual={data?.percentualMetaFaturamento ?? 0} destaque={(data?.percentualMetaFaturamento ?? 0) >= 100} />
           <p className="text-xs text-dark-500 mt-1.5">
             {formatarMoeda(data?.vendasMes.valor ?? 0)} de {formatarMoeda(data?.metaFaturamento ?? 0)} no mês
@@ -123,7 +124,7 @@ export default function VendorDashboard() {
               <span className="text-xs font-bold text-red-400 bg-red-900/20 px-2 py-1 rounded-full">❌ NÃO BATEU AINDA</span>
             )}
           </div>
-          <p className="text-3xl font-bold text-dark-50 mt-1">{data?.percentualRitmo ?? 0}%</p>
+          <p className="text-3xl font-bold text-dark-50 mt-1">{formatarPercentual(data?.percentualRitmo)}%</p>
           <BarraProgresso percentual={data?.percentualRitmo ?? 0} destaque={(data?.percentualRitmo ?? 0) >= 100} />
           <p className="text-xs text-dark-500 mt-1.5">
             Acumulado até hoje: {formatarMoeda(data?.metaAcumuladaAteHoje ?? 0)} · você fechou {formatarMoeda(data?.vendasMes.valor ?? 0)}

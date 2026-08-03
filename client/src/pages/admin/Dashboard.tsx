@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
+import { formatarPercentual } from '../../lib/utils'
 import Button from '../../components/ui/Button'
 import AvatarMeta from '../../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../../lib/useCelebrarMeta'
@@ -73,11 +74,11 @@ export default function AdminDashboard() {
                 data.metaEmpresa.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
               }`}
             >
-              Ritmo do dia {data.metaEmpresa.percentualMetaDia}% {data.metaEmpresa.bateuMetaDia ? '✅' : '❌'}
+              Ritmo do dia {formatarPercentual(data.metaEmpresa.percentualMetaDia)}% {data.metaEmpresa.bateuMetaDia ? '✅' : '❌'}
             </span>
           </div>
           <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums">
-            {data.metaEmpresa.percentualMetaFaturamento}%
+            {formatarPercentual(data.metaEmpresa.percentualMetaFaturamento)}%
             {data.metaEmpresa.bateuMetaFaturamento && <span className="text-lg ml-1">✅</span>}
           </p>
           <p className="text-sm text-dark-400 mt-1">
@@ -189,7 +190,7 @@ export default function AdminDashboard() {
                   </span>
                 </span>
                 <span className={v.bateuMetaFaturamento ? 'text-gold-400 font-medium' : 'text-dark-400'}>
-                  {formatarMoeda(v.valorFechadoMes)} ({v.percentualMetaFaturamento}%)
+                  {formatarMoeda(v.valorFechadoMes)} ({formatarPercentual(v.percentualMetaFaturamento)}%)
                 </span>
               </div>
             ))}
