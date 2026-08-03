@@ -14,9 +14,12 @@ const ItemSchema = z.object({
 
 const ExtracaoSchema = z.object({
   itens: z.array(ItemSchema),
+  condicaoPagamento: z.string().nullable(),
+  valorTotal: z.number().nullable(),
 })
 
 export type ItemExtraido = z.infer<typeof ItemSchema>
+export type ExtracaoPedido = z.infer<typeof ExtracaoSchema>
 
 let cliente: Anthropic | null = null
 function obterCliente(): Anthropic {
@@ -29,9 +32,10 @@ function obterCliente(): Anthropic {
 }
 
 // Lê o PDF do pedido/nota já salvo em disco (mesmo arquivo do upload normal)
-// e pede pra Claude extrair os itens em formato estruturado, pra pré-preencher
-// o editor de itens do pedido antes do vendedor confirmar o fechamento.
-export async function extrairItensDoPdf(caminhoArquivo: string): Promise<ItemExtraido[]> {
+// e pede pra Claude extrair os itens, a condição de pagamento e o valor total
+// em formato estruturado, pra pré-preencher o fechamento do pedido antes do
+// vendedor confirmar (ele sempre pode revisar/corrigir antes de salvar).
+export async function extrairItensDoPdf(caminhoArquivo: string): Promise<ExtracaoPedido> {
   const base64 = fs.readFileSync(caminhoArquivo).toString('base64')
 
   const response = await obterCliente().messages.parse({
@@ -50,10 +54,15 @@ export async function extrairItensDoPdf(caminhoArquivo: string): Promise<ItemExt
           {
             type: 'text',
             text:
-              'Este é um PDF de pedido de venda ou nota fiscal brasileira. Extraia todos os itens/produtos vendidos, ' +
-              'um por linha, com descrição, quantidade e valor unitário em reais (sem símbolo, usando ponto decimal). ' +
-              'Se a quantidade ou o valor unitário não estiverem claros no documento, retorne null nesse campo — não invente. ' +
-              'Ignore linhas de totais, subtotais, impostos, frete, desconto e qualquer cabeçalho/rodapé que não seja item de produto/serviço.',
+              'Este é um PDF de pedido de venda ou nota fiscal brasileira. Extraia:\n' +
+              '1. Todos os itens/produtos vendidos, um por linha, com descrição, quantidade e valor unitário em reais ' +
+              '(sem símbolo, usando ponto decimal). Se a quantidade ou o valor unitário não estiverem claros, retorne ' +
+              'null nesse campo — não invente. Ignore linhas de totais, subtotais, impostos, frete, desconto e ' +
+              'qualquer cabeçalho/rodapé que não seja item de produto/serviço.\n' +
+              '2. A condição de pagamento (ex: "À vista", "Boleto 30/60", "3x no cartão") se estiver escrita no ' +
+              'documento — null se não encontrar.\n' +
+              '3. O valor total do pedido (o total geral pago/a pagar, já com impostos e descontos aplicados, em ' +
+              'reais, ponto decimal) — null se não encontrar um total claro.',
           },
         ],
       },
@@ -61,8 +70,8 @@ export async function extrairItensDoPdf(caminhoArquivo: string): Promise<ItemExt
   })
 
   if (!response.parsed_output) {
-    throw new Error('Não foi possível extrair os itens deste PDF automaticamente — preencha manualmente.')
+    throw new Error('Não foi possível extrair os dados deste PDF automaticamente — preencha manualmente.')
   }
 
-  return response.parsed_output.itens
+  return response.parsed_output
 }

@@ -491,6 +491,13 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
         const soma = data.itens.reduce((acc, item) => acc + (item.quantidade ?? 1) * (item.valorUnitario ?? 0), 0)
         if (soma > 0) setValorOrcado(String(soma))
       }
+      // Fora de Negociação é fechamento de verdade — sugere condição de
+      // pagamento e valor total lidos do PDF, sempre revisável antes de
+      // salvar. Só preenche o que o vendedor ainda não tinha digitado.
+      if (etapaSelecionada !== 'negociacao') {
+        if (data.condicaoPagamento && !condicaoPagamento) setCondicaoPagamento(data.condicaoPagamento)
+        if (data.valorTotal != null && !valorFechado) setValorFechado(formatarValorInput(data.valorTotal))
+      }
       toast.success(`${data.itens.length} item(ns) extraído(s) do PDF — confira antes de salvar.`)
     },
     onError(err) {

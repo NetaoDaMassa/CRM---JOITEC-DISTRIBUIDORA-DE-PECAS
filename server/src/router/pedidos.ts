@@ -16,7 +16,6 @@ export const pedidosRouter = router({
     if (!caminhoAbsoluto.startsWith(UPLOADS_DIR)) throw new Error('Caminho de arquivo inválido')
     if (!fs.existsSync(caminhoAbsoluto)) throw new Error('Arquivo não encontrado — envie o PDF novamente.')
 
-    const itens = await extrairItensDoPdf(caminhoAbsoluto)
-    return { itens }
+    return extrairItensDoPdf(caminhoAbsoluto)
   }),
 })
