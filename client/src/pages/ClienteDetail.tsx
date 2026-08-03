@@ -8,6 +8,7 @@ import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
 import ContatoButtons from '../components/ui/ContatoButtons'
 import TelefonesExtras from '../components/ui/TelefonesExtras'
+import EmailsExtras from '../components/ui/EmailsExtras'
 
 const ETAPA_LABEL: Record<string, string> = {
   novo: 'Novo',
@@ -430,6 +431,7 @@ export default function ClienteDetail() {
   const [cnpj, setCnpj] = useState('')
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState('')
   const [email, setEmail] = useState('')
+  const [nomeContato, setNomeContato] = useState('')
   const [ticketMedio, setTicketMedio] = useState('')
   const [carregado, setCarregado] = useState(false)
 
@@ -438,6 +440,7 @@ export default function ClienteDetail() {
     setCnpj(cliente.cnpj ?? '')
     setTelefoneWhatsapp(cliente.telefoneWhatsapp ?? '')
     setEmail(cliente.email ?? '')
+    setNomeContato(cliente.nomeContato ?? '')
     setTicketMedio(cliente.ticketMedioHistorico?.toString() ?? '')
     setCarregado(true)
   }
@@ -499,6 +502,7 @@ export default function ClienteDetail() {
       cnpj: user?.role === 'admin' ? cnpj : undefined,
       telefoneWhatsapp,
       email,
+      nomeContato,
       ticketMedioHistorico: ticketMedio ? Number(ticketMedio.replace(',', '.')) : undefined,
     })
   }
@@ -518,6 +522,7 @@ export default function ClienteDetail() {
             telefone={cliente.telefoneWhatsapp}
             telefonesExtras={cliente.telefonesExtras}
             email={cliente.email}
+            emailsExtras={cliente.emailsExtras}
             clienteId={cliente.id}
             size="md"
           />
@@ -540,9 +545,15 @@ export default function ClienteDetail() {
           <Input label="WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
           <Input label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
+        <Input label="Nome do contato" value={nomeContato} onChange={(e) => setNomeContato(e.target.value)} />
         <TelefonesExtras
           clienteId={cliente.id}
           telefones={cliente.telefonesExtras}
+          onChanged={() => utils.clientes.get.invalidate({ id: Number(id) })}
+        />
+        <EmailsExtras
+          clienteId={cliente.id}
+          emails={cliente.emailsExtras}
           onChanged={() => utils.clientes.get.invalidate({ id: Number(id) })}
         />
         <Input label="Ticket médio histórico (R$)" type="number" step="0.01" value={ticketMedio} onChange={(e) => setTicketMedio(e.target.value)} />

@@ -1,0 +1,1 @@
+DROP INDEX IF EXISTS `funil_mensal_cliente_id_mes_referencia_unique`;

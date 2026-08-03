@@ -56,6 +56,10 @@ export const clientesRouter = router({
           like(clientes.codigo, like_),
           like(clientes.estado, like_),
           like(clientes.cidade, like_),
+          like(clientes.email, like_),
+          like(clientes.inscricaoEstadual, like_),
+          like(clientes.nomeContato, like_),
+          sql`exists (select 1 from cliente_emails where cliente_emails.cliente_id = clientes.id and cliente_emails.email like ${like_})`,
         ]
 
         // Telefone salvo tem de tudo (hífen, espaço, parênteses — "2669-9663"),
@@ -93,6 +97,7 @@ export const clientesRouter = router({
         with: {
           vendedorAtual: { columns: { id: true, name: true } },
           telefonesExtras: { orderBy: (t, { asc }) => [asc(t.id)] },
+          emailsExtras: { orderBy: (e, { asc }) => [asc(e.id)] },
         },
       })
 
@@ -105,6 +110,7 @@ export const clientesRouter = router({
       with: {
         vendedorAtual: { columns: { id: true, name: true } },
         telefonesExtras: { orderBy: (t, { asc }) => [asc(t.id)] },
+        emailsExtras: { orderBy: (e, { asc }) => [asc(e.id)] },
       },
     })
     if (!cliente) throw new Error('Cliente não encontrado')
@@ -218,6 +224,7 @@ export const clientesRouter = router({
         cidade: z.string().optional(),
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
+        nomeContato: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
       })
@@ -255,6 +262,7 @@ export const clientesRouter = router({
         cidade: input.cidade,
         telefoneWhatsapp: input.telefoneWhatsapp,
         email: input.email,
+        nomeContato: input.nomeContato,
         ticketMedioHistorico: input.ticketMedioHistorico,
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
@@ -287,6 +295,7 @@ export const clientesRouter = router({
         cidade: z.string().optional(),
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
+        nomeContato: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
       })
     )

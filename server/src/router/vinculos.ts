@@ -18,6 +18,23 @@ async function autorizarCliente(clienteId: number, ctx: { empresaId: number; use
   return cliente
 }
 
+// Valida que `clienteIdEscolhido` é o próprio cliente do card ou um cliente
+// vinculado a ele — usado quando o vendedor escolhe qual CNPJ faturar (ex:
+// fechar uma venda) num card que tem CNPJ vinculado. Nunca deixa faturar num
+// cliente qualquer só porque o id foi passado no payload.
+export async function validarClienteFaturamento(clienteIdOrigem: number, clienteIdEscolhido: number, empresaId: number) {
+  if (clienteIdEscolhido === clienteIdOrigem) return
+  const vinculo = await db.query.clienteVinculos.findFirst({
+    where: or(
+      and(eq(clienteVinculos.clienteId, clienteIdOrigem), eq(clienteVinculos.clienteVinculadoId, clienteIdEscolhido)),
+      and(eq(clienteVinculos.clienteId, clienteIdEscolhido), eq(clienteVinculos.clienteVinculadoId, clienteIdOrigem))
+    ),
+  })
+  if (!vinculo) throw new Error('CNPJ escolhido não está vinculado a este cliente.')
+  const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, clienteIdEscolhido), eq(clientes.empresaId, empresaId)) })
+  if (!cliente) throw new Error('Cliente escolhido não encontrado.')
+}
+
 export const vinculosRouter = router({
   listar: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
     await autorizarCliente(input.clienteId, ctx)

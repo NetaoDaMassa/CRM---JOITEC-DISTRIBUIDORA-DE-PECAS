@@ -69,6 +69,10 @@ export const clientes = sqliteTable('clientes', {
   cidade: text('cidade'),
   telefoneWhatsapp: text('telefone_whatsapp'),
   email: text('email'),
+  // Nome da pessoa de contato na empresa do cliente — diferente da razão
+  // social (nome da empresa em si). Pedido do João pra vendedor saber com
+  // quem falar sem depender só do WhatsApp/e-mail salvos.
+  nomeContato: text('nome_contato'),
   vendedorAtualId: integer('vendedor_atual_id').references(() => users.id, { onDelete: 'set null' }),
   // Rótulo de origem quando o cliente entra sem vendedor (importação em
   // massa cujo Vendedor era "Banco de Clientes X" / "-Nenhum vendedor-") —
@@ -121,6 +125,18 @@ export const clienteTelefones = sqliteTable('cliente_telefones', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// E-mails extras de um cliente, além do principal (`clientes.email`) — mesmo
+// padrão dos telefones extras, pra vendedor cadastrar mais de um contato
+// (ex: financeiro, compras) sem perder o campo principal já usado em
+// outros lugares do sistema.
+export const clienteEmails = sqliteTable('cliente_emails', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+  email: text('email').notNull(),
+  rotulo: text('rotulo'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
 // Histórico de carteira — todo cliente que já teve vendedor responsável,
 // preservado mesmo após transferência (a venda fica creditada a quem estava
 // na carteira no momento do fechamento — ver funilMensal.vendedorId).
@@ -158,9 +174,7 @@ export const funilMensal = sqliteTable('funil_mensal', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
-}, (t) => ({
-  clienteMes: unique().on(t.clienteId, t.mesReferencia),
-}))
+})
 
 // Um pedido/venda individual — um cliente pode ter várias no mesmo mês
 // (funilMensal continua sendo só o rastreador de etapa/relacionamento,
@@ -377,10 +391,15 @@ export const clientesRelations = relations(clientes, ({ one, many }) => ({
   notifications: many(notifications),
   maquinas: many(maquinasCliente),
   telefonesExtras: many(clienteTelefones),
+  emailsExtras: many(clienteEmails),
 }))
 
 export const clienteTelefonesRelations = relations(clienteTelefones, ({ one }) => ({
   cliente: one(clientes, { fields: [clienteTelefones.clienteId], references: [clientes.id] }),
+}))
+
+export const clienteEmailsRelations = relations(clienteEmails, ({ one }) => ({
+  cliente: one(clientes, { fields: [clienteEmails.clienteId], references: [clientes.id] }),
 }))
 
 export const maquinasClienteRelations = relations(maquinasCliente, ({ one }) => ({

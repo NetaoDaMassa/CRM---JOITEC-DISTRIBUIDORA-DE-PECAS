@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
@@ -231,7 +231,9 @@ export default function AdminDashboard() {
               <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
               <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-              <Line type="monotone" dataKey="vendas" name="Vendas" stroke={COR_VENDAS} strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="monotone" dataKey="vendas" name="Vendas" stroke={COR_VENDAS} strokeWidth={2} dot={{ r: 2 }}>
+                <LabelList dataKey="vendas" position="top" fill="#898781" fontSize={10} />
+              </Line>
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -243,7 +245,9 @@ export default function AdminDashboard() {
               <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
               <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-              <Line type="monotone" dataKey="contatos" name="Contatos" stroke={COR_CONTATOS} strokeWidth={2} dot={{ r: 2 }} />
+              <Line type="monotone" dataKey="contatos" name="Contatos" stroke={COR_CONTATOS} strokeWidth={2} dot={{ r: 2 }}>
+                <LabelList dataKey="contatos" position="top" fill="#898781" fontSize={10} />
+              </Line>
             </LineChart>
           </ResponsiveContainer>
         </div>

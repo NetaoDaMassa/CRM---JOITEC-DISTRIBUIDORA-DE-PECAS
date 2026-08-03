@@ -13,6 +13,7 @@ import { Input, Textarea } from './ui/Input'
 import ContatoButtons, { WhatsappButton } from './ui/ContatoButtons'
 import EmailButton from './ui/EmailButton'
 import TelefonesExtras from './ui/TelefonesExtras'
+import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
 
 const ETAPAS = [
@@ -137,9 +138,14 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
         (c) =>
           c.razaoSocial.toLowerCase().includes(termo) ||
           c.codigo?.toLowerCase().includes(termo) ||
+          (c.email && c.email.toLowerCase().includes(termo)) ||
+          c.emailsExtras.some((e) => e.email.toLowerCase().includes(termo)) ||
+          (c.inscricaoEstadual && c.inscricaoEstadual.toLowerCase().includes(termo)) ||
+          (c.nomeContato && c.nomeContato.toLowerCase().includes(termo)) ||
           (termoDigitos &&
             ((c.telefoneWhatsapp && c.telefoneWhatsapp.replace(/\D/g, '').includes(termoDigitos)) ||
-              c.telefonesExtras.some((t) => t.numero.replace(/\D/g, '').includes(termoDigitos))))
+              c.telefonesExtras.some((t) => t.numero.replace(/\D/g, '').includes(termoDigitos)) ||
+              (c.cnpj && c.cnpj.includes(termoDigitos))))
       )
     : cards
 
@@ -210,7 +216,12 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
                         <div className="w-7 h-7 rounded-full bg-dark-700 text-dark-300 text-xs font-bold flex items-center justify-center shrink-0">
                           {iniciais(card.razaoSocial)}
                         </div>
-                        <p className="text-sm font-medium text-dark-100 leading-tight pt-1">{card.razaoSocial}</p>
+                        <div className="pt-1">
+                          <p className="text-sm font-medium text-dark-100 leading-tight">{card.razaoSocial}</p>
+                          {card.orcamentoLabel && (
+                            <p className="text-xs text-gold-400 font-medium">{card.orcamentoLabel}</p>
+                          )}
+                        </div>
                       </div>
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
@@ -250,7 +261,9 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
                           telefone={card.telefoneWhatsapp}
                           telefonesExtras={card.telefonesExtras}
                           email={card.email}
+                          emailsExtras={card.emailsExtras}
                           clienteId={card.clienteId}
+                          funilMensalId={card.funilMensalId}
                         />
                       </div>
                     </div>
@@ -398,6 +411,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   const [motivoRepasseObs, setMotivoRepasseObs] = useState('')
   const [agendarAberto, setAgendarAberto] = useState(false)
   const [itensPedido, setItensPedido] = useState<{ descricao: string; quantidade: string; valorUnitario: string }[]>([])
+  const [clienteIdFaturamento, setClienteIdFaturamento] = useState(card.clienteId)
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -419,6 +433,17 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     onSuccess() {
       invalidarTudo()
       onChanged()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const criarOrcamentoMut = trpc.funil.criarOrcamento.useMutation({
+    onSuccess() {
+      toast.success('Novo orçamento aberto — já aparece como um card separado no Kanban.')
+      invalidarTudo()
+      onClose()
     },
     onError(err) {
       toast.error(err.message)
@@ -564,6 +589,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
       motivoPerdaObservacao: motivoObs || undefined,
       empresaRepasse: (empresaRepasse || undefined) as any,
       motivoRepasseObservacao: motivoRepasseObs || undefined,
+      clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
       itens: itensPedido
         .filter((i) => i.descricao.trim())
         .map((i) => ({
@@ -609,6 +635,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
       valorFechado: parseValorBr(valorFechado),
       condicaoPagamento: condicaoPagamento || undefined,
       pdfPedidoPath,
+      clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
       itens: itensPedido
         .filter((i) => i.descricao.trim())
         .map((i) => ({
@@ -619,8 +646,40 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     })
   }
 
+  const [vendaEditandoId, setVendaEditandoId] = useState<number | null>(null)
+  const [vendaEditValor, setVendaEditValor] = useState('')
+  const [vendaEditCondicao, setVendaEditCondicao] = useState('')
+
+  const editarVendaMut = trpc.vendas.editar.useMutation({
+    onSuccess() {
+      toast.success('Venda atualizada')
+      invalidarTudo()
+      setVendaEditandoId(null)
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function abrirEdicaoVenda(v: Card['vendas'][number]) {
+    setVendaEditandoId(v.id)
+    setVendaEditValor(formatarValorInput(v.valorFechado))
+    setVendaEditCondicao(v.condicaoPagamento ?? '')
+  }
+
+  function handleSalvarEdicaoVenda(e: React.FormEvent) {
+    e.preventDefault()
+    if (!vendaEditandoId) return
+    if (!vendaEditValor) return toast.error('Informe o valor.')
+    editarVendaMut.mutate({
+      vendaId: vendaEditandoId,
+      valorFechado: parseValorBr(vendaEditValor),
+      condicaoPagamento: vendaEditCondicao || undefined,
+    })
+  }
+
   return (
-    <Modal open onClose={onClose} title={card.razaoSocial} size="lg">
+    <Modal open onClose={onClose} title={card.orcamentoLabel ? `${card.razaoSocial} — ${card.orcamentoLabel}` : card.razaoSocial} size="lg">
       <div className="space-y-5">
         {sugestaoProximoPasso(card) && (
           <div className="text-sm text-gold-300 bg-gold-900/10 border border-gold-700/30 rounded-xl px-3 py-2">
@@ -631,19 +690,64 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
         <ClienteInfoEditavel card={card} />
         <SolicitarAcaoCarteira card={card} />
 
+        {card.etapa === 'negociacao' && (
+          <button
+            type="button"
+            onClick={() => criarOrcamentoMut.mutate({ funilMensalId: card.funilMensalId })}
+            disabled={criarOrcamentoMut.isPending}
+            className="text-xs text-gold-400 hover:underline disabled:opacity-50"
+          >
+            + Abrir outro orçamento pra este cliente (cotação em paralelo)
+          </button>
+        )}
+
         {card.etapa === 'fechado' && (
           <div className="border-t border-dark-700 pt-4 space-y-3">
             <h3 className="text-sm font-semibold text-dark-100">
               💰 Vendas do mês ({formatarMoeda(card.valorFechadoTotal)} no total)
             </h3>
             <div className="space-y-1.5">
-              {card.vendas.map((v) => (
-                <div key={v.id} className="flex items-center justify-between text-sm bg-dark-900/40 rounded-lg px-3 py-1.5">
-                  <span className="text-dark-100">{formatarMoeda(v.valorFechado)}</span>
-                  <span className="text-xs text-dark-400">{v.condicaoPagamento || '—'}</span>
-                  <span className="text-xs text-dark-500">{timeAgo(v.dataFechamento)}</span>
-                </div>
-              ))}
+              {card.vendas.map((v) =>
+                vendaEditandoId === v.id ? (
+                  <form
+                    key={v.id}
+                    onSubmit={handleSalvarEdicaoVenda}
+                    className="space-y-2 bg-dark-900/60 border border-gold-700/30 rounded-lg p-2"
+                  >
+                    <div className="grid grid-cols-2 gap-2">
+                      <Input
+                        label="Valor (R$)"
+                        type="text"
+                        inputMode="decimal"
+                        value={vendaEditValor}
+                        onChange={(e) => setVendaEditValor(e.target.value)}
+                      />
+                      <Input
+                        label="Condição de pagamento"
+                        value={vendaEditCondicao}
+                        onChange={(e) => setVendaEditCondicao(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button type="submit" size="sm" loading={editarVendaMut.isPending}>
+                        Salvar
+                      </Button>
+                      <Button type="button" size="sm" variant="secondary" onClick={() => setVendaEditandoId(null)}>
+                        Cancelar
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div key={v.id} className="flex items-center justify-between text-sm bg-dark-900/40 rounded-lg px-3 py-1.5">
+                    <span className="text-dark-100">{formatarMoeda(v.valorFechado)}</span>
+                    <span className="text-xs text-dark-400">{v.condicaoPagamento || '—'}</span>
+                    <span className="text-xs text-dark-500">{timeAgo(v.dataFechamento)}</span>
+                    <button type="button" onClick={() => abrirEdicaoVenda(v)} className="text-xs text-gold-400 hover:underline">
+                      Editar
+                    </button>
+                  </div>
+                )
+              )}
             </div>
 
             {!novaVendaAberta ? (
@@ -652,6 +756,17 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
               </Button>
             ) : (
               <form onSubmit={handleRegistrarVenda} className="space-y-2 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+                {card.cnpjsDisponiveis.length > 1 && (
+                  <Select
+                    label="Faturar em qual CNPJ?"
+                    value={String(clienteIdFaturamento)}
+                    onChange={(e) => setClienteIdFaturamento(Number(e.target.value))}
+                    options={card.cnpjsDisponiveis.map((c) => ({
+                      value: String(c.clienteId),
+                      label: `${c.razaoSocial} — ${c.cnpj ?? 'sem CNPJ'}`,
+                    }))}
+                  />
+                )}
                 <Input
                   label="Valor da venda (R$) — obrigatório"
                   type="text"
@@ -704,7 +819,9 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
             telefone={card.telefoneWhatsapp}
             telefonesExtras={card.telefonesExtras}
             email={card.email}
+            emailsExtras={card.emailsExtras}
             clienteId={card.clienteId}
+            funilMensalId={card.funilMensalId}
             size="md"
           />
           <Button size="sm" variant="secondary" onClick={() => setAgendarAberto(true)}>
@@ -717,6 +834,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           telefone={card.telefoneWhatsapp}
           email={card.email}
           clienteId={card.clienteId}
+          funilMensalId={card.funilMensalId}
           cidade={card.cidade}
           diasSemContato={card.diasSemContato}
           ultimoContato={card.contatos[0] ? `${TIPO_LABEL[card.contatos[0].tipo]} ${timeAgo(card.contatos[0].dataHora)}` : null}
@@ -847,6 +965,17 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
 
           {etapaSelecionada === 'fechado' && card.etapa !== 'fechado' && (
             <>
+              {card.cnpjsDisponiveis.length > 1 && (
+                <Select
+                  label="Faturar em qual CNPJ?"
+                  value={String(clienteIdFaturamento)}
+                  onChange={(e) => setClienteIdFaturamento(Number(e.target.value))}
+                  options={card.cnpjsDisponiveis.map((c) => ({
+                    value: String(c.clienteId),
+                    label: `${c.razaoSocial} — ${c.cnpj ?? 'sem CNPJ'}`,
+                  }))}
+                />
+              )}
               <Input
                 label="Valor fechado (R$) — obrigatório"
                 type="text"
@@ -963,6 +1092,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const [estado, setEstado] = useState(card.estado ?? '')
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState(card.telefoneWhatsapp ?? '')
   const [email, setEmail] = useState(card.email ?? '')
+  const [nomeContato, setNomeContato] = useState(card.nomeContato ?? '')
 
   const atualizarMut = trpc.clientes.update.useMutation({
     onSuccess() {
@@ -976,7 +1106,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
     },
   })
 
-  const faltandoAlgo = !card.cnpj || !card.email || !card.cidade || !card.estado || !card.inscricaoEstadual
+  const faltandoAlgo = !card.cnpj || !card.email || !card.cidade || !card.estado || !card.inscricaoEstadual || !card.nomeContato
 
   if (!editando) {
     return (
@@ -1009,6 +1139,9 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           <p className="text-dark-500">
             E-mail: <span className={card.email ? 'text-dark-300' : 'text-amber-400'}>{card.email ?? 'não informado'}</span>
           </p>
+          <p className="text-dark-500">
+            Nome do contato: <span className={card.nomeContato ? 'text-dark-300' : 'text-amber-400'}>{card.nomeContato ?? 'não informado'}</span>
+          </p>
         </div>
         {!!card.telefonesExtras.length && (
           <p className="text-xs text-dark-500 mt-1">
@@ -1017,6 +1150,26 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
               {card.telefonesExtras.map((t) => t.rotulo ? `${t.numero} (${t.rotulo})` : t.numero).join(', ')}
             </span>
           </p>
+        )}
+        {!!card.emailsExtras.length && (
+          <p className="text-xs text-dark-500 mt-1">
+            Outros e-mails:{' '}
+            <span className="text-dark-300">
+              {card.emailsExtras.map((e) => e.rotulo ? `${e.email} (${e.rotulo})` : e.email).join(', ')}
+            </span>
+          </p>
+        )}
+        {!!card.clientesVinculados.length && (
+          <div className="mt-2 text-xs bg-amber-900/10 border border-amber-700/30 rounded-lg px-3 py-2 space-y-1">
+            <p className="text-amber-400 font-medium">🔗 Este cliente tem outro(s) CNPJ vinculado(s):</p>
+            {card.clientesVinculados.map((v) => (
+              <p key={v.id} className="text-dark-300">
+                {v.razaoSocial} — Cód. {v.codigo}
+                {v.cnpj ? ` · CNPJ ${v.cnpj}` : ' · sem CNPJ cadastrado'}
+              </p>
+            ))}
+            <p className="text-dark-500">Confira qual CNPJ usar antes de fechar o pedido.</p>
+          </div>
         )}
       </div>
     )
@@ -1035,6 +1188,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           estado: estado || undefined,
           telefoneWhatsapp: telefoneWhatsapp || undefined,
           email: email || undefined,
+          nomeContato: nomeContato || undefined,
         })
       }}
       className="space-y-2"
@@ -1047,10 +1201,19 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
         <Input label="Estado (UF)" value={estado} onChange={(e) => setEstado(e.target.value.toUpperCase())} maxLength={2} />
         <Input label="Telefone/WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
         <Input label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <Input label="Nome do contato" value={nomeContato} onChange={(e) => setNomeContato(e.target.value)} />
       </div>
       <TelefonesExtras
         clienteId={card.clienteId}
         telefones={card.telefonesExtras}
+        onChanged={() => {
+          utils.funil.meuFunil.invalidate()
+          utils.funil.funilPorVendedor.invalidate()
+        }}
+      />
+      <EmailsExtras
+        clienteId={card.clienteId}
+        emails={card.emailsExtras}
         onChanged={() => {
           utils.funil.meuFunil.invalidate()
           utils.funil.funilPorVendedor.invalidate()
@@ -1197,6 +1360,7 @@ function SugestaoMensagem({
   telefone,
   email,
   clienteId,
+  funilMensalId,
   cidade,
   diasSemContato,
   ultimoContato,
@@ -1205,6 +1369,7 @@ function SugestaoMensagem({
   telefone?: string | null
   email?: string | null
   clienteId: number
+  funilMensalId?: number
   cidade?: string | null
   diasSemContato?: number | null
   ultimoContato?: string | null
@@ -1230,7 +1395,7 @@ function SugestaoMensagem({
           <p className="text-xs text-dark-300 whitespace-pre-wrap">{interpolarMensagem(selecionado.whatsappText, vars)}</p>
           <div className="flex items-center gap-2">
             {telefone && (
-              <WhatsappButton telefone={telefone} clienteId={clienteId} mensagem={interpolarMensagem(selecionado.whatsappText, vars)} size="md" />
+              <WhatsappButton telefone={telefone} clienteId={clienteId} funilMensalId={funilMensalId} mensagem={interpolarMensagem(selecionado.whatsappText, vars)} size="md" />
             )}
             {email && (
               <EmailButton

@@ -22,6 +22,7 @@ import { telefonesRouter } from './telefones.js'
 import { prospeccaoRouter } from './prospeccao.js'
 import { aprovacoesRouter } from './aprovacoes.js'
 import { vinculosRouter } from './vinculos.js'
+import { emailsRouter } from './emails.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -51,6 +52,7 @@ export const appRouter = router({
   prospeccao: prospeccaoRouter,
   aprovacoes: aprovacoesRouter,
   vinculos: vinculosRouter,
+  emails: emailsRouter,
 })
 
 export type AppRouter = typeof appRouter

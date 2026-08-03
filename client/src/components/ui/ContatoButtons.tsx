@@ -10,11 +10,13 @@ function soDigitos(v: string): string {
 export function WhatsappButton({
   telefone,
   clienteId,
+  funilMensalId,
   mensagem,
   size = 'sm',
 }: {
   telefone: string
   clienteId?: number
+  funilMensalId?: number
   mensagem?: string
   size?: 'sm' | 'md'
 }) {
@@ -46,7 +48,7 @@ export function WhatsappButton({
       rel="noopener noreferrer"
       onClick={(e) => {
         e.stopPropagation()
-        if (clienteId) registrarMut.mutate({ clienteId })
+        if (clienteId) registrarMut.mutate({ clienteId, funilMensalId })
       }}
       title={`Abrir WhatsApp — ${telefone}`}
       className={`inline-flex items-center justify-center rounded-lg bg-green-600/20 hover:bg-green-600/40 text-green-400 hover:text-green-300 border border-green-600/30 hover:border-green-500/60 transition-all shrink-0 ${size === 'sm' ? 'w-7 h-7' : 'w-8 h-8'}`}
@@ -75,25 +77,32 @@ export default function ContatoButtons({
   telefone,
   telefonesExtras,
   email,
+  emailsExtras,
   clienteId,
+  funilMensalId,
   size = 'sm',
 }: {
   telefone?: string | null
   telefonesExtras?: { id: number; numero: string; rotulo?: string | null }[]
   email?: string | null
+  emailsExtras?: { id: number; email: string; rotulo?: string | null }[]
   clienteId?: number
+  funilMensalId?: number
   size?: 'sm' | 'md'
 }) {
   return (
     <div className="flex items-center gap-1.5">
       {email && <EmailButton email={email} size={size} />}
       {telefone && <LigarButton telefone={telefone} size={size} />}
-      {telefone && <WhatsappButton telefone={telefone} clienteId={clienteId} size={size} />}
+      {telefone && <WhatsappButton telefone={telefone} clienteId={clienteId} funilMensalId={funilMensalId} size={size} />}
       {telefonesExtras?.map((t) => (
         <div key={t.id} className="flex items-center gap-1.5" title={t.rotulo || undefined}>
           <LigarButton telefone={t.numero} size={size} />
-          <WhatsappButton telefone={t.numero} clienteId={clienteId} size={size} />
+          <WhatsappButton telefone={t.numero} clienteId={clienteId} funilMensalId={funilMensalId} size={size} />
         </div>
+      ))}
+      {emailsExtras?.map((e) => (
+        <EmailButton key={e.id} email={e.email} size={size} />
       ))}
     </div>
   )

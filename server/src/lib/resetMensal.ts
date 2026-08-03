@@ -27,20 +27,37 @@ export async function executarResetMensal(): Promise<{ criados: number }> {
     })
     if (jaExiste) continue
 
-    const ultimoFunil = await db.query.funilMensal.findFirst({
+    // Um cliente pode ter tido mais de um orçamento aberto ao mesmo tempo no
+    // mês anterior (múltiplos orçamentos em paralelo) — carrega cada um que
+    // ainda estava em aberto, não só o primeiro que a busca encontrar.
+    const mesesAnteriores = await db.query.funilMensal.findMany({
       where: and(eq(funilMensal.clienteId, cliente.id), lt(funilMensal.mesReferencia, mesAtual), isNull(funilMensal.deletedAt)),
       orderBy: (f, { desc }) => [desc(f.mesReferencia)],
     })
+    const ultimoMesReferencia = mesesAnteriores[0]?.mesReferencia
+    const funisAbertosUltimoMes = ultimoMesReferencia
+      ? mesesAnteriores.filter((f) => f.mesReferencia === ultimoMesReferencia && ETAPAS_ABERTAS.includes(f.etapa))
+      : []
 
-    const carregadoMesAnterior = !!ultimoFunil && ETAPAS_ABERTAS.includes(ultimoFunil.etapa)
-
-    await db.insert(funilMensal).values({
-      clienteId: cliente.id,
-      vendedorId: cliente.vendedorAtualId,
-      mesReferencia: mesAtual,
-      etapa: 'novo',
-      carregadoMesAnterior,
-    })
+    if (funisAbertosUltimoMes.length > 0) {
+      for (const f of funisAbertosUltimoMes) {
+        await db.insert(funilMensal).values({
+          clienteId: cliente.id,
+          vendedorId: cliente.vendedorAtualId,
+          mesReferencia: mesAtual,
+          etapa: 'novo',
+          carregadoMesAnterior: true,
+        })
+      }
+    } else {
+      await db.insert(funilMensal).values({
+        clienteId: cliente.id,
+        vendedorId: cliente.vendedorAtualId,
+        mesReferencia: mesAtual,
+        etapa: 'novo',
+        carregadoMesAnterior: false,
+      })
+    }
     criados++
   }
 

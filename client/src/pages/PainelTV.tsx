@@ -138,6 +138,34 @@ function LabelUltimoPonto({
   )
 }
 
+// Mesma ideia do LabelUltimoPonto, mas pra barra horizontal: o valor aparece
+// escrito logo depois da ponta da barra. Usar `<LabelList>` direto no `<Bar>`
+// quebra a renderização inteira do gráfico no recharts 3 (bug de upstream,
+// ver comentário acima) — por isso o valor é desenhado via função customizada
+// no próprio `label` do `<Bar>`, do mesmo jeito que já funciona nos LineChart.
+function LabelFimDaBarra({
+  x,
+  y,
+  width,
+  height,
+  value,
+  formatarValor,
+}: {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  value?: number
+  formatarValor: (v: number) => string
+}) {
+  if (x == null || y == null || width == null || height == null || value == null) return null
+  return (
+    <text x={x + width + 6} y={y + height / 2} dy={4} fill="#c3c2b7" fontSize={11}>
+      {formatarValor(value)}
+    </text>
+  )
+}
+
 // Memoizados: o relógio no topo do painel atualiza o estado a cada 1s, e sem
 // memo isso re-renderiza (e recria os arrays de dados dos gráficos) toda hora
 // — o recharts trata isso como dado novo e reinicia a animação de entrada das
@@ -199,13 +227,19 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
             <BarChart
               data={data.vendedores.map((v) => ({ nome: v.nome, valor: v.valorFechadoMes, destaque: v.bateuMetaFaturamento }))}
               layout="vertical"
-              margin={{ top: 0, right: 32, bottom: 0, left: 0 }}
+              margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
               barCategoryGap={6}
             >
               <XAxis type="number" hide domain={[0, 'dataMax']} />
               <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
               <Tooltip content={<TooltipGrafico formatarValor={formatarMoeda} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-              <Bar dataKey="valor" radius={[0, 4, 4, 0]} maxBarSize={20} isAnimationActive={false}>
+              <Bar
+                dataKey="valor"
+                radius={[0, 4, 4, 0]}
+                maxBarSize={20}
+                isAnimationActive={false}
+                label={(props: any) => <LabelFimDaBarra {...props} formatarValor={formatarMoeda} />}
+              >
                 {data.vendedores.map((v) => (
                   <Cell key={v.id} fill={v.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS} />
                 ))}
@@ -287,13 +321,19 @@ const SlideRankingSemanal = memo(function SlideRankingSemanal({ data }: { data: 
           <BarChart
             data={semanal.map((v) => ({ nome: v.nome, valor: v.valorFechadoSemana }))}
             layout="vertical"
-            margin={{ top: 0, right: 32, bottom: 0, left: 0 }}
+            margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
             barCategoryGap={6}
           >
             <XAxis type="number" hide domain={[0, 'dataMax']} />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
             <Tooltip content={<TooltipGrafico formatarValor={formatarMoeda} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar dataKey="valor" radius={[0, 4, 4, 0]} maxBarSize={20} isAnimationActive={false}>
+            <Bar
+              dataKey="valor"
+              radius={[0, 4, 4, 0]}
+              maxBarSize={20}
+              isAnimationActive={false}
+              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={formatarMoeda} />}
+            >
               {semanal.map((v) => (
                 <Cell key={v.id} fill={liderValor > 0 && v.valorFechadoSemana === liderValor ? COR_META_BATIDA : COR_VENDAS} />
               ))}
@@ -329,13 +369,19 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
           <BarChart
             data={data.rankingLigacoes.map((v) => ({ nome: v.nome, valor: v.ligacoesHoje, destaque: v.bateuMetaLigacoesHoje }))}
             layout="vertical"
-            margin={{ top: 0, right: 32, bottom: 0, left: 0 }}
+            margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
             barCategoryGap={6}
           >
             <XAxis type="number" hide domain={[0, 'dataMax']} />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
             <Tooltip content={<TooltipGrafico formatarValor={(v) => `${v} ligação(ões)`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar dataKey="valor" radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive={false}>
+            <Bar
+              dataKey="valor"
+              radius={[0, 4, 4, 0]}
+              maxBarSize={22}
+              isAnimationActive={false}
+              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}`} />}
+            >
               {data.rankingLigacoes.map((v) => (
                 <Cell key={v.id} fill={v.bateuMetaLigacoesHoje ? COR_META_BATIDA : COR_CONTATOS} />
               ))}
@@ -400,13 +446,19 @@ const SlideConversao = memo(function SlideConversao({ data }: { data: PainelData
           <BarChart
             data={conversao.map((v) => ({ nome: v.nome, valor: v.taxaConversao ?? 0 }))}
             layout="vertical"
-            margin={{ top: 0, right: 32, bottom: 0, left: 0 }}
+            margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
             barCategoryGap={6}
           >
             <XAxis type="number" hide domain={[0, 100]} />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
             <Tooltip content={<TooltipGrafico formatarValor={(v) => `${v}%`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar dataKey="valor" radius={[0, 4, 4, 0]} maxBarSize={20} isAnimationActive={false}>
+            <Bar
+              dataKey="valor"
+              radius={[0, 4, 4, 0]}
+              maxBarSize={20}
+              isAnimationActive={false}
+              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}%`} />}
+            >
               {conversao.map((v) => (
                 <Cell key={v.id} fill={(v.taxaConversao ?? 0) >= 50 ? COR_META_BATIDA : COR_VENDAS} />
               ))}

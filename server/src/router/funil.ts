@@ -1,11 +1,12 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
+import { validarClienteFaturamento } from './vinculos.js'
 
 const ETAPA_VALUES = ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'] as const
 
@@ -24,6 +25,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
           razaoSocial: true,
           telefoneWhatsapp: true,
           email: true,
+          nomeContato: true,
           cnpj: true,
           codigo: true,
           inscricaoEstadual: true,
@@ -33,6 +35,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
         },
         with: {
           telefonesExtras: { orderBy: (t, { asc }) => [asc(t.id)] },
+          emailsExtras: { orderBy: (e, { asc }) => [asc(e.id)] },
         },
       },
       vendas: {
@@ -66,8 +69,92 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     : []
   const pedidoPorCliente = new Map(pedidosPendentes.map((p) => [p.clienteId, p.tipo]))
 
-  return funis.map((f) => ({
+  // Clientes vinculados (matriz/filial, CNPJ duplicado etc.). Quando os dois
+  // lados têm card neste mesmo board (mesmo vendedor, mesmo mês), viram UM
+  // card só — o vendedor escolhe qual CNPJ faturar na hora de fechar (pedido
+  // direto do João pra não ter 2 cards da mesma empresa no Kanban). Quando só
+  // um lado tem card aqui (o outro está com outro vendedor, ou nem tem funil
+  // aberto), fica só um aviso informativo — cada um continua com seu card.
+  const vinculosBrutos = clienteIds.length
+    ? await db.query.clienteVinculos.findMany({
+        where: or(inArray(clienteVinculos.clienteId, clienteIds), inArray(clienteVinculos.clienteVinculadoId, clienteIds)),
+      })
+    : []
+  const idsOutrosVinculados = [
+    ...new Set(vinculosBrutos.map((v) => (clienteIds.includes(v.clienteId) ? v.clienteVinculadoId : v.clienteId))),
+  ]
+  const outrosVinculados = idsOutrosVinculados.length
+    ? await db.query.clientes.findMany({
+        where: or(...idsOutrosVinculados.map((id) => eq(clientes.id, id)))!,
+        columns: { id: true, razaoSocial: true, codigo: true, cnpj: true },
+      })
+    : []
+
+  const funilPorClienteId = new Map(funis.map((f) => [f.cliente.id, f]))
+  const idsFundidos = new Set<number>()
+  const cnpjsDisponiveisPorFunilPrimario = new Map<
+    number,
+    { clienteId: number; razaoSocial: string; codigo: string | null; cnpj: string | null }[]
+  >()
+  const vinculosPorCliente = new Map<number, { id: number; razaoSocial: string; codigo: string | null; cnpj: string | null }[]>()
+
+  for (const v of vinculosBrutos) {
+    const funilA = funilPorClienteId.get(v.clienteId)
+    const funilB = funilPorClienteId.get(v.clienteVinculadoId)
+
+    if (funilA && funilB) {
+      // Os dois têm card aqui — funde no de id menor (o mais antigo).
+      const [primario, secundario] = funilA.id <= funilB.id ? [funilA, funilB] : [funilB, funilA]
+      if (idsFundidos.has(primario.id)) continue // já é secundário de outro par — evita encadear fusões
+      idsFundidos.add(secundario.id)
+      const lista =
+        cnpjsDisponiveisPorFunilPrimario.get(primario.id) ??
+        ([
+          { clienteId: primario.cliente.id, razaoSocial: primario.cliente.razaoSocial, codigo: primario.cliente.codigo, cnpj: primario.cliente.cnpj },
+        ] as { clienteId: number; razaoSocial: string; codigo: string | null; cnpj: string | null }[])
+      lista.push({
+        clienteId: secundario.cliente.id,
+        razaoSocial: secundario.cliente.razaoSocial,
+        codigo: secundario.cliente.codigo,
+        cnpj: secundario.cliente.cnpj,
+      })
+      cnpjsDisponiveisPorFunilPrimario.set(primario.id, lista)
+      continue
+    }
+
+    // Só um lado (ou nenhum) tem card aqui — vira só o aviso informativo.
+    const donoId = clienteIds.includes(v.clienteId) ? v.clienteId : v.clienteVinculadoId
+    const outroId = donoId === v.clienteId ? v.clienteVinculadoId : v.clienteId
+    const outro = outrosVinculados.find((o) => o.id === outroId)
+    if (!outro) continue
+    const lista = vinculosPorCliente.get(donoId) ?? []
+    lista.push(outro)
+    vinculosPorCliente.set(donoId, lista)
+  }
+
+  // Quando o mesmo cliente tem mais de um card no mês (múltiplos orçamentos
+  // abertos em paralelo — pedido do João pra não perder o segundo orçamento
+  // quando o primeiro fecha ou é perdido), numera "Orçamento 1", "Orçamento
+  // 2"... na ordem em que os cards foram criados, só pra diferenciar no
+  // board. Cliente com um card só não ganha rótulo nenhum.
+  const funisPorCliente = new Map<number, typeof funis>()
+  for (const f of funis) {
+    const lista = funisPorCliente.get(f.cliente.id) ?? []
+    lista.push(f)
+    funisPorCliente.set(f.cliente.id, lista)
+  }
+  const orcamentoLabelPorFunil = new Map<number, string>()
+  for (const lista of funisPorCliente.values()) {
+    if (lista.length < 2) continue
+    const ordenada = [...lista].sort((a, b) => a.id - b.id)
+    ordenada.forEach((f, i) => orcamentoLabelPorFunil.set(f.id, `Orçamento ${i + 1}`))
+  }
+
+  return funis
+    .filter((f) => !idsFundidos.has(f.id))
+    .map((f) => ({
     funilMensalId: f.id,
+    orcamentoLabel: orcamentoLabelPorFunil.get(f.id) ?? null,
     versao: f.versao,
     etapa: f.etapa,
     vendedorId: f.vendedorId,
@@ -75,7 +162,9 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     razaoSocial: f.cliente.razaoSocial,
     telefoneWhatsapp: f.cliente.telefoneWhatsapp,
     telefonesExtras: f.cliente.telefonesExtras,
+    emailsExtras: f.cliente.emailsExtras,
     email: f.cliente.email,
+    nomeContato: f.cliente.nomeContato,
     cnpj: f.cliente.cnpj,
     codigo: f.cliente.codigo,
     inscricaoEstadual: f.cliente.inscricaoEstadual,
@@ -83,6 +172,8 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     cidade: f.cliente.cidade,
     clienteVersao: f.cliente.versao,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
+    clientesVinculados: vinculosPorCliente.get(f.cliente.id) ?? [],
+    cnpjsDisponiveis: cnpjsDisponiveisPorFunilPrimario.get(f.id) ?? [],
     diasSemContato: diasDesde(f.dataUltimoContato),
     qtdTentativasContato: f.qtdTentativasContato,
     dataEntradaEtapa: f.dataEntradaEtapa,
@@ -153,6 +244,7 @@ export const funilRouter = router({
         valorFechado: z.number().optional(),
         condicaoPagamento: z.string().optional(),
         pdfPedidoPath: z.string().optional(),
+        clienteIdFaturamento: z.number().optional(),
         motivoPerdaCategoria: z.enum(['estoque', 'financeiro', 'compras']).optional(),
         motivoPerdaOpcao: z.string().optional(),
         motivoPerdaItem: z.string().optional(),
@@ -238,11 +330,19 @@ export const funilRouter = router({
       }
 
       if (input.etapa === 'fechado') {
-        await db.update(clientes).set({ dataUltimaCompra: agoraSqlite() }).where(eq(clientes.id, funil.clienteId))
+        // Cliente com CNPJ vinculado (matriz/filial, cadastro duplicado) —
+        // o vendedor escolhe qual CNPJ recebe a venda; por padrão é o
+        // próprio cliente do card.
+        const clienteFaturamentoId = input.clienteIdFaturamento ?? funil.clienteId
+        if (clienteFaturamentoId !== funil.clienteId) {
+          await validarClienteFaturamento(funil.clienteId, clienteFaturamentoId, ctx.empresaId)
+        }
+
+        await db.update(clientes).set({ dataUltimaCompra: agoraSqlite() }).where(eq(clientes.id, clienteFaturamentoId))
 
         const vendaResult = await db.insert(vendas).values({
           funilMensalId: input.funilMensalId,
-          clienteId: funil.clienteId,
+          clienteId: clienteFaturamentoId,
           vendedorId: funil.vendedorId,
           mesReferencia: funil.mesReferencia,
           valorFechado: input.valorFechado!,
@@ -260,7 +360,7 @@ export const funilRouter = router({
           await db.insert(itensPedido).values(
             input.itens.map((item) => ({
               vendaId,
-              clienteId: funil.clienteId,
+              clienteId: clienteFaturamentoId,
               descricao: item.descricao,
               quantidade: item.quantidade ?? null,
               valorUnitario: item.valorUnitario ?? null,
@@ -271,6 +371,30 @@ export const funilRouter = router({
       }
 
       return { success: true }
+    }),
+
+  // Abre um segundo (ou terceiro...) orçamento pro mesmo cliente, sem mexer
+  // no card original — o vendedor as vezes cotação mais de um pedido em
+  // paralelo (ex: peça A e peça B, negociados em ritmos diferentes) e
+  // precisa fechar um e perder o outro sem que um afete o outro. Só pode
+  // abrir a partir de Negociação: o relacionamento com o cliente já existe,
+  // não faz sentido repetir Novo/Abordagem/Interessado pro card novo.
+  criarOrcamento: protectedProcedure
+    .input(z.object({ funilMensalId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const origem = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
+      if (!origem) throw new Error('Card não encontrado')
+      if (ctx.user.role !== 'admin' && origem.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+      if (origem.etapa !== 'negociacao') throw new Error('Só é possível abrir um novo orçamento a partir de Negociação.')
+
+      const result = await db.insert(funilMensal).values({
+        clienteId: origem.clienteId,
+        vendedorId: origem.vendedorId,
+        mesReferencia: origem.mesReferencia,
+        etapa: 'negociacao',
+        dataEntradaEtapa: agoraSqlite(),
+      })
+      return { funilMensalId: Number(result.lastInsertRowid) }
     }),
 
   // Roda sozinho todo início de mês (scheduler.ts), mas o admin também pode

@@ -11,27 +11,36 @@ export const contatosRouter = router({
   // depois o vendedor/admin confirmar no histórico do card (Kanban) se o
   // contato foi respondido ou não. Resolve o funil do mês corrente a partir
   // do cliente, já que o botão só tem o clienteId disponível.
-  registrarWhatsapp: protectedProcedure.input(z.object({ clienteId: z.number() })).mutation(async ({ ctx, input }) => {
-    const funil = await db.query.funilMensal.findFirst({
-      where: and(eq(funilMensal.clienteId, input.clienteId), eq(funilMensal.mesReferencia, mesReferenciaAtual())),
-    })
-    if (!funil) throw new Error('Cliente sem funil aberto neste mês — não foi possível registrar o contato.')
-    if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+  registrarWhatsapp: protectedProcedure
+    .input(z.object({ clienteId: z.number(), funilMensalId: z.number().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      // Cliente com mais de um orçamento aberto no mês tem mais de um card —
+      // quando o clique veio de dentro de um card específico (Kanban), usa o
+      // funilMensalId dele em vez de adivinhar por clienteId, senão o contato
+      // pode ser registrado no orçamento errado.
+      const funil = input.funilMensalId
+        ? await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
+        : await db.query.funilMensal.findFirst({
+            where: and(eq(funilMensal.clienteId, input.clienteId), eq(funilMensal.mesReferencia, mesReferenciaAtual())),
+            orderBy: (f, { desc }) => [desc(f.dataUltimoContato)],
+          })
+      if (!funil) throw new Error('Cliente sem funil aberto neste mês — não foi possível registrar o contato.')
+      if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
 
-    await db.insert(registroContato).values({
-      funilMensalId: funil.id,
-      vendedorId: ctx.user.id,
-      tipo: 'whatsapp',
-      observacao: 'WhatsApp aberto pelo sistema — aguardando confirmação se o contato foi realizado.',
-    })
+      await db.insert(registroContato).values({
+        funilMensalId: funil.id,
+        vendedorId: ctx.user.id,
+        tipo: 'whatsapp',
+        observacao: 'WhatsApp aberto pelo sistema — aguardando confirmação se o contato foi realizado.',
+      })
 
-    await db
-      .update(funilMensal)
-      .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
-      .where(eq(funilMensal.id, funil.id))
+      await db
+        .update(funilMensal)
+        .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
+        .where(eq(funilMensal.id, funil.id))
 
-    return { success: true }
-  }),
+      return { success: true }
+    }),
 
   registrar: protectedProcedure
     .input(

@@ -81,7 +81,7 @@ export default function Clientes() {
                 {user?.role === 'admin' && ` · ${c.vendedorAtual?.name ?? 'sem vendedor'}`}
               </p>
             </div>
-            <ContatoButtons telefone={c.telefoneWhatsapp} telefonesExtras={c.telefonesExtras} email={c.email} clienteId={c.id} />
+            <ContatoButtons telefone={c.telefoneWhatsapp} telefonesExtras={c.telefonesExtras} email={c.email} emailsExtras={c.emailsExtras} clienteId={c.id} />
           </Link>
         ))}
       </div>
