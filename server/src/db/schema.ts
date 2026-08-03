@@ -137,7 +137,7 @@ export const funilMensal = sqliteTable('funil_mensal', {
   vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   mesReferencia: text('mes_referencia').notNull(), // YYYY-MM-01
   etapa: text('etapa', {
-    enum: ['novo', 'abordagem', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'],
+    enum: ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'],
   }).notNull().default('novo'),
   dataEntradaEtapa: text('data_entrada_etapa').notNull().default(sql`(datetime('now'))`),
   qtdTentativasContato: integer('qtd_tentativas_contato').notNull().default(0),

@@ -4,7 +4,7 @@ import { funilMensal, notifications } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from './dataBr.js'
 import { getConfigNumero } from './configuracoes.js'
 
-const ETAPAS_ABERTAS = ['novo', 'abordagem', 'negociacao', 'sem_contato'] as const
+const ETAPAS_ABERTAS = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato'] as const
 
 // Avisa o vendedor quando um cliente do funil aberto do mês está há muito
 // tempo sem contato — no máximo uma vez por semana por cliente, pra não

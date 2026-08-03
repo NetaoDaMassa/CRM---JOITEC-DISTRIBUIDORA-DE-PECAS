@@ -7,7 +7,7 @@ import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
 
-const ETAPA_VALUES = ['novo', 'abordagem', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'] as const
+const ETAPA_VALUES = ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'] as const
 
 // Compartilhado entre `meuFunil` (vendedor vendo o próprio funil) e
 // `funilPorVendedor` (admin vendo o funil de qualquer vendedor específico) —
@@ -107,7 +107,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
   }))
 }
 
-const ETAPAS_ABERTAS_FILA = ['novo', 'abordagem', 'negociacao', 'sem_contato']
+const ETAPAS_ABERTAS_FILA = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 const TAMANHO_FILA_HOJE = 20
 
 export const funilRouter = router({

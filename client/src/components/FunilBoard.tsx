@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Paperclip } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
@@ -17,6 +18,7 @@ import { NovoCompromissoModal } from './CalendarBoard'
 const ETAPAS = [
   { value: 'novo', label: 'Novo' },
   { value: 'abordagem', label: 'Abordagem' },
+  { value: 'interessado', label: 'Interessado' },
   { value: 'negociacao', label: 'Negociação' },
   { value: 'fechado', label: 'Fechado' },
   { value: 'perdido', label: 'Perdido' },
@@ -42,6 +44,22 @@ function formatarMoeda(v: number | null): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// Campos de valor usam `type="text"` (não "number") porque o input nativo
+// number só aceita ponto decimal e barra a vírgula — no formato brasileiro
+// ("1.250,50", ponto de milhar + vírgula decimal) isso travava o vendedor
+// no meio da digitação. Aqui aceita os dois formatos: tira ponto de milhar
+// e troca vírgula por ponto antes de converter pra número.
+function parseValorBr(v: string): number {
+  return Number(v.replace(/\./g, '').replace(',', '.'))
+}
+
+// Inverso do parseValorBr — usado só pra pré-preencher um campo (ex: valor
+// orçado já salvo) com o mesmo formato que o input agora espera de volta.
+function formatarValorInput(v: number | null | undefined): string {
+  if (v === null || v === undefined) return ''
+  return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
 function iniciais(nome: string): string {
   const partes = nome.trim().split(/\s+/)
   return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
@@ -57,7 +75,7 @@ export function corUrgencia(dias: number | null): string {
   return 'text-green-400'
 }
 
-const ETAPAS_ABERTAS_SUGESTAO = ['novo', 'abordagem', 'negociacao', 'sem_contato']
+const ETAPAS_ABERTAS_SUGESTAO = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 
 // Roteiro simples pro vendedor não ter que decidir sozinho "o que eu faço com
 // esse cliente agora": olha o resultado do último contato, quantas
@@ -256,6 +274,40 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
   )
 }
 
+// Botão de anexar PDF bem visível (antes era só o `<input type="file">` cru
+// do navegador, discreto e fácil de passar batido) — pedido direto do João.
+function AnexoPdfInput({
+  label,
+  nomeArquivo,
+  onSelecionar,
+}: {
+  label: string
+  nomeArquivo?: string
+  onSelecionar: (arquivo: File | null) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-sm text-dark-200 font-medium">{label}</label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf"
+        onChange={(e) => onSelecionar(e.target.files?.[0] ?? null)}
+        className="hidden"
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="flex items-center gap-2 border-2 border-dashed border-gold-600/50 hover:border-gold-500 hover:bg-gold-900/10 rounded-xl px-4 py-3 text-sm text-gold-300 font-medium transition-all"
+      >
+        <Paperclip size={18} />
+        {nomeArquivo ? `📎 ${nomeArquivo}` : 'Clique para anexar o PDF'}
+      </button>
+    </div>
+  )
+}
+
 function ItensPedidoEditor({
   itens,
   onChange,
@@ -289,11 +341,11 @@ function ItensPedidoEditor({
             onChange={(e) => atualizarItem(i, 'descricao', e.target.value)}
             list={catalogo?.length ? 'catalogo-itens-pedido' : undefined}
           />
-          <Input placeholder="Qtd" type="number" value={item.quantidade} onChange={(e) => atualizarItem(i, 'quantidade', e.target.value)} />
+          <Input placeholder="Qtd" type="text" inputMode="decimal" value={item.quantidade} onChange={(e) => atualizarItem(i, 'quantidade', e.target.value)} />
           <Input
-            placeholder="Valor unit."
-            type="number"
-            step="0.01"
+            placeholder="1.250,50"
+            type="text"
+            inputMode="decimal"
             value={item.valorUnitario}
             onChange={(e) => atualizarItem(i, 'valorUnitario', e.target.value)}
           />
@@ -324,7 +376,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   const [resultado, setResultado] = useState('')
   const [observacao, setObservacao] = useState('')
   const [etapaSelecionada, setEtapaSelecionada] = useState(card.etapa)
-  const [valorOrcado, setValorOrcado] = useState(card.valorOrcado?.toString() ?? '')
+  const [valorOrcado, setValorOrcado] = useState(formatarValorInput(card.valorOrcado))
   const [valorFechado, setValorFechado] = useState('')
   const [condicaoPagamento, setCondicaoPagamento] = useState('')
   const [pdfFile, setPdfFile] = useState<File | null>(null)
@@ -398,6 +450,14 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           valorUnitario: item.valorUnitario != null ? String(item.valorUnitario) : '',
         }))
       )
+      // Na Negociação ainda não existe uma venda pra gravar os itens de
+      // verdade (a tabela de itens exige uma venda fechada) — o PDF serve só
+      // pra sugerir o valor orçado automaticamente. Só preenche se o
+      // vendedor ainda não tinha digitado nada, pra não sobrescrever à toa.
+      if (etapaSelecionada === 'negociacao' && !valorOrcado) {
+        const soma = data.itens.reduce((acc, item) => acc + (item.quantidade ?? 1) * (item.valorUnitario ?? 0), 0)
+        if (soma > 0) setValorOrcado(String(soma))
+      }
       toast.success(`${data.itens.length} item(ns) extraído(s) do PDF — confira antes de salvar.`)
     },
     onError(err) {
@@ -486,8 +546,8 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
       funilMensalId: card.funilMensalId,
       versao: card.versao,
       etapa: etapaSelecionada as any,
-      valorOrcado: valorOrcado ? Number(valorOrcado.replace(',', '.')) : undefined,
-      valorFechado: valorFechado ? Number(valorFechado.replace(',', '.')) : undefined,
+      valorOrcado: valorOrcado ? parseValorBr(valorOrcado) : undefined,
+      valorFechado: valorFechado ? parseValorBr(valorFechado) : undefined,
       condicaoPagamento: condicaoPagamento || undefined,
       pdfPedidoPath,
       motivoPerdaCategoria: (motivoCategoria || undefined) as any,
@@ -500,8 +560,8 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
         .filter((i) => i.descricao.trim())
         .map((i) => ({
           descricao: i.descricao.trim(),
-          quantidade: i.quantidade ? Number(i.quantidade.replace(',', '.')) : undefined,
-          valorUnitario: i.valorUnitario ? Number(i.valorUnitario.replace(',', '.')) : undefined,
+          quantidade: i.quantidade ? parseValorBr(i.quantidade) : undefined,
+          valorUnitario: i.valorUnitario ? parseValorBr(i.valorUnitario) : undefined,
         })),
     })
   }
@@ -538,15 +598,15 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
 
     registrarVendaMut.mutate({
       funilMensalId: card.funilMensalId,
-      valorFechado: Number(valorFechado.replace(',', '.')),
+      valorFechado: parseValorBr(valorFechado),
       condicaoPagamento: condicaoPagamento || undefined,
       pdfPedidoPath,
       itens: itensPedido
         .filter((i) => i.descricao.trim())
         .map((i) => ({
           descricao: i.descricao.trim(),
-          quantidade: i.quantidade ? Number(i.quantidade.replace(',', '.')) : undefined,
-          valorUnitario: i.valorUnitario ? Number(i.valorUnitario.replace(',', '.')) : undefined,
+          quantidade: i.quantidade ? parseValorBr(i.quantidade) : undefined,
+          valorUnitario: i.valorUnitario ? parseValorBr(i.valorUnitario) : undefined,
         })),
     })
   }
@@ -586,8 +646,9 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
               <form onSubmit={handleRegistrarVenda} className="space-y-2 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
                 <Input
                   label="Valor da venda (R$) — obrigatório"
-                  type="number"
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="1.250,50"
                   value={valorFechado}
                   onChange={(e) => setValorFechado(e.target.value)}
                 />
@@ -598,12 +659,10 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                   placeholder="À vista, boleto 30/60..."
                 />
                 <div className="flex flex-col gap-1">
-                  <label className="text-sm text-dark-200 font-medium">PDF do pedido/nota — obrigatório</label>
-                  <input
-                    type="file"
-                    accept="application/pdf"
-                    onChange={(e) => handleArquivoSelecionado(e.target.files?.[0] ?? null)}
-                    className="text-sm text-dark-300"
+                  <AnexoPdfInput
+                    label="PDF do pedido/nota — obrigatório"
+                    nomeArquivo={pdfFile?.name}
+                    onSelecionar={handleArquivoSelecionado}
                   />
                   {extrairItensMut.isPending && <p className="text-xs text-gold-400">🤖 Analisando o PDF com IA, aguarde...</p>}
                   {pdfFile && (
@@ -743,11 +802,33 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
 
           <Input
             label="Valor orçado (R$)"
-            type="number"
-            step="0.01"
+            type="text"
+            inputMode="decimal"
+            placeholder="1.250,50"
             value={valorOrcado}
             onChange={(e) => setValorOrcado(e.target.value)}
           />
+
+          {etapaSelecionada === 'negociacao' && (
+            <div className="flex flex-col gap-1">
+              <AnexoPdfInput
+                label="Anexar proposta/orçamento (opcional)"
+                nomeArquivo={pdfFile?.name}
+                onSelecionar={handleArquivoSelecionado}
+              />
+              {extrairItensMut.isPending && <p className="text-xs text-gold-400">🤖 Analisando o PDF com IA, aguarde...</p>}
+              {pdfFile && (
+                <Button type="button" size="sm" variant="secondary" loading={extrairItensMut.isPending} onClick={handleExtrairItens}>
+                  🔄 Extrair itens de novo
+                </Button>
+              )}
+              {(pdfFile || itensPedido.length > 0) && <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} />}
+              <p className="text-xs text-dark-500">
+                A IA lê o PDF e sugere o valor orçado e os itens automaticamente — confira antes de salvar. Os itens só
+                ficam registrados de vez quando o pedido for fechado de verdade.
+              </p>
+            </div>
+          )}
 
           {etapaSelecionada === 'fechado' && card.etapa === 'fechado' && (
             <p className="text-xs text-dark-500 bg-dark-900/40 rounded-lg px-3 py-2">
@@ -760,8 +841,9 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
             <>
               <Input
                 label="Valor fechado (R$) — obrigatório"
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                placeholder="1.250,50"
                 value={valorFechado}
                 onChange={(e) => setValorFechado(e.target.value)}
               />
@@ -772,12 +854,10 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                 placeholder="À vista, boleto 30/60..."
               />
               <div className="flex flex-col gap-1">
-                <label className="text-sm text-dark-200 font-medium">PDF do pedido/nota — obrigatório</label>
-                <input
-                  type="file"
-                  accept="application/pdf"
-                  onChange={(e) => handleArquivoSelecionado(e.target.files?.[0] ?? null)}
-                  className="text-sm text-dark-300"
+                <AnexoPdfInput
+                  label="PDF do pedido/nota — obrigatório"
+                  nomeArquivo={pdfFile?.name}
+                  onSelecionar={handleArquivoSelecionado}
                 />
                 {extrairItensMut.isPending && <p className="text-xs text-gold-400">🤖 Analisando o PDF com IA, aguarde...</p>}
                 {pdfFile && (

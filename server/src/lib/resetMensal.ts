@@ -3,7 +3,7 @@ import { db } from '../db/client.js'
 import { clientes, funilMensal } from '../db/schema.js'
 import { mesReferenciaAtual } from './dataBr.js'
 
-const ETAPAS_ABERTAS = ['novo', 'abordagem', 'negociacao', 'sem_contato']
+const ETAPAS_ABERTAS = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 
 // Roda todo dia (idempotente — só cria o que ainda não existe): garante que
 // todo cliente com vendedor tenha um funil_mensal no mês corrente. Se o funil
