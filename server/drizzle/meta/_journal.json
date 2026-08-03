@@ -134,6 +134,13 @@
       "when": 1785500212394,
       "tag": "0018_lush_venus",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1785778410950,
+      "tag": "0019_same_omega_sentinel",
+      "breakpoints": true
     }
   ]
 }

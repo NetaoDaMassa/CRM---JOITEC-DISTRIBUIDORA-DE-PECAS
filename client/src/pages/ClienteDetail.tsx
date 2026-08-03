@@ -312,6 +312,102 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
   )
 }
 
+// Liga cadastros que são, na prática, o mesmo cliente/empresa com CNPJ
+// diferente (matriz/filial, ou duplicidade de cadastro) — só informativo,
+// não mistura carteira/funil/histórico dos dois. Pedido direto do João.
+function ClientesVinculados({ clienteId, basePath }: { clienteId: number; basePath: string }) {
+  const utils = trpc.useUtils()
+  const { data: vinculados, isLoading } = trpc.vinculos.listar.useQuery({ clienteId })
+  const [buscaAberta, setBuscaAberta] = useState(false)
+  const [busca, setBusca] = useState('')
+  const buscaValida = busca.trim().length >= 2
+  const { data: resultados } = trpc.clientes.list.useQuery({ q: busca, pagina: 1 }, { enabled: buscaValida })
+
+  function invalidar() {
+    utils.vinculos.listar.invalidate({ clienteId })
+  }
+
+  const vincularMut = trpc.vinculos.vincular.useMutation({
+    onSuccess() {
+      toast.success('Clientes vinculados')
+      setBusca('')
+      setBuscaAberta(false)
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const desvincularMut = trpc.vinculos.desvincular.useMutation({
+    onSuccess() {
+      toast.success('Vínculo removido')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const idsJaVinculados = new Set(vinculados?.map((v) => v.id) ?? [])
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-dark-100">🔗 Clientes vinculados</h2>
+        <button onClick={() => setBuscaAberta((v) => !v)} className="text-xs text-gold-400 hover:underline">
+          {buscaAberta ? 'Cancelar' : '+ Vincular a outro cliente'}
+        </button>
+      </div>
+      <p className="text-xs text-dark-500">
+        Pra ligar cadastros que são o mesmo cliente/empresa com CNPJ diferente (matriz e filial, por exemplo).
+      </p>
+
+      {buscaAberta && (
+        <div className="space-y-2">
+          <Input placeholder="Buscar por nome, código ou CNPJ..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+          {buscaValida && (
+            <div className="max-h-48 overflow-y-auto border border-dark-700 rounded-lg divide-y divide-dark-700">
+              {resultados?.items
+                .filter((c) => c.id !== clienteId && !idsJaVinculados.has(c.id))
+                .map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => vincularMut.mutate({ clienteId, clienteVinculadoId: c.id })}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-dark-700/40"
+                  >
+                    <p className="text-dark-100">{c.razaoSocial}</p>
+                    <p className="text-xs text-dark-500">
+                      Cód. {c.codigo}
+                      {c.cnpj ? ` · ${c.cnpj}` : ''}
+                    </p>
+                  </button>
+                ))}
+              {resultados && resultados.items.length === 0 && (
+                <p className="px-3 py-2 text-xs text-dark-500">Nenhum cliente encontrado.</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {isLoading && <p className="text-xs text-dark-500">Carregando...</p>}
+      {!isLoading && !vinculados?.length && <p className="text-xs text-dark-500">Nenhum cliente vinculado ainda.</p>}
+      {vinculados?.map((v) => (
+        <div key={v.vinculoId} className="flex items-center justify-between text-sm bg-dark-900/40 rounded-lg px-3 py-2">
+          <Link to={`${basePath}/clientes/${v.id}`} className="text-dark-100 hover:text-gold-400">
+            {v.razaoSocial} <span className="text-xs text-dark-500">— Cód. {v.codigo}{v.cnpj ? ` · ${v.cnpj}` : ''}</span>
+          </Link>
+          <button onClick={() => desvincularMut.mutate({ vinculoId: v.vinculoId })} className="text-red-400 hover:text-red-300 text-xs">
+            Desvincular
+          </button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function ClienteDetail() {
   const { id } = useParams()
   const { user, empresaAtivaId } = useAuth()
@@ -463,6 +559,8 @@ export default function ClienteDetail() {
           Salvar alterações
         </Button>
       </form>
+
+      <ClientesVinculados clienteId={cliente.id} basePath={basePath} />
 
       <HistoricoVendas clienteId={cliente.id} />
 

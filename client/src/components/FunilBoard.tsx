@@ -131,8 +131,16 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
   }
 
   const termo = busca.trim().toLowerCase()
+  const termoDigitos = termo.replace(/\D/g, '')
   const cardsFiltrados = termo
-    ? cards.filter((c) => c.razaoSocial.toLowerCase().includes(termo) || c.telefoneWhatsapp?.includes(termo))
+    ? cards.filter(
+        (c) =>
+          c.razaoSocial.toLowerCase().includes(termo) ||
+          c.codigo?.toLowerCase().includes(termo) ||
+          (termoDigitos &&
+            ((c.telefoneWhatsapp && c.telefoneWhatsapp.replace(/\D/g, '').includes(termoDigitos)) ||
+              c.telefonesExtras.some((t) => t.numero.replace(/\D/g, '').includes(termoDigitos))))
+      )
     : cards
 
   // Com muitas colunas/cards o board fica bem alto, e a barra de rolagem
@@ -171,7 +179,7 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
   return (
     <div>
       <div className="mb-4 max-w-sm">
-        <Input placeholder="Buscar cliente por nome ou telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <Input placeholder="Buscar cliente por nome, código ou telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
 
       <div ref={topScrollRef} onScroll={sincronizarDoTopo} className="overflow-x-auto overflow-y-hidden h-4 mb-1">

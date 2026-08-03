@@ -294,6 +294,18 @@ export const notifications = sqliteTable('notifications', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Vínculo entre dois cadastros de cliente que são, na prática, a mesma
+// empresa/pessoa (ex: matriz e filial, ou o mesmo cliente com CNPJs
+// diferentes) — só informativo, não mistura carteira/funil/histórico dos
+// dois. Uma linha por par (sem direção — pra saber os vínculos de um
+// cliente, busca por cliente_id OU cliente_vinculado_id igual ao id dele).
+export const clienteVinculos = sqliteTable('cliente_vinculos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+  clienteVinculadoId: integer('cliente_vinculado_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
 // Pedido do vendedor pra descartar (excluir) ou transferir um cliente da
 // própria carteira — fica pendente até o admin aprovar ou recusar na aba de
 // Aprovações. Se aprovado, a ação (exclusão ou transferência) é aplicada de
