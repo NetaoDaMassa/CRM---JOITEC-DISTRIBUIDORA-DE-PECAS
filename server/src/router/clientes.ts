@@ -51,23 +51,34 @@ export const clientesRouter = router({
       const termo = input.q?.trim()
       if (termo) {
         const like_ = `%${termo}%`
-        const cnpjLimpo = limparCnpj(termo)
         const condicoes = [
           like(clientes.razaoSocial, like_),
           like(clientes.codigo, like_),
-          like(clientes.telefoneWhatsapp, like_),
           like(clientes.estado, like_),
           like(clientes.cidade, like_),
-          // Tabelas/colunas em texto puro (não interpoladas via referência de
-          // coluna do Drizzle) — dentro de um `sql` bruto, uma coluna de
-          // outra tabela que não entrou no `.from()`/`.join()` da query não
-          // fica qualificada certo (virava `clientes.cliente_id`, coluna que
-          // não existe, e quebrava a busca com 500 sempre que havia termo).
-          sql`exists (select 1 from cliente_telefones where cliente_telefones.cliente_id = clientes.id and cliente_telefones.numero like ${like_})`,
         ]
-        // Só filtra por CNPJ se o termo tiver algum dígito — senão "%%" bate
-        // com qualquer cliente que tenha CNPJ preenchido, poluindo a busca.
-        if (cnpjLimpo) condicoes.push(like(clientes.cnpj, `%${cnpjLimpo}%`))
+
+        // Telefone salvo tem de tudo (hífen, espaço, parênteses — "2669-9663"),
+        // mas o vendedor digita só números. Comparando dígito-a-dígito dos dois
+        // lados (removendo pontuação da coluna na hora da query) o telefone bate
+        // independente de como foi salvo — antes, batia só se a formatação
+        // digitada fosse idêntica à salva, então quase nunca achava nada.
+        const termoDigitos = termo.replace(/\D/g, '')
+        // Só entra nesse ramo (CNPJ/telefone por dígito) se o termo for só
+        // números/pontuação de telefone — um código como "C000001" tem letra e
+        // fica de fora, senão os dígitos batiam em qualquer CNPJ que contivesse
+        // aquela sequência em algum lugar, poluindo a busca por código.
+        const pareceNumeroOuCnpj = /^[\d.\-/() ]+$/.test(termo)
+        if (pareceNumeroOuCnpj && termoDigitos) {
+          const digitosLike = `%${termoDigitos}%`
+          condicoes.push(
+            sql`replace(replace(replace(replace(${clientes.telefoneWhatsapp},'-',''),' ',''),'(',''),')','') like ${digitosLike}`
+          )
+          condicoes.push(
+            sql`exists (select 1 from cliente_telefones where cliente_telefones.cliente_id = clientes.id and replace(replace(replace(replace(cliente_telefones.numero,'-',''),' ',''),'(',''),')','') like ${digitosLike})`
+          )
+          condicoes.push(like(clientes.cnpj, digitosLike))
+        }
         filtros.push(or(...condicoes)!)
       }
 
