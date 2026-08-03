@@ -34,7 +34,12 @@ export async function importarClientesCsv(
 ): Promise<ImportFileResult> {
   const wb = XLSX.read(buffer, { type: 'buffer' })
   const sheet = wb.Sheets[wb.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: false })
+  // `raw: false` pedia pro xlsx formatar o valor como o Excel exibiria — pra
+  // números de 14 dígitos (CNPJ) isso vira notação científica ("5.5E+13"),
+  // destruindo o valor. `raw: true` devolve o número puro do JS, que o
+  // `getCol` já converte certo com `String(...)` (sem notação científica até
+  // 1e21, bem acima de qualquer CNPJ/telefone/código real).
+  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: true })
 
   const vendedores = await db.query.users.findMany({ where: and(eq(users.role, 'vendor'), eq(users.empresaId, empresaId)) })
   const vendedorPorNome = new Map(vendedores.map((v) => [v.name.trim().toUpperCase(), v]))

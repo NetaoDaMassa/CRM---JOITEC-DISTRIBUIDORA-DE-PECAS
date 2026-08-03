@@ -941,7 +941,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
         atualizarMut.mutate({
           id: card.clienteId,
           versao: card.clienteVersao,
-          ...(user?.role === 'admin' ? { cnpj: cnpj || undefined } : {}),
+          cnpj: cnpj || undefined,
           inscricaoEstadual: inscricaoEstadual || undefined,
           cidade: cidade || undefined,
           estado: estado || undefined,
@@ -953,7 +953,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
     >
       <h3 className="text-sm font-semibold text-dark-100">Completar dados do cliente</h3>
       <div className="grid grid-cols-2 gap-2">
-        {user?.role === 'admin' && <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />}
+        <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
         <Input label="Inscrição Estadual" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} />
         <Input label="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
         <Input label="Estado (UF)" value={estado} onChange={(e) => setEstado(e.target.value.toUpperCase())} maxLength={2} />
