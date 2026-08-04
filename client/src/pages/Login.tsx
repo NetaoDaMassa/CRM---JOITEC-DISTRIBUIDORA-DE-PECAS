@@ -6,17 +6,44 @@ import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
+import Select from '../components/ui/Select'
+
+// Joitec Automação é uma divisão da mesma marca Joitec — reaproveita a logo
+// padrão, sem arte própria (mesma regra já usada no Sidebar).
+const LOGO_POR_EMPRESA: Record<string, string> = {
+  joitec: '/logos/joitec.png',
+  'joitec-automacao': '/logos/joitec.png',
+  'odin-tubos': '/logos/odin-tubos.png',
+  'odin-compressores': '/logos/odin-compressores.png',
+}
 
 export default function Login() {
+  const [empresaId, setEmpresaId] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
-  const { login } = useAuth()
+  const { login, trocarEmpresa } = useAuth()
   const navigate = useNavigate()
+
+  const { data: empresas } = trpc.empresas.listPublico.useQuery()
+  const empresaSelecionada = empresas?.find((e) => String(e.id) === empresaId)
+  const logo = empresaSelecionada ? LOGO_POR_EMPRESA[empresaSelecionada.slug] : undefined
 
   const loginMut = trpc.auth.login.useMutation({
     onSuccess(data) {
+      // Confirma que o usuário realmente pertence à empresa escolhida no
+      // seletor — o superAdmin pode entrar em qualquer uma, o resto só na
+      // própria (evita logar achando que está na empresa errada).
+      if (!data.user.superAdmin && data.user.empresaId !== Number(empresaId)) {
+        toast.error('Esse usuário não pertence à empresa selecionada.')
+        return
+      }
+
       login(data.token, data.user)
+      if (data.user.superAdmin && data.user.empresaId !== Number(empresaId)) {
+        trocarEmpresa(Number(empresaId))
+        return
+      }
       if (data.user.senhaTrocarNoLogin) {
         navigate('/trocar-senha')
       } else {
@@ -30,6 +57,7 @@ export default function Login() {
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!empresaId) return toast.error('Selecione a empresa')
     if (!username || !password) return toast.error('Preencha todos os campos')
     loginMut.mutate({ username, password })
   }
@@ -49,13 +77,26 @@ export default function Login() {
           style={{ boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(36,175,244,0.05)' }}
         >
           <div className="flex flex-col items-center gap-5 mb-8">
-            <div className="text-center">
-              <h1 className="font-heading text-lg text-gold-400 font-bold">Joitec CRM</h1>
-              <p className="text-dark-400 text-sm">Entre com seu usuário e senha</p>
-            </div>
+            {logo ? (
+              <div className="bg-white rounded-xl px-4 py-3 flex items-center justify-center">
+                <img src={logo} alt={empresaSelecionada?.nome} className="h-12 w-auto object-contain" />
+              </div>
+            ) : (
+              <div className="text-center">
+                <h1 className="font-heading text-lg text-gold-400 font-bold">Grupo Odin · Joitec CRM</h1>
+              </div>
+            )}
+            <p className="text-dark-400 text-sm -mt-2">Entre com seu usuário e senha</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            <Select
+              label="Empresa"
+              placeholder="Selecione a empresa..."
+              value={empresaId}
+              onChange={(e) => setEmpresaId(e.target.value)}
+              options={(empresas ?? []).map((e) => ({ value: e.id, label: e.nome }))}
+            />
             <Input
               label="Usuário"
               placeholder="seu.usuario"
