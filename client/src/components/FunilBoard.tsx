@@ -1137,6 +1137,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const [email, setEmail] = useState(card.email ?? '')
   const [nomeContato, setNomeContato] = useState(card.nomeContato ?? '')
   const [statusFiscal, setStatusFiscal] = useState(card.statusFiscal ?? '')
+  const [observacoes, setObservacoes] = useState(card.observacoes ?? '')
 
   const atualizarMut = trpc.clientes.update.useMutation({
     onSuccess() {
@@ -1193,6 +1194,12 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
             </span>
           </p>
         </div>
+        {card.observacoes && (
+          <p className="text-xs text-dark-500 mt-2 whitespace-pre-wrap">
+            <span className="font-medium text-dark-400">Anotações: </span>
+            {card.observacoes}
+          </p>
+        )}
         {!!card.telefonesExtras.length && (
           <p className="text-xs text-dark-500 mt-1">
             Outros telefones:{' '}
@@ -1240,6 +1247,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           email: email || undefined,
           nomeContato: nomeContato || undefined,
           statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | undefined,
+          observacoes: observacoes || undefined,
         })
       }}
       className="space-y-2"
@@ -1264,6 +1272,13 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           ]}
         />
       </div>
+      <Textarea
+        label="Anotações sobre o cliente"
+        rows={2}
+        value={observacoes}
+        onChange={(e) => setObservacoes(e.target.value)}
+        placeholder="Contexto livre — indicação, preferências, histórico relevante..."
+      />
       <TelefonesExtras
         clienteId={card.clienteId}
         telefones={card.telefonesExtras}

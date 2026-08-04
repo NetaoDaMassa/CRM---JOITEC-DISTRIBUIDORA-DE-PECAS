@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
-import { Input } from '../components/ui/Input'
+import { Input, Textarea } from '../components/ui/Input'
 import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
 import ContatoButtons from '../components/ui/ContatoButtons'
@@ -433,6 +433,7 @@ export default function ClienteDetail() {
   const [email, setEmail] = useState('')
   const [nomeContato, setNomeContato] = useState('')
   const [statusFiscal, setStatusFiscal] = useState('')
+  const [observacoes, setObservacoes] = useState('')
   const [ticketMedio, setTicketMedio] = useState('')
   const [carregado, setCarregado] = useState(false)
 
@@ -443,6 +444,7 @@ export default function ClienteDetail() {
     setEmail(cliente.email ?? '')
     setNomeContato(cliente.nomeContato ?? '')
     setStatusFiscal(cliente.statusFiscal ?? '')
+    setObservacoes(cliente.observacoes ?? '')
     setTicketMedio(cliente.ticketMedioHistorico?.toString() ?? '')
     setCarregado(true)
   }
@@ -506,6 +508,7 @@ export default function ClienteDetail() {
       email,
       nomeContato,
       statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | undefined,
+      observacoes: observacoes || undefined,
       ticketMedioHistorico: ticketMedio ? Number(ticketMedio.replace(',', '.')) : undefined,
     })
   }
@@ -532,13 +535,6 @@ export default function ClienteDetail() {
         </div>
       </div>
 
-      {cliente.observacoes && (
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-          <h2 className="text-sm font-semibold text-dark-100 mb-2">📝 Observações</h2>
-          <p className="text-sm text-dark-300 whitespace-pre-wrap">{cliente.observacoes}</p>
-        </div>
-      )}
-
       {ehOdinCompressores && <MaquinasCliente clienteId={cliente.id} />}
 
       <form onSubmit={handleSubmit} className="space-y-4 bg-dark-800 border border-dark-600 rounded-2xl p-5">
@@ -558,6 +554,13 @@ export default function ClienteDetail() {
             { value: 'isento', label: 'Isento' },
             { value: 'normal', label: 'Normal' },
           ]}
+        />
+        <Textarea
+          label="Anotações sobre o cliente"
+          rows={3}
+          value={observacoes}
+          onChange={(e) => setObservacoes(e.target.value)}
+          placeholder="Contexto livre — indicação, preferências, histórico relevante..."
         />
         <TelefonesExtras
           clienteId={cliente.id}

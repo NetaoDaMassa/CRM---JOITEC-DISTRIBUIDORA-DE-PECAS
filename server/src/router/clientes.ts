@@ -299,6 +299,7 @@ export const clientesRouter = router({
         email: z.string().optional(),
         nomeContato: z.string().optional(),
         statusFiscal: z.enum(['isento', 'normal']).optional(),
+        observacoes: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
       })
     )
