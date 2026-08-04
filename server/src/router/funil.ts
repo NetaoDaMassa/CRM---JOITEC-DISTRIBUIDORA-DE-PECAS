@@ -103,8 +103,12 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     const funilB = funilPorClienteId.get(v.clienteVinculadoId)
 
     if (funilA && funilB) {
-      // Os dois têm card aqui — funde no de id menor (o mais antigo).
-      const [primario, secundario] = funilA.id <= funilB.id ? [funilA, funilB] : [funilB, funilA]
+      // Os dois têm card aqui — funde no card de quem vinculou primeiro
+      // (`clienteId` é sempre o cliente de onde o vendedor clicou "vincular",
+      // `clienteVinculadoId` é o que ele buscou e escolheu) — não no mais
+      // antigo, pra não trocar qual card fica visível toda hora que alguém
+      // adiciona um novo vínculo.
+      const [primario, secundario] = [funilA, funilB]
       if (idsFundidos.has(primario.id)) continue // já é secundário de outro par — evita encadear fusões
       idsFundidos.add(secundario.id)
       const lista =
