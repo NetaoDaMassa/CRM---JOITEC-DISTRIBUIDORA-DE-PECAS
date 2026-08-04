@@ -38,6 +38,7 @@ export default function AdminReports() {
   const { data: curvaAbc } = trpc.reports.curvaAbc.useQuery(periodo)
   const { data: positivacao } = trpc.reports.positivacaoCarteira.useQuery(periodo)
   const { data: contatos } = trpc.reports.contatosPorCliente.useQuery(periodo)
+  const { data: ligacoesEfetividade } = trpc.reports.ligacoesEfetividade.useQuery(periodo)
   const { data: vendas } = trpc.reports.vendas.useQuery(periodo)
   const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery({ vendedorId: periodo.vendedorId })
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery({ vendedorId: periodo.vendedorId })
@@ -150,6 +151,42 @@ export default function AdminReports() {
             </div>
           ))}
           {!contatos?.length && <p className="text-sm text-dark-500 py-2">Nenhum contato registrado no período.</p>}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">Ligações: tentativa x efetiva (por vendedor)</h2>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                'ligacoes-tentativa-x-efetiva.csv',
+                paraCsv(
+                  [
+                    { chave: 'nome', rotulo: 'Vendedor' },
+                    { chave: 'tentativas', rotulo: 'Tentativas' },
+                    { chave: 'efetivas', rotulo: 'Efetivas' },
+                    { chave: 'percentualEfetividade', rotulo: '% efetividade' },
+                  ],
+                  ligacoesEfetividade ?? []
+                )
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-dark-500 mb-2">
+          Efetiva = durou pelo menos {15}s (ligação automática via GoTo) ou foi marcada como "respondeu" (registro manual).
+        </p>
+        <div className="divide-y divide-dark-700">
+          {ligacoesEfetividade?.map((v) => (
+            <div key={v.vendedorId} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-dark-200">{v.nome}</span>
+              <span className="text-dark-400">
+                {v.efetivas} efetiva(s) de {v.tentativas} tentativa(s) · {v.percentualEfetividade.toFixed(1)}%
+              </span>
+            </div>
+          ))}
+          {!ligacoesEfetividade?.length && <p className="text-sm text-dark-500 py-2">Nenhuma ligação registrada no período.</p>}
         </div>
       </section>
 

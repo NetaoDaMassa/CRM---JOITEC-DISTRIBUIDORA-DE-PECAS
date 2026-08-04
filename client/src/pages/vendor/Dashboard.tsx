@@ -140,6 +140,10 @@ export default function VendorDashboard() {
           </span>
         </div>
         <BarraProgresso percentual={data?.percentualMetaLigacoes ?? 0} destaque={(data?.percentualMetaLigacoes ?? 0) >= 100} />
+        <p className="text-xs text-dark-500 mt-1.5">
+          {data?.ligacoesEfetivasHoje ?? 0} efetiva{(data?.ligacoesEfetivasHoje ?? 0) !== 1 ? 's' : ''} de {data?.ligacoesHoje ?? 0} tentativa
+          {(data?.ligacoesHoje ?? 0) !== 1 ? 's' : ''} ({formatarPercentual(data?.percentualEfetividadeHoje)}%)
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

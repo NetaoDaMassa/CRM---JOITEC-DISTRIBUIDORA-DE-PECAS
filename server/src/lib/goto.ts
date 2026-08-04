@@ -323,6 +323,8 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
     funilMensalId: funil.id,
     vendedorId: funil.vendedorId,
     tipo: 'ligacao',
+    duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
+    efetiva,
     observacao: efetiva
       ? `Ligação registrada automaticamente pela integração GoTo Connect.${duracaoTexto}`
       : `Ligação muito curta ou não atendida — confirme o motivo (não atendeu, caiu, número errado etc.).${duracaoTexto}`,

@@ -223,6 +223,46 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <h2 className="text-sm font-semibold text-dark-100 mb-3">📞 Ranking de ligações (hoje) — tentativa x efetiva</h2>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
+                <th className="text-left font-semibold py-2">Vendedor</th>
+                <th className="text-right font-semibold py-2">Tentativas</th>
+                <th className="text-right font-semibold py-2">Efetivas</th>
+                <th className="text-right font-semibold py-2">% efetiva</th>
+                <th className="text-right font-semibold py-2">Meta</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-dark-700/60">
+              {data?.rankingLigacoes.map((v) => (
+                <tr key={v.id}>
+                  <td className="py-2">
+                    <div className="flex items-center gap-2">
+                      <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoesHoje} size="sm" />
+                      <span className="text-dark-100">{v.nome}</span>
+                    </div>
+                  </td>
+                  <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesHoje}</td>
+                  <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
+                  <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
+                  <td className={`text-right font-mono tabular-nums ${v.bateuMetaLigacoesHoje ? 'text-green-400 font-semibold' : 'text-dark-400'}`}>
+                    {v.ligacoesHoje}/{v.metaLigacoesDia} {v.bateuMetaLigacoesHoje ? '✅' : ''}
+                  </td>
+                </tr>
+              ))}
+              {!data?.rankingLigacoes.length && (
+                <tr>
+                  <td colSpan={5} className="text-xs text-dark-500 py-2">Nenhum vendedor ativo.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
           <h2 className="text-sm font-semibold text-dark-100 mb-3">📈 Vendas da equipe (últimos 14 dias)</h2>

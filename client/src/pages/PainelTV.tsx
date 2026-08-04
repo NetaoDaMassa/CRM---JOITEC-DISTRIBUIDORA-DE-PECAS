@@ -393,7 +393,9 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
         <thead>
           <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
             <th className="text-left font-semibold py-2">Vendedor</th>
-            <th className="text-right font-semibold py-2">Ligações hoje</th>
+            <th className="text-right font-semibold py-2">Tentativas hoje</th>
+            <th className="text-right font-semibold py-2">Efetivas hoje</th>
+            <th className="text-right font-semibold py-2">% efetiva</th>
             <th className="text-right font-semibold py-2">Meta</th>
             <th className="text-right font-semibold py-2">% da meta</th>
             <th className="text-right font-semibold py-2">Ligações (mês)</th>
@@ -411,6 +413,8 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
                 </div>
               </td>
               <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesHoje}</td>
+              <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
+              <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
               <td className="text-right font-mono tabular-nums text-dark-400">{v.metaLigacoesDia}</td>
               <td
                 className={`text-right font-mono tabular-nums ${

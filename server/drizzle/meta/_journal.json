@@ -169,6 +169,13 @@
       "when": 1785869049895,
       "tag": "0023_lumpy_silvermane",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1785880185680,
+      "tag": "0024_supreme_thing",
+      "breakpoints": true
     }
   ]
 }

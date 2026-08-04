@@ -270,6 +270,11 @@ export const registroContato = sqliteTable('registro_contato', {
   tipo: text('tipo', { enum: ['ligacao', 'whatsapp', 'email', 'visita'] }).notNull(),
   resultado: text('resultado', { enum: ['respondeu', 'nao_respondeu', 'numero_errado'] }),
   observacao: text('observacao').notNull(),
+  // Só preenchido pra tipo='ligacao' — duração real (GoTo Connect) ou nula
+  // quando registrada manualmente sem cronômetro. `efetiva` é a métrica que
+  // importa pros relatórios: >=15s (GoTo) ou resultado="respondeu" (manual).
+  duracaoSegundos: integer('duracao_segundos'),
+  efetiva: integer('efetiva', { mode: 'boolean' }),
   dataHora: text('data_hora').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
 })

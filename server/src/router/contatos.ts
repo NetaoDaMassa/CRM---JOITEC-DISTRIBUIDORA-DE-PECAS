@@ -61,6 +61,9 @@ export const contatosRouter = router({
         vendedorId: ctx.user.id,
         tipo: input.tipo,
         resultado: input.resultado,
+        // Registro manual não tem cronômetro — "efetiva" aqui vem de o
+        // vendedor ter marcado que a pessoa atendeu/respondeu.
+        efetiva: input.tipo === 'ligacao' ? input.resultado === 'respondeu' : null,
         observacao: input.observacao,
       })
 
@@ -95,7 +98,11 @@ export const contatosRouter = router({
 
       await db
         .update(registroContato)
-        .set({ observacao: input.observacao, resultado: input.resultado })
+        .set({
+          observacao: input.observacao,
+          resultado: input.resultado,
+          efetiva: contato.tipo === 'ligacao' ? input.resultado === 'respondeu' : contato.efetiva,
+        })
         .where(eq(registroContato.id, input.id))
       return { success: true }
     }),

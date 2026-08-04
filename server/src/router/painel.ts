@@ -141,6 +141,22 @@ export const painelRouter = router({
             )
           )
 
+        // "Tentativa" = toda ligação registrada (ligacoesHoje acima).
+        // "Efetiva" = durou pelo menos o mínimo configurado (GoTo) ou foi
+        // marcada como respondida manualmente — subconjunto de tentativas.
+        const [{ ligacoesEfetivasHoje }] = await db
+          .select({ ligacoesEfetivasHoje: count() })
+          .from(registroContato)
+          .where(
+            and(
+              eq(registroContato.vendedorId, v.id),
+              eq(registroContato.tipo, 'ligacao'),
+              eq(registroContato.efetiva, true),
+              between(registroContato.dataHora, inicioHoje, fimHoje),
+              isNull(registroContato.deletedAt)
+            )
+          )
+
         const [{ qtdVendasMes, valorFechadoMes }] = await db
           .select({ qtdVendasMes: count(), valorFechadoMes: sum(vendas.valorFechado).mapWith(Number) })
           .from(vendas)
@@ -169,6 +185,8 @@ export const painelRouter = router({
           nome: v.name,
           fotoUrl: v.fotoUrl,
           ligacoesHoje,
+          ligacoesEfetivasHoje,
+          percentualEfetividadeHoje: ligacoesHoje > 0 ? Math.round((ligacoesEfetivasHoje / ligacoesHoje) * 1000) / 10 : 0,
           metaLigacoesDia,
           bateuMetaLigacoesHoje: ligacoesHoje >= metaLigacoesDia,
           percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 1000) / 10 : 0,
@@ -354,6 +372,19 @@ export const painelRouter = router({
         )
       )
 
+    const [{ ligacoesEfetivasHoje }] = await db
+      .select({ ligacoesEfetivasHoje: count() })
+      .from(registroContato)
+      .where(
+        and(
+          eq(registroContato.vendedorId, vendedorId),
+          eq(registroContato.tipo, 'ligacao'),
+          eq(registroContato.efetiva, true),
+          between(registroContato.dataHora, inicioHoje, fimHoje),
+          isNull(registroContato.deletedAt)
+        )
+      )
+
     const [{ vendasHojeQtd, vendasHojeValor }] = await db
       .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
@@ -451,6 +482,8 @@ export const painelRouter = router({
       vendasHoje: { quantidade: vendasHojeQtd, valor: vendasHojeValorNum, ticketMedio: vendasHojeQtd > 0 ? vendasHojeValorNum / vendasHojeQtd : 0 },
       vendasMes: { quantidade: vendasMesQtd, valor: valorMes, ticketMedio: vendasMesQtd > 0 ? valorMes / vendasMesQtd : 0 },
       ligacoesHoje,
+      ligacoesEfetivasHoje,
+      percentualEfetividadeHoje: ligacoesHoje > 0 ? Math.round((ligacoesEfetivasHoje / ligacoesHoje) * 1000) / 10 : 0,
       metaLigacoesDia,
       percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 1000) / 10 : 0,
       metaFaturamento: meta?.metaFaturamento ?? null,

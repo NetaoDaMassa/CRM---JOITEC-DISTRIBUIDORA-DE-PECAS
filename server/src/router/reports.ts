@@ -101,6 +101,42 @@ export const reportsRouter = router({
     return linhas
   }),
 
+  // Tentativa = toda ligação registrada no período (manual ou automática via
+  // GoTo). Efetiva = subconjunto que durou pelo menos o mínimo configurado
+  // (GoTo) ou foi marcada como respondida manualmente — ver `efetiva` em
+  // registro_contato. Agrupado por vendedor pra comparar quem liga muito mas
+  // fala pouco (tentativas altas, % efetiva baixo) de quem liga menos mas
+  // conversa de verdade.
+  ligacoesEfetividade: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [
+      eq(registroContato.tipo, 'ligacao' as const),
+      between(registroContato.dataHora, inicio, fim),
+      isNull(registroContato.deletedAt),
+      eq(users.empresaId, ctx.empresaId),
+    ]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, registroContato.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+
+    const linhas = await db
+      .select({
+        vendedorId: registroContato.vendedorId,
+        nome: users.name,
+        tentativas: count(registroContato.id).mapWith(Number),
+        efetivas: sql<number>`sum(case when ${registroContato.efetiva} = 1 then 1 else 0 end)`.mapWith(Number),
+      })
+      .from(registroContato)
+      .innerJoin(users, eq(users.id, registroContato.vendedorId))
+      .where(and(...filtros))
+      .groupBy(registroContato.vendedorId)
+      .orderBy(desc(count(registroContato.id)))
+
+    return linhas.map((l) => ({
+      ...l,
+      percentualEfetividade: l.tentativas > 0 ? Math.round((l.efetivas / l.tentativas) * 1000) / 10 : 0,
+    }))
+  }),
+
   vendas: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
