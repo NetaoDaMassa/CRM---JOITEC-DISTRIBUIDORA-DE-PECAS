@@ -243,11 +243,15 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
   if (callIdsProcessados.has(callId)) return
   callIdsProcessados.add(callId)
 
-  const duracaoMinimaMs = (await getConfigNumero('goto_duracao_minima_segundos', 30)) * 1000
-  if (duracaoMs !== null && duracaoMs < duracaoMinimaMs) {
-    console.log(`[goto] ligação de ${Math.round(duracaoMs / 1000)}s ignorada (abaixo do mínimo configurado)`)
-    return
-  }
+  // Ligação "efetiva" precisa durar pelo menos o mínimo configurado (padrão
+  // 15s) — abaixo disso (ou sem duração medida por falha na captação do
+  // STARTING) provavelmente não deu tempo de falar com ninguém. Em vez de
+  // simplesmente descartar (o vendedor nunca saberia que uma tentativa
+  // aconteceu), registra mesmo assim como pendente — mesmo padrão já usado
+  // pro WhatsApp — pra aparecer no card e o vendedor completar o motivo
+  // (não atendeu, caiu, número errado etc.) depois.
+  const duracaoMinimaMs = (await getConfigNumero('goto_duracao_minima_segundos', 15)) * 1000
+  const efetiva = duracaoMs === null || duracaoMs >= duracaoMinimaMs
 
   const digitos = soDigitos(numeroExterno)
   const sufixo = digitos.slice(-8)
@@ -282,11 +286,14 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
   })
   if (!funil) return
 
+  const duracaoTexto = duracaoMs !== null ? ` (duração: ${Math.round(duracaoMs / 1000)}s)` : ''
   await db.insert(registroContato).values({
     funilMensalId: funil.id,
     vendedorId: funil.vendedorId,
     tipo: 'ligacao',
-    observacao: 'Ligação registrada automaticamente pela integração GoTo Connect.',
+    observacao: efetiva
+      ? `Ligação registrada automaticamente pela integração GoTo Connect.${duracaoTexto}`
+      : `Ligação muito curta ou não atendida — confirme o motivo (não atendeu, caiu, número errado etc.).${duracaoTexto}`,
   })
   await db
     .update(funilMensal)

@@ -17,6 +17,12 @@ services:
       # Opcional — extração de itens do PDF do pedido via IA. Se vazio, o recurso
       # de extração automática fica desabilitado (o resto do CRM funciona normal).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Opcional — integração GoTo Connect (registro automático de ligações).
+      # Se vazio, o botão "Conectar com a GoTo" em Configurações fica
+      # indisponível, mas o resto do CRM funciona normal.
+      GOTO_CLIENT_ID: ${GOTO_CLIENT_ID:-}
+      GOTO_CLIENT_SECRET: ${GOTO_CLIENT_SECRET:-}
+      GOTO_REDIRECT_URI: ${GOTO_REDIRECT_URI:-}
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads

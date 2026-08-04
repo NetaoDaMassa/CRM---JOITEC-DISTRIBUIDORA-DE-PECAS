@@ -9,7 +9,7 @@ const CHAVES_NUMERICAS = {
   meta_ligacoes_dia_padrao: 25,
   dias_sem_contato_alerta: 7,
   backup_retencao_dias: 30,
-  goto_duracao_minima_segundos: 30,
+  goto_duracao_minima_segundos: 15,
   // Horário de expediente (seg-sex — fim de semana não trabalha, já fixo no
   // resto do sistema). Guardado como hora/minuto separados (em vez de uma
   // string "HH:MM") pra caber no mesmo esquema chave/valor numérico já usado
