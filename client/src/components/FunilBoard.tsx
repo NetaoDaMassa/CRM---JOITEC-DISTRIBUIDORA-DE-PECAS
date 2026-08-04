@@ -558,6 +558,29 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     })
   }
 
+  // Em Novo/Abordagem o vendedor tinha que abrir o card 2x: uma pra
+  // registrar o contato, outra pra mover a etapa. Esse botão junta os dois
+  // num clique só — só existe pra essas duas etapas porque as seguintes
+  // (fechado, perdido, consumidor final) exigem campo extra obrigatório que
+  // não cabe nesse formulário simples.
+  const PROXIMA_ETAPA_RAPIDA: Record<string, string> = { novo: 'abordagem', abordagem: 'interessado' }
+  async function handleRegistrarEAvancar() {
+    if (!observacao.trim()) return toast.error('A observação é obrigatória.')
+    const proxima = PROXIMA_ETAPA_RAPIDA[card.etapa]
+    if (!proxima) return
+    try {
+      await registrarMut.mutateAsync({
+        funilMensalId: card.funilMensalId,
+        tipo: tipo as any,
+        resultado: (resultado || undefined) as any,
+        observacao,
+      })
+      moverMut.mutate({ funilMensalId: card.funilMensalId, versao: card.versao, etapa: proxima as any })
+    } catch {
+      // erro já mostrado pelo onError do registrarMut
+    }
+  }
+
   async function handleMover(e: React.FormEvent) {
     e.preventDefault()
     let pdfPedidoPath: string | undefined
@@ -893,9 +916,22 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
             value={observacao}
             onChange={(e) => setObservacao(e.target.value)}
           />
-          <Button type="submit" size="sm" loading={registrarMut.isPending}>
-            Salvar contato
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" size="sm" loading={registrarMut.isPending && !moverMut.isPending}>
+              Salvar contato
+            </Button>
+            {PROXIMA_ETAPA_RAPIDA[card.etapa] && (
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                loading={registrarMut.isPending || moverMut.isPending}
+                onClick={handleRegistrarEAvancar}
+              >
+                Salvar e mover para {ETAPA_LABEL[PROXIMA_ETAPA_RAPIDA[card.etapa]]}
+              </Button>
+            )}
+          </div>
         </form>
 
         <form onSubmit={handleMover} className="space-y-3 border-t border-dark-700 pt-4">
