@@ -125,6 +125,7 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
   const [cardAbertoId, setCardAbertoId] = useState<number | null>(null)
   const cardAberto = cards.find((c) => c.funilMensalId === cardAbertoId) ?? null
   const [busca, setBusca] = useState('')
+  const [ordenacao, setOrdenacao] = useState('padrao')
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -148,6 +149,26 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
               (c.cnpj && c.cnpj.includes(termoDigitos))))
       )
     : cards
+
+  // Ordenação dentro de cada coluna — "padrão" mantém a ordem que já vem do
+  // backend (mais antigo sem contato primeiro, ver buscarFunilDoVendedor).
+  // As demais opções reordenam só a visualização, não mudam nada no banco.
+  const cardsOrdenados = [...cardsFiltrados].sort((a, b) => {
+    switch (ordenacao) {
+      case 'nome':
+        return a.razaoSocial.localeCompare(b.razaoSocial, 'pt-BR')
+      case 'mais_dias_sem_contato':
+        // Nunca contatado (null) é o caso mais urgente — mesma convenção já
+        // usada na "Fila de hoje" (server/src/router/funil.ts).
+        return (b.diasSemContato ?? Infinity) - (a.diasSemContato ?? Infinity)
+      case 'mais_contatos':
+        return b.contatos.length - a.contatos.length
+      case 'mais_venda':
+        return b.valorFechadoTotal - a.valorFechadoTotal
+      default:
+        return 0
+    }
+  })
 
   // Com muitas colunas/cards o board fica bem alto, e a barra de rolagem
   // horizontal nativa (embaixo do board) só aparece depois de rolar a
@@ -184,8 +205,24 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
 
   return (
     <div>
-      <div className="mb-4 max-w-sm">
-        <Input placeholder="Buscar cliente por nome, código ou telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div className="max-w-sm flex-1 min-w-[220px]">
+          <Input placeholder="Buscar cliente por nome, código ou telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        <div className="w-56">
+          <Select
+            label="Ordenar por"
+            value={ordenacao}
+            onChange={(e) => setOrdenacao(e.target.value)}
+            options={[
+              { value: 'padrao', label: 'Padrão' },
+              { value: 'nome', label: 'Nome (A-Z)' },
+              { value: 'mais_dias_sem_contato', label: 'Mais dias sem contato' },
+              { value: 'mais_contatos', label: 'Mais contatos' },
+              { value: 'mais_venda', label: 'Maior valor fechado' },
+            ]}
+          />
+        </div>
       </div>
 
       <div ref={topScrollRef} onScroll={sincronizarDoTopo} className="overflow-x-auto overflow-y-hidden h-4 mb-1">
@@ -194,7 +231,7 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
 
       <div ref={boardRef} onScroll={sincronizarDoBoard} className="flex gap-4 overflow-x-auto pb-4">
         {ETAPAS.map((etapa) => {
-          const colCards = cardsFiltrados.filter((c) => c.etapa === etapa.value)
+          const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value)
           return (
             <div key={etapa.value} className="shrink-0 w-72">
               <div className="flex items-center gap-2 mb-3">
