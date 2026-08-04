@@ -17,14 +17,20 @@ export async function transferirCliente(clienteId: number, novoVendedorId: numbe
   await db.update(clientes).set({ vendedorAtualId: novoVendedorId }).where(eq(clientes.id, clienteId))
   await db.insert(carteiraHistorico).values({ clienteId, vendedorId: novoVendedorId })
 
+  // O card do mês precisa acompanhar a transferência — senão o cliente some
+  // do Kanban de todo mundo (o vendedor antigo não devia mais ver, e o novo
+  // nunca chegava a ver, já que o card ficava com o vendedor_id de quem não
+  // é mais o dono da carteira).
   const funilExistente = await db.query.funilMensal.findFirst({
-    where: and(eq(funilMensal.clienteId, clienteId), eq(funilMensal.mesReferencia, mesAtual)),
+    where: and(eq(funilMensal.clienteId, clienteId), eq(funilMensal.mesReferencia, mesAtual), isNull(funilMensal.deletedAt)),
   })
-  if (!funilExistente) {
+  if (funilExistente) {
+    if (funilExistente.vendedorId !== novoVendedorId) {
+      await db.update(funilMensal).set({ vendedorId: novoVendedorId }).where(eq(funilMensal.id, funilExistente.id))
+    }
+  } else {
     await db.insert(funilMensal).values({ clienteId, vendedorId: novoVendedorId, mesReferencia: mesAtual })
   }
-  // Nota: funis já existentes no mês NÃO trocam de vendedorId — a venda fica
-  // creditada a quem estava na carteira quando o negócio foi aberto/fechado.
 
   await registrarAuditoria({
     tabela: 'clientes',
