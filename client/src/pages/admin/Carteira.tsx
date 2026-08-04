@@ -62,6 +62,20 @@ export default function AdminCarteira() {
     },
   })
 
+  const moverParaBancoMut = trpc.carteira.moverParaBanco.useMutation({
+    onSuccess() {
+      toast.success('Cliente movido para o Banco de Clientes')
+      utils.clientes.list.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+      setClienteSelecionado(null)
+      setBuscaCliente('')
+      setVendedorDestino('')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   const vendorOptions = (vendors ?? []).map((v) => ({ value: v.id, label: v.name }))
 
   return (
@@ -118,15 +132,25 @@ export default function AdminCarteira() {
               placeholder="Selecione..."
               options={vendorOptions}
             />
-            <Button
-              loading={transferirIndividualMut.isPending}
-              onClick={() => {
-                if (!vendedorDestino) return toast.error('Selecione o vendedor de destino.')
-                transferirIndividualMut.mutate({ clienteId: clienteSelecionado.id, vendedorId: Number(vendedorDestino) })
-              }}
-            >
-              Transferir
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                loading={transferirIndividualMut.isPending}
+                onClick={() => {
+                  if (!vendedorDestino) return toast.error('Selecione o vendedor de destino.')
+                  transferirIndividualMut.mutate({ clienteId: clienteSelecionado.id, vendedorId: Number(vendedorDestino) })
+                }}
+              >
+                Transferir
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                loading={moverParaBancoMut.isPending}
+                onClick={() => moverParaBancoMut.mutate({ clienteId: clienteSelecionado.id, rotulo: clienteSelecionado.vendedorAtual?.name })}
+              >
+                Mover pro Banco de Clientes
+              </Button>
+            </div>
           </div>
         )}
       </div>

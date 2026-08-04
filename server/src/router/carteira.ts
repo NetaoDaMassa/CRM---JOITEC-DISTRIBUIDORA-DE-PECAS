@@ -92,6 +92,43 @@ export const carteiraRouter = router({
       return { success: true }
     }),
 
+  // Tira o cliente da carteira de quem for (sem escolher destino) — volta
+  // pro Banco de Clientes, igual um cliente importado sem vendedor. O card
+  // do mês some do Kanban (soft-delete), já que Banco de Clientes não tem
+  // funil aberto — o próximo admin que atribuir um vendedor cria um novo.
+  moverParaBanco: adminProcedure
+    .input(z.object({ clienteId: z.number(), rotulo: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const cliente = await db.query.clientes.findFirst({
+        where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId)),
+      })
+      if (!cliente) throw new Error('Cliente não encontrado')
+
+      await db
+        .update(clientes)
+        .set({ vendedorAtualId: null, origemBanco: input.rotulo ?? null })
+        .where(eq(clientes.id, input.clienteId))
+
+      const mesAtual = mesReferenciaAtual()
+      const funilExistente = await db.query.funilMensal.findFirst({
+        where: and(eq(funilMensal.clienteId, input.clienteId), eq(funilMensal.mesReferencia, mesAtual), isNull(funilMensal.deletedAt)),
+      })
+      if (funilExistente) {
+        await db.update(funilMensal).set({ deletedAt: new Date().toISOString() }).where(eq(funilMensal.id, funilExistente.id))
+      }
+
+      await registrarAuditoria({
+        tabela: 'clientes',
+        registroId: input.clienteId,
+        acao: 'transferir_carteira',
+        campo: 'vendedor_atual_id',
+        valorAnterior: cliente.vendedorAtualId ? String(cliente.vendedorAtualId) : null,
+        valorNovo: null,
+        alteradoPor: ctx.user.id,
+      })
+      return { success: true }
+    }),
+
   desativarVendedor: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     await validarVendedorDaEmpresa(input.id, ctx.empresaId)
 
