@@ -389,7 +389,9 @@ export const funilRouter = router({
       const origem = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
       if (!origem) throw new Error('Card não encontrado')
       if (ctx.user.role !== 'admin' && origem.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
-      if (origem.etapa !== 'negociacao') throw new Error('Só é possível abrir um novo orçamento a partir de Negociação.')
+      if (origem.etapa !== 'negociacao' && origem.etapa !== 'fechado') {
+        throw new Error('Só é possível abrir um novo orçamento a partir de Negociação ou de um pedido já Fechado.')
+      }
 
       const result = await db.insert(funilMensal).values({
         clienteId: origem.clienteId,

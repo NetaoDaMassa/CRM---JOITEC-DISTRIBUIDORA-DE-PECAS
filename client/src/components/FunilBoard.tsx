@@ -697,14 +697,14 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
         <ClienteInfoEditavel card={card} />
         <SolicitarAcaoCarteira card={card} />
 
-        {card.etapa === 'negociacao' && (
+        {(card.etapa === 'negociacao' || card.etapa === 'fechado') && (
           <button
             type="button"
             onClick={() => criarOrcamentoMut.mutate({ funilMensalId: card.funilMensalId })}
             disabled={criarOrcamentoMut.isPending}
             className="text-xs text-gold-400 hover:underline disabled:opacity-50"
           >
-            + Abrir outro orçamento pra este cliente (cotação em paralelo)
+            + Abrir {card.etapa === 'fechado' ? 'uma nova negociação' : 'outro orçamento'} pra este cliente
           </button>
         )}
 
