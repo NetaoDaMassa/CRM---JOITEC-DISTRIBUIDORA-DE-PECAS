@@ -255,7 +255,11 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
 
   const digitos = soDigitos(numeroExterno)
   const sufixo = digitos.slice(-8)
-  if (sufixo.length < 8) return
+  console.log(`[goto] evento de chamada recebido — número bruto "${numeroExterno}", sufixo usado pra casar: "${sufixo}"`)
+  if (sufixo.length < 8) {
+    console.log(`[goto] sufixo com menos de 8 dígitos — não dá pra casar com nenhum cliente, ignorando`)
+    return
+  }
 
   // A integração GoTo Connect é o telefone físico da Joitec — não virou
   // multi-empresa (só ela tem esse número/contrato), então o casamento de
@@ -271,7 +275,14 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
       (c.telefoneWhatsapp && soDigitos(c.telefoneWhatsapp).endsWith(sufixo)) ||
       c.telefonesExtras.some((t) => soDigitos(t.numero).endsWith(sufixo))
   )
-  if (!cliente || !cliente.vendedorAtualId) return
+  if (!cliente) {
+    console.log(`[goto] nenhum cliente da Joitec com telefone terminando em "${sufixo}" — ligação não registrada`)
+    return
+  }
+  if (!cliente.vendedorAtualId) {
+    console.log(`[goto] cliente ${cliente.id} encontrado pelo telefone, mas sem vendedor atribuído — ligação não registrada`)
+    return
+  }
 
   const agora = Date.now()
   const ultimoRegistro = ultimoRegistroPorCliente.get(cliente.id)
@@ -311,13 +322,20 @@ export function processarEventoRecebido(raw: string): void {
     const envelope = JSON.parse(raw) as EnvelopeGoTo
     const conteudo = envelope.data?.content
     const callId = conteudo?.state?.id
-    if (!conteudo || !callId) return
+    if (!conteudo || !callId) {
+      console.log('[goto] evento recebido sem conteúdo/callId reconhecível:', raw.slice(0, 500))
+      return
+    }
 
     if (conteudo.state?.type === 'STARTING') {
+      console.log(`[goto] STARTING recebido (callId ${callId})`)
       callStartTimes.set(callId, Date.now())
       return
     }
-    if (conteudo.state?.type !== 'ENDING') return
+    if (conteudo.state?.type !== 'ENDING') {
+      console.log(`[goto] evento de tipo "${conteudo.state?.type}" ignorado (só trata STARTING/ENDING)`)
+      return
+    }
 
     // Sem STARTING correspondente (ex: reconexão do canal no meio da
     // ligação) não dá pra medir duração — nesse caso registra mesmo assim,
@@ -327,7 +345,9 @@ export function processarEventoRecebido(raw: string): void {
     const duracaoMs = inicio !== undefined ? Date.now() - inicio : null
 
     const numero = extrairNumeroExterno(conteudo)
+    console.log(`[goto] ENDING recebido (callId ${callId}) — número extraído: ${numero ?? 'NENHUM'} — metadata: ${JSON.stringify(conteudo.metadata)}`)
     if (numero) registrarLigacaoAutomatica(numero, callId, duracaoMs).catch((err) => console.error('[goto] erro ao registrar ligação:', err))
+    else console.log('[goto] não foi possível extrair o número externo desse evento — ligação não registrada')
   } catch (err) {
     console.error('[goto] erro ao processar evento de chamada:', err)
   }
