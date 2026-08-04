@@ -162,6 +162,13 @@
       "when": 1785787833911,
       "tag": "0022_late_agent_zero",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1785869049895,
+      "tag": "0023_lumpy_silvermane",
+      "breakpoints": true
     }
   ]
 }

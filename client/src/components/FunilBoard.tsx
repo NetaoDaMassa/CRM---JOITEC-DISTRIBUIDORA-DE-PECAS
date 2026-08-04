@@ -1100,6 +1100,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState(card.telefoneWhatsapp ?? '')
   const [email, setEmail] = useState(card.email ?? '')
   const [nomeContato, setNomeContato] = useState(card.nomeContato ?? '')
+  const [statusFiscal, setStatusFiscal] = useState(card.statusFiscal ?? '')
 
   const atualizarMut = trpc.clientes.update.useMutation({
     onSuccess() {
@@ -1149,6 +1150,12 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           <p className="text-dark-500">
             Nome do contato: <span className={card.nomeContato ? 'text-dark-300' : 'text-amber-400'}>{card.nomeContato ?? 'não informado'}</span>
           </p>
+          <p className="text-dark-500">
+            Status fiscal:{' '}
+            <span className={card.statusFiscal ? 'text-dark-300' : 'text-amber-400'}>
+              {card.statusFiscal === 'isento' ? 'Isento' : card.statusFiscal === 'normal' ? 'Normal' : 'não informado'}
+            </span>
+          </p>
         </div>
         {!!card.telefonesExtras.length && (
           <p className="text-xs text-dark-500 mt-1">
@@ -1196,6 +1203,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           telefoneWhatsapp: telefoneWhatsapp || undefined,
           email: email || undefined,
           nomeContato: nomeContato || undefined,
+          statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | undefined,
         })
       }}
       className="space-y-2"
@@ -1209,6 +1217,16 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
         <Input label="Telefone/WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
         <Input label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Nome do contato" value={nomeContato} onChange={(e) => setNomeContato(e.target.value)} />
+        <Select
+          label="Status fiscal"
+          value={statusFiscal}
+          onChange={(e) => setStatusFiscal(e.target.value)}
+          placeholder="Selecione..."
+          options={[
+            { value: 'isento', label: 'Isento' },
+            { value: 'normal', label: 'Normal' },
+          ]}
+        />
       </div>
       <TelefonesExtras
         clienteId={card.clienteId}

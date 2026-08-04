@@ -1,0 +1,1 @@
+ALTER TABLE `clientes` ADD `status_fiscal` text;

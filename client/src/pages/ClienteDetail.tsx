@@ -432,6 +432,7 @@ export default function ClienteDetail() {
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState('')
   const [email, setEmail] = useState('')
   const [nomeContato, setNomeContato] = useState('')
+  const [statusFiscal, setStatusFiscal] = useState('')
   const [ticketMedio, setTicketMedio] = useState('')
   const [carregado, setCarregado] = useState(false)
 
@@ -441,6 +442,7 @@ export default function ClienteDetail() {
     setTelefoneWhatsapp(cliente.telefoneWhatsapp ?? '')
     setEmail(cliente.email ?? '')
     setNomeContato(cliente.nomeContato ?? '')
+    setStatusFiscal(cliente.statusFiscal ?? '')
     setTicketMedio(cliente.ticketMedioHistorico?.toString() ?? '')
     setCarregado(true)
   }
@@ -503,6 +505,7 @@ export default function ClienteDetail() {
       telefoneWhatsapp,
       email,
       nomeContato,
+      statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | undefined,
       ticketMedioHistorico: ticketMedio ? Number(ticketMedio.replace(',', '.')) : undefined,
     })
   }
@@ -546,6 +549,16 @@ export default function ClienteDetail() {
           <Input label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
         <Input label="Nome do contato" value={nomeContato} onChange={(e) => setNomeContato(e.target.value)} />
+        <Select
+          label="Status fiscal"
+          value={statusFiscal}
+          onChange={(e) => setStatusFiscal(e.target.value)}
+          placeholder="Selecione..."
+          options={[
+            { value: 'isento', label: 'Isento' },
+            { value: 'normal', label: 'Normal' },
+          ]}
+        />
         <TelefonesExtras
           clienteId={cliente.id}
           telefones={cliente.telefonesExtras}

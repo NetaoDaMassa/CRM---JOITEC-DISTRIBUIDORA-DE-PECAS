@@ -225,6 +225,7 @@ export const clientesRouter = router({
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
         nomeContato: z.string().optional(),
+        statusFiscal: z.enum(['isento', 'normal']).optional(),
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
       })
@@ -263,6 +264,7 @@ export const clientesRouter = router({
         telefoneWhatsapp: input.telefoneWhatsapp,
         email: input.email,
         nomeContato: input.nomeContato,
+        statusFiscal: input.statusFiscal,
         ticketMedioHistorico: input.ticketMedioHistorico,
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
@@ -296,6 +298,7 @@ export const clientesRouter = router({
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
         nomeContato: z.string().optional(),
+        statusFiscal: z.enum(['isento', 'normal']).optional(),
         ticketMedioHistorico: z.number().optional(),
       })
     )
