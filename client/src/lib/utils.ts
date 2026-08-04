@@ -73,6 +73,10 @@ export function downloadBase64Excel(base64: string, filename: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = filename
+  // Mesmo motivo do baixarCsv: precisa estar no DOM pro clique disparar o
+  // download de forma confiável, e revogar a URL só num próximo tick.
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }

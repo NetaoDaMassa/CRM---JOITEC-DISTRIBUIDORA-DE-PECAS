@@ -21,6 +21,13 @@ export function baixarCsv(nomeArquivo: string, conteudo: string) {
   const a = document.createElement('a')
   a.href = url
   a.download = nomeArquivo
+  // Precisa estar no DOM pra o clique disparar o download de forma
+  // confiável em todo navegador — em alguns (Safari, Chrome mais antigo) um
+  // <a> solto (nunca anexado) simplesmente não navega no .click(). Revoga a
+  // URL só depois, num próximo tick, senão corre risco de invalidar o blob
+  // antes do navegador terminar de iniciar o download.
+  document.body.appendChild(a)
   a.click()
-  URL.revokeObjectURL(url)
+  document.body.removeChild(a)
+  setTimeout(() => URL.revokeObjectURL(url), 0)
 }
