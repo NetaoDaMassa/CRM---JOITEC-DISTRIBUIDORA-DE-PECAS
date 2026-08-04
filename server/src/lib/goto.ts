@@ -254,11 +254,27 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
   const efetiva = duracaoMs === null || duracaoMs >= duracaoMinimaMs
 
   const digitos = soDigitos(numeroExterno)
-  const sufixo = digitos.slice(-8)
-  console.log(`[goto] evento de chamada recebido — número bruto "${numeroExterno}", sufixo usado pra casar: "${sufixo}"`)
-  if (sufixo.length < 8) {
-    console.log(`[goto] sufixo com menos de 8 dígitos — não dá pra casar com nenhum cliente, ignorando`)
+
+  // Comparar só os últimos 8 dígitos (sem DDD) já causou uma ligação
+  // registrada no cliente ERRADO na prática: dois clientes com DDDs
+  // diferentes (ex: 47 e 18) podem ter o mesmo final de 8 dígitos por
+  // coincidência, e o `.find()` pegava o primeiro que batesse, às cegas.
+  // Agora exige pelo menos 10 dígitos em comum (DDD + número) — se o
+  // telefone salvo do cliente ainda não tem DDD completo, ele simplesmente
+  // não entra na comparação (mais seguro não casar do que casar errado).
+  if (digitos.length < 10) {
+    console.log(`[goto] número da chamada com menos de 10 dígitos ("${digitos}") — não dá pra casar com segurança, ignorando`)
     return
+  }
+  const sufixo11 = digitos.length >= 11 ? digitos.slice(-11) : null
+  const sufixo10 = digitos.slice(-10)
+  console.log(`[goto] evento de chamada recebido — número bruto "${numeroExterno}", comparando pelos últimos 10-11 dígitos ("${sufixo10}")`)
+
+  function numeroBate(numeroCliente: string): boolean {
+    const d = soDigitos(numeroCliente)
+    if (d.length < 10) return false // telefone do cliente ainda incompleto — não arrisca casar
+    if (sufixo11 && d.length >= 11 && d.slice(-11) === sufixo11) return true
+    return d.slice(-10) === sufixo10
   }
 
   // A integração GoTo Connect é o telefone físico da Joitec — não virou
@@ -270,15 +286,20 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
     columns: { id: true, telefoneWhatsapp: true, vendedorAtualId: true },
     with: { telefonesExtras: { columns: { numero: true } } },
   })
-  const cliente = todosClientes.find(
-    (c) =>
-      (c.telefoneWhatsapp && soDigitos(c.telefoneWhatsapp).endsWith(sufixo)) ||
-      c.telefonesExtras.some((t) => soDigitos(t.numero).endsWith(sufixo))
+  const clientesQueBatem = todosClientes.filter(
+    (c) => (c.telefoneWhatsapp && numeroBate(c.telefoneWhatsapp)) || c.telefonesExtras.some((t) => numeroBate(t.numero))
   )
-  if (!cliente) {
-    console.log(`[goto] nenhum cliente da Joitec com telefone terminando em "${sufixo}" — ligação não registrada`)
+  if (clientesQueBatem.length === 0) {
+    console.log(`[goto] nenhum cliente da Joitec com telefone batendo com "${sufixo10}" — ligação não registrada`)
     return
   }
+  if (clientesQueBatem.length > 1) {
+    console.log(
+      `[goto] AMBÍGUO: ${clientesQueBatem.length} clientes com telefone batendo com "${sufixo10}" (ids: ${clientesQueBatem.map((c) => c.id).join(', ')}) — não registra pra não arriscar atribuir errado`
+    )
+    return
+  }
+  const cliente = clientesQueBatem[0]
   if (!cliente.vendedorAtualId) {
     console.log(`[goto] cliente ${cliente.id} encontrado pelo telefone, mas sem vendedor atribuído — ligação não registrada`)
     return
