@@ -54,7 +54,7 @@ export const painelRouter = router({
     const mesAtual = mesReferenciaAtual()
 
     const vendedores = await db.query.users.findMany({
-      where: and(eq(users.role, 'vendor'), eq(users.isActive, true), eq(users.empresaId, ctx.empresaId)),
+      where: and(eq(users.isActive, true), eq(users.superAdmin, false), eq(users.empresaId, ctx.empresaId)),
       columns: { id: true, name: true, fotoUrl: true },
     })
     const vendedorIds = vendedores.map((v) => v.id)
@@ -374,7 +374,7 @@ export const painelRouter = router({
     // Posição no ranking do time (só pra saber a colocação, sem expor os
     // valores de faturamento dos colegas).
     const todosVendedores = await db.query.users.findMany({
-      where: and(eq(users.role, 'vendor'), eq(users.isActive, true), eq(users.empresaId, ctx.empresaId)),
+      where: and(eq(users.isActive, true), eq(users.superAdmin, false), eq(users.empresaId, ctx.empresaId)),
     })
     const valoresPorVendedor = await Promise.all(
       todosVendedores.map(async (v) => {

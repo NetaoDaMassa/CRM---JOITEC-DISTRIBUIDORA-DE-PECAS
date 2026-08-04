@@ -35,7 +35,7 @@ async function executarResumoDiarioParaEmpresa(empresaId: number, forcar: boolea
   const diasUteisAteHoje = diasUteisDecorridos(mesAtual)
 
   const vendedores = await db.query.users.findMany({
-    where: and(eq(users.role, 'vendor'), eq(users.isActive, true), eq(users.empresaId, empresaId)),
+    where: and(eq(users.isActive, true), eq(users.superAdmin, false), eq(users.empresaId, empresaId)),
   })
 
   if (!forcar) {

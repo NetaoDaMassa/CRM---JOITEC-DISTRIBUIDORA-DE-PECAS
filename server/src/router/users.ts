@@ -22,13 +22,17 @@ export const usersRouter = router({
     })
   }),
 
+  // "Vendors" aqui não é só quem tem role='vendor' — um admin de uma
+  // empresa (ex: Pamela na Joitec Automação) também pode ter carteira
+  // própria e vender. Só o superAdmin (cross-empresa, puramente
+  // administrativo) fica de fora dessa lista.
   vendors: protectedProcedure.query(async ({ ctx }) => {
     const all = await db.query.users.findMany({
       where: eq(users.empresaId, ctx.empresaId),
       columns: { passwordHash: false },
       orderBy: (u, { asc }) => [asc(u.name)],
     })
-    return all.filter((u) => u.role === 'vendor' && u.isActive)
+    return all.filter((u) => u.isActive && !u.superAdmin)
   }),
 
   create: adminProcedure

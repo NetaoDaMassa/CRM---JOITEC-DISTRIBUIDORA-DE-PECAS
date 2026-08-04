@@ -9,8 +9,10 @@ import { getConfigNumero } from '../lib/configuracoes.js'
 export const metasRouter = router({
   listaMesCorrente: adminProcedure.query(async ({ ctx }) => {
     const mesAtual = mesReferenciaAtual()
+    // Admin com carteira própria (ex: Pamela na Joitec Automação) também
+    // entra na lista de metas — só o superAdmin fica de fora.
     const vendedores = await db.query.users.findMany({
-      where: and(eq(users.role, 'vendor'), eq(users.empresaId, ctx.empresaId)),
+      where: and(eq(users.empresaId, ctx.empresaId), eq(users.superAdmin, false)),
       orderBy: (u, { asc }) => [asc(u.name)],
     })
 
