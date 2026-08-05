@@ -387,6 +387,28 @@ export const funilRouter = router({
       return { success: true }
     }),
 
+  // Salva o PDF de proposta/orçamento assim que o vendedor anexa, sem
+  // esperar ele clicar em "Salvar etapa" — anexar só subia o arquivo pro
+  // disco (pra IA ler os itens) mas não persistia a referência em lugar
+  // nenhum até o formulário de mover etapa ser submetido, e como o card já
+  // podia estar em Negociação (sem nenhuma mudança de etapa pra disparar o
+  // submit), o vendedor via o anexo "sumir" ao reabrir o card. Não mexe em
+  // etapa/versão/valor orçado — só grava o caminho do PDF.
+  anexarProposta: protectedProcedure
+    .input(z.object({ funilMensalId: z.number(), pdfPropostaPath: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
+      if (!funil) throw new Error('Card não encontrado')
+      if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+
+      await db
+        .update(funilMensal)
+        .set({ pdfPropostaPath: input.pdfPropostaPath, updatedAt: agoraSqlite() })
+        .where(eq(funilMensal.id, input.funilMensalId))
+
+      return { success: true }
+    }),
+
   // Abre um segundo (ou terceiro...) orçamento pro mesmo cliente, sem mexer
   // no card original — o vendedor as vezes cotação mais de um pedido em
   // paralelo (ex: peça A e peça B, negociados em ritmos diferentes) e

@@ -547,15 +547,31 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     },
   })
 
+  const anexarPropostaMut = trpc.funil.anexarProposta.useMutation({
+    onSuccess() {
+      toast.success('PDF anexado e salvo.')
+      invalidarTudo()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   // Dispara sozinho assim que o vendedor anexa o PDF — não precisa clicar em
-  // nada, só conferir o resultado antes de salvar.
-  async function handleArquivoSelecionado(arquivo: File | null) {
+  // nada, só conferir o resultado antes de salvar. `persistirComoProposta`
+  // só é true no anexo da etapa Negociação: salva o caminho na hora (em vez
+  // de esperar o "Salvar etapa"), porque um card que já está em Negociação
+  // não necessariamente dispara nenhum submit depois do anexo.
+  async function handleArquivoSelecionado(arquivo: File | null, persistirComoProposta = false) {
     setPdfFile(arquivo)
     setPdfPathEnviado(null)
     if (!arquivo) return
     try {
       const caminho = await enviarPdf(arquivo)
       extrairItensMut.mutate({ path: caminho })
+      if (persistirComoProposta) {
+        anexarPropostaMut.mutate({ funilMensalId: card.funilMensalId, pdfPropostaPath: caminho })
+      }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Falha ao enviar o PDF.')
     }
@@ -1060,8 +1076,9 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
               <AnexoPdfInput
                 label="Anexar proposta/orçamento (opcional)"
                 nomeArquivo={pdfFile?.name}
-                onSelecionar={handleArquivoSelecionado}
+                onSelecionar={(arquivo) => handleArquivoSelecionado(arquivo, true)}
               />
+              {anexarPropostaMut.isPending && <p className="text-xs text-gold-400">Salvando anexo...</p>}
               {extrairItensMut.isPending && <p className="text-xs text-gold-400">🤖 Analisando o PDF com IA, aguarde...</p>}
               {pdfFile && (
                 <Button type="button" size="sm" variant="secondary" loading={extrairItensMut.isPending} onClick={handleExtrairItens}>
