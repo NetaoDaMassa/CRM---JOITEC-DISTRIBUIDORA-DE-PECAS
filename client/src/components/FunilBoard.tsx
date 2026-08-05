@@ -809,6 +809,16 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                     <span className="text-dark-100">{formatarMoeda(v.valorFechado)}</span>
                     <span className="text-xs text-dark-400">{v.condicaoPagamento || '—'}</span>
                     <span className="text-xs text-dark-500">{timeAgo(v.dataFechamento)}</span>
+                    {v.pdfPedidoPath && (
+                      <a
+                        href={v.pdfPedidoPath}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-gold-400 hover:underline"
+                      >
+                        📄 Ver PDF
+                      </a>
+                    )}
                     <button type="button" onClick={() => abrirEdicaoVenda(v)} className="text-xs text-gold-400 hover:underline">
                       Editar
                     </button>
@@ -1159,9 +1169,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
 
 // Mostrado no topo do modal do card — pensado pra clientes importados sem
 // CNPJ/e-mail/cidade preenchidos (boa parte da carteira real), pro vendedor
-// completar o cadastro sem sair do Kanban. CNPJ só é editável pelo admin
-// porque `clientes.update` no backend ignora silenciosamente esse campo
-// vindo de um vendedor (regra de negócio já existente, não nova).
+// completar o cadastro sem sair do Kanban.
 function ClienteInfoEditavel({ card }: { card: Card }) {
   const { user } = useAuth()
   const utils = trpc.useUtils()
@@ -1227,7 +1235,13 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           <p className="text-dark-500">
             Status fiscal:{' '}
             <span className={card.statusFiscal ? 'text-dark-300' : 'text-amber-400'}>
-              {card.statusFiscal === 'isento' ? 'Isento' : card.statusFiscal === 'normal' ? 'Normal' : 'não informado'}
+              {card.statusFiscal === 'isento'
+                ? 'Isento'
+                : card.statusFiscal === 'normal'
+                ? 'Normal'
+                : card.statusFiscal === 'consumidor_final'
+                ? 'Consumidor Final'
+                : 'não informado'}
             </span>
           </p>
         </div>
@@ -1283,7 +1297,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           telefoneWhatsapp: telefoneWhatsapp || undefined,
           email: email || undefined,
           nomeContato: nomeContato || undefined,
-          statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | undefined,
+          statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | 'consumidor_final' | undefined,
           observacoes: observacoes || undefined,
         })
       }}
@@ -1306,6 +1320,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           options={[
             { value: 'isento', label: 'Isento' },
             { value: 'normal', label: 'Normal' },
+            { value: 'consumidor_final', label: 'Consumidor Final' },
           ]}
         />
       </div>

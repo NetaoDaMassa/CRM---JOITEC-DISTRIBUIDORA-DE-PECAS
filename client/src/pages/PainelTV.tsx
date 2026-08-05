@@ -363,18 +363,18 @@ const SlideRankingSemanal = memo(function SlideRankingSemanal({ data }: { data: 
 const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }) {
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_CONTATOS}` }}>
-      <h2 className="text-lg font-semibold text-gold-400 mb-4">📞 Ranking de ligações (hoje) · % da meta</h2>
+      <h2 className="text-lg font-semibold text-gold-400 mb-4">📞 Ranking de ligações (mês) · ritmo da meta</h2>
       {!!data.rankingLigacoes.length && (
         <ResponsiveContainer width="100%" height={data.rankingLigacoes.length * 32 + 10}>
           <BarChart
-            data={data.rankingLigacoes.map((v) => ({ nome: v.nome, valor: v.ligacoesHoje, destaque: v.bateuMetaLigacoesHoje }))}
+            data={data.rankingLigacoes.map((v) => ({ nome: v.nome, valor: v.ligacoesMes, destaque: v.bateuMetaLigacoes }))}
             layout="vertical"
             margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
             barCategoryGap={6}
           >
             <XAxis type="number" hide domain={[0, 'dataMax']} />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={(v) => `${v} ligação(ões)`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+            <Tooltip content={<TooltipGrafico formatarValor={(v) => `${v} ligação(ões) no mês`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
             <Bar
               dataKey="valor"
               radius={[0, 4, 4, 0]}
@@ -383,7 +383,7 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
               label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}`} />}
             >
               {data.rankingLigacoes.map((v) => (
-                <Cell key={v.id} fill={v.bateuMetaLigacoesHoje ? COR_META_BATIDA : COR_CONTATOS} />
+                <Cell key={v.id} fill={v.bateuMetaLigacoes ? COR_META_BATIDA : COR_CONTATOS} />
               ))}
             </Bar>
           </BarChart>
@@ -396,9 +396,9 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
             <th className="text-right font-semibold py-2">Tentativas hoje</th>
             <th className="text-right font-semibold py-2">Efetivas hoje</th>
             <th className="text-right font-semibold py-2">% efetiva</th>
-            <th className="text-right font-semibold py-2">Meta</th>
-            <th className="text-right font-semibold py-2">% da meta</th>
             <th className="text-right font-semibold py-2">Ligações (mês)</th>
+            <th className="text-right font-semibold py-2">Meta (mês)</th>
+            <th className="text-right font-semibold py-2">% da meta</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-dark-700/60">
@@ -407,23 +407,23 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
               <td className="py-2.5">
                 <div className="flex items-center gap-3">
                   <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-                  <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoesHoje} size="sm" />
+                  <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoes} size="sm" />
                   <span className="font-medium text-dark-100">{v.nome}</span>
-                  {v.bateuMetaLigacoesHoje && <span className="text-xs">🎉</span>}
+                  {v.bateuMetaLigacoes && <span className="text-xs">🎉</span>}
                 </div>
               </td>
               <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesHoje}</td>
               <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
               <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
-              <td className="text-right font-mono tabular-nums text-dark-400">{v.metaLigacoesDia}</td>
+              <td className="text-right font-mono tabular-nums text-dark-400">{v.ligacoesMes}</td>
+              <td className="text-right font-mono tabular-nums text-dark-400">{v.metaLigacoesAcumulada}</td>
               <td
                 className={`text-right font-mono tabular-nums ${
-                  v.bateuMetaLigacoesHoje ? 'text-green-400 font-semibold' : 'text-dark-300'
+                  v.bateuMetaLigacoes ? 'text-green-400 font-semibold' : 'text-dark-300'
                 }`}
               >
                 {formatarPercentual(v.percentualMetaLigacoes)}%
               </td>
-              <td className="text-right font-mono tabular-nums text-dark-400">{v.ligacoesMes}</td>
             </tr>
           ))}
         </tbody>

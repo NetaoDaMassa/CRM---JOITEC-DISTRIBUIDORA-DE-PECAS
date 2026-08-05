@@ -73,9 +73,10 @@ export const clientes = sqliteTable('clientes', {
   // social (nome da empresa em si). Pedido do João pra vendedor saber com
   // quem falar sem depender só do WhatsApp/e-mail salvos.
   nomeContato: text('nome_contato'),
-  // Status fiscal do cliente perante impostos (isento ou contribuinte
-  // normal) — o vendedor completa isso no cadastro, junto com CNPJ/IE.
-  statusFiscal: text('status_fiscal', { enum: ['isento', 'normal'] }),
+  // Status fiscal do cliente perante impostos (isento, contribuinte normal
+  // ou consumidor final — pessoa física/quem compra sem repassar/revender) —
+  // o vendedor completa isso no cadastro, junto com CNPJ/IE.
+  statusFiscal: text('status_fiscal', { enum: ['isento', 'normal', 'consumidor_final'] }),
   vendedorAtualId: integer('vendedor_atual_id').references(() => users.id, { onDelete: 'set null' }),
   // Rótulo de origem quando o cliente entra sem vendedor (importação em
   // massa cujo Vendedor era "Banco de Clientes X" / "-Nenhum vendedor-") —

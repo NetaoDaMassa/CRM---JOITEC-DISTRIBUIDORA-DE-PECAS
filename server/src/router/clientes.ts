@@ -225,7 +225,7 @@ export const clientesRouter = router({
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
         nomeContato: z.string().optional(),
-        statusFiscal: z.enum(['isento', 'normal']).optional(),
+        statusFiscal: z.enum(['isento', 'normal', 'consumidor_final']).optional(),
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
       })
@@ -298,7 +298,7 @@ export const clientesRouter = router({
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
         nomeContato: z.string().optional(),
-        statusFiscal: z.enum(['isento', 'normal']).optional(),
+        statusFiscal: z.enum(['isento', 'normal', 'consumidor_final']).optional(),
         observacoes: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
       })
@@ -312,9 +312,16 @@ export const clientesRouter = router({
       if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
 
       const updates: Record<string, unknown> = { ...rest, updatedAt: new Date().toISOString(), versao: versao + 1 }
-      if (cnpj && ctx.user.role === 'admin') {
+      if (cnpj) {
         if (!cnpjValido(cnpj)) throw new Error('CNPJ inválido')
-        updates.cnpj = limparCnpj(cnpj)
+        const cnpjLimpo = limparCnpj(cnpj)
+        if (cnpjLimpo !== cliente.cnpj) {
+          const existente = await db.query.clientes.findFirst({
+            where: and(eq(clientes.cnpj, cnpjLimpo), eq(clientes.empresaId, ctx.empresaId)),
+          })
+          if (existente && !existente.deletedAt && existente.id !== id) throw new Error('Já existe um cliente com este CNPJ')
+        }
+        updates.cnpj = cnpjLimpo
       }
 
       const updated = await db

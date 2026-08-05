@@ -134,14 +134,15 @@ export default function VendorDashboard() {
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-1">
-          <p className="text-sm font-semibold text-dark-100">📞 Ligações hoje</p>
+          <p className="text-sm font-semibold text-dark-100">📞 Ligações (ritmo do mês)</p>
           <span className="text-sm font-mono text-dark-300">
-            {data?.ligacoesHoje ?? 0}/{data?.metaLigacoesDia ?? 25}
+            {data?.ligacoesMes ?? 0}/{data?.metaLigacoesAcumulada ?? 0}
           </span>
         </div>
         <BarraProgresso percentual={data?.percentualMetaLigacoes ?? 0} destaque={(data?.percentualMetaLigacoes ?? 0) >= 100} />
         <p className="text-xs text-dark-500 mt-1.5">
-          {data?.ligacoesEfetivasHoje ?? 0} efetiva{(data?.ligacoesEfetivasHoje ?? 0) !== 1 ? 's' : ''} de {data?.ligacoesHoje ?? 0} tentativa
+          Meta: {data?.metaLigacoesDia ?? 25}/dia útil · hoje: {data?.ligacoesEfetivasHoje ?? 0} efetiva
+          {(data?.ligacoesEfetivasHoje ?? 0) !== 1 ? 's' : ''} de {data?.ligacoesHoje ?? 0} tentativa
           {(data?.ligacoesHoje ?? 0) !== 1 ? 's' : ''} ({formatarPercentual(data?.percentualEfetividadeHoje)}%)
         </p>
       </div>

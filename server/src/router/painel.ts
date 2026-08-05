@@ -180,6 +180,12 @@ export const painelRouter = router({
         const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null
         const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
 
+        // Mesmo esquema de ritmo acumulado da meta de faturamento: a meta de
+        // ligações não é "25 hoje", é "25 × dias úteis já passados no mês" —
+        // quem ficou devendo num dia carrega o déficit pros próximos, em vez
+        // de resetar a cobrança toda manhã.
+        const metaLigacoesAcumulada = Math.round(metaLigacoesDia * diasUteisAteHoje)
+
         return {
           id: v.id,
           nome: v.name,
@@ -188,8 +194,9 @@ export const painelRouter = router({
           ligacoesEfetivasHoje,
           percentualEfetividadeHoje: ligacoesHoje > 0 ? Math.round((ligacoesEfetivasHoje / ligacoesHoje) * 1000) / 10 : 0,
           metaLigacoesDia,
-          bateuMetaLigacoesHoje: ligacoesHoje >= metaLigacoesDia,
-          percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 1000) / 10 : 0,
+          metaLigacoesAcumulada,
+          bateuMetaLigacoes: metaLigacoesAcumulada > 0 ? ligacoesMes >= metaLigacoesAcumulada : false,
+          percentualMetaLigacoes: metaLigacoesAcumulada > 0 ? Math.round((ligacoesMes / metaLigacoesAcumulada) * 1000) / 10 : 0,
           qtdVendasMes,
           qtdPerdidosMes,
           taxaConversao,
@@ -385,6 +392,18 @@ export const painelRouter = router({
         )
       )
 
+    const [{ ligacoesMes }] = await db
+      .select({ ligacoesMes: count() })
+      .from(registroContato)
+      .where(
+        and(
+          eq(registroContato.vendedorId, vendedorId),
+          eq(registroContato.tipo, 'ligacao'),
+          sql`${registroContato.dataHora} >= ${mesAtual + ' 00:00:00'}`,
+          isNull(registroContato.deletedAt)
+        )
+      )
+
     const [{ vendasHojeQtd, vendasHojeValor }] = await db
       .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
@@ -399,6 +418,9 @@ export const painelRouter = router({
     const diasUteisAteHoje = diasUteisDecorridos(mesAtual)
     const valorMes = vendasMesValor ?? 0
     const metaLigacoesDia = meta?.metaLigacoesDia ?? 25
+    // Ritmo acumulado, mesmo esquema da meta de faturamento: 25/dia × dias
+    // úteis já passados no mês, não "25 hoje".
+    const metaLigacoesAcumulada = Math.round(metaLigacoesDia * diasUteisAteHoje)
     const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null
     const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
 
@@ -484,8 +506,11 @@ export const painelRouter = router({
       ligacoesHoje,
       ligacoesEfetivasHoje,
       percentualEfetividadeHoje: ligacoesHoje > 0 ? Math.round((ligacoesEfetivasHoje / ligacoesHoje) * 1000) / 10 : 0,
+      ligacoesMes,
       metaLigacoesDia,
-      percentualMetaLigacoes: metaLigacoesDia > 0 ? Math.round((ligacoesHoje / metaLigacoesDia) * 1000) / 10 : 0,
+      metaLigacoesAcumulada,
+      bateuMetaLigacoes: metaLigacoesAcumulada > 0 ? ligacoesMes >= metaLigacoesAcumulada : false,
+      percentualMetaLigacoes: metaLigacoesAcumulada > 0 ? Math.round((ligacoesMes / metaLigacoesAcumulada) * 1000) / 10 : 0,
       metaFaturamento: meta?.metaFaturamento ?? null,
       percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 1000) / 10 : 0,
       metaAcumuladaAteHoje,

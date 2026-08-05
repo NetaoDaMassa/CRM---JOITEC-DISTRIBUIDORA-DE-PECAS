@@ -503,11 +503,11 @@ export default function ClienteDetail() {
       id: cliente.id,
       versao: cliente.versao,
       razaoSocial,
-      cnpj: user?.role === 'admin' ? cnpj : undefined,
+      cnpj,
       telefoneWhatsapp,
       email,
       nomeContato,
-      statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | undefined,
+      statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | 'consumidor_final' | undefined,
       observacoes: observacoes || undefined,
       ticketMedioHistorico: ticketMedio ? Number(ticketMedio.replace(',', '.')) : undefined,
     })
@@ -539,7 +539,7 @@ export default function ClienteDetail() {
 
       <form onSubmit={handleSubmit} className="space-y-4 bg-dark-800 border border-dark-600 rounded-2xl p-5">
         <Input label="Razão social" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} />
-        <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} disabled={user?.role !== 'admin'} />
+        <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
           <Input label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />
@@ -553,6 +553,7 @@ export default function ClienteDetail() {
           options={[
             { value: 'isento', label: 'Isento' },
             { value: 'normal', label: 'Normal' },
+            { value: 'consumidor_final', label: 'Consumidor Final' },
           ]}
         />
         <Textarea
