@@ -243,15 +243,19 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
   if (callIdsProcessados.has(callId)) return
   callIdsProcessados.add(callId)
 
-  // Ligação "efetiva" precisa durar pelo menos o mínimo configurado (padrão
-  // 15s) — abaixo disso (ou sem duração medida por falha na captação do
-  // STARTING) provavelmente não deu tempo de falar com ninguém. Em vez de
-  // simplesmente descartar (o vendedor nunca saberia que uma tentativa
-  // aconteceu), registra mesmo assim como pendente — mesmo padrão já usado
-  // pro WhatsApp — pra aparecer no card e o vendedor completar o motivo
-  // (não atendeu, caiu, número errado etc.) depois.
+  // A API da GoTo não diz se a ligação foi atendida por uma pessoa ou caiu
+  // na caixa postal — só dá pra medir a duração. Isso já causou o problema
+  // de caixa postal (que costuma durar mais que a saudação + recado) sendo
+  // contada como "ligação efetiva" só por ter passado dos 15s. Duração
+  // curta continua um sinal confiável de "não atendeu" (auto-resolvida, sem
+  // precisar o vendedor confirmar); duração longa (ou não medida) vira
+  // sempre pendente — só conta como efetiva quando o vendedor confirma
+  // "Respondeu" no card, porque só ele sabe se falou com o cliente de
+  // verdade ou ouviu a gravação da caixa postal.
   const duracaoMinimaMs = (await getConfigNumero('goto_duracao_minima_segundos', 15)) * 1000
-  const efetiva = duracaoMs === null || duracaoMs >= duracaoMinimaMs
+  const provavelmenteNaoAtendida = duracaoMs !== null && duracaoMs < duracaoMinimaMs
+  const efetiva = false
+  const resultadoAuto = provavelmenteNaoAtendida ? ('nao_respondeu' as const) : undefined
 
   const digitos = soDigitos(numeroExterno)
 
@@ -325,9 +329,10 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
     tipo: 'ligacao',
     duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
     efetiva,
-    observacao: efetiva
-      ? `Ligação registrada automaticamente pela integração GoTo Connect.${duracaoTexto}`
-      : `Ligação muito curta ou não atendida — confirme o motivo (não atendeu, caiu, número errado etc.).${duracaoTexto}`,
+    resultado: resultadoAuto,
+    observacao: provavelmenteNaoAtendida
+      ? `Ligação muito curta — provavelmente não atendida.${duracaoTexto}`
+      : `Ligação captada automaticamente pela integração GoTo Connect — confirme se você conversou com o cliente ou se caiu na caixa postal.${duracaoTexto}`,
   })
   await db
     .update(funilMensal)

@@ -206,14 +206,15 @@ export default function AdminConfiguracoes() {
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Ligações automáticas (GoTo Connect)</h2>
           <Input
-            label="Duração mínima pra contar como contato (segundos)"
+            label="Duração mínima pra considerar que pode ter atendido (segundos)"
             type="number"
             value={gotoDuracaoMinima}
             onChange={(e) => setGotoDuracaoMinima(e.target.value)}
           />
           <p className="text-xs text-dark-500 mt-1.5">
-            Ligações mais curtas que isso (ex: chamada não atendida, desligou na hora) não entram como tentativa de
-            contato.
+            Ligações mais curtas que isso são marcadas automaticamente como "Não respondeu" (não deu tempo de
+            conversar). Ligações mais longas que isso sempre ficam pendentes, pedindo pro vendedor confirmar se
+            falou com o cliente ou caiu na caixa postal — a duração sozinha não prova que teve conversa de verdade.
           </p>
         </div>
 

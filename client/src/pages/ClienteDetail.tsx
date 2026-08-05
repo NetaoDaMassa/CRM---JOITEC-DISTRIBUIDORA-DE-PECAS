@@ -115,7 +115,17 @@ function HistoricoVendas({ clienteId }: { clienteId: number }) {
             <div key={c.id} className="py-2 text-sm">
               <p className="text-xs text-dark-400">
                 {TIPO_ICONE[c.tipo]} {new Date(c.dataHora.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
-                {c.resultado ? ` · ${c.resultado === 'respondeu' ? 'Respondeu' : c.resultado === 'nao_respondeu' ? 'Não respondeu' : 'Número errado'}` : ''}
+                {c.resultado
+                  ? ` · ${
+                      c.resultado === 'respondeu'
+                        ? 'Respondeu'
+                        : c.resultado === 'nao_respondeu'
+                        ? 'Não respondeu'
+                        : c.resultado === 'caixa_postal'
+                        ? 'Caixa postal'
+                        : 'Número errado'
+                    }`
+                  : ''}
               </p>
               <p className="text-dark-200">{c.observacao}</p>
             </div>

@@ -47,7 +47,7 @@ export const contatosRouter = router({
       z.object({
         funilMensalId: z.number(),
         tipo: z.enum(['ligacao', 'whatsapp', 'email', 'visita']),
-        resultado: z.enum(['respondeu', 'nao_respondeu', 'numero_errado']).optional(),
+        resultado: z.enum(['respondeu', 'nao_respondeu', 'numero_errado', 'caixa_postal']).optional(),
         observacao: z.string().min(1, 'A observação é obrigatória.'),
       })
     )
@@ -82,7 +82,7 @@ export const contatosRouter = router({
     .input(
       z.object({
         id: z.number(),
-        resultado: z.enum(['respondeu', 'nao_respondeu', 'numero_errado']).optional(),
+        resultado: z.enum(['respondeu', 'nao_respondeu', 'numero_errado', 'caixa_postal']).optional(),
         observacao: z.string().min(1, 'A observação é obrigatória.'),
       })
     )

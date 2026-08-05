@@ -38,7 +38,12 @@ export function tentativasNaEtapaAtual(card: Card): number {
 
 const TIPO_LABEL: Record<string, string> = { ligacao: 'Ligação', whatsapp: 'WhatsApp', email: 'E-mail', visita: 'Visita' }
 const TIPO_ICONE: Record<string, string> = { ligacao: '📞', whatsapp: '💬', email: '📧', visita: '🚗' }
-const RESULTADO_LABEL: Record<string, string> = { respondeu: 'Respondeu', nao_respondeu: 'Não respondeu', numero_errado: 'Número errado' }
+const RESULTADO_LABEL: Record<string, string> = {
+  respondeu: 'Respondeu',
+  nao_respondeu: 'Não respondeu',
+  numero_errado: 'Número errado',
+  caixa_postal: 'Caixa postal',
+}
 
 function formatarMoeda(v: number | null): string {
   if (v === null || v === undefined) return ''
@@ -96,7 +101,7 @@ export function sugestaoProximoPasso(card: Card): string | null {
 
   if (ultimo.resultado === 'numero_errado') return '⚠️ Telefone errado — atualizar cadastro do cliente'
 
-  if (ultimo.resultado === 'nao_respondeu') {
+  if (ultimo.resultado === 'nao_respondeu' || ultimo.resultado === 'caixa_postal') {
     if (tentativasNaEtapaAtual(card) >= 3) {
       return '🤔 Várias tentativas sem resposta — considerar mover pra Perdido ou Sem contato'
     }
@@ -954,6 +959,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                 { value: 'respondeu', label: 'Respondeu' },
                 { value: 'nao_respondeu', label: 'Não respondeu' },
                 { value: 'numero_errado', label: 'Número errado' },
+                { value: 'caixa_postal', label: 'Caixa postal' },
               ]}
             />
           </div>
@@ -1570,6 +1576,7 @@ function ContatoItem({
             { value: 'respondeu', label: 'Respondeu' },
             { value: 'nao_respondeu', label: 'Não respondeu' },
             { value: 'numero_errado', label: 'Número errado' },
+            { value: 'caixa_postal', label: 'Caixa postal' },
           ]}
         />
         <Textarea rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
