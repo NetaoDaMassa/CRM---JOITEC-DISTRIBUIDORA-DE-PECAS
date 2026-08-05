@@ -186,6 +186,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     qtdTentativasContato: f.qtdTentativasContato,
     dataEntradaEtapa: f.dataEntradaEtapa,
     valorOrcado: f.valorOrcado,
+    pdfPropostaPath: f.pdfPropostaPath,
     vendas: f.vendas.map((v) => ({
       id: v.id,
       valorFechado: v.valorFechado,
@@ -252,6 +253,7 @@ export const funilRouter = router({
         valorFechado: z.number().optional(),
         condicaoPagamento: z.string().optional(),
         pdfPedidoPath: z.string().optional(),
+        pdfPropostaPath: z.string().optional(),
         clienteIdFaturamento: z.number().optional(),
         motivoPerdaCategoria: z.enum(['estoque', 'financeiro', 'compras']).optional(),
         motivoPerdaOpcao: z.string().optional(),
@@ -286,6 +288,10 @@ export const funilRouter = router({
         updatedAt: agoraSqlite(),
         versao: input.versao + 1,
       }
+      // Só sobrescreve quando vier um PDF novo (reanexar uma proposta
+      // revisada) — sem isso, mover pra outra etapa sem mexer no PDF não
+      // pode apagar o que já tinha sido salvo antes.
+      if (input.pdfPropostaPath) updates.pdfPropostaPath = input.pdfPropostaPath
 
       if (input.etapa === 'fechado') {
         // `moverEtapa` só cobre a *primeira* venda (é o que efetivamente

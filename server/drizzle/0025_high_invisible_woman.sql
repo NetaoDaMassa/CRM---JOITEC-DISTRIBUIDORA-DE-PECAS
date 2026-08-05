@@ -1,0 +1,1 @@
+ALTER TABLE `funil_mensal` ADD `pdf_proposta_path` text;

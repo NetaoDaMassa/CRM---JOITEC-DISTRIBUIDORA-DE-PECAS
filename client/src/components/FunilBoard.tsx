@@ -626,12 +626,24 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   async function handleMover(e: React.FormEvent) {
     e.preventDefault()
     let pdfPedidoPath: string | undefined
+    let pdfPropostaPath: string | undefined
 
     if (etapaSelecionada === 'fechado') {
       if (!valorFechado) return toast.error('Informe o valor fechado.')
       if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
       try {
         pdfPedidoPath = await obterPdfPath()
+      } catch {
+        return toast.error('Falha ao enviar o PDF.')
+      }
+    }
+
+    // Anexo de proposta é opcional, e opcional só faz sentido salvar quando
+    // o vendedor de fato escolheu um arquivo — sem isso, moverMut mandaria
+    // pdfPropostaPath undefined e o backend simplesmente não sobrescreve.
+    if (etapaSelecionada === 'negociacao' && pdfFile) {
+      try {
+        pdfPropostaPath = await obterPdfPath()
       } catch {
         return toast.error('Falha ao enviar o PDF.')
       }
@@ -655,6 +667,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
       valorFechado: valorFechado ? parseValorBr(valorFechado) : undefined,
       condicaoPagamento: condicaoPagamento || undefined,
       pdfPedidoPath,
+      pdfPropostaPath,
       motivoPerdaCategoria: (motivoCategoria || undefined) as any,
       motivoPerdaOpcao: motivoOpcao || undefined,
       motivoPerdaItem: motivoItem || undefined,
@@ -771,6 +784,17 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           >
             + Abrir {card.etapa === 'fechado' ? 'uma nova negociação' : 'outro orçamento'} pra este cliente
           </button>
+        )}
+
+        {card.pdfPropostaPath && (
+          <a
+            href={card.pdfPropostaPath.startsWith('/uploads/') ? card.pdfPropostaPath : `/uploads/${card.pdfPropostaPath}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block text-xs text-gold-400 hover:underline"
+          >
+            📄 Ver proposta/orçamento anexado
+          </a>
         )}
 
         {card.etapa === 'fechado' && (

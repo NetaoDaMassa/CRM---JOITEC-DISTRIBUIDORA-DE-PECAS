@@ -173,6 +173,11 @@ export const funilMensal = sqliteTable('funil_mensal', {
     enum: ['tubos_conexoes', 'compressores', 'outra'],
   }),
   motivoRepasseObservacao: text('motivo_repasse_observacao'),
+  // PDF de proposta/orçamento anexado durante a Negociação — separado do
+  // `pdfPedidoPath` de cada venda (que só existe quando fecha de verdade),
+  // pra ficar visível/consultável mesmo que o vendedor feche o card e volte
+  // depois, em vez de servir só pra IA ler os itens na hora e sumir.
+  pdfPropostaPath: text('pdf_proposta_path'),
   carregadoMesAnterior: integer('carregado_mes_anterior', { mode: 'boolean' }).notNull().default(false),
   versao: integer('versao').notNull().default(1),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
