@@ -816,7 +816,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                     <span className="text-xs text-dark-500">{timeAgo(v.dataFechamento)}</span>
                     {v.pdfPedidoPath && (
                       <a
-                        href={v.pdfPedidoPath}
+                        href={v.pdfPedidoPath.startsWith('/uploads/') ? v.pdfPedidoPath : `/uploads/${v.pdfPedidoPath}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-xs text-gold-400 hover:underline"
