@@ -45,6 +45,10 @@ export const users = sqliteTable('users', {
   tentativasLoginFalhas: integer('tentativas_login_falhas').notNull().default(0),
   bloqueadoAte: text('bloqueado_ate'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  // Continua vendedor normal (login, carteira, Kanban) — só some do
+  // ranking/gráficos do Painel de TV, pra casos tipo alguém de licença ou
+  // que o gestor não quer expor no telão por qualquer motivo específico.
+  ocultoPainelTv: integer('oculto_painel_tv', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })

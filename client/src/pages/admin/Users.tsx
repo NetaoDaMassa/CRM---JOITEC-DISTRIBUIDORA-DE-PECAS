@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera } from 'lucide-react'
+import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
@@ -225,6 +225,12 @@ export default function AdminUsers() {
                         {user.isActive ? <UserCheck size={13} /> : <UserX size={13} />}
                         {user.isActive ? 'Ativo' : 'Inativo'}
                       </span>
+                      {user.ocultoPainelTv && (
+                        <span className="flex items-center gap-1 text-xs text-dark-500 mt-0.5">
+                          <EyeOff size={12} />
+                          Fora do Painel de TV
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-dark-500">{formatDate(user.createdAt)}</td>
                     <td className="px-4 py-3">
@@ -245,6 +251,13 @@ export default function AdminUsers() {
                           title={user.isActive ? 'Desativar' : 'Ativar'}
                         >
                           {user.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
+                        </button>
+                        <button
+                          onClick={() => updateMut.mutate({ id: user.id, ocultoPainelTv: !user.ocultoPainelTv })}
+                          className={`p-1.5 rounded-lg transition-colors ${user.ocultoPainelTv ? 'hover:bg-green-900/30 text-green-400' : 'hover:bg-yellow-900/30 text-yellow-400'}`}
+                          title={user.ocultoPainelTv ? 'Mostrar no Painel de TV' : 'Ocultar do Painel de TV'}
+                        >
+                          {user.ocultoPainelTv ? <Tv size={14} /> : <EyeOff size={14} />}
                         </button>
                         <button onClick={() => setDeleteUser(user)} className="p-1.5 rounded-lg hover:bg-red-900/30 text-red-400 transition-colors">
                           <Trash2 size={14} />

@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `oculto_painel_tv` integer DEFAULT false NOT NULL;

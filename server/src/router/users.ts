@@ -87,6 +87,7 @@ export const usersRouter = router({
         regiao: z.enum(REGIAO_VALUES).optional(),
         role: z.enum(['admin', 'vendor']).optional(),
         isActive: z.boolean().optional(),
+        ocultoPainelTv: z.boolean().optional(),
         fotoUrl: z.string().optional(),
       })
     )

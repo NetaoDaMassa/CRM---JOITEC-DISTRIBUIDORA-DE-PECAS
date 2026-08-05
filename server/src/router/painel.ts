@@ -54,7 +54,12 @@ export const painelRouter = router({
     const mesAtual = mesReferenciaAtual()
 
     const vendedores = await db.query.users.findMany({
-      where: and(eq(users.isActive, true), eq(users.superAdmin, false), eq(users.empresaId, ctx.empresaId)),
+      where: and(
+        eq(users.isActive, true),
+        eq(users.superAdmin, false),
+        eq(users.ocultoPainelTv, false),
+        eq(users.empresaId, ctx.empresaId)
+      ),
       columns: { id: true, name: true, fotoUrl: true },
     })
     const vendedorIds = vendedores.map((v) => v.id)
