@@ -238,8 +238,35 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
     sincronizando.current = false
   }
 
+  const totalClientes = cards.length
+  const clientesContatados = cards.filter((c) => c.qtdTentativasContato > 0).length
+  const clientesSemContato = totalClientes - clientesContatados
+  const percentualContatados = totalClientes > 0 ? Math.round((clientesContatados / totalClientes) * 100) : 0
+  const corCobertura = percentualContatados >= 70 ? 'bg-green-500' : percentualContatados >= 40 ? 'bg-amber-500' : 'bg-red-500'
+
   return (
     <div>
+      {totalClientes > 0 && (
+        <div className="mb-4 bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-sm font-semibold text-dark-100">📞 Cobertura de contatos este mês</h3>
+            <span className="text-sm font-bold text-dark-50">{percentualContatados}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-dark-700 overflow-hidden">
+            <div className={`h-full rounded-full ${corCobertura} transition-all`} style={{ width: `${percentualContatados}%` }} />
+          </div>
+          <div className="flex items-center justify-between mt-2 text-xs">
+            <span className="text-green-400 font-medium">
+              ✅ {pluralizar(clientesContatados, 'cliente contatado', 'clientes contatados')}
+            </span>
+            <span className={clientesSemContato > 0 ? 'text-red-400 font-medium' : 'text-dark-500'}>
+              {clientesSemContato > 0 ? '⚠️ ' : ''}
+              {pluralizar(clientesSemContato, 'cliente sem contato', 'clientes sem contato')} ainda
+            </span>
+          </div>
+        </div>
+      )}
+
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="max-w-sm flex-1 min-w-[220px]">
           <Input placeholder="Buscar cliente por nome, código ou telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
