@@ -25,11 +25,27 @@ const CATEGORIA_LABEL: Record<string, string> = {
   compras: 'Compras',
 }
 
+const ETAPA_LABEL_REPORT: Record<string, string> = {
+  novo: 'Novo',
+  abordagem: 'Abordagem',
+  interessado: 'Interessado',
+  negociacao: 'Negociação',
+  fechado: 'Fechado',
+  perdido: 'Perdido',
+  sem_contato: 'Sem contato',
+  consumidor_final: 'Consumidor Final',
+}
+
+function pluralizarSimples(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`
+}
+
 export default function AdminReports() {
   const { user } = useAuth()
   const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
   const [dataFim, setDataFim] = useState(hojeBrString())
   const [vendedorId, setVendedorId] = useState('')
+  const [granularidadeOrcamentos, setGranularidadeOrcamentos] = useState<'dia' | 'semana' | 'mes'>('dia')
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
 
@@ -37,12 +53,17 @@ export default function AdminReports() {
 
   const { data: curvaAbc } = trpc.reports.curvaAbc.useQuery(periodo)
   const { data: positivacao } = trpc.reports.positivacaoCarteira.useQuery(periodo)
+  const { data: positivacaoPorVendedor } = trpc.reports.positivacaoPorVendedor.useQuery(periodo)
   const { data: contatos } = trpc.reports.contatosPorCliente.useQuery(periodo)
+  const { data: contatosCoberturaPorVendedor } = trpc.reports.contatosCoberturaPorVendedor.useQuery(periodo)
   const { data: ligacoesEfetividade } = trpc.reports.ligacoesEfetividade.useQuery(periodo)
   const { data: ligacoesPorCliente } = trpc.reports.ligacoesPorCliente.useQuery(periodo)
+  const { data: mixProdutosPorVendedor } = trpc.reports.mixProdutosPorVendedor.useQuery(periodo)
   const { data: vendas } = trpc.reports.vendas.useQuery(periodo)
   const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery({ vendedorId: periodo.vendedorId })
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery({ vendedorId: periodo.vendedorId })
+  const { data: clientesSemOrcamentoEContato } = trpc.reports.clientesSemOrcamentoEContato.useQuery({ vendedorId: periodo.vendedorId })
+  const { data: orcamentosPorVendedor } = trpc.reports.orcamentosPorVendedor.useQuery({ ...periodo, granularidade: granularidadeOrcamentos })
   const { data: itensMaisComprados } = trpc.reports.itensMaisComprados.useQuery(periodo)
   const { data: motivosPerdas } = trpc.reports.motivosPerdas.useQuery(periodo)
 
@@ -125,6 +146,40 @@ export default function AdminReports() {
 
       <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">Positivação de carteira por vendedor</h2>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                'positivacao-por-vendedor.csv',
+                paraCsv(
+                  [
+                    { chave: 'nome', rotulo: 'Vendedor' },
+                    { chave: 'totalCarteira', rotulo: 'Total na carteira' },
+                    { chave: 'ativados', rotulo: 'Compraram no período' },
+                    { chave: 'percentual', rotulo: '% positivação' },
+                  ],
+                  positivacaoPorVendedor ?? []
+                )
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-dark-500 mb-2">De quantos clientes da carteira cada vendedor conseguiu vender no período.</p>
+        <div className="divide-y divide-dark-700">
+          {positivacaoPorVendedor?.map((v) => (
+            <div key={v.vendedorId} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-dark-200">{v.nome}</span>
+              <span className="text-dark-400">
+                {v.ativados} de {v.totalCarteira} clientes · {v.percentual.toFixed(1)}%
+              </span>
+            </div>
+          ))}
+          {!positivacaoPorVendedor?.length && <p className="text-sm text-dark-500 py-2">Nenhum vendedor com carteira nesse filtro.</p>}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-dark-100">Contatos e ligações por cliente</h2>
           <BotaoExportar
             onClick={() =>
@@ -188,6 +243,45 @@ export default function AdminReports() {
             </div>
           ))}
           {!ligacoesEfetividade?.length && <p className="text-sm text-dark-500 py-2">Nenhuma ligação registrada no período.</p>}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">Cobertura de contatos por vendedor (WhatsApp + telefone)</h2>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                'cobertura-contatos-por-vendedor.csv',
+                paraCsv(
+                  [
+                    { chave: 'nome', rotulo: 'Vendedor' },
+                    { chave: 'totalCarteira', rotulo: 'Total na carteira' },
+                    { chave: 'contatados', rotulo: 'Contatados no período' },
+                    { chave: 'semContato', rotulo: 'Sem contato' },
+                    { chave: 'percentual', rotulo: '% cobertura' },
+                  ],
+                  contatosCoberturaPorVendedor ?? []
+                )
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-dark-500 mb-2">
+          De quantos clientes da carteira cada vendedor conseguiu falar (ligação ou WhatsApp) no período — não conta
+          e-mail nem visita.
+        </p>
+        <div className="divide-y divide-dark-700">
+          {contatosCoberturaPorVendedor?.map((v) => (
+            <div key={v.vendedorId} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-dark-200">{v.nome}</span>
+              <span className="text-dark-400">
+                {v.contatados} de {v.totalCarteira} clientes · {v.percentual.toFixed(1)}%
+                {v.semContato > 0 && <span className="text-amber-400"> · {v.semContato} sem contato</span>}
+              </span>
+            </div>
+          ))}
+          {!contatosCoberturaPorVendedor?.length && <p className="text-sm text-dark-500 py-2">Nenhum vendedor com carteira nesse filtro.</p>}
         </div>
       </section>
 
@@ -270,6 +364,93 @@ export default function AdminReports() {
       </section>
 
       <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+          <h2 className="text-sm font-semibold text-dark-100">Orçamentos feitos por vendedor</h2>
+          <div className="flex items-center gap-2">
+            <div className="w-36">
+              <Select
+                value={granularidadeOrcamentos}
+                onChange={(e) => setGranularidadeOrcamentos(e.target.value as 'dia' | 'semana' | 'mes')}
+                options={[
+                  { value: 'dia', label: 'Por dia' },
+                  { value: 'semana', label: 'Por semana' },
+                  { value: 'mes', label: 'Por mês' },
+                ]}
+              />
+            </div>
+            <BotaoExportar
+              onClick={() =>
+                baixarCsv(
+                  'orcamentos-por-vendedor.csv',
+                  paraCsv(
+                    [
+                      { chave: 'nome', rotulo: 'Vendedor' },
+                      { chave: 'periodo', rotulo: 'Período' },
+                      { chave: 'quantidade', rotulo: 'Orçamentos feitos' },
+                    ],
+                    orcamentosPorVendedor ?? []
+                  )
+                )
+              }
+            />
+          </div>
+        </div>
+        <p className="text-xs text-dark-500 mb-2">
+          Quantas vezes cada vendedor moveu um card pra "Negociação" (1º orçamento feito) — conta pela data de
+          verdade da mudança de etapa, não pela última edição do card.
+        </p>
+        <div className="divide-y divide-dark-700">
+          {orcamentosPorVendedor?.map((l) => (
+            <div key={`${l.vendedorId}-${l.periodo}`} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-dark-200">
+                {l.nome} <span className="text-dark-500">· {l.periodo}</span>
+              </span>
+              <span className="text-dark-400">{pluralizarSimples(l.quantidade, 'orçamento', 'orçamentos')}</span>
+            </div>
+          ))}
+          {!orcamentosPorVendedor?.length && <p className="text-sm text-dark-500 py-2">Nenhum orçamento feito no período.</p>}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">Clientes sem orçamento e sem contato no mês</h2>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                'clientes-sem-orcamento-e-contato.csv',
+                paraCsv(
+                  [
+                    { chave: 'razaoSocial', rotulo: 'Cliente' },
+                    { chave: 'vendedorNome', rotulo: 'Vendedor' },
+                    { chave: 'etapa', rotulo: 'Etapa' },
+                  ],
+                  clientesSemOrcamentoEContato ?? []
+                )
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-dark-500 mb-2">
+          Clientes completamente intocados neste mês — zero contato registrado e nenhum orçamento lançado. Foto do
+          mês corrente, não filtra por período.
+        </p>
+        <div className="divide-y divide-dark-700">
+          {clientesSemOrcamentoEContato?.map((c) => (
+            <div key={c.clienteId} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-dark-200">{c.razaoSocial}</span>
+              <span className="text-dark-400">
+                {ETAPA_LABEL_REPORT[c.etapa] ?? c.etapa} · {c.vendedorNome}
+              </span>
+            </div>
+          ))}
+          {!clientesSemOrcamentoEContato?.length && (
+            <p className="text-sm text-dark-500 py-2">Nenhum cliente esquecido — todo mundo tem contato ou orçamento neste mês.</p>
+          )}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-semibold text-dark-100">Clientes há mais tempo sem contato</h2>
           <BotaoExportar
@@ -295,6 +476,44 @@ export default function AdminReports() {
             </div>
           ))}
           {!diasSemContato?.length && <p className="text-sm text-dark-500 py-2">Sem dados.</p>}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">Mix de produtos por vendedor</h2>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                'mix-produtos-por-vendedor.csv',
+                paraCsv(
+                  [
+                    { chave: 'nome', rotulo: 'Vendedor' },
+                    { chave: 'clientesComVenda', rotulo: 'Clientes que compraram' },
+                    { chave: 'mediaItensPorCliente', rotulo: 'Média de itens diferentes por cliente' },
+                    { chave: 'mediaQuantidadePorCliente', rotulo: 'Média de unidades por cliente' },
+                  ],
+                  mixProdutosPorVendedor ?? []
+                )
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-dark-500 mb-2">
+          Entre os clientes que compraram no período, quantos itens diferentes (e quantas unidades) cada vendedor
+          costuma vender por cliente — mede o tamanho da cesta, não só se vendeu.
+        </p>
+        <div className="divide-y divide-dark-700">
+          {mixProdutosPorVendedor?.map((v) => (
+            <div key={v.vendedorId} className="flex items-center justify-between py-2 text-sm">
+              <span className="text-dark-200">{v.nome}</span>
+              <span className="text-dark-400">
+                {v.mediaItensPorCliente.toFixed(1)} itens/cliente · {v.mediaQuantidadePorCliente.toFixed(1)} un./cliente ·{' '}
+                {v.clientesComVenda} cliente(s)
+              </span>
+            </div>
+          ))}
+          {!mixProdutosPorVendedor?.length && <p className="text-sm text-dark-500 py-2">Nenhuma venda com itens no período.</p>}
         </div>
       </section>
 
