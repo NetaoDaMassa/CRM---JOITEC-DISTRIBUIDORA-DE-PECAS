@@ -65,6 +65,11 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
     utils.compromissos.listar.invalidate()
     utils.compromissos.historico.invalidate()
     utils.compromissos.pendentesNotificacao.invalidate()
+    // O Kanban mostra o próximo compromisso agendado direto no card — sem
+    // isso, concluir/excluir por aqui deixava o badge desatualizado lá até
+    // a próxima ação no próprio Kanban invalidar essas queries por conta.
+    utils.funil.meuFunil.invalidate()
+    utils.funil.funilPorVendedor.invalidate()
   }
 
   const excluirMut = trpc.compromissos.excluir.useMutation({

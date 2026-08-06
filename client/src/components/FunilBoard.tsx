@@ -67,6 +67,31 @@ function formatarValorInput(v: number | null | undefined): string {
   return v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
+const COMPROMISSO_ICONE: Record<string, string> = { ligacao: '📞', visita: '🚗', reuniao: '🤝', outro: '📌' }
+
+// Badge do próximo compromisso agendado, direto no card do Kanban — texto
+// curto de propósito (card já é bem carregado de informação) e a cor muda
+// sozinha conforme a urgência real: atrasado (passou da hora e ninguém
+// marcou como feito) chama mais atenção que "ainda vai acontecer".
+function formatarProximoCompromisso(dataHora: string): { texto: string; atrasado: boolean; hoje: boolean } {
+  const data = new Date(dataHora.replace(' ', 'T') + 'Z')
+  const agora = new Date()
+  const atrasado = data.getTime() < agora.getTime()
+  const hora = data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+  const dataCurta = data.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+  const mesmoDia = data.toDateString() === agora.toDateString()
+  const amanha = new Date(agora.getFullYear(), agora.getMonth(), agora.getDate() + 1)
+  const ehAmanha = data.toDateString() === amanha.toDateString()
+
+  let texto: string
+  if (atrasado) texto = `Atrasado · ${dataCurta} ${hora}`
+  else if (mesmoDia) texto = `Hoje ${hora}`
+  else if (ehAmanha) texto = `Amanhã ${hora}`
+  else texto = `${dataCurta} · ${hora}`
+
+  return { texto, atrasado, hoje: mesmoDia && !atrasado }
+}
+
 function iniciais(nome: string): string {
   const partes = nome.trim().split(/\s+/)
   return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
@@ -266,6 +291,25 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
                           )}
                         </div>
                       </div>
+                      {card.proximoCompromisso && (() => {
+                        const cp = formatarProximoCompromisso(card.proximoCompromisso.dataHora)
+                        return (
+                          <div
+                            className={`flex items-center gap-1 text-xs font-medium rounded-lg px-2 py-1 mb-2 border ${
+                              cp.atrasado
+                                ? 'bg-red-900/20 border-red-700/40 text-red-300'
+                                : cp.hoje
+                                  ? 'bg-gold-900/20 border-gold-600/40 text-gold-300'
+                                  : 'bg-blue-900/20 border-blue-700/40 text-blue-300'
+                            }`}
+                          >
+                            <span>{COMPROMISSO_ICONE[card.proximoCompromisso.tipo]}</span>
+                            <span className="truncate">
+                              {cp.texto} · {card.proximoCompromisso.titulo}
+                            </span>
+                          </div>
+                        )
+                      })()}
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
                       )}

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
@@ -70,6 +70,24 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
       })
     : []
   const pedidoPorCliente = new Map(pedidosPendentes.map((p) => [p.clienteId, p.tipo]))
+
+  // Próximo compromisso agendado (não concluído) de cada cliente — pra
+  // aparecer já no card do Kanban (não só no Calendário), pedido direto do
+  // João pra não precisar abrir o card só pra saber se tem um agendamento
+  // em aberto. Ordenado por data ascendente e pegando o primeiro por
+  // cliente cobre tanto "próximo compromisso futuro" quanto "compromisso
+  // atrasado que ainda não foi marcado como concluído" (o mais antigo vence).
+  const proximosCompromissos = clienteIds.length
+    ? await db.query.compromissos.findMany({
+        where: and(inArray(compromissos.clienteId, clienteIds), eq(compromissos.concluido, false), isNull(compromissos.deletedAt)),
+        orderBy: (c, { asc }) => [asc(c.dataHora)],
+      })
+    : []
+  const proximoCompromissoPorCliente = new Map<number, (typeof proximosCompromissos)[number]>()
+  for (const c of proximosCompromissos) {
+    if (c.clienteId === null) continue
+    if (!proximoCompromissoPorCliente.has(c.clienteId)) proximoCompromissoPorCliente.set(c.clienteId, c)
+  }
 
   // Clientes vinculados (matriz/filial, CNPJ duplicado etc.). Quando os dois
   // lados têm card neste mesmo board (mesmo vendedor, mesmo mês), viram UM
@@ -180,6 +198,10 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     cidade: f.cliente.cidade,
     clienteVersao: f.cliente.versao,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
+    proximoCompromisso: (() => {
+      const c = proximoCompromissoPorCliente.get(f.cliente.id)
+      return c ? { id: c.id, tipo: c.tipo, titulo: c.titulo, dataHora: c.dataHora } : null
+    })(),
     clientesVinculados: vinculosPorCliente.get(f.cliente.id) ?? [],
     cnpjsDisponiveis: cnpjsDisponiveisPorFunilPrimario.get(f.id) ?? [],
     diasSemContato: diasDesde(f.dataUltimoContato),
