@@ -92,6 +92,10 @@ function formatarProximoCompromisso(dataHora: string): { texto: string; atrasado
   return { texto, atrasado, hoje: mesmoDia && !atrasado }
 }
 
+function pluralizar(n: number, singular: string, plural: string): string {
+  return `${n} ${n === 1 ? singular : plural}`
+}
+
 function iniciais(nome: string): string {
   const partes = nome.trim().split(/\s+/)
   return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
@@ -330,7 +334,8 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
                       <p className={`text-xs ${corUrgencia(card.diasSemContato)}`}>
                         {card.diasSemContato === null ? 'Nunca contatado' : `${card.diasSemContato} dia(s) sem contato`}
                       </p>
-                      <p className="text-xs text-dark-400">{tentativasNaEtapaAtual(card)} tentativa(s) nesta etapa</p>
+                      <p className="text-xs text-dark-100 font-medium">{pluralizar(card.qtdTentativasContato, 'contato', 'contatos')} no mês</p>
+                      <p className="text-xs text-dark-500">{pluralizar(tentativasNaEtapaAtual(card), 'tentativa', 'tentativas')} nesta etapa</p>
                       {sugestao && (
                         <p className="text-xs text-gold-300 bg-gold-900/10 border border-gold-700/30 rounded-lg px-2 py-1 mt-2">{sugestao}</p>
                       )}
@@ -1121,7 +1126,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           <div className="bg-dark-900/40 border border-dark-700 rounded-2xl p-4">
             <p className="text-xs text-dark-500">Tentativas na etapa atual ({ETAPA_LABEL[card.etapa]})</p>
             <p className="text-2xl font-bold text-dark-50 mt-1">{tentativasNaEtapaAtual(card)}</p>
-            <p className="text-xs text-dark-500 mt-1">{card.qtdTentativasContato} no total do mês</p>
+            <p className="text-xs text-dark-500 mt-1">{pluralizar(card.qtdTentativasContato, 'contato', 'contatos')} no total do mês</p>
           </div>
 
           <Input
