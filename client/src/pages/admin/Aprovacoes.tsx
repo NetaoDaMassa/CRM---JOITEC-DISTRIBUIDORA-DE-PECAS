@@ -1,8 +1,11 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
+
+const BANCO_CLIENTES_VALUE = 'banco'
 
 const TIPO_LABELS: Record<string, string> = {
   descartar: 'Descartar cliente',
@@ -17,7 +20,7 @@ export default function Aprovacoes() {
   const utils = trpc.useUtils()
   const { data: pedidos, isLoading } = trpc.aprovacoes.listarPendentes.useQuery()
   const { data: vendedores } = trpc.users.vendors.useQuery()
-  const [destinoPorPedido, setDestinoPorPedido] = useState<Record<number, number | undefined>>({})
+  const [destinoPorPedido, setDestinoPorPedido] = useState<Record<number, string>>({})
 
   function invalidar() {
     utils.aprovacoes.listarPendentes.invalidate()
@@ -69,22 +72,30 @@ export default function Aprovacoes() {
                   Cód. {p.clienteCodigo} · pedido de {p.vendedorSolicitanteNome}
                 </p>
                 <p className="text-sm text-dark-300 mt-1">{p.motivo}</p>
-                {p.comprovantePath && (
-                  <a href={p.comprovantePath} target="_blank" rel="noopener noreferrer" className="text-xs text-gold-400 hover:underline">
-                    Ver comprovante
-                  </a>
-                )}
+                <div className="flex items-center gap-3 mt-1">
+                  <Link to={`/admin/clientes/${p.clienteId}`} className="text-xs text-gold-400 hover:underline">
+                    Ver cliente (dados, anotações, histórico) →
+                  </Link>
+                  {p.comprovantePath && (
+                    <a href={p.comprovantePath} target="_blank" rel="noopener noreferrer" className="text-xs text-gold-400 hover:underline">
+                      Ver comprovante
+                    </a>
+                  )}
+                </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
               {p.tipo === 'transferir' && (
-                <div className="w-56">
+                <div className="w-64">
                   <Select
                     value={destinoPorPedido[p.id] ?? ''}
-                    onChange={(e) => setDestinoPorPedido((prev) => ({ ...prev, [p.id]: Number(e.target.value) }))}
-                    placeholder="Vendedor de destino..."
-                    options={(vendedores ?? []).map((v) => ({ value: v.id, label: v.name }))}
+                    onChange={(e) => setDestinoPorPedido((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    placeholder="Escolha o destino..."
+                    options={[
+                      { value: BANCO_CLIENTES_VALUE, label: '📥 Banco de Clientes (sem vendedor)' },
+                      ...(vendedores ?? []).map((v) => ({ value: String(v.id), label: v.name })),
+                    ]}
                   />
                 </div>
               )}
@@ -93,9 +104,14 @@ export default function Aprovacoes() {
                 loading={aprovarMut.isPending}
                 onClick={() => {
                   if (p.tipo === 'transferir' && !destinoPorPedido[p.id]) {
-                    return toast.error('Escolha o vendedor de destino antes de aprovar.')
+                    return toast.error('Escolha o destino (um vendedor ou Banco de Clientes) antes de aprovar.')
                   }
-                  aprovarMut.mutate({ id: p.id, vendedorDestinoId: destinoPorPedido[p.id] })
+                  const destino = destinoPorPedido[p.id]
+                  aprovarMut.mutate({
+                    id: p.id,
+                    paraBanco: destino === BANCO_CLIENTES_VALUE,
+                    vendedorDestinoId: destino && destino !== BANCO_CLIENTES_VALUE ? Number(destino) : undefined,
+                  })
                 }}
               >
                 Aprovar

@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, carteiraHistorico, funilMensal, users } from '../db/schema.js'
-import { mesReferenciaAtual } from '../lib/dataBr.js'
+import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
 
@@ -38,6 +38,41 @@ export async function transferirCliente(clienteId: number, novoVendedorId: numbe
     acao: 'transferir_carteira',
     campo: 'vendedor_atual_id',
     valorNovo: String(novoVendedorId),
+    alteradoPor,
+  })
+}
+
+// Tira o cliente da carteira de quem for (sem escolher destino) — volta pro
+// Banco de Clientes, igual um cliente importado sem vendedor. O card do mês
+// some do Kanban (soft-delete), já que Banco de Clientes não tem funil
+// aberto — o próximo admin que atribuir um vendedor cria um novo. Extraída
+// à parte (não só na mutation `moverParaBanco`) pra ser reaproveitada
+// também quando o admin aprova um pedido de transferência sem escolher um
+// vendedor específico de destino (aprovacoes.ts).
+export async function moverClienteParaBanco(clienteId: number, rotulo: string | undefined, alteradoPor: number) {
+  const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId) })
+  if (!cliente) throw new Error('Cliente não encontrado')
+
+  await db
+    .update(clientes)
+    .set({ vendedorAtualId: null, origemBanco: rotulo ?? null })
+    .where(eq(clientes.id, clienteId))
+
+  const mesAtual = mesReferenciaAtual()
+  const funilExistente = await db.query.funilMensal.findFirst({
+    where: and(eq(funilMensal.clienteId, clienteId), eq(funilMensal.mesReferencia, mesAtual), isNull(funilMensal.deletedAt)),
+  })
+  if (funilExistente) {
+    await db.update(funilMensal).set({ deletedAt: agoraSqlite() }).where(eq(funilMensal.id, funilExistente.id))
+  }
+
+  await registrarAuditoria({
+    tabela: 'clientes',
+    registroId: clienteId,
+    acao: 'transferir_carteira',
+    campo: 'vendedor_atual_id',
+    valorAnterior: cliente.vendedorAtualId ? String(cliente.vendedorAtualId) : null,
+    valorNovo: null,
     alteradoPor,
   })
 }
@@ -104,28 +139,7 @@ export const carteiraRouter = router({
       })
       if (!cliente) throw new Error('Cliente não encontrado')
 
-      await db
-        .update(clientes)
-        .set({ vendedorAtualId: null, origemBanco: input.rotulo ?? null })
-        .where(eq(clientes.id, input.clienteId))
-
-      const mesAtual = mesReferenciaAtual()
-      const funilExistente = await db.query.funilMensal.findFirst({
-        where: and(eq(funilMensal.clienteId, input.clienteId), eq(funilMensal.mesReferencia, mesAtual), isNull(funilMensal.deletedAt)),
-      })
-      if (funilExistente) {
-        await db.update(funilMensal).set({ deletedAt: new Date().toISOString() }).where(eq(funilMensal.id, funilExistente.id))
-      }
-
-      await registrarAuditoria({
-        tabela: 'clientes',
-        registroId: input.clienteId,
-        acao: 'transferir_carteira',
-        campo: 'vendedor_atual_id',
-        valorAnterior: cliente.vendedorAtualId ? String(cliente.vendedorAtualId) : null,
-        valorNovo: null,
-        alteradoPor: ctx.user.id,
-      })
+      await moverClienteParaBanco(input.clienteId, input.rotulo, ctx.user.id)
       return { success: true }
     }),
 

@@ -5,7 +5,7 @@ import { db } from '../db/client.js'
 import { clientes, solicitacoesCarteira, users } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
-import { transferirCliente, validarVendedorDaEmpresa } from './carteira.js'
+import { transferirCliente, validarVendedorDaEmpresa, moverClienteParaBanco } from './carteira.js'
 
 // Pedidos do vendedor pra descartar ou transferir um cliente da própria
 // carteira — ficam pendentes até o admin aprovar (aplica a ação de verdade)
@@ -75,7 +75,7 @@ export const aprovacoesRouter = router({
   }),
 
   aprovar: adminProcedure
-    .input(z.object({ id: z.number(), vendedorDestinoId: z.number().optional() }))
+    .input(z.object({ id: z.number(), vendedorDestinoId: z.number().optional(), paraBanco: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const solicitacao = await db.query.solicitacoesCarteira.findFirst({ where: eq(solicitacoesCarteira.id, input.id) })
       if (!solicitacao) throw new Error('Pedido não encontrado')
@@ -103,8 +103,16 @@ export const aprovacoesRouter = router({
           valorNovo: solicitacao.motivo,
           alteradoPor: ctx.user.id,
         })
+      } else if (input.paraBanco) {
+        // Rotula com o nome de quem estava com o cliente antes — mesmo padrão
+        // já usado quando o admin move manualmente em Carteira.tsx, pra dar
+        // pra filtrar depois em Banco de Clientes "veio de quem".
+        const vendedorAnterior = cliente.vendedorAtualId
+          ? await db.query.users.findFirst({ where: eq(users.id, cliente.vendedorAtualId), columns: { name: true } })
+          : null
+        await moverClienteParaBanco(cliente.id, vendedorAnterior?.name, ctx.user.id)
       } else {
-        if (!input.vendedorDestinoId) throw new Error('Escolha o vendedor de destino.')
+        if (!input.vendedorDestinoId) throw new Error('Escolha o vendedor de destino ou envie pro Banco de Clientes.')
         await validarVendedorDaEmpresa(input.vendedorDestinoId, ctx.empresaId)
         await transferirCliente(cliente.id, input.vendedorDestinoId, ctx.user.id)
       }

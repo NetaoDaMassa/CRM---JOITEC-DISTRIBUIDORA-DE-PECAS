@@ -15,6 +15,7 @@ import EmailButton from './ui/EmailButton'
 import TelefonesExtras from './ui/TelefonesExtras'
 import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
+import HistoricoCliente from './HistoricoCliente'
 
 const ETAPAS = [
   { value: 'novo', label: 'Novo' },
@@ -454,6 +455,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   const [agendarAberto, setAgendarAberto] = useState(false)
   const [itensPedido, setItensPedido] = useState<{ descricao: string; quantidade: string; valorUnitario: string }[]>([])
   const [clienteIdFaturamento, setClienteIdFaturamento] = useState(card.clienteId)
+  const [historicoAberto, setHistoricoAberto] = useState(false)
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -789,6 +791,22 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           </div>
         )}
         <ClienteInfoEditavel card={card} />
+
+        <div>
+          <button
+            type="button"
+            onClick={() => setHistoricoAberto((v) => !v)}
+            className="text-xs text-gold-400 hover:underline"
+          >
+            {historicoAberto ? '▾' : '▸'} Ver histórico completo do cliente (vendas, itens, contatos de todos os meses)
+          </button>
+          {historicoAberto && (
+            <div className="mt-2">
+              <HistoricoCliente clienteId={card.clienteId} />
+            </div>
+          )}
+        </div>
+
         <SolicitarAcaoCarteira card={card} />
 
         {(card.etapa === 'negociacao' || card.etapa === 'fechado') && (

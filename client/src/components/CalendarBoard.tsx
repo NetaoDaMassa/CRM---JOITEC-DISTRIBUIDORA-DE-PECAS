@@ -119,89 +119,94 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
         </Button>
       </div>
 
-      <div className="grid grid-cols-7 gap-1.5">
-        {DIAS_SEMANA.map((d) => (
-          <div key={d} className="text-center text-xs text-dark-500 font-medium py-1">
-            {d}
-          </div>
-        ))}
-        {dias.map((dia) => {
-          const chave = chaveData(dia)
-          const foraDoMes = dia.getMonth() !== mesRef.getMonth()
-          const compromissosDia = compromissosPorDia.get(chave) ?? []
-          const vendas = vendasPorDia.get(chave) ?? 0
-          const contatos = contatosPorDia.get(chave) ?? 0
-          const selecionado = chave === diaSelecionado
-
-          return (
-            <button
-              key={chave}
-              onClick={() => setDiaSelecionado(chave)}
-              className={`aspect-square rounded-lg border p-1.5 text-left flex flex-col transition-all ${
-                selecionado ? 'border-gold-500 bg-gold-700/10' : 'border-dark-700 hover:border-dark-500'
-              } ${foraDoMes ? 'opacity-30' : ''}`}
-            >
-              <span className={`text-xs ${chave === hojeChave ? 'text-gold-400 font-bold' : 'text-dark-300'}`}>{dia.getDate()}</span>
-              <div className="flex-1 flex flex-col justify-end gap-0.5 mt-1">
-                {compromissosDia.length > 0 && (
-                  <span className="text-[10px] bg-blue-600/30 text-blue-300 rounded px-1 truncate">
-                    🎯 {compromissosDia.length}
-                  </span>
-                )}
-                {vendas > 0 && <span className="text-[10px] bg-green-600/30 text-green-300 rounded px-1 truncate">💰 {vendas}</span>}
-                {contatos > 0 && <span className="text-[10px] bg-dark-700 text-dark-300 rounded px-1 truncate">📞 {contatos}</span>}
-              </div>
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-        <h3 className="text-sm font-semibold text-dark-100 mb-3">
-          {new Date(diaSelecionado + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-        </h3>
-        {(vendasPorDia.get(diaSelecionado) ?? 0) > 0 || (contatosPorDia.get(diaSelecionado) ?? 0) > 0 ? (
-          <p className="text-xs text-dark-400 mb-3">
-            {(vendasPorDia.get(diaSelecionado) ?? 0) > 0 && `💰 ${vendasPorDia.get(diaSelecionado)} venda(s) fechada(s)`}
-            {(vendasPorDia.get(diaSelecionado) ?? 0) > 0 && (contatosPorDia.get(diaSelecionado) ?? 0) > 0 && ' · '}
-            {(contatosPorDia.get(diaSelecionado) ?? 0) > 0 && `📞 ${contatosPorDia.get(diaSelecionado)} contato(s) registrado(s)`}
-          </p>
-        ) : (
-          <p className="text-xs text-dark-500 mb-3">Nenhuma venda ou contato registrado nesse dia.</p>
-        )}
-
-        <div className="space-y-2">
-          {compromissosDoDia.length === 0 && <p className="text-xs text-dark-500">Nenhum compromisso agendado.</p>}
-          {compromissosDoDia.map((c) => (
-            <div
-              key={c.id}
-              className={`rounded-lg border p-2 text-sm ${c.concluido ? 'border-dark-700 opacity-50' : 'border-dark-600'}`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <p className="text-dark-100 font-medium">
-                    {TIPO_ICONE[c.tipo]} {horaLocal(c.dataHora)} · {c.titulo}
-                  </p>
-                  {c.cliente && <p className="text-xs text-dark-400">Cliente: {c.cliente.razaoSocial}</p>}
-                  {c.vendedor && vendedorId === undefined && <p className="text-xs text-dark-400">Vendedor: {c.vendedor.name}</p>}
-                  {c.descricao && <p className="text-xs text-dark-300 mt-1">{c.descricao}</p>}
-                </div>
-                <div className="flex shrink-0 gap-2 text-xs">
-                  {!c.concluido && (
-                    <button
-                      onClick={() => concluirMut.mutate({ id: c.id, concluido: true })}
-                      className="text-green-400 hover:text-green-300"
-                    >
-                      Concluir
-                    </button>
-                  )}
-                  <button onClick={() => excluirMut.mutate({ id: c.id })} className="text-red-400 hover:text-red-300">
-                    Excluir
-                  </button>
-                </div>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 items-start">
+        <div className="grid grid-cols-7 gap-1.5">
+          {DIAS_SEMANA.map((d) => (
+            <div key={d} className="text-center text-xs text-dark-500 font-medium py-1">
+              {d}
             </div>
           ))}
+          {dias.map((dia) => {
+            const chave = chaveData(dia)
+            const foraDoMes = dia.getMonth() !== mesRef.getMonth()
+            const compromissosDia = compromissosPorDia.get(chave) ?? []
+            const vendas = vendasPorDia.get(chave) ?? 0
+            const contatos = contatosPorDia.get(chave) ?? 0
+            const selecionado = chave === diaSelecionado
+
+            return (
+              <button
+                key={chave}
+                onClick={() => setDiaSelecionado(chave)}
+                className={`aspect-square rounded-lg border p-1.5 text-left flex flex-col transition-all ${
+                  selecionado ? 'border-gold-500 bg-gold-700/10 ring-2 ring-gold-500/40' : 'border-dark-700 hover:border-dark-500'
+                } ${foraDoMes ? 'opacity-30' : ''}`}
+              >
+                <span className={`text-xs ${chave === hojeChave ? 'text-gold-400 font-bold' : 'text-dark-300'}`}>{dia.getDate()}</span>
+                <div className="flex-1 flex flex-col justify-end gap-0.5 mt-1">
+                  {compromissosDia.length > 0 && (
+                    <span className="text-[10px] bg-blue-600/30 text-blue-300 rounded px-1 truncate">
+                      🎯 {compromissosDia.length}
+                    </span>
+                  )}
+                  {vendas > 0 && <span className="text-[10px] bg-green-600/30 text-green-300 rounded px-1 truncate">💰 {vendas}</span>}
+                  {contatos > 0 && <span className="text-[10px] bg-dark-700 text-dark-300 rounded px-1 truncate">📞 {contatos}</span>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Painel do dia selecionado — fica do lado do grid (não mais
+            embaixo), com posição fixa (sticky) pra continuar visível ao
+            rolar o mês inteiro numa tela menor. */}
+        <div className="bg-dark-800 border border-gold-600/30 rounded-2xl p-4 lg:sticky lg:top-4">
+          <h3 className="text-sm font-semibold text-dark-100 mb-3 capitalize">
+            {new Date(diaSelecionado + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+          </h3>
+          {(vendasPorDia.get(diaSelecionado) ?? 0) > 0 || (contatosPorDia.get(diaSelecionado) ?? 0) > 0 ? (
+            <p className="text-xs text-dark-400 mb-3">
+              {(vendasPorDia.get(diaSelecionado) ?? 0) > 0 && `💰 ${vendasPorDia.get(diaSelecionado)} venda(s) fechada(s)`}
+              {(vendasPorDia.get(diaSelecionado) ?? 0) > 0 && (contatosPorDia.get(diaSelecionado) ?? 0) > 0 && ' · '}
+              {(contatosPorDia.get(diaSelecionado) ?? 0) > 0 && `📞 ${contatosPorDia.get(diaSelecionado)} contato(s) registrado(s)`}
+            </p>
+          ) : (
+            <p className="text-xs text-dark-500 mb-3">Nenhuma venda ou contato registrado nesse dia.</p>
+          )}
+
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto">
+            {compromissosDoDia.length === 0 && <p className="text-xs text-dark-500">Nenhum compromisso agendado.</p>}
+            {compromissosDoDia.map((c) => (
+              <div
+                key={c.id}
+                className={`rounded-lg border p-2 text-sm ${c.concluido ? 'border-dark-700 opacity-50' : 'border-dark-600'}`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <p className="text-dark-100 font-medium">
+                      {TIPO_ICONE[c.tipo]} {horaLocal(c.dataHora)} · {c.titulo}
+                    </p>
+                    {c.cliente && <p className="text-xs text-dark-400">Cliente: {c.cliente.razaoSocial}</p>}
+                    {c.vendedor && vendedorId === undefined && <p className="text-xs text-dark-400">Vendedor: {c.vendedor.name}</p>}
+                    {c.descricao && <p className="text-xs text-dark-300 mt-1">{c.descricao}</p>}
+                  </div>
+                  <div className="flex shrink-0 gap-2 text-xs">
+                    {!c.concluido && (
+                      <button
+                        onClick={() => concluirMut.mutate({ id: c.id, concluido: true })}
+                        className="text-green-400 hover:text-green-300"
+                      >
+                        Concluir
+                      </button>
+                    )}
+                    <button onClick={() => excluirMut.mutate({ id: c.id })} className="text-red-400 hover:text-red-300">
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 

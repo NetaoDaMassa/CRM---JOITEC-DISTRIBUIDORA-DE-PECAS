@@ -7,7 +7,7 @@ import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
 import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
-import { mesReferenciaAtual } from '../lib/dataBr.js'
+import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 
 const PAGE_SIZE = 20
 // Rótulo pra cliente sem vendedor que não veio de nenhuma importação com
@@ -353,7 +353,7 @@ export const clientesRouter = router({
       await db
         .update(clientes)
         .set({
-          deletedAt: new Date().toISOString(),
+          deletedAt: agoraSqlite(),
           motivoExclusao: input.motivo,
           comprovanteExclusaoPath: input.comprovantePath,
         })
