@@ -39,6 +39,7 @@ export default function AdminReports() {
   const { data: positivacao } = trpc.reports.positivacaoCarteira.useQuery(periodo)
   const { data: contatos } = trpc.reports.contatosPorCliente.useQuery(periodo)
   const { data: ligacoesEfetividade } = trpc.reports.ligacoesEfetividade.useQuery(periodo)
+  const { data: ligacoesPorCliente } = trpc.reports.ligacoesPorCliente.useQuery(periodo)
   const { data: vendas } = trpc.reports.vendas.useQuery(periodo)
   const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery({ vendedorId: periodo.vendedorId })
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery({ vendedorId: periodo.vendedorId })
@@ -187,6 +188,49 @@ export default function AdminReports() {
             </div>
           ))}
           {!ligacoesEfetividade?.length && <p className="text-sm text-dark-500 py-2">Nenhuma ligação registrada no período.</p>}
+        </div>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">Ligações por cliente</h2>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                'ligacoes-por-cliente.csv',
+                paraCsv(
+                  [
+                    { chave: 'razaoSocial', rotulo: 'Cliente' },
+                    { chave: 'tentativas', rotulo: 'Tentativas' },
+                    { chave: 'efetivas', rotulo: 'Efetivas' },
+                    { chave: 'pendentes', rotulo: 'Pendentes de confirmação' },
+                    { chave: 'percentualEfetividade', rotulo: '% efetividade' },
+                    { chave: 'duracaoMediaSegundos', rotulo: 'Duração média (s)' },
+                  ],
+                  ligacoesPorCliente ?? []
+                )
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-dark-500 mb-2">
+          Pendente = ligação sem o vendedor confirmar se atendeu, não atendeu ou caiu na caixa postal — não conta como
+          efetiva até ser confirmada.
+        </p>
+        <div className="divide-y divide-dark-700">
+          {ligacoesPorCliente?.map((c) => (
+            <div key={c.clienteId} className="flex items-center justify-between py-2 text-sm gap-2">
+              <span className="text-dark-200 truncate">{c.razaoSocial}</span>
+              <span className="text-dark-400 text-right shrink-0">
+                {c.efetivas} efetiva(s) de {c.tentativas} tentativa(s) · {c.percentualEfetividade.toFixed(1)}%
+                {c.pendentes > 0 && (
+                  <span className="text-amber-400"> · {c.pendentes} pendente(s)</span>
+                )}
+                {c.duracaoMediaSegundos > 0 && ` · ${Math.round(c.duracaoMediaSegundos)}s méd.`}
+              </span>
+            </div>
+          ))}
+          {!ligacoesPorCliente?.length && <p className="text-sm text-dark-500 py-2">Nenhuma ligação registrada no período.</p>}
         </div>
       </section>
 

@@ -137,6 +137,46 @@ export const reportsRouter = router({
     }))
   }),
 
+  // Mesma métrica de `ligacoesEfetividade`, mas agrupada por CLIENTE em vez
+  // de vendedor — pra analisar quantas ligações cada cliente recebeu de
+  // verdade no período, não só quem na equipe liga mais. "Pendentes" conta
+  // ligações sem `resultado` confirmado ainda (a GoTo nunca sabe sozinha se
+  // foi atendida ou caiu na caixa postal — só o vendedor confirmando decide
+  // isso, ver `registrarLigacaoAutomatica` em goto.ts) — um número alto aqui
+  // também é sinal de que ninguém está voltando pra confirmar as ligações.
+  ligacoesPorCliente: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [
+      eq(registroContato.tipo, 'ligacao' as const),
+      between(registroContato.dataHora, inicio, fim),
+      isNull(registroContato.deletedAt),
+      eq(clientes.empresaId, ctx.empresaId),
+    ]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, registroContato.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+
+    const linhas = await db
+      .select({
+        clienteId: funilMensal.clienteId,
+        razaoSocial: clientes.razaoSocial,
+        tentativas: count(registroContato.id).mapWith(Number),
+        efetivas: sql<number>`sum(case when ${registroContato.efetiva} = 1 then 1 else 0 end)`.mapWith(Number),
+        pendentes: sql<number>`sum(case when ${registroContato.resultado} is null then 1 else 0 end)`.mapWith(Number),
+        duracaoMediaSegundos: sql<number>`avg(${registroContato.duracaoSegundos})`.mapWith(Number),
+      })
+      .from(registroContato)
+      .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+      .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+      .where(and(...filtros))
+      .groupBy(funilMensal.clienteId)
+      .orderBy(desc(count(registroContato.id)))
+
+    return linhas.map((l) => ({
+      ...l,
+      percentualEfetividade: l.tentativas > 0 ? Math.round((l.efetivas / l.tentativas) * 1000) / 10 : 0,
+    }))
+  }),
+
   vendas: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
