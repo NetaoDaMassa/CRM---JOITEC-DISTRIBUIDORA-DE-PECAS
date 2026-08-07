@@ -1,0 +1,29 @@
+name: Run once — Importar carteiras Luana/Yasmin Salles/Ricardo (Odin Tubos)
+
+# ⚠️ TEMPORÁRIO — só existe pra rodar server/src/scriptsOnetime/importarCarteirasLuanaYasminSallesRicardo.ts
+# (já compilado em dist/) uma vez em produção. Apagar este arquivo e o
+# scriptsOnetime/ depois de confirmar que rodou certo.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-joitec-crm
+  cancel-in-progress: false
+
+jobs:
+  run-script:
+    name: Rodar script na VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conectar na VPS e rodar o script
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            set -e
+            cd "${{ secrets.VPS_PROJECT_PATH }}"
+            docker compose exec -T backend node dist/scriptsOnetime/importarCarteirasLuanaYasminSallesRicardo.js
