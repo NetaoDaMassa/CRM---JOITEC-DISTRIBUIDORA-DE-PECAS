@@ -30,8 +30,17 @@ jobs:
             CADDY_DIR=$(docker inspect odin-crm-caddy-1 --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')
             echo "pasta: $CADDY_DIR"
             echo
-            echo "===== logs recentes do Caddy (só o que menciona joitec ou erro/cert) ====="
-            cd "$CADDY_DIR" && docker compose logs --tail=300 caddy 2>&1 | grep -i "joitec\|error\|cert\|tls" | tail -60
+            echo "===== docker-compose.yml do odin-crm (serviço caddy) ====="
+            cat "$CADDY_DIR/docker-compose.yml" 2>&1
             echo
-            echo "===== Caddyfile (bloco joitec, se existir) ====="
-            find "$CADDY_DIR" -iname "Caddyfile*" -exec grep -l "joitec" {} \; -exec cat {} \;
+            echo "===== todos os Caddyfile* encontrados ====="
+            find "$CADDY_DIR" -iname "Caddyfile*" 2>&1
+            echo
+            echo "===== conteúdo de cada um ====="
+            find "$CADDY_DIR" -iname "Caddyfile*" -exec echo "--- {} ---" \; -exec cat {} \;
+            echo
+            echo "===== rede 'web': quem está conectado ====="
+            docker network inspect web --format '{{ range .Containers }}{{ .Name }} -> {{ .IPv4Address }}{{ println }}{{ end }}' 2>&1
+            echo
+            echo "===== joitec-crm-frontend-1: redes conectadas ====="
+            docker inspect joitec-crm-frontend-1 --format '{{ range $k, $v := .NetworkSettings.Networks }}{{ $k }}: aliases={{ $v.Aliases }}{{ println }}{{ end }}' 2>&1
