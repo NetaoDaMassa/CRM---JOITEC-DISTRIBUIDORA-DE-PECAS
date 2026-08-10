@@ -1,28 +1,20 @@
 import { db } from '../db/client.js'
-import { gotoLogIntegracao, gotoLigacoesProcessadas } from '../db/schema.js'
-import { desc } from 'drizzle-orm'
+import { clientes, empresas } from '../db/schema.js'
+import { and, eq, isNull, like } from 'drizzle-orm'
 
 async function run() {
-  const logs = await db.query.gotoLogIntegracao.findMany({
-    orderBy: [desc(gotoLogIntegracao.id)],
-    limit: 20,
-  })
-  console.log(`📋 Últimos ${logs.length} registros de goto_log_integracao:\n`)
-  for (const l of logs) {
-    console.log(`[${l.criadoEm}] ${l.sucesso ? '✅' : '❌'} ${l.operacao} — ${l.metodo ?? ''} ${l.url ?? ''} — status ${l.statusCode ?? '-'}`)
-    if (l.operacao === 'notificacao_recebida' || l.operacao === 'buscar_relatorio_chamada' || !l.sucesso) {
-      console.log(`   corpo: ${(l.responseBody ?? '').slice(0, 1500)}`)
-    }
-  }
+  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.slug, 'joitec') })
+  if (!empresa) throw new Error('Empresa Joitec não encontrada')
 
-  const ligacoes = await db.query.gotoLigacoesProcessadas.findMany({
-    orderBy: [desc(gotoLigacoesProcessadas.id)],
-    limit: 5,
+  const encontrados = await db.query.clientes.findMany({
+    where: and(eq(clientes.empresaId, empresa.id), isNull(clientes.deletedAt), like(clientes.razaoSocial, '%eto%')),
+    columns: { id: true, razaoSocial: true, telefoneWhatsapp: true, vendedorAtualId: true },
+    with: { telefonesExtras: { columns: { numero: true } } },
   })
-  console.log(`\n📞 Últimas ${ligacoes.length} ligações processadas (goto_ligacoes_processadas):\n`)
-  for (const c of ligacoes) {
+  console.log(`🔎 Clientes da Joitec com "eto" no nome (${encontrados.length}):\n`)
+  for (const c of encontrados) {
     console.log(
-      `[${c.criadoEm}] ${c.conversationSpaceId} — status: ${c.status} — direção: ${c.direcao ?? '-'} — número: ${c.numeroExterno ?? '-'} — duração: ${c.duracaoSegundos ?? '-'}s — cliente: ${c.clienteId ?? '-'} — motivo: ${c.motivoNaoRegistrado ?? '-'}`
+      `id ${c.id} — "${c.razaoSocial}" — telefoneWhatsapp: ${c.telefoneWhatsapp ?? '-'} — vendedorAtualId: ${c.vendedorAtualId ?? '-'} — extras: ${c.telefonesExtras.map((t: { numero: string }) => t.numero).join(', ') || '-'}`
     )
   }
 
