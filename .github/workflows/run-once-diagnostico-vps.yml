@@ -26,11 +26,12 @@ jobs:
             echo "===== espaço em disco ====="
             df -h
             echo
-            echo "===== logs recentes do Caddy (projeto-leads) ====="
-            cd ~/projeto-leads 2>/dev/null && docker compose logs --tail=60 caddy 2>&1 || echo "pasta projeto-leads não encontrada em ~/projeto-leads"
+            echo "===== onde o Caddy roda de verdade ====="
+            CADDY_DIR=$(docker inspect odin-crm-caddy-1 --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')
+            echo "pasta: $CADDY_DIR"
             echo
-            echo "===== status do CRM Joitec ====="
-            cd "${{ secrets.VPS_PROJECT_PATH }}" && docker compose ps
+            echo "===== logs recentes do Caddy (só o que menciona joitec ou erro/cert) ====="
+            cd "$CADDY_DIR" && docker compose logs --tail=300 caddy 2>&1 | grep -i "joitec\|error\|cert\|tls" | tail -60
             echo
-            echo "===== logs recentes do backend Joitec ====="
-            docker compose logs --tail=30 backend
+            echo "===== Caddyfile (bloco joitec, se existir) ====="
+            find "$CADDY_DIR" -iname "Caddyfile*" -exec grep -l "joitec" {} \; -exec cat {} \;
