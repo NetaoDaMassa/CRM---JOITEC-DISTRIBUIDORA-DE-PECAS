@@ -24,6 +24,16 @@ async function run() {
     columns: { id: true },
   })
   console.log('Ainda no Banco de Clientes sob o rótulo Sergio (deveria ser 0):', aindaNoBanco.length)
+
+  console.log('\n===== Usuários da Odin Tubos e Conexões =====')
+  const todos = await db.query.users.findMany({
+    where: eq(users.empresaId, empresa.id),
+    columns: { id: true, name: true, username: true, role: true, isActive: true },
+    orderBy: (u, { desc, asc }) => [desc(u.role), asc(u.name)],
+  })
+  for (const u of todos) {
+    console.log(`  ${u.name} — usuário: ${u.username} — ${u.role}${u.isActive ? '' : ' (INATIVO)'}`)
+  }
   process.exit(0)
 }
 
