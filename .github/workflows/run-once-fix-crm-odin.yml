@@ -1,0 +1,63 @@
+name: Run once — Diagnóstico + fix crm-odin.duckdns.org
+
+# ⚠️ TEMPORÁRIO — mesmo problema do Joitec: bloco de domínio sumiu do
+# Caddyfile compartilhado. Primeiro só investiga (rede web, aliases,
+# Caddyfile atual); a parte que ESCREVE só roda se achar o alias certo do
+# crm-grupo-odin-frontend-1. Apagar depois de confirmado.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  fix:
+    name: Rodar na VPS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Conectar na VPS e checar/corrigir
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: 22
+          script: |
+            echo "===== containers relacionados a odin/crm ====="
+            docker ps -a --format '{{.Names}}\t{{.Status}}' | grep -i "odin\|crm"
+            echo
+            echo "===== rede 'web': todos os aliases ====="
+            docker network inspect web --format '{{ range $k, $v := .Containers }}{{ $v.Name }}: {{ println }}{{ end }}' 2>&1
+            for c in $(docker network inspect web --format '{{ range .Containers }}{{ .Name }} {{ end }}'); do
+              echo "--- $c ---"
+              docker inspect "$c" --format '{{ range $k, $v := .NetworkSettings.Networks }}{{ if eq $k "web" }}aliases={{ $v.Aliases }}{{ end }}{{ end }}'
+            done
+            echo
+            CADDY_DIR=$(docker inspect odin-crm-caddy-1 --format '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}')
+            echo "===== Caddyfile atual ====="
+            cat "$CADDY_DIR/Caddyfile"
+            echo
+            echo "===== domínios que o Caddy está gerenciando agora (via log) ====="
+            cd "$CADDY_DIR" && docker compose logs caddy 2>&1 | grep "enabling automatic TLS" | tail -1
+
+            echo
+            FRONT_ALIAS=""
+            if docker network inspect web --format '{{ range .Containers }}{{ .Name }} {{ end }}' | grep -q "crm-grupo-odin-frontend-1"; then
+              FRONT_ALIAS=$(docker inspect crm-grupo-odin-frontend-1 --format '{{ range $k, $v := .NetworkSettings.Networks }}{{ if eq $k "web" }}{{ range $v.Aliases }}{{ . }} {{ end }}{{ end }}{{ end }}')
+              echo "crm-grupo-odin-frontend-1 está na rede web, aliases: $FRONT_ALIAS"
+            else
+              echo "⚠️ crm-grupo-odin-frontend-1 NÃO está na rede 'web' — precisa conectar antes de mexer no Caddyfile."
+            fi
+
+            if [ -n "$FRONT_ALIAS" ] && ! grep -q "crm-odin.duckdns.org" "$CADDY_DIR/Caddyfile"; then
+              USAR_ALIAS=$(echo $FRONT_ALIAS | awk '{print $1}')
+              echo "===== adicionando bloco crm-odin.duckdns.org -> $USAR_ALIAS:80 ====="
+              cp "$CADDY_DIR/Caddyfile" "$CADDY_DIR/Caddyfile.bak-fix-crmodin-$(date +%Y%m%d%H%M%S)"
+              printf '\ncrm-odin.duckdns.org {\n\tencode gzip\n\treverse_proxy %s:80\n}\n' "$USAR_ALIAS" >> "$CADDY_DIR/Caddyfile"
+              cat "$CADDY_DIR/Caddyfile"
+              echo
+              echo "===== recarregando Caddy ====="
+              docker compose exec caddy caddy reload --config /etc/caddy/Caddyfile
+              sleep 8
+              docker compose logs --tail=20 caddy | grep -i "crm-odin"
+            else
+              echo "Não vou escrever automaticamente — ou já existe o bloco, ou não achei o alias com segurança. Ver saída acima."
+            fi
