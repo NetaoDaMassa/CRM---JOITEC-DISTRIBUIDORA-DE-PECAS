@@ -317,6 +317,50 @@ export const logAuditoria = sqliteTable('log_auditoria', {
   alteradoEm: text('alterado_em').notNull().default(sql`(datetime('now'))`),
 })
 
+// Idempotência da integração GoTo Connect (Call Events Report API) —
+// persistida em tabela (não Set/Map em memória) pra sobreviver a redeploy.
+// `conversationSpaceId` é o identificador de chamada que a GoTo usa tanto
+// na notificação (evento REPORT_SUMMARY) quanto pra buscar o relatório
+// completo — vira a chave única. O fluxo faz um "claim" (insert com
+// unique, ignora se já existe) antes de processar, pra duas notificações
+// da mesma ligação (ex: reconexão do canal) nunca processarem em paralelo.
+export const gotoLigacoesProcessadas = sqliteTable('goto_ligacoes_processadas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  conversationSpaceId: text('conversation_space_id').notNull().unique(),
+  direcao: text('direcao', { enum: ['INBOUND', 'OUTBOUND'] }),
+  numeroExterno: text('numero_externo'),
+  duracaoSegundos: integer('duracao_segundos'),
+  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+  registroContatoId: integer('registro_contato_id').references(() => registroContato.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['processando', 'concluido', 'erro'] }).notNull().default('processando'),
+  // Por que não virou registroContato (ex: "nenhum cliente com telefone
+  // batendo", "cliente ambíguo", "sem vendedor") — só pra debug rápido sem
+  // precisar cruzar com goto_log_integracao.
+  motivoNaoRegistrado: text('motivo_nao_registrado'),
+  payloadBruto: text('payload_bruto'),
+  criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
+  atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+// Log estruturado de TODA chamada HTTP da integração GoTo (troca/renovação
+// de token, criar canal, criar assinatura, buscar relatório) — request,
+// status code e corpo da resposta, sucesso ou erro — além do payload bruto
+// de cada notificação recebida pelo WebSocket, antes de qualquer
+// processamento. Access/refresh token nunca vão pro corpo logado (só o
+// necessário pra debugar, sem duplicar segredo em mais um lugar).
+export const gotoLogIntegracao = sqliteTable('goto_log_integracao', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  operacao: text('operacao').notNull(),
+  metodo: text('metodo'),
+  url: text('url'),
+  statusCode: integer('status_code'),
+  requestBody: text('request_body'),
+  responseBody: text('response_body'),
+  sucesso: integer('sucesso', { mode: 'boolean' }).notNull(),
+  erro: text('erro'),
+  criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
+})
+
 export const notifications = sqliteTable('notifications', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

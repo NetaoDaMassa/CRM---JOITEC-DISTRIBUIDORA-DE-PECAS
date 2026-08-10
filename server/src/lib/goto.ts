@@ -1,7 +1,7 @@
 import WebSocket from 'ws'
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, funilMensal, registroContato, empresas } from '../db/schema.js'
+import { clientes, funilMensal, registroContato, empresas, gotoLigacoesProcessadas, gotoLogIntegracao } from '../db/schema.js'
 import { getConfigTexto, getConfigNumero, setConfig, apagarConfig } from './configuracoes.js'
 import { mesReferenciaAtual, agoraSqlite } from './dataBr.js'
 
@@ -18,7 +18,12 @@ const TOKEN_URL = 'https://authentication.logmeininc.com/oauth/token'
 const AUTHORIZE_URL = 'https://authentication.logmeininc.com/oauth/authorize'
 const ME_URL = 'https://api.goto.com/users/v1/me'
 const CHANNEL_URL = 'https://webrtc.jive.com/notification-channel/v1/channels/joitec-crm-canal'
-const SUBSCRIPTIONS_URL = 'https://api.goto.com/call-events/v1/subscriptions'
+// Call Events Report API — substitui a antiga Call Events API (STARTING/ENDING
+// em tempo real): assina um evento único REPORT_SUMMARY por chamada, com
+// duração, direção e participantes já prontos, buscado sob demanda em
+// /reports/{conversationSpaceId} quando a notificação chega pelo canal.
+const REPORT_SUBSCRIPTIONS_URL = 'https://api.goto.com/call-events-report/v1/subscriptions'
+const REPORT_URL_BASE = 'https://api.goto.com/call-events-report/v1/reports'
 
 // O canal de notificação expira em 1200s (20min) e a API não documenta um
 // endpoint de renovação — a estratégia é recriar tudo (canal + assinatura +
@@ -28,20 +33,12 @@ const RENOVAR_CANAL_MS = 18 * 60 * 1000
 
 let wsAtual: WebSocket | null = null
 let timerRenovacao: NodeJS.Timeout | null = null
-let callIdsProcessados = new Set<string>()
 
-// A API de eventos da GoTo não manda a duração da chamada pronta — só os
-// eventos STARTING/ENDING. Pra filtrar ligação curta (não atendida, caiu na
-// hora) sem contar como tentativa de contato, a duração é medida aqui mesmo:
-// guarda o instante do STARTING e compara com o ENDING do mesmo callId.
-const callStartTimes = new Map<string, number>()
-
-// Segunda camada de proteção contra duplicata, além do dedup por callId
-// acima: durante instabilidade de rede (canal reconectando repetidamente em
-// sequência), a GoTo às vezes reenvia o estado da mesma ligação com um
-// state.id novo a cada reconexão — o dedup por callId não pega porque o id
-// realmente é diferente a cada vez. Por isso também não registra duas
-// ligações automáticas pro mesmo cliente dentro dessa janela de tempo.
+// Segunda camada de proteção contra duplicata, além da idempotência por
+// conversationSpaceId persistida em banco (ver processarRelatorioDeChamada):
+// durante instabilidade de rede a GoTo já mandou o mesmo relatório mais de
+// uma vez em janelas curtas — por isso também não registra duas ligações
+// automáticas pro mesmo cliente dentro dessa janela de tempo.
 const JANELA_DEDUP_MS = 3 * 60 * 1000
 const ultimoRegistroPorCliente = new Map<number, number>()
 
@@ -68,16 +65,12 @@ function redirectUri(): string {
 // configurados no app (developer.goto.com), sem garantia nenhuma daqui.
 // cr.v1.read = ler dados de "click-to-call"/relatórios de chamada;
 // call-events.v1.notifications.manage = criar/gerenciar assinatura de
-// eventos de chamada (canal WebSocket hoje, webhook de report depois).
+// eventos de chamada (canal WebSocket + Call Events Report API).
 //
 // users.v1.read foi adicionado depois — sem ele, GET /users/v1/me (usado só
 // pra descobrir o accountKey da conta, ver buscarAccountKey) passou a dar
 // 403 AUTHZ_INSUFFICIENT_SCOPE assim que paramos de mandar "todos os
-// escopos configurados" por omissão. Nome do escopo NÃO confirmado na
-// documentação (é um SPA que não dá pra ler via busca) — só por analogia ao
-// padrão de nome que a própria GoTo usa (users.v1.lines.read existe,
-// confirmado num exemplo oficial). Pedir um escopo que não existe no app é
-// inofensivo (a GoTo só ignora), por isso testar é seguro.
+// escopos configurados" por omissão. Confirmado em teste real de produção.
 const GOTO_SCOPES = 'cr.v1.read call-events.v1.notifications.manage users.v1.read'
 
 export function montarUrlAutorizacao(): string {
@@ -92,6 +85,107 @@ export function montarUrlAutorizacao(): string {
 
 function basicAuthHeader(): string {
   return 'Basic ' + Buffer.from(`${clientId()}:${clientSecret()}`).toString('base64')
+}
+
+// --- Log estruturado de integração ---------------------------------------
+// Toda chamada HTTP feita à GoTo (sucesso ou erro) e todo payload de webhook
+// recebido bruto são gravados em goto_log_integracao — pra dar visibilidade
+// real na hora de acompanhar uma ligação de teste, sem depender só de log de
+// console (que se perde no restart do container).
+
+const CAMPOS_SECRETOS = ['access_token', 'refresh_token', 'code', 'client_secret']
+
+function redigirObjeto(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(redigirObjeto)
+  if (obj && typeof obj === 'object') {
+    const copia: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      copia[k] = CAMPOS_SECRETOS.includes(k) ? '[REDACTED]' : redigirObjeto(v)
+    }
+    return copia
+  }
+  return obj
+}
+
+function redigir(valor: unknown): string | null {
+  if (valor === undefined || valor === null) return null
+  let texto: string
+  if (typeof valor === 'string') {
+    texto = valor
+    try {
+      texto = JSON.stringify(redigirObjeto(JSON.parse(texto)))
+    } catch {
+      // corpo não é JSON (ex: urlencoded do token endpoint) — redige por regex mesmo assim
+      for (const campo of CAMPOS_SECRETOS) {
+        texto = texto.replace(new RegExp(`(${campo}=)[^&\\s]+`, 'gi'), '$1[REDACTED]')
+      }
+    }
+  } else {
+    texto = JSON.stringify(redigirObjeto(valor))
+  }
+  return texto.length > 5000 ? texto.slice(0, 5000) + '…(truncado)' : texto
+}
+
+async function registrarLogIntegracao(entrada: {
+  operacao: string
+  metodo?: string
+  url?: string
+  statusCode?: number
+  requestBody?: unknown
+  responseBody?: unknown
+  sucesso: boolean
+  erro?: string
+}): Promise<void> {
+  try {
+    await db.insert(gotoLogIntegracao).values({
+      operacao: entrada.operacao,
+      metodo: entrada.metodo ?? null,
+      url: entrada.url ?? null,
+      statusCode: entrada.statusCode ?? null,
+      requestBody: redigir(entrada.requestBody),
+      responseBody: redigir(entrada.responseBody),
+      sucesso: entrada.sucesso,
+      erro: entrada.erro ?? null,
+    })
+  } catch (err) {
+    // Log é observabilidade, não pode derrubar o fluxo principal por causa dele.
+    console.error('[goto] falha ao gravar log de integração (não interrompe o fluxo):', err)
+  }
+}
+
+// Wrapper único usado por toda chamada HTTP à API da GoTo — garante que
+// nenhuma chamada fica sem log estruturado, em sucesso ou erro.
+async function chamarApiGoto(operacao: string, url: string, init: RequestInit): Promise<Response> {
+  const metodo = init.method ?? 'GET'
+  try {
+    const res = await fetch(url, init)
+    let responseBody: string | null = null
+    try {
+      responseBody = await res.clone().text()
+    } catch {
+      responseBody = null
+    }
+    await registrarLogIntegracao({
+      operacao,
+      metodo,
+      url,
+      statusCode: res.status,
+      requestBody: init.body,
+      responseBody,
+      sucesso: res.ok || res.status === 207,
+    })
+    return res
+  } catch (err) {
+    await registrarLogIntegracao({
+      operacao,
+      metodo,
+      url,
+      requestBody: init.body,
+      sucesso: false,
+      erro: err instanceof Error ? err.message : String(err),
+    })
+    throw err
+  }
 }
 
 interface TokenResponse {
@@ -125,14 +219,14 @@ async function salvarTokens(tokens: TokenResponse): Promise<void> {
 // access_token + refresh_token — depois disso o refresh_token mantém a
 // conexão viva por ~30 dias, sendo rotacionado a cada uso.
 export async function trocarCodigoPorToken(code: string): Promise<void> {
-  const res = await fetch(TOKEN_URL, {
+  const res = await chamarApiGoto('trocar_codigo_por_token', TOKEN_URL, {
     method: 'POST',
     headers: {
       Authorization: basicAuthHeader(),
       Accept: 'application/json',
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri() }),
+    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri() }).toString(),
   })
   if (!res.ok) throw new Error(`Falha ao trocar código por token: ${res.status} ${await res.text()}`)
   const tokens = (await res.json()) as TokenResponse
@@ -146,14 +240,14 @@ async function renovarAccessToken(): Promise<string> {
   const refreshToken = await getConfigTexto('goto_refresh_token')
   if (!refreshToken) throw new Error('Sem refresh_token salvo — reconecte a conta GoTo.')
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await chamarApiGoto('renovar_access_token', TOKEN_URL, {
     method: 'POST',
     headers: {
       Authorization: basicAuthHeader(),
       Accept: 'application/json',
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }).toString(),
   })
   if (!res.ok) throw new Error(`Falha ao renovar token: ${res.status} ${await res.text()}`)
   const tokens = (await res.json()) as TokenResponse
@@ -173,7 +267,7 @@ export async function obterAccessTokenValido(): Promise<string> {
 }
 
 async function buscarAccountKey(accessToken: string): Promise<string> {
-  const res = await fetch(ME_URL, { headers: { Authorization: `Bearer ${accessToken}` } })
+  const res = await chamarApiGoto('buscar_account_key', ME_URL, { headers: { Authorization: `Bearer ${accessToken}` } })
   if (!res.ok) throw new Error(`Falha ao buscar accountKey: ${res.status} ${await res.text()}`)
   const data = (await res.json()) as { items: { accountKey: string }[] }
   const accountKey = data.items[0]?.accountKey
@@ -200,7 +294,7 @@ interface CanalResponse {
 }
 
 async function criarCanal(accessToken: string): Promise<CanalResponse> {
-  const res = await fetch(CHANNEL_URL, {
+  const res = await chamarApiGoto('criar_canal', CHANNEL_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ applicationTag: 'joitec-crm', channelType: 'WebSockets' }),
@@ -209,63 +303,75 @@ async function criarCanal(accessToken: string): Promise<CanalResponse> {
   return res.json() as Promise<CanalResponse>
 }
 
-async function assinarEventosDeChamada(accessToken: string, channelId: string, accountKey: string): Promise<void> {
-  const res = await fetch(SUBSCRIPTIONS_URL, {
+async function criarAssinaturaReport(accessToken: string, channelId: string, accountKey: string): Promise<void> {
+  const res = await chamarApiGoto('criar_assinatura_report', REPORT_SUBSCRIPTIONS_URL, {
     method: 'POST',
     headers: { Authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
-    body: JSON.stringify({ channelId, accountKeys: [{ id: accountKey, events: ['STARTING', 'ENDING'] }] }),
+    body: JSON.stringify({ channelId, accountKeys: [accountKey], eventTypes: ['REPORT_SUMMARY'] }),
   })
-  // A API retorna 207 Multi-Status mesmo em sucesso.
+  // A API retorna 207 Multi-Status mesmo em sucesso (mesmo comportamento da antiga Call Events API).
   if (!res.ok && res.status !== 207) {
-    throw new Error(`Falha ao assinar eventos de chamada: ${res.status} ${await res.text()}`)
+    throw new Error(`Falha ao assinar Call Events Report: ${res.status} ${await res.text()}`)
   }
 }
 
-interface ParticipanteEvento {
-  type?: { value?: string; number?: string; name?: string; callee?: { name?: string; number?: string } }
+async function buscarRelatorioChamada(accessToken: string, conversationSpaceId: string): Promise<RelatorioChamada> {
+  const res = await chamarApiGoto('buscar_relatorio_chamada', `${REPORT_URL_BASE}/${conversationSpaceId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+  if (!res.ok) throw new Error(`Falha ao buscar relatório da chamada ${conversationSpaceId}: ${res.status} ${await res.text()}`)
+  return (await res.json()) as RelatorioChamada
 }
 
-interface ConteudoChamada {
-  metadata?: { direction?: string; accountKey?: string; dialString?: string }
-  state?: { id?: string; type?: string; participants?: ParticipanteEvento[] }
-}
-
-// A mensagem real do websocket vem num envelope bem mais aninhado do que o
-// exemplo simplificado da documentação — o evento de chamada de verdade fica
-// em `data.content`, não solto na raiz.
-interface EnvelopeGoTo {
-  data?: { source?: string; type?: string; content?: ConteudoChamada }
-}
-
-// O `number` de um participante PHONE_NUMBER é o número de tronco/saída da
-// operadora, não o do cliente — o número de quem realmente está do outro
-// lado da ligação vem em `callee.number`. E pra ligações que terminam rápido
-// o estado final às vezes nem inclui mais o participante PHONE_NUMBER, só o
-// LINE interno — por isso `metadata.dialString` (o número discado) é a
-// fonte mais confiável e é sempre checado primeiro.
-function extrairNumeroExterno(conteudo: ConteudoChamada): string | null {
-  if (conteudo.metadata?.dialString) return conteudo.metadata.dialString
-
-  const participantes = conteudo.state?.participants ?? []
-  for (const p of participantes) {
-    if (p.type?.value !== 'PHONE_NUMBER') continue
-    if (p.type.callee?.number) return p.type.callee.number
-    if (p.type.number) return p.type.number
+interface RelatorioParticipante {
+  type?: {
+    value?: string
+    number?: string
+    name?: string
+    caller?: { name?: string; number?: string }
+    callee?: { name?: string; number?: string }
   }
-  return null
+}
+
+interface RelatorioChamada {
+  conversationSpaceId: string
+  callCreated: string
+  callEnded?: string
+  direction?: 'INBOUND' | 'OUTBOUND'
+  accountKey?: string
+  participants?: RelatorioParticipante[]
+}
+
+// No relatório, o participante PHONE_NUMBER carrega o número externo dentro
+// de `caller` (ligação recebida) ou `callee` (ligação feita pela Joitec) —
+// qual dos dois usar é decidido pelo campo `direction` do próprio relatório.
+function extrairNumeroExternoDoRelatorio(relatorio: RelatorioChamada): string | null {
+  const participantes = relatorio.participants ?? []
+  const telefone = participantes.find((p) => p.type?.value === 'PHONE_NUMBER')
+  if (!telefone?.type) return null
+  if (relatorio.direction === 'OUTBOUND') {
+    return telefone.type.callee?.number ?? telefone.type.number ?? null
+  }
+  return telefone.type.caller?.number ?? telefone.type.number ?? null
 }
 
 function soDigitos(v: string): string {
   return v.replace(/\D/g, '')
 }
 
+interface ResultadoRegistro {
+  clienteId?: number
+  registroContatoId?: number
+  motivoNaoRegistrado?: string
+}
+
 // Casa o número da GoTo com o telefone salvo do cliente comparando os
 // últimos 8 dígitos — a planilha importada nem sempre tem o DDI/DDD
 // completo, então uma comparação exata falharia com frequência.
-async function registrarLigacaoAutomatica(numeroExterno: string, callId: string, duracaoMs: number | null): Promise<void> {
-  if (callIdsProcessados.has(callId)) return
-  callIdsProcessados.add(callId)
-
+//
+// NÃO ALTERAR esta lógica de matching (numeroBate) — mantida exatamente como
+// estava antes da migração pra Call Events Report API.
+async function registrarLigacaoAutomatica(numeroExterno: string, duracaoMs: number | null): Promise<ResultadoRegistro> {
   // A API da GoTo não diz se a ligação foi atendida por uma pessoa ou caiu
   // na caixa postal — só dá pra medir a duração. Isso já causou o problema
   // de caixa postal (que costuma durar mais que a saudação + recado) sendo
@@ -291,11 +397,11 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
   // não entra na comparação (mais seguro não casar do que casar errado).
   if (digitos.length < 10) {
     console.log(`[goto] número da chamada com menos de 10 dígitos ("${digitos}") — não dá pra casar com segurança, ignorando`)
-    return
+    return { motivoNaoRegistrado: 'numero_invalido' }
   }
   const sufixo11 = digitos.length >= 11 ? digitos.slice(-11) : null
   const sufixo10 = digitos.slice(-10)
-  console.log(`[goto] evento de chamada recebido — número bruto "${numeroExterno}", comparando pelos últimos 10-11 dígitos ("${sufixo10}")`)
+  console.log(`[goto] relatório de chamada recebido — número bruto "${numeroExterno}", comparando pelos últimos 10-11 dígitos ("${sufixo10}")`)
 
   function numeroBate(numeroCliente: string): boolean {
     const d = soDigitos(numeroCliente)
@@ -318,90 +424,157 @@ async function registrarLigacaoAutomatica(numeroExterno: string, callId: string,
   )
   if (clientesQueBatem.length === 0) {
     console.log(`[goto] nenhum cliente da Joitec com telefone batendo com "${sufixo10}" — ligação não registrada`)
-    return
+    return { motivoNaoRegistrado: 'cliente_nao_encontrado' }
   }
   if (clientesQueBatem.length > 1) {
     console.log(
       `[goto] AMBÍGUO: ${clientesQueBatem.length} clientes com telefone batendo com "${sufixo10}" (ids: ${clientesQueBatem.map((c) => c.id).join(', ')}) — não registra pra não arriscar atribuir errado`
     )
-    return
+    return { motivoNaoRegistrado: 'numero_ambiguo' }
   }
   const cliente = clientesQueBatem[0]
   if (!cliente.vendedorAtualId) {
     console.log(`[goto] cliente ${cliente.id} encontrado pelo telefone, mas sem vendedor atribuído — ligação não registrada`)
-    return
+    return { clienteId: cliente.id, motivoNaoRegistrado: 'cliente_sem_vendedor' }
   }
 
   const agora = Date.now()
   const ultimoRegistro = ultimoRegistroPorCliente.get(cliente.id)
   if (ultimoRegistro !== undefined && agora - ultimoRegistro < JANELA_DEDUP_MS) {
     console.log(`[goto] ligação duplicada pro cliente ${cliente.id} ignorada (dentro da janela de dedup)`)
-    return
+    return { clienteId: cliente.id, motivoNaoRegistrado: 'duplicada_janela_dedup' }
   }
   ultimoRegistroPorCliente.set(cliente.id, agora)
 
   const funil = await db.query.funilMensal.findFirst({
     where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferenciaAtual()), isNull(funilMensal.deletedAt)),
   })
-  if (!funil) return
+  if (!funil) return { clienteId: cliente.id, motivoNaoRegistrado: 'sem_funil_mes_atual' }
 
   const duracaoTexto = duracaoMs !== null ? ` (duração: ${Math.round(duracaoMs / 1000)}s)` : ''
-  await db.insert(registroContato).values({
-    funilMensalId: funil.id,
-    vendedorId: funil.vendedorId,
-    tipo: 'ligacao',
-    duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
-    efetiva,
-    resultado: resultadoAuto,
-    observacao: provavelmenteNaoAtendida
-      ? `Ligação muito curta — provavelmente não atendida.${duracaoTexto}`
-      : `Ligação captada automaticamente pela integração GoTo Connect — confirme se você conversou com o cliente ou se caiu na caixa postal.${duracaoTexto}`,
-  })
+  const [registro] = await db
+    .insert(registroContato)
+    .values({
+      funilMensalId: funil.id,
+      vendedorId: funil.vendedorId,
+      tipo: 'ligacao',
+      duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
+      efetiva,
+      resultado: resultadoAuto,
+      observacao: provavelmenteNaoAtendida
+        ? `Ligação muito curta — provavelmente não atendida.${duracaoTexto}`
+        : `Ligação captada automaticamente pela integração GoTo Connect — confirme se você conversou com o cliente ou se caiu na caixa postal.${duracaoTexto}`,
+    })
+    .returning({ id: registroContato.id })
   await db
     .update(funilMensal)
     .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
     .where(eq(funilMensal.id, funil.id))
 
   console.log(`[goto] ligação registrada automaticamente pro cliente ${cliente.id}`)
+  return { clienteId: cliente.id, registroContatoId: registro?.id }
+}
+
+// Idempotência via banco (não em memória): a "reserva" do conversationSpaceId
+// é feita com onConflictDoNothing() ANTES de qualquer processamento — se
+// rowsAffected vier 0, é porque outra notificação (reconexão do canal,
+// reenvio da GoTo) já reservou esse mesmo id antes, então ignora sem
+// reprocessar. Isso sobrevive a restart do container, ao contrário do Set em
+// memória usado antes.
+async function processarRelatorioDeChamada(conversationSpaceId: string): Promise<void> {
+  const claim = await db.insert(gotoLigacoesProcessadas).values({ conversationSpaceId }).onConflictDoNothing()
+  if (claim.rowsAffected === 0) {
+    console.log(`[goto] conversationSpaceId ${conversationSpaceId} já processado, ignorando duplicata`)
+    return
+  }
+
+  try {
+    const accessToken = await obterAccessTokenValido()
+    const relatorio = await buscarRelatorioChamada(accessToken, conversationSpaceId)
+    const numeroExterno = extrairNumeroExternoDoRelatorio(relatorio)
+    const duracaoMs =
+      relatorio.callEnded && relatorio.callCreated
+        ? new Date(relatorio.callEnded).getTime() - new Date(relatorio.callCreated).getTime()
+        : null
+
+    if (!numeroExterno) {
+      await db
+        .update(gotoLigacoesProcessadas)
+        .set({
+          direcao: relatorio.direction ?? null,
+          duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
+          status: 'concluido',
+          motivoNaoRegistrado: 'numero_externo_nao_encontrado_no_relatorio',
+          payloadBruto: redigir(relatorio),
+          atualizadoEm: agoraSqlite(),
+        })
+        .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
+      console.log(`[goto] relatório ${conversationSpaceId} não trouxe número externo, ignorando`)
+      return
+    }
+
+    const resultado = await registrarLigacaoAutomatica(numeroExterno, duracaoMs)
+
+    await db
+      .update(gotoLigacoesProcessadas)
+      .set({
+        direcao: relatorio.direction ?? null,
+        numeroExterno,
+        duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
+        clienteId: resultado.clienteId ?? null,
+        registroContatoId: resultado.registroContatoId ?? null,
+        status: 'concluido',
+        motivoNaoRegistrado: resultado.motivoNaoRegistrado ?? null,
+        payloadBruto: redigir(relatorio),
+        atualizadoEm: agoraSqlite(),
+      })
+      .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : String(err)
+    console.error(`[goto] erro ao processar relatório ${conversationSpaceId}:`, err)
+    await db
+      .update(gotoLigacoesProcessadas)
+      .set({ status: 'erro', motivoNaoRegistrado: mensagem, atualizadoEm: agoraSqlite() })
+      .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
+  }
+}
+
+interface EnvelopeNotificacaoGoTo {
+  data?: { source?: string; type?: string; content?: { conversationSpaceId?: string } }
 }
 
 // Extraída à parte (em vez de inline no handler do WebSocket) pra poder ser
-// testada diretamente com um payload fake, sem precisar de uma ligação real
-// ou de mockar a conexão websocket inteira.
-export function processarEventoRecebido(raw: string): void {
-  try {
-    const envelope = JSON.parse(raw) as EnvelopeGoTo
-    const conteudo = envelope.data?.content
-    const callId = conteudo?.state?.id
-    if (!conteudo || !callId) {
-      console.log('[goto] evento recebido sem conteúdo/callId reconhecível:', raw.slice(0, 500))
-      return
-    }
+// testada diretamente com um payload fake, sem precisar mockar a conexão
+// websocket inteira. Loga o payload bruto ANTES de qualquer parsing —
+// mesmo uma notificação que falhe ao processar fica registrada.
+export function processarNotificacaoRecebida(raw: string): void {
+  registrarLogIntegracao({ operacao: 'notificacao_recebida', responseBody: raw, sucesso: true })
 
-    if (conteudo.state?.type === 'STARTING') {
-      console.log(`[goto] STARTING recebido (callId ${callId})`)
-      callStartTimes.set(callId, Date.now())
-      return
-    }
-    if (conteudo.state?.type !== 'ENDING') {
-      console.log(`[goto] evento de tipo "${conteudo.state?.type}" ignorado (só trata STARTING/ENDING)`)
-      return
-    }
-
-    // Sem STARTING correspondente (ex: reconexão do canal no meio da
-    // ligação) não dá pra medir duração — nesse caso registra mesmo assim,
-    // pra não arriscar perder uma ligação de verdade por causa disso.
-    const inicio = callStartTimes.get(callId)
-    callStartTimes.delete(callId)
-    const duracaoMs = inicio !== undefined ? Date.now() - inicio : null
-
-    const numero = extrairNumeroExterno(conteudo)
-    console.log(`[goto] ENDING recebido (callId ${callId}) — número extraído: ${numero ?? 'NENHUM'} — metadata: ${JSON.stringify(conteudo.metadata)}`)
-    if (numero) registrarLigacaoAutomatica(numero, callId, duracaoMs).catch((err) => console.error('[goto] erro ao registrar ligação:', err))
-    else console.log('[goto] não foi possível extrair o número externo desse evento — ligação não registrada')
-  } catch (err) {
-    console.error('[goto] erro ao processar evento de chamada:', err)
+  // Mensagens de controle do próprio canal (não são eventos de chamada) — a
+  // recriação completa já é feita pelo timer de renovação, então aqui só loga.
+  if (raw === 'WEBSOCKET_REFRESH_REQUIRED' || raw === 'WEBSOCKET_TO_BE_CLOSED') {
+    console.log(`[goto] canal sinalizou "${raw}" — recriação completa já agendada pelo timer de renovação`)
+    return
   }
+
+  let envelope: EnvelopeNotificacaoGoTo
+  try {
+    envelope = JSON.parse(raw) as EnvelopeNotificacaoGoTo
+  } catch {
+    console.log('[goto] mensagem recebida não é JSON válido, ignorando:', raw)
+    return
+  }
+
+  if (envelope.data?.source !== 'call-events-report') return
+  const conversationSpaceId = envelope.data.content?.conversationSpaceId
+  if (!conversationSpaceId) {
+    console.log('[goto] notificação call-events-report sem conversationSpaceId, ignorando')
+    return
+  }
+
+  processarRelatorioDeChamada(conversationSpaceId).catch((err) => {
+    console.error('[goto] erro não tratado em processarRelatorioDeChamada:', err)
+  })
 }
 
 async function conectarWebSocket(channelURL: string): Promise<void> {
@@ -410,7 +583,7 @@ async function conectarWebSocket(channelURL: string): Promise<void> {
   wsAtual = ws
 
   ws.on('open', () => console.log('[goto] websocket de eventos de chamada conectado'))
-  ws.on('message', (raw) => processarEventoRecebido(raw.toString()))
+  ws.on('message', (raw) => processarNotificacaoRecebida(raw.toString()))
   ws.on('error', (err) => console.error('[goto] erro no websocket:', err))
   ws.on('close', () => console.log('[goto] websocket de eventos de chamada desconectado'))
 }
@@ -421,7 +594,7 @@ async function configurarCanalEAssinatura(): Promise<void> {
   if (!accountKey) throw new Error('Sem accountKey salvo — reconecte a conta GoTo.')
 
   const canal = await criarCanal(accessToken)
-  await assinarEventosDeChamada(accessToken, canal.channelId, accountKey)
+  await criarAssinaturaReport(accessToken, canal.channelId, accountKey)
   await conectarWebSocket(canal.channelData.channelURL)
 }
 
@@ -446,5 +619,4 @@ export function pararListener(): void {
   timerRenovacao = null
   wsAtual?.close()
   wsAtual = null
-  callIdsProcessados = new Set()
 }
