@@ -63,11 +63,20 @@ function redirectUri(): string {
   return uri
 }
 
+// Escopos pedidos explicitamente na autorização — antes disso a URL não
+// mandava `scope` nenhum, então o que era concedido dependia inteiramente
+// da configuração do app no developer.goto.com, sem garantia nenhuma daqui.
+// cr.v1.read = ler dados de "click-to-call"/relatórios de chamada;
+// call-events.v1.notifications.manage = criar/gerenciar assinatura de
+// eventos de chamada (canal WebSocket hoje, webhook de report depois).
+const GOTO_SCOPES = 'cr.v1.read call-events.v1.notifications.manage'
+
 export function montarUrlAutorizacao(): string {
   const params = new URLSearchParams({
     client_id: clientId(),
     response_type: 'code',
     redirect_uri: redirectUri(),
+    scope: GOTO_SCOPES,
   })
   return `${AUTHORIZE_URL}?${params.toString()}`
 }
@@ -96,6 +105,11 @@ async function salvarTokens(tokens: TokenResponse): Promise<void> {
   }
   await setConfig('goto_expira_em', String(expiraEm))
   await setConfig('goto_email', tokens.principal)
+  // Antes esse campo vinha na resposta e era descartado — sem isso não
+  // tinha como confirmar, sem ir no painel da GoTo, se os escopos pedidos
+  // em GOTO_SCOPES foram realmente concedidos.
+  await setConfig('goto_scope', tokens.scope ?? '')
+  console.log(`[goto] token salvo — scope concedido: "${tokens.scope ?? '(vazio)'}"`)
 }
 
 // Primeira troca do código de autorização (callback do OAuth) por
