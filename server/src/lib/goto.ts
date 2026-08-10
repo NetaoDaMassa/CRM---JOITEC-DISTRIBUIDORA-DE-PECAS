@@ -64,12 +64,21 @@ function redirectUri(): string {
 }
 
 // Escopos pedidos explicitamente na autorização — antes disso a URL não
-// mandava `scope` nenhum, então o que era concedido dependia inteiramente
-// da configuração do app no developer.goto.com, sem garantia nenhuma daqui.
+// mandava `scope` nenhum, e nesse caso a GoTo concede TODOS os escopos
+// configurados no app (developer.goto.com), sem garantia nenhuma daqui.
 // cr.v1.read = ler dados de "click-to-call"/relatórios de chamada;
 // call-events.v1.notifications.manage = criar/gerenciar assinatura de
 // eventos de chamada (canal WebSocket hoje, webhook de report depois).
-const GOTO_SCOPES = 'cr.v1.read call-events.v1.notifications.manage'
+//
+// users.v1.read foi adicionado depois — sem ele, GET /users/v1/me (usado só
+// pra descobrir o accountKey da conta, ver buscarAccountKey) passou a dar
+// 403 AUTHZ_INSUFFICIENT_SCOPE assim que paramos de mandar "todos os
+// escopos configurados" por omissão. Nome do escopo NÃO confirmado na
+// documentação (é um SPA que não dá pra ler via busca) — só por analogia ao
+// padrão de nome que a própria GoTo usa (users.v1.lines.read existe,
+// confirmado num exemplo oficial). Pedir um escopo que não existe no app é
+// inofensivo (a GoTo só ignora), por isso testar é seguro.
+const GOTO_SCOPES = 'cr.v1.read call-events.v1.notifications.manage users.v1.read'
 
 export function montarUrlAutorizacao(): string {
   const params = new URLSearchParams({
