@@ -56,8 +56,16 @@ function formatarMoeda(v: number | null): string {
 // ("1.250,50", ponto de milhar + vírgula decimal) isso travava o vendedor
 // no meio da digitação. Aqui aceita os dois formatos: tira ponto de milhar
 // e troca vírgula por ponto antes de converter pra número.
+//
+// O campo aceita texto livre, então também chega "R$ 1.094,90" (o vendedor
+// copiou de algum lugar que já mostra formatado, ex: "Orçado: R$ 1.094,90"
+// no próprio card) — sem tirar o "R$"/espaços antes, Number() vira NaN, que
+// no JSON some e vira `null`, travando na validação do backend
+// ("Expected number, received null"). Por isso tira tudo que não é
+// dígito/vírgula/ponto/sinal antes de converter.
 function parseValorBr(v: string): number {
-  return Number(v.replace(/\./g, '').replace(',', '.'))
+  const limpo = v.replace(/[^\d,.-]/g, '')
+  return Number(limpo.replace(/\./g, '').replace(',', '.'))
 }
 
 // Inverso do parseValorBr — usado só pra pré-preencher um campo (ex: valor
@@ -722,8 +730,13 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     let pdfPedidoPath: string | undefined
     let pdfPropostaPath: string | undefined
 
+    if (valorOrcado && Number.isNaN(parseValorBr(valorOrcado))) {
+      return toast.error('Valor orçado inválido — use só números, ex: 1.250,50.')
+    }
+
     if (etapaSelecionada === 'fechado') {
       if (!valorFechado) return toast.error('Informe o valor fechado.')
+      if (Number.isNaN(parseValorBr(valorFechado))) return toast.error('Valor fechado inválido — use só números, ex: 1.250,50.')
       if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
       try {
         pdfPedidoPath = await obterPdfPath()
@@ -800,6 +813,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   async function handleRegistrarVenda(e: React.FormEvent) {
     e.preventDefault()
     if (!valorFechado) return toast.error('Informe o valor da venda.')
+    if (Number.isNaN(parseValorBr(valorFechado))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
     if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
 
     let pdfPedidoPath: string
@@ -850,6 +864,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     e.preventDefault()
     if (!vendaEditandoId) return
     if (!vendaEditValor) return toast.error('Informe o valor.')
+    if (Number.isNaN(parseValorBr(vendaEditValor))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
     editarVendaMut.mutate({
       vendaId: vendaEditandoId,
       valorFechado: parseValorBr(vendaEditValor),
