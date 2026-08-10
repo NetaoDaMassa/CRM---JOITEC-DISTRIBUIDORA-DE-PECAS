@@ -36,13 +36,7 @@ jobs:
             else
               echo "===== adicionando bloco do joitec ao Caddyfile ====="
               cp "$CADDY_DIR/Caddyfile" "$CADDY_DIR/Caddyfile.bak-fix-joitec-$(date +%Y%m%d%H%M%S)"
-              cat >> "$CADDY_DIR/Caddyfile" <<'CADDYBLOCK'
-
-joitec-crm.duckdns.org {
-	encode gzip
-	reverse_proxy joitec-frontend:80
-}
-CADDYBLOCK
+              printf '\njoitec-crm.duckdns.org {\n\tencode gzip\n\treverse_proxy joitec-frontend:80\n}\n' >> "$CADDY_DIR/Caddyfile"
               echo "--- Caddyfile atualizado ---"
               cat "$CADDY_DIR/Caddyfile"
             fi
