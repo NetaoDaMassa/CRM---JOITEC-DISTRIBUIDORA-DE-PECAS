@@ -1,17 +1,23 @@
 import WebSocket from 'ws'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, funilMensal, registroContato, empresas, gotoLigacoesProcessadas, gotoLogIntegracao } from '../db/schema.js'
 import { getConfigTexto, getConfigNumero, setConfig, apagarConfig } from './configuracoes.js'
 import { mesReferenciaAtual, agoraSqlite } from './dataBr.js'
 
-let empresaJoitecIdCache: number | null = null
-async function obterEmpresaJoitecId(): Promise<number> {
-  if (empresaJoitecIdCache) return empresaJoitecIdCache
-  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.slug, 'joitec') })
-  if (!empresa) throw new Error('Empresa Joitec não encontrada — GoTo Connect precisa dela pra casar telefone com cliente.')
-  empresaJoitecIdCache = empresa.id
-  return empresa.id
+// O telefone físico GoTo Connect atende tanto a Joitec Distribuidora quanto
+// a Joitec Automação (mesma linha/recepção) — por isso o casamento de
+// ligação busca cliente nas duas. Odin Tubos e Odin Compressores ficam de
+// fora por enquanto (linha telefônica separada, sem essa integração).
+const SLUGS_EMPRESAS_INTEGRACAO = ['joitec', 'joitec-automacao']
+
+let empresaIdsIntegracaoCache: number[] | null = null
+async function obterEmpresaIdsIntegracao(): Promise<number[]> {
+  if (empresaIdsIntegracaoCache) return empresaIdsIntegracaoCache
+  const linhas = await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_EMPRESAS_INTEGRACAO) })
+  if (linhas.length === 0) throw new Error('Nenhuma empresa Joitec encontrada — GoTo Connect precisa delas pra casar telefone com cliente.')
+  empresaIdsIntegracaoCache = linhas.map((e) => e.id)
+  return empresaIdsIntegracaoCache
 }
 
 const TOKEN_URL = 'https://authentication.logmeininc.com/oauth/token'
@@ -410,12 +416,12 @@ async function registrarLigacaoAutomatica(numeroExterno: string, duracaoMs: numb
     return d.slice(-10) === sufixo10
   }
 
-  // A integração GoTo Connect é o telefone físico da Joitec — não virou
-  // multi-empresa (só ela tem esse número/contrato), então o casamento de
-  // ligação sempre busca só nos clientes da empresa Joitec.
-  const empresaJoitecId = await obterEmpresaJoitecId()
+  // O telefone físico GoTo Connect atende Joitec Distribuidora e Joitec
+  // Automação (mesma linha) — o casamento de ligação busca cliente nas duas
+  // empresas, mas nunca em Odin Tubos/Odin Compressores (linha separada).
+  const empresaIds = await obterEmpresaIdsIntegracao()
   const todosClientes = await db.query.clientes.findMany({
-    where: and(isNull(clientes.deletedAt), eq(clientes.empresaId, empresaJoitecId)),
+    where: and(isNull(clientes.deletedAt), inArray(clientes.empresaId, empresaIds)),
     columns: { id: true, telefoneWhatsapp: true, vendedorAtualId: true },
     with: { telefonesExtras: { columns: { numero: true } } },
   })
