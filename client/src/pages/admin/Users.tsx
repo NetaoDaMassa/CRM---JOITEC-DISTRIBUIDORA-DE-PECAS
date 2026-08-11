@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, EyeOff } from 'lucide-react'
+import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, EyeOff, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
@@ -7,7 +7,79 @@ import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Modal from '../../components/ui/Modal'
 import AvatarMeta from '../../components/ui/AvatarMeta'
-import { formatDate } from '../../lib/utils'
+import { formatDate, formatDateTime, timeAgo, downloadBase64Excel } from '../../lib/utils'
+
+function fmtMinutos(segundos: number): string {
+  const mins = Math.round(segundos / 60)
+  if (mins < 60) return `${mins}min`
+  return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}min`
+}
+
+function AccessBadge({
+  accessedToday,
+  lastLoginAt,
+  lastLoginTimeToday,
+  onlineNow,
+  onlineSecondsToday,
+}: {
+  accessedToday: boolean
+  lastLoginAt: string | null
+  lastLoginTimeToday: string | null
+  onlineNow: boolean
+  onlineSecondsToday: number
+}) {
+  if (accessedToday) {
+    return (
+      <span className="inline-flex flex-col text-xs font-medium text-green-400">
+        <span className="inline-flex items-center gap-1.5">
+          <span className={`w-2 h-2 rounded-full bg-green-500 ${onlineNow ? 'shadow-[0_0_6px_rgba(34,197,94,0.8)]' : ''}`} />
+          {onlineNow ? 'Online agora' : `Online hoje às ${lastLoginTimeToday}`}
+        </span>
+        {onlineSecondsToday > 0 && <span className="text-dark-500 font-normal ml-3.5">{fmtMinutos(onlineSecondsToday)} online hoje</span>}
+      </span>
+    )
+  }
+  if (!lastLoginAt) {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-dark-500">
+        <span className="w-2 h-2 rounded-full bg-dark-600" />
+        Nunca acessou
+      </span>
+    )
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-dark-400" title={formatDateTime(lastLoginAt)}>
+      <span className="w-2 h-2 rounded-full bg-dark-600" />
+      {timeAgo(lastLoginAt)} ({formatDateTime(lastLoginAt)})
+    </span>
+  )
+}
+
+function AccessHeatmap({
+  days,
+  accessed,
+  dayTimes,
+  dayOnlineSeconds,
+}: {
+  days: string[]
+  accessed: boolean[]
+  dayTimes: string[][]
+  dayOnlineSeconds: number[]
+}) {
+  return (
+    <div className="flex gap-0.5">
+      {days.map((day, i) => {
+        const times = dayTimes[i] ?? []
+        const onlineSeconds = dayOnlineSeconds[i] ?? 0
+        const dateLabel = day.split('-').reverse().join('/')
+        const tooltip = times.length
+          ? `${dateLabel} — acessou às ${times.join(', ')}${onlineSeconds > 0 ? ` · ${fmtMinutos(onlineSeconds)} online` : ''}`
+          : `${dateLabel} — não acessou`
+        return <span key={day} title={tooltip} className={`w-2.5 h-4 rounded-sm ${accessed[i] ? 'bg-green-500/80' : 'bg-dark-700'}`} />
+      })}
+    </div>
+  )
+}
 
 const REGIOES = [
   { value: 'norte', label: 'Norte' },
@@ -51,6 +123,18 @@ export default function AdminUsers() {
 
   const utils = trpc.useUtils()
   const { data: users, isLoading } = trpc.users.list.useQuery()
+  const { data: accessLog } = trpc.users.accessLog.useQuery({ days: 14 })
+  const accessByUser = new Map((accessLog?.users ?? []).map((u) => [u.id, u]))
+
+  const exportMut = trpc.users.exportAccessLog.useMutation({
+    onSuccess(data) {
+      downloadBase64Excel(data.data, data.filename)
+      toast.success('Relatório de acessos exportado!')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
 
   const createMut = trpc.users.create.useMutation({
     onSuccess(data, variables) {
@@ -158,23 +242,29 @@ export default function AdminUsers() {
           <h1 className="font-heading text-2xl text-gold-400 font-bold">Vendedores</h1>
           <p className="text-dark-400 text-sm">{users?.length ?? 0} usuários cadastrados</p>
         </div>
-        <Button
-          onClick={() => {
-            setCreateModal(true)
-            setForm(DEFAULT_FORM)
-            setFotoForm(null)
-          }}
-        >
-          <Plus size={16} />
-          Novo Usuário
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" loading={exportMut.isPending} onClick={() => exportMut.mutate({ days: 14 })}>
+            <Download size={16} />
+            Exportar acessos (14 dias)
+          </Button>
+          <Button
+            onClick={() => {
+              setCreateModal(true)
+              setForm(DEFAULT_FORM)
+              setFotoForm(null)
+            }}
+          >
+            <Plus size={16} />
+            Novo Usuário
+          </Button>
+        </div>
       </div>
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-dark-600 bg-dark-700/50">
-              {['Foto', 'Nome', 'Usuário', 'Região', 'Perfil', 'Status', 'Cadastrado', 'Ações'].map((h) => (
+              {['Foto', 'Nome', 'Usuário', 'Região', 'Perfil', 'Status', 'Acesso', 'Últimos 14 dias', 'Cadastrado', 'Ações'].map((h) => (
                 <th key={h} className="text-left text-dark-400 font-medium px-4 py-3">
                   {h}
                 </th>
@@ -185,7 +275,7 @@ export default function AdminUsers() {
             {isLoading
               ? Array.from({ length: 4 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 8 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <div className="h-4 bg-dark-700 rounded animate-pulse" />
                       </td>
@@ -230,6 +320,25 @@ export default function AdminUsers() {
                           <EyeOff size={12} />
                           Fora do Painel de TV
                         </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <AccessBadge
+                        accessedToday={accessByUser.get(user.id)?.accessedToday ?? false}
+                        lastLoginAt={accessByUser.get(user.id)?.lastLoginAt ?? null}
+                        lastLoginTimeToday={accessByUser.get(user.id)?.lastLoginTimeToday ?? null}
+                        onlineNow={accessByUser.get(user.id)?.onlineNow ?? false}
+                        onlineSecondsToday={accessByUser.get(user.id)?.onlineSecondsToday ?? 0}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      {accessLog && (
+                        <AccessHeatmap
+                          days={accessLog.days}
+                          accessed={accessByUser.get(user.id)?.days ?? accessLog.days.map(() => false)}
+                          dayTimes={accessByUser.get(user.id)?.dayTimes ?? accessLog.days.map(() => [])}
+                          dayOnlineSeconds={accessByUser.get(user.id)?.dayOnlineSeconds ?? accessLog.days.map(() => 0)}
+                        />
                       )}
                     </td>
                     <td className="px-4 py-3 text-dark-500">{formatDate(user.createdAt)}</td>

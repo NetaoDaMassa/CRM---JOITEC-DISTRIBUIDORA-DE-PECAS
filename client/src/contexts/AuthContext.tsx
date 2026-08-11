@@ -26,6 +26,11 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+// Intervalo do "heartbeat" de presença — precisa bater com o MAX_GAP_SECONDS
+// tolerado no backend (server/src/router/activity.ts), senão os pings ficam
+// gap-limitados à toa.
+const HEARTBEAT_INTERVAL_MS = 60_000
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('odin_token'))
@@ -35,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   })
   const [isLoading, setIsLoading] = useState(true)
   const utils = trpc.useUtils()
+  const pingMut = trpc.activity.ping.useMutation()
 
   const meQuery = trpc.auth.me.useQuery(undefined, {
     enabled: !!token,
@@ -56,6 +62,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false)
     }
   }, [meQuery.data, meQuery.isError, token])
+
+  // Marca "tempo online" só enquanto a aba está em foco — deixar aberta em
+  // segundo plano não deveria contar como o vendedor usando o CRM.
+  useEffect(() => {
+    if (!user) return
+
+    function pingIfVisible() {
+      if (document.visibilityState === 'visible') pingMut.mutate()
+    }
+
+    pingIfVisible()
+    const interval = setInterval(pingIfVisible, HEARTBEAT_INTERVAL_MS)
+    document.addEventListener('visibilitychange', pingIfVisible)
+    return () => {
+      clearInterval(interval)
+      document.removeEventListener('visibilitychange', pingIfVisible)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id])
 
   function login(newToken: string, newUser: AuthUser) {
     localStorage.setItem('odin_token', newToken)

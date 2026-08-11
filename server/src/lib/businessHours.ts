@@ -48,3 +48,12 @@ export function toLocalDateKey(iso: string): string {
   const day = String(shifted.getUTCDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
 }
+
+// HH:mm no fuso de Brasília — usado só pra exibir horário de acesso (log de
+// login), nunca pra comparar/ordenar (isso é papel do toLocalDateKey).
+export function toLocalTimeKey(iso: string): string {
+  const shifted = new Date(toShiftedMs(iso))
+  const hours = String(shifted.getUTCHours()).padStart(2, '0')
+  const minutes = String(shifted.getUTCMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}

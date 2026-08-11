@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique, index } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Multi-empresa (adicionado quando a Odin Tubos e Conexões entrou no mesmo
@@ -49,9 +49,57 @@ export const users = sqliteTable('users', {
   // ranking/gráficos do Painel de TV, pra casos tipo alguém de licença ou
   // que o gestor não quer expor no telão por qualquer motivo específico.
   ocultoPainelTv: integer('oculto_painel_tv', { mode: 'boolean' }).notNull().default(false),
+  // Só o último — o histórico dia a dia de acesso fica em logAcessoUsuario.
+  lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
+
+// Um registro por login — dá o histórico de acesso dia a dia (não só o
+// último login), pra admin ver quais vendedores não estão entrando no CRM.
+export const logAcessoUsuario = sqliteTable(
+  'log_acesso_usuario',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    usuarioId: integer('usuario_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    usuarioIdx: index('idx_log_acesso_usuario_usuario').on(t.usuarioId),
+  })
+)
+
+export const logAcessoUsuarioRelations = relations(logAcessoUsuario, ({ one }) => ({
+  usuario: one(users, { fields: [logAcessoUsuario.usuarioId], references: [users.id] }),
+}))
+
+// Acumulado de tempo online por dia — o frontend manda um "ping" a cada
+// minuto enquanto a aba está em foco, e cada ping soma o intervalo desde o
+// ping anterior (só se for pequeno o suficiente pra não ser um hiato de aba
+// fechada/computador dormindo — ver activityRouter.ping).
+export const atividadeDiariaUsuario = sqliteTable(
+  'atividade_diaria_usuario',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    usuarioId: integer('usuario_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    data: text('data').notNull(), // YYYY-MM-DD, fuso de Brasília
+    segundosOnline: integer('segundos_online').notNull().default(0),
+    primeiroPingEm: text('primeiro_ping_em').notNull(),
+    ultimoPingEm: text('ultimo_ping_em').notNull(),
+  },
+  (t) => ({
+    usuarioData: unique().on(t.usuarioId, t.data),
+    usuarioIdx: index('idx_atividade_diaria_usuario_usuario').on(t.usuarioId),
+  })
+)
+
+export const atividadeDiariaUsuarioRelations = relations(atividadeDiariaUsuario, ({ one }) => ({
+  usuario: one(users, { fields: [atividadeDiariaUsuario.usuarioId], references: [users.id] }),
+}))
 
 export const clientes = sqliteTable('clientes', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -444,6 +492,8 @@ export const usersRelations = relations(users, ({ many }) => ({
   contatos: many(registroContato),
   notifications: many(notifications),
   metas: many(metasMensais),
+  logsAcesso: many(logAcessoUsuario),
+  atividadesDiarias: many(atividadeDiariaUsuario),
 }))
 
 export const clientesRelations = relations(clientes, ({ one, many }) => ({

@@ -3,9 +3,15 @@ import bcrypt from 'bcryptjs'
 import { eq } from 'drizzle-orm'
 import { router, publicProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users } from '../db/schema.js'
+import { users, logAcessoUsuario } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
+import { agoraSqlite } from '../lib/dataBr.js'
+
+async function registrarAcesso(userId: number): Promise<void> {
+  await db.insert(logAcessoUsuario).values({ usuarioId: userId })
+  await db.update(users).set({ lastLoginAt: agoraSqlite() }).where(eq(users.id, userId))
+}
 
 export const authRouter = router({
   login: publicProcedure
@@ -44,6 +50,7 @@ export const authRouter = router({
       }
 
       await db.update(users).set({ tentativasLoginFalhas: 0, bloqueadoAte: null }).where(eq(users.id, user.id))
+      await registrarAcesso(user.id)
 
       const token = signToken({
         id: user.id,
