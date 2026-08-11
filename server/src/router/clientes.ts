@@ -304,7 +304,7 @@ export const clientesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, versao, cnpj, ...rest } = input
+      const { id, versao, cnpj, codigo, ...rest } = input
       const cliente = await db.query.clientes.findFirst({
         where: and(eq(clientes.id, id), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)),
       })
@@ -322,6 +322,16 @@ export const clientesRouter = router({
           if (existente && !existente.deletedAt && existente.id !== id) throw new Error('Já existe um cliente com este CNPJ')
         }
         updates.cnpj = cnpjLimpo
+      }
+      // Código é sempre o código do SAP — único por empresa (ver comentário
+      // no schema), então troca de código passa pela mesma checagem de
+      // colisão que o CNPJ, senão o erro que sobe é o UNIQUE cru do SQLite.
+      if (codigo && codigo !== cliente.codigo) {
+        const existente = await db.query.clientes.findFirst({
+          where: and(eq(clientes.codigo, codigo), eq(clientes.empresaId, ctx.empresaId)),
+        })
+        if (existente && !existente.deletedAt && existente.id !== id) throw new Error('Já existe um cliente com este código')
+        updates.codigo = codigo
       }
 
       const updated = await db

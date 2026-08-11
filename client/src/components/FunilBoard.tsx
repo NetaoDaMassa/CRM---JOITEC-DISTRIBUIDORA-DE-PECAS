@@ -1367,6 +1367,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const { user } = useAuth()
   const utils = trpc.useUtils()
   const [editando, setEditando] = useState(false)
+  const [codigo, setCodigo] = useState(card.codigo ?? '')
   const [cnpj, setCnpj] = useState(card.cnpj ?? '')
   const [inscricaoEstadual, setInscricaoEstadual] = useState(card.inscricaoEstadual ?? '')
   const [cidade, setCidade] = useState(card.cidade ?? '')
@@ -1483,6 +1484,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
         atualizarMut.mutate({
           id: card.clienteId,
           versao: card.clienteVersao,
+          codigo: codigo || undefined,
           cnpj: cnpj || undefined,
           inscricaoEstadual: inscricaoEstadual || undefined,
           cidade: cidade || undefined,
@@ -1498,6 +1500,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
     >
       <h3 className="text-sm font-semibold text-dark-100">Completar dados do cliente</h3>
       <div className="grid grid-cols-2 gap-2">
+        <Input label="Código (SAP)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
         <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
         <Input label="Inscrição Estadual" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} />
         <Input label="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />

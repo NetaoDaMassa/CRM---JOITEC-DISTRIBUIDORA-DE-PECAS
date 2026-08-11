@@ -312,6 +312,7 @@ export default function ClienteDetail() {
   const [enviandoExclusao, setEnviandoExclusao] = useState(false)
 
   const [razaoSocial, setRazaoSocial] = useState('')
+  const [codigo, setCodigo] = useState('')
   const [cnpj, setCnpj] = useState('')
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState('')
   const [email, setEmail] = useState('')
@@ -323,6 +324,7 @@ export default function ClienteDetail() {
 
   if (cliente && !carregado) {
     setRazaoSocial(cliente.razaoSocial)
+    setCodigo(cliente.codigo ?? '')
     setCnpj(cliente.cnpj ?? '')
     setTelefoneWhatsapp(cliente.telefoneWhatsapp ?? '')
     setEmail(cliente.email ?? '')
@@ -387,6 +389,7 @@ export default function ClienteDetail() {
       id: cliente.id,
       versao: cliente.versao,
       razaoSocial,
+      codigo,
       cnpj,
       telefoneWhatsapp,
       email,
@@ -423,6 +426,7 @@ export default function ClienteDetail() {
 
       <form onSubmit={handleSubmit} className="space-y-4 bg-dark-800 border border-dark-600 rounded-2xl p-5">
         <Input label="Razão social" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} />
+        <Input label="Código (SAP)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
         <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
