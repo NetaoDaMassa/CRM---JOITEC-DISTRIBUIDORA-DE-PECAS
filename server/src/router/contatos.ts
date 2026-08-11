@@ -31,6 +31,7 @@ export const contatosRouter = router({
         funilMensalId: funil.id,
         vendedorId: ctx.user.id,
         tipo: 'whatsapp',
+        origem: 'whatsapp_automatico',
         observacao: 'WhatsApp aberto pelo sistema — aguardando confirmação se o contato foi realizado.',
       })
 
@@ -78,11 +79,30 @@ export const contatosRouter = router({
       return { success: true }
     }),
 
+  // Botão "Confirmar" do card — fecha o estado "aguardando confirmação" sem
+  // exigir que o vendedor escreva nada nem diga se a pessoa respondeu.
+  // Marca resultado='confirmado' (não conta como `efetiva` — só "respondeu"
+  // conta, ver editar) e, se o card ainda estiver em "Novo", já move pra
+  // "Abordagem" (regra pedida: confirmar um contato tira o cliente de Novo).
+  confirmar: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    const contato = await db.query.registroContato.findFirst({ where: eq(registroContato.id, input.id) })
+    if (!contato) throw new Error('Contato não encontrado')
+
+    const podeConfirmar =
+      ctx.user.role === 'admin' || (contato.vendedorId === ctx.user.id && (await ehMesCorrente(contato.funilMensalId)))
+    if (!podeConfirmar) throw new Error('Não é mais possível confirmar este contato (mês fechado ou não é seu).')
+
+    if (!contato.resultado) {
+      await db.update(registroContato).set({ resultado: 'confirmado' }).where(eq(registroContato.id, input.id))
+    }
+    return { success: true }
+  }),
+
   editar: protectedProcedure
     .input(
       z.object({
         id: z.number(),
-        resultado: z.enum(['respondeu', 'nao_respondeu', 'numero_errado', 'caixa_postal']).optional(),
+        resultado: z.enum(['respondeu', 'nao_respondeu', 'numero_errado', 'caixa_postal', 'confirmado']).optional(),
         observacao: z.string().min(1, 'A observação é obrigatória.'),
       })
     )

@@ -44,6 +44,12 @@ const RESULTADO_LABEL: Record<string, string> = {
   nao_respondeu: 'Não respondeu',
   numero_errado: 'Número errado',
   caixa_postal: 'Caixa postal',
+  confirmado: 'Confirmado',
+}
+const ORIGEM_LABEL: Record<string, string> = {
+  manual: 'Manual',
+  whatsapp_automatico: 'Automático',
+  ligacao_automatica: 'Automático',
 }
 
 function formatarMoeda(v: number | null): string {
@@ -540,6 +546,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   const [itensPedido, setItensPedido] = useState<{ descricao: string; quantidade: string; valorUnitario: string }[]>([])
   const [clienteIdFaturamento, setClienteIdFaturamento] = useState(card.clienteId)
   const [historicoAberto, setHistoricoAberto] = useState(false)
+  const [mostrarRegistroManual, setMostrarRegistroManual] = useState(false)
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -551,6 +558,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
     onSuccess() {
       invalidarTudo()
       onChanged()
+      setMostrarRegistroManual(false)
     },
     onError(err) {
       toast.error(err.message)
@@ -676,6 +684,20 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
   const editarContatoMut = trpc.contatos.editar.useMutation({
     onSuccess() {
       invalidarTudo()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  // Confirmar um contato pendente tira o cliente de "Novo" automaticamente
+  // (regra pedida: confirmar já conta como ter feito a primeira abordagem).
+  const confirmarContatoMut = trpc.contatos.confirmar.useMutation({
+    onSuccess() {
+      invalidarTudo()
+      if (card.etapa === 'novo') {
+        moverMut.mutate({ funilMensalId: card.funilMensalId, versao: card.versao, etapa: 'abordagem' })
+      }
     },
     onError(err) {
       toast.error(err.message)
@@ -1081,14 +1103,28 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                   contato={c}
                   onEditar={(observacao, resultado) => editarContatoMut.mutate({ id: c.id, observacao, resultado: resultado as any })}
                   onExcluir={() => excluirContatoMut.mutate({ id: c.id })}
+                  onConfirmar={() => confirmarContatoMut.mutate({ id: c.id })}
+                  confirmando={confirmarContatoMut.isPending && confirmarContatoMut.variables?.id === c.id}
                 />
               ))}
             </div>
           </div>
         )}
 
+        {!mostrarRegistroManual ? (
+          <div className="border-t border-dark-700 pt-4">
+            <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarRegistroManual(true)}>
+              📝 Registrar manual
+            </Button>
+          </div>
+        ) : (
         <form onSubmit={handleRegistrar} className="space-y-2 border-t border-dark-700 pt-4">
-          <h3 className="text-sm font-semibold text-dark-100">Registrar contato</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-dark-100">Registrar contato manual</h3>
+            <button type="button" onClick={() => setMostrarRegistroManual(false)} className="text-xs text-dark-400 hover:text-dark-100">
+              Cancelar
+            </button>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             <Select
               value={tipo}
@@ -1135,6 +1171,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
             )}
           </div>
         </form>
+        )}
 
         <form onSubmit={handleMover} className="space-y-3 border-t border-dark-700 pt-4">
           <h3 className="text-sm font-semibold text-dark-100">Mover etapa</h3>
@@ -1701,10 +1738,14 @@ function ContatoItem({
   contato,
   onEditar,
   onExcluir,
+  onConfirmar,
+  confirmando,
 }: {
   contato: Card['contatos'][number]
   onEditar: (observacao: string, resultado?: string) => void
   onExcluir: () => void
+  onConfirmar: () => void
+  confirmando: boolean
 }) {
   const [editando, setEditando] = useState(false)
   const [observacao, setObservacao] = useState(contato.observacao)
@@ -1752,11 +1793,16 @@ function ContatoItem({
     <div className="rounded-lg border border-dark-700 p-2 text-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="text-xs text-dark-400">
-          {TIPO_ICONE[contato.tipo]} {TIPO_LABEL[contato.tipo]}
+          {TIPO_ICONE[contato.tipo]} {TIPO_LABEL[contato.tipo]} · {ORIGEM_LABEL[contato.origem]}
           {contato.resultado ? ` · ${RESULTADO_LABEL[contato.resultado]}` : ' · ⏳ aguardando confirmação'} · {dataFormatada}
         </p>
         {contato.editavel && (
           <div className="flex shrink-0 gap-2 text-xs">
+            {!contato.resultado && (
+              <button onClick={onConfirmar} disabled={confirmando} className="text-green-400 hover:text-green-300 disabled:opacity-50">
+                Confirmar
+              </button>
+            )}
             <button onClick={() => setEditando(true)} className="text-dark-400 hover:text-dark-100">
               Editar
             </button>

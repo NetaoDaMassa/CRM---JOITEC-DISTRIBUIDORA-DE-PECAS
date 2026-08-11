@@ -1,0 +1,1 @@
+ALTER TABLE `registro_contato` ADD `origem` text DEFAULT 'manual' NOT NULL;

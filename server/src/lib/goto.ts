@@ -472,6 +472,7 @@ async function registrarLigacaoAutomatica(numeroExterno: string, duracaoMs: numb
         funilMensalId: funil.id,
         vendedorId: funil.vendedorId,
         tipo: 'ligacao',
+        origem: 'ligacao_automatica',
         duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
         efetiva,
         resultado: resultadoAuto,

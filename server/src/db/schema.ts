@@ -326,7 +326,18 @@ export const registroContato = sqliteTable('registro_contato', {
   funilMensalId: integer('funil_mensal_id').notNull().references(() => funilMensal.id, { onDelete: 'cascade' }),
   vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   tipo: text('tipo', { enum: ['ligacao', 'whatsapp', 'email', 'visita'] }).notNull(),
-  resultado: text('resultado', { enum: ['respondeu', 'nao_respondeu', 'numero_errado', 'caixa_postal'] }),
+  // 'confirmado' é o resultado do botão "Confirmar" (card do Kanban) — o
+  // vendedor confirma que o contato aconteceu sem precisar dizer se a
+  // pessoa respondeu ou não; por isso não conta como `efetiva` sozinho,
+  // só tira o registro do estado "aguardando confirmação".
+  resultado: text('resultado', { enum: ['respondeu', 'nao_respondeu', 'numero_errado', 'caixa_postal', 'confirmado'] }),
+  // De onde veio o registro — pra distinguir contato registrado de verdade
+  // pelo vendedor (manual) de captura automática (clique no WhatsApp, ou
+  // ligação real via GoTo Connect). Fica junto do registro pra sempre (não
+  // é derivado do texto da observação, que pode ser editado depois).
+  origem: text('origem', { enum: ['manual', 'whatsapp_automatico', 'ligacao_automatica'] })
+    .notNull()
+    .default('manual'),
   observacao: text('observacao').notNull(),
   // Só preenchido pra tipo='ligacao' — duração real (GoTo Connect) ou nula
   // quando registrada manualmente sem cronômetro. `efetiva` é a métrica que

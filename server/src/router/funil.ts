@@ -222,6 +222,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
       id: c.id,
       tipo: c.tipo,
       resultado: c.resultado,
+      origem: c.origem,
       observacao: c.observacao,
       dataHora: c.dataHora,
       editavel: ctxIsAdmin || c.vendedorId === ctxUserId,
