@@ -1,6 +1,6 @@
 import { and, between, count, eq, gte, inArray, isNull, sum } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { users, registroContato, metasMensais, notifications, vendas } from '../db/schema.js'
+import { users, registroContato, metasMensais, notifications, vendas, funilMensal } from '../db/schema.js'
 import { diasUteisDecorridos, diasUteisNoMes, hojeBr, hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { passouDoFimDoExpediente } from './expediente.js'
 
@@ -68,7 +68,8 @@ async function executarResumoDiarioParaEmpresa(empresaId: number, forcar: boolea
     const [{ vendasHoje, valorHoje }] = await db
       .select({ vendasHoje: count(), valorHoje: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
-      .where(and(eq(vendas.vendedorId, v.id), between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt)))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+      .where(and(eq(funilMensal.vendedorId, v.id), between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt)))
 
     const [{ ligacoesHoje }] = await db
       .select({ ligacoesHoje: count() })
@@ -85,7 +86,8 @@ async function executarResumoDiarioParaEmpresa(empresaId: number, forcar: boolea
     const [{ valorFechadoMes }] = await db
       .select({ valorFechadoMes: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
-      .where(and(eq(vendas.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+      .where(and(eq(funilMensal.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
 
     const meta = metaPorVendedor.get(v.id)
     const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null

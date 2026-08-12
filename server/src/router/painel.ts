@@ -65,7 +65,12 @@ export const painelRouter = router({
     const vendedorIds = vendedores.map((v) => v.id)
     // Nenhum vendedor nesta empresa ainda — evita `IN ()` (SQL inválido) nas
     // consultas agregadas abaixo.
-    const filtroVendedorEmpresa = vendedorIds.length ? inArray(vendas.vendedorId, vendedorIds) : sql`0`
+    // Filtra por funilMensal.vendedorId (sempre em dia, mesmo campo que o
+    // Kanban usa), não vendas.vendedorId — esse último é gravado uma vez no
+    // fechamento e fica desatualizado se o cliente for transferido de
+    // carteira depois (transferirCliente atualiza o funil_mensal do mês, mas
+    // não a venda já criada).
+    const filtroVendedorEmpresa = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
     const filtroFunilEmpresa = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
     const filtroContatoEmpresa = vendedorIds.length ? inArray(registroContato.vendedorId, vendedorIds) : sql`0`
 
@@ -86,16 +91,18 @@ export const painelRouter = router({
         const [{ valorSemana }] = await db
           .select({ valorSemana: sum(vendas.valorFechado).mapWith(Number) })
           .from(vendas)
+          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
           .where(
-            and(eq(vendas.vendedorId, v.id), sql`${vendas.dataFechamento} >= ${inicioSemana}`, isNull(vendas.deletedAt))
+            and(eq(funilMensal.vendedorId, v.id), sql`${vendas.dataFechamento} >= ${inicioSemana}`, isNull(vendas.deletedAt))
           )
 
         const [{ valorSemanaPassada }] = await db
           .select({ valorSemanaPassada: sum(vendas.valorFechado).mapWith(Number) })
           .from(vendas)
+          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
           .where(
             and(
-              eq(vendas.vendedorId, v.id),
+              eq(funilMensal.vendedorId, v.id),
               sql`${vendas.dataFechamento} >= ${inicioSemanaPassada} AND ${vendas.dataFechamento} < ${inicioSemana}`,
               isNull(vendas.deletedAt)
             )
@@ -128,8 +135,9 @@ export const painelRouter = router({
         const diasComVendaVendedor = await db
           .select({ dia: sql<string>`substr(${vendas.dataFechamento}, 1, 10)` })
           .from(vendas)
+          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
           .where(
-            and(eq(vendas.vendedorId, v.id), sql`${vendas.dataFechamento} >= ${inicioStreakString}`, isNull(vendas.deletedAt))
+            and(eq(funilMensal.vendedorId, v.id), sql`${vendas.dataFechamento} >= ${inicioStreakString}`, isNull(vendas.deletedAt))
           )
           .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
         const sequenciaDiasVendendo = calcularSequenciaDias(new Set(diasComVendaVendedor.map((d) => d.dia)), hojeBr())
@@ -165,7 +173,8 @@ export const painelRouter = router({
         const [{ qtdVendasMes, valorFechadoMes }] = await db
           .select({ qtdVendasMes: count(), valorFechadoMes: sum(vendas.valorFechado).mapWith(Number) })
           .from(vendas)
-          .where(and(eq(vendas.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
+          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+          .where(and(eq(funilMensal.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
 
         const meta = metaPorVendedor.get(v.id)
         const metaLigacoesDia = meta?.metaLigacoesDia ?? 25
@@ -226,11 +235,13 @@ export const painelRouter = router({
     const [{ vendasHojeQtd, vendasHojeValor }] = await db
       .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
       .where(and(between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt), filtroVendedorEmpresa))
 
     const [{ vendasMesQtd, vendasMesValor }] = await db
       .select({ vendasMesQtd: count(), vendasMesValor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
       .where(and(eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt), filtroVendedorEmpresa))
 
     const negociosAbertos = await db
@@ -284,6 +295,7 @@ export const painelRouter = router({
         valor: sum(vendas.valorFechado).mapWith(Number),
       })
       .from(vendas)
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
       .where(and(sql`${vendas.dataFechamento} >= ${inicioHistorico}`, isNull(vendas.deletedAt), filtroVendedorEmpresa))
       .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
 
@@ -412,12 +424,14 @@ export const painelRouter = router({
     const [{ vendasHojeQtd, vendasHojeValor }] = await db
       .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
-      .where(and(eq(vendas.vendedorId, vendedorId), between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt)))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+      .where(and(eq(funilMensal.vendedorId, vendedorId), between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt)))
 
     const [{ vendasMesQtd, vendasMesValor }] = await db
       .select({ vendasMesQtd: count(), vendasMesValor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
-      .where(and(eq(vendas.vendedorId, vendedorId), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+      .where(and(eq(funilMensal.vendedorId, vendedorId), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
 
     const diasUteisMes = diasUteisNoMes(mesAtual)
     const diasUteisAteHoje = diasUteisDecorridos(mesAtual)
@@ -439,7 +453,8 @@ export const painelRouter = router({
         const [{ valor }] = await db
           .select({ valor: sum(vendas.valorFechado).mapWith(Number) })
           .from(vendas)
-          .where(and(eq(vendas.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
+          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+          .where(and(eq(funilMensal.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
         return { id: v.id, valor: valor ?? 0 }
       })
     )
@@ -454,8 +469,9 @@ export const painelRouter = router({
     const vendasPorDia = await db
       .select({ dia: sql<string>`substr(${vendas.dataFechamento}, 1, 10)`, quantidade: count() })
       .from(vendas)
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
       .where(
-        and(eq(vendas.vendedorId, vendedorId), sql`${vendas.dataFechamento} >= ${inicioHistorico}`, isNull(vendas.deletedAt))
+        and(eq(funilMensal.vendedorId, vendedorId), sql`${vendas.dataFechamento} >= ${inicioHistorico}`, isNull(vendas.deletedAt))
       )
       .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
 

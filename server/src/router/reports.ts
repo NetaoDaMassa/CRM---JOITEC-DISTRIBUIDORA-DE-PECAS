@@ -342,9 +342,9 @@ export const reportsRouter = router({
         valorTotal: sum(vendasTable.valorFechado).mapWith(Number),
       })
       .from(vendasTable)
-      .innerJoin(users, eq(users.id, vendasTable.vendedorId))
       .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
       .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
+      .innerJoin(users, eq(users.id, funilMensal.vendedorId))
       .where(and(...filtros))
 
     return {
@@ -420,25 +420,29 @@ export const reportsRouter = router({
   mixProdutosPorVendedor: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
-    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, vendasTable.vendedorId)
+    // Filtra e agrupa por funil_mensal.vendedorId, não vendas.vendedorId —
+    // esse último é gravado uma vez no fechamento e fica desatualizado se o
+    // cliente for transferido de carteira depois (ver curvaAbc/vendas acima).
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, funilMensal.vendedorId)
     if (filtroVend) filtros.push(filtroVend)
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
 
     const linhas = await db
       .select({
-        vendedorId: vendasTable.vendedorId,
+        vendedorId: funilMensal.vendedorId,
         nome: users.name,
         clientesComVenda: sql<number>`count(distinct ${vendasTable.clienteId})`.mapWith(Number),
         totalLinhasItem: sql<number>`count(${itensPedido.id})`.mapWith(Number),
         totalQuantidade: sql<number>`coalesce(sum(${itensPedido.quantidade}), 0)`.mapWith(Number),
       })
       .from(vendasTable)
-      .innerJoin(users, eq(users.id, vendasTable.vendedorId))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
+      .innerJoin(users, eq(users.id, funilMensal.vendedorId))
       .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
       .leftJoin(itensPedido, and(eq(itensPedido.vendaId, vendasTable.id), isNull(itensPedido.deletedAt)))
       .where(and(...filtros))
-      .groupBy(vendasTable.vendedorId)
+      .groupBy(funilMensal.vendedorId)
 
     return linhas.map((l) => ({
       ...l,
