@@ -148,10 +148,68 @@ function IntegracaoGoTo() {
   )
 }
 
+// Cada card Compretec do Painel Financeiro (Ecommerce/Loja Física) puxa
+// vendas direto da API do Aton ERP em vez do funil local (não tem
+// vendedor/cliente cadastrado no CRM) — cada loja tem seu próprio Token de
+// Autorização, colado aqui uma vez. Nunca mostra o token de volta, só se já
+// foi configurado (mesmo padrão do "conectado como" da integração GoTo).
+function IntegracaoAton() {
+  const utils = trpc.useUtils()
+  const { data: cards, isLoading } = trpc.financeiro.statusTokensAton.useQuery()
+  const [tokenPorCard, setTokenPorCard] = useState<Record<string, string>>({})
+
+  const salvarMut = trpc.financeiro.salvarTokenAton.useMutation({
+    onSuccess(_data, variables) {
+      toast.success('Token salvo')
+      setTokenPorCard((prev) => ({ ...prev, [variables.cardKey]: '' }))
+      utils.financeiro.statusTokensAton.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  if (isLoading) return null
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-4">
+      <div>
+        <h2 className="text-sm font-semibold text-dark-100">Integração Aton ERP (Compretec)</h2>
+        <p className="text-xs text-dark-400 mt-1">
+          Vendas do dia/mês e faturamento desses cards vêm direto do Aton ERP. Peça o Token de Autorização pro suporte
+          da Aton, um pra cada loja.
+        </p>
+      </div>
+      {cards?.map((card) => (
+        <div key={card.cardKey} className="flex items-end gap-2">
+          <div className="flex-1">
+            <Input
+              label={card.nome}
+              type="password"
+              placeholder={card.configurado ? 'Token configurado — cole outro pra substituir' : 'Cole o Token de Autorização'}
+              value={tokenPorCard[card.cardKey] ?? ''}
+              onChange={(e) => setTokenPorCard((prev) => ({ ...prev, [card.cardKey]: e.target.value }))}
+            />
+          </div>
+          <Button
+            size="sm"
+            loading={salvarMut.isPending}
+            disabled={!tokenPorCard[card.cardKey]?.trim()}
+            onClick={() => salvarMut.mutate({ cardKey: card.cardKey, token: tokenPorCard[card.cardKey] })}
+          >
+            Salvar
+          </Button>
+          {card.configurado && <span className="text-xs text-green-400 shrink-0 mb-2.5">✓ configurado</span>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminConfiguracoes() {
   const { data, isLoading } = trpc.configuracoes.get.useQuery()
   const utils = trpc.useUtils()
-  const { empresaAtivaId } = useAuth()
+  const { empresaAtivaId, user } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
 
@@ -355,6 +413,8 @@ export default function AdminConfiguracoes() {
       </form>
 
       <IntegracaoGoTo />
+
+      {user?.superAdmin && <IntegracaoAton />}
 
       {ehOdinCompressores && <ItensManutencao />}
     </div>

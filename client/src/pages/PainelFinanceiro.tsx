@@ -26,6 +26,8 @@ type Card = {
   cardKey: string
   nome: string
   slugLogo: string
+  origemExterna: 'aton' | null
+  tokenConfigurado: boolean | null
   vendasHoje: { quantidade: number; valor: number }
   vendasMes: { quantidade: number; valor: number }
   ticketMedioMes: number
@@ -114,7 +116,14 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
           {card.bateuMeta ? '🎯 Meta em dia' : '⏳ Abaixo do ritmo'}
         </span>
       </div>
-      <p className="text-sm font-semibold text-dark-100 mb-4">{card.nome}</p>
+      <p className="text-sm font-semibold text-dark-100">{card.nome}</p>
+      {card.origemExterna === 'aton' && !card.tokenConfigurado && (
+        <p className="text-[10px] text-red-400 font-semibold mb-3">⚠️ Token Aton ERP não configurado — vendas zeradas</p>
+      )}
+      {card.origemExterna === 'aton' && card.tokenConfigurado && (
+        <p className="text-[10px] text-dark-500 mb-3">📡 dados ao vivo do Aton ERP</p>
+      )}
+      {card.origemExterna !== 'aton' && <div className="mb-4" />}
 
       <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Faturamento do mês</p>
       <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums mt-1">{formatarMoeda(card.vendasMes.valor)}</p>

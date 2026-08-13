@@ -3,8 +3,9 @@ import { and, between, count, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
 import { router, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { users, funilMensal, vendas, inadimplenciaEmpresas } from '../db/schema.js'
-import { getConfigNumero } from '../lib/configuracoes.js'
+import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite, diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesReferenciaAtual } from '../lib/dataBr.js'
+import { buscarVendasAtonComCache } from '../lib/atonErp.js'
 
 // Cards do Painel Financeiro. Cada card soma 1+ empresaId — a maioria é uma
 // empresa só, mas Odin Compressores e Comprefer aparecem como um único card
@@ -13,14 +14,23 @@ import { agoraSqlite, diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesRefe
 // pra guardar a inadimplência manual (`inadimplenciaEmpresas.cardKey`) —
 // nunca reaproveitar/mudar depois de criado, senão perde o valor já
 // lançado pro card antigo.
-const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[] }[] = [
+// `origemExterna: 'aton'` marca os cards que não têm vendedor/funil no CRM
+// (venda acontece 100% no ERP Aton) — pra esses, vendas/faturamento vêm da
+// API da Aton em vez de somar `vendas`/`funil_mensal` local.
+const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[]; origemExterna?: 'aton' }[] = [
   { cardKey: 'joitec-distribuidora', nome: 'Joitec Distribuidora de Peças', slugLogo: 'joitec', empresaIds: [1] },
   { cardKey: 'joitec-automacao', nome: 'Joitec Automação', slugLogo: 'joitec-automacao', empresaIds: [3] },
   { cardKey: 'odin-tubos', nome: 'Odin Tubos e Conexões', slugLogo: 'odin-tubos', empresaIds: [2] },
   { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5] },
-  { cardKey: 'compretec-ecommerce', nome: 'Compretec E-commerce', slugLogo: 'compretec', empresaIds: [6] },
-  { cardKey: 'compretec-loja-fisica', nome: 'Compretec Loja Física', slugLogo: 'compretec', empresaIds: [7] },
+  { cardKey: 'compretec-ecommerce', nome: 'Compretec E-commerce', slugLogo: 'compretec', empresaIds: [6], origemExterna: 'aton' },
+  { cardKey: 'compretec-loja-fisica', nome: 'Compretec Loja Física', slugLogo: 'compretec', empresaIds: [7], origemExterna: 'aton' },
 ]
+
+const CARDS_ATON = CARDS_PAINEL.filter((c) => c.origemExterna === 'aton')
+
+function chaveTokenAton(cardKey: string): string {
+  return `aton_token_${cardKey}`
+}
 
 export const financeiroRouter = router({
   painelResumo: superAdminProcedure.query(async () => {
@@ -41,26 +51,51 @@ export const financeiroRouter = router({
 
     const cards = await Promise.all(
       CARDS_PAINEL.map(async (card) => {
-        const vendedores = await db.query.users.findMany({
-          where: inArray(users.empresaId, card.empresaIds),
-          columns: { id: true },
-        })
-        const vendedorIds = vendedores.map((v) => v.id)
-        // Mesmo motivo do painel.ts: funil_mensal.vendedorId (não
-        // vendas.vendedorId) é quem reflete transferência de carteira.
-        const filtroVendedor = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
+        let vendasHojeQtd = 0
+        let vendasHojeValor = 0
+        let vendasMesQtd = 0
+        let vendasMesValor = 0
+        let tokenConfigurado: boolean | undefined
 
-        const [{ vendasHojeQtd, vendasHojeValor }] = await db
-          .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
-          .from(vendas)
-          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
-          .where(and(between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt), filtroVendedor))
+        if (card.origemExterna === 'aton') {
+          const token = await getConfigTexto(chaveTokenAton(card.cardKey))
+          tokenConfigurado = !!token
+          if (token) {
+            const [hojeAton, mesAton] = await Promise.all([
+              buscarVendasAtonComCache(token, hoje, hoje),
+              buscarVendasAtonComCache(token, mesAtual, hoje),
+            ])
+            vendasHojeQtd = hojeAton?.quantidade ?? 0
+            vendasHojeValor = hojeAton?.valor ?? 0
+            vendasMesQtd = mesAton?.quantidade ?? 0
+            vendasMesValor = mesAton?.valor ?? 0
+          }
+        } else {
+          const vendedores = await db.query.users.findMany({
+            where: inArray(users.empresaId, card.empresaIds),
+            columns: { id: true },
+          })
+          const vendedorIds = vendedores.map((v) => v.id)
+          // Mesmo motivo do painel.ts: funil_mensal.vendedorId (não
+          // vendas.vendedorId) é quem reflete transferência de carteira.
+          const filtroVendedor = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
 
-        const [{ vendasMesQtd, vendasMesValor }] = await db
-          .select({ vendasMesQtd: count(), vendasMesValor: sum(vendas.valorFechado).mapWith(Number) })
-          .from(vendas)
-          .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
-          .where(and(eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt), filtroVendedor))
+          const [{ vendasHojeQtd: qtdHoje, vendasHojeValor: valHoje }] = await db
+            .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
+            .from(vendas)
+            .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+            .where(and(between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt), filtroVendedor))
+          vendasHojeQtd = qtdHoje
+          vendasHojeValor = valHoje ?? 0
+
+          const [{ vendasMesQtd: qtdMes, vendasMesValor: valMes }] = await db
+            .select({ vendasMesQtd: count(), vendasMesValor: sum(vendas.valorFechado).mapWith(Number) })
+            .from(vendas)
+            .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+            .where(and(eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt), filtroVendedor))
+          vendasMesQtd = qtdMes
+          vendasMesValor = valMes ?? 0
+        }
 
         // Soma a meta configurada de cada empresa que entra no card (0 se
         // nenhuma empresa do grupo ainda cadastrou meta).
@@ -68,7 +103,7 @@ export const financeiroRouter = router({
           await Promise.all(card.empresaIds.map((empresaId) => getConfigNumero(`meta_faturamento_empresa_${empresaId}`, 0)))
         ).reduce((s, v) => s + v, 0)
 
-        const valorMes = vendasMesValor ?? 0
+        const valorMes = vendasMesValor
         const metaFaturamentoDia = metaFaturamento ? metaFaturamento / diasUteisMes : null
         const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
 
@@ -78,7 +113,9 @@ export const financeiroRouter = router({
           cardKey: card.cardKey,
           nome: card.nome,
           slugLogo: card.slugLogo,
-          vendasHoje: { quantidade: vendasHojeQtd, valor: vendasHojeValor ?? 0 },
+          origemExterna: card.origemExterna ?? null,
+          tokenConfigurado: tokenConfigurado ?? null,
+          vendasHoje: { quantidade: vendasHojeQtd, valor: vendasHojeValor },
           vendasMes: { quantidade: vendasMesQtd, valor: valorMes },
           ticketMedioMes: vendasMesQtd > 0 ? valorMes / vendasMesQtd : 0,
           metaFaturamento,
@@ -148,6 +185,27 @@ export const financeiroRouter = router({
         })
       }
 
+      return { success: true }
+    }),
+
+  // Status dos tokens da integração Aton ERP (Compretec E-commerce/Loja
+  // Física) — nunca devolve o token em si pro client, só se já foi
+  // configurado, igual ao padrão do goto.status.
+  statusTokensAton: superAdminProcedure.query(async () => {
+    return Promise.all(
+      CARDS_ATON.map(async (card) => ({
+        cardKey: card.cardKey,
+        nome: card.nome,
+        configurado: !!(await getConfigTexto(chaveTokenAton(card.cardKey))),
+      }))
+    )
+  }),
+
+  salvarTokenAton: superAdminProcedure
+    .input(z.object({ cardKey: z.string(), token: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      if (!CARDS_ATON.some((c) => c.cardKey === input.cardKey)) throw new Error('Card inválido pra integração Aton ERP')
+      await setConfig(chaveTokenAton(input.cardKey), input.token.trim())
       return { success: true }
     }),
 })
