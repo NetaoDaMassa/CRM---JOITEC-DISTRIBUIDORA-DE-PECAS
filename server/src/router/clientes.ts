@@ -411,25 +411,36 @@ export const clientesRouter = router({
     return linhas
   }),
 
+  // Estados com pelo menos 1 cliente no banco (sem vendedor) — alimenta o
+  // filtro de estado na tela, só com opções que realmente existem no banco
+  // agora (não a lista fixa de 27 UFs, a maioria ficaria vazia).
+  bancoEstados: adminProcedure.query(async ({ ctx }) => {
+    const linhas = await db
+      .selectDistinct({ estado: clientes.estado })
+      .from(clientes)
+      .where(
+        and(
+          eq(clientes.empresaId, ctx.empresaId),
+          isNull(clientes.vendedorAtualId),
+          isNull(clientes.deletedAt),
+          isNotNull(clientes.estado)
+        )
+      )
+      .orderBy(asc(clientes.estado))
+    return linhas.map((l) => l.estado).filter((e): e is string => !!e)
+  }),
+
   banco: adminProcedure
     .input(
       z.object({
         q: z.string().optional(),
         origemBanco: z.string().optional(),
+        estado: z.string().optional(),
         pagina: z.number().min(1).default(1),
       })
     )
     .query(async ({ ctx, input }) => {
-      const filtros = [eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)]
-      if (input.origemBanco === SEM_ORIGEM) filtros.push(isNull(clientes.origemBanco))
-      else if (input.origemBanco) filtros.push(eq(clientes.origemBanco, input.origemBanco))
-
-      const termo = input.q?.trim()
-      if (termo) {
-        const like_ = `%${termo}%`
-        filtros.push(or(like(clientes.razaoSocial, like_), like(clientes.codigo, like_), like(clientes.cidade, like_))!)
-      }
-
+      const filtros = bancoFiltros(ctx.empresaId, input)
       const where = and(...filtros)
       const [{ total }] = await db.select({ total: count() }).from(clientes).where(where)
       const items = await db.query.clientes.findMany({
@@ -441,4 +452,51 @@ export const clientesRouter = router({
 
       return { items, total, totalPaginas: Math.max(1, Math.ceil(total / PAGE_SIZE)) }
     }),
+
+  // Mesmos filtros de `banco`, sem paginação — alimenta o botão "Exportar
+  // planilha" (a lista na tela é paginada de 20 em 20, não dá pra exportar
+  // reaproveitando ela).
+  bancoExportar: adminProcedure
+    .input(
+      z.object({
+        q: z.string().optional(),
+        origemBanco: z.string().optional(),
+        estado: z.string().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const where = and(...bancoFiltros(ctx.empresaId, input))
+      return db.query.clientes.findMany({
+        where,
+        orderBy: [asc(clientes.razaoSocial)],
+        columns: {
+          codigo: true,
+          razaoSocial: true,
+          cnpj: true,
+          cidade: true,
+          estado: true,
+          telefoneWhatsapp: true,
+          email: true,
+          nomeContato: true,
+          origemBanco: true,
+        },
+      })
+    }),
 })
+
+function bancoFiltros(
+  empresaId: number,
+  input: { q?: string; origemBanco?: string; estado?: string }
+) {
+  const filtros = [eq(clientes.empresaId, empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)]
+  if (input.origemBanco === SEM_ORIGEM) filtros.push(isNull(clientes.origemBanco))
+  else if (input.origemBanco) filtros.push(eq(clientes.origemBanco, input.origemBanco))
+  if (input.estado) filtros.push(eq(clientes.estado, input.estado))
+
+  const termo = input.q?.trim()
+  if (termo) {
+    const like_ = `%${termo}%`
+    filtros.push(or(like(clientes.razaoSocial, like_), like(clientes.codigo, like_), like(clientes.cidade, like_))!)
+  }
+  return filtros
+}
