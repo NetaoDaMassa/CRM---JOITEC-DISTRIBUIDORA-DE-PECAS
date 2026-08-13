@@ -589,6 +589,24 @@ export const inadimplenciaEmpresas = sqliteTable(
   })
 )
 
+// Caixa da empresa (entradas/saídas de dinheiro, registro manual do
+// admin) — pedido do João pra Compretec Loja Física acompanhar movimento
+// de caixa mês a mês, mas escopado por empresaId igual o resto do app
+// (não é exclusivo dela). `data` é a data do movimento em si (o admin pode
+// lançar retroativo), não necessariamente hoje — por isso fica separada
+// de `createdAt`.
+export const caixaMovimentacoes = sqliteTable('caixa_movimentacoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  tipo: text('tipo', { enum: ['entrada', 'saida'] }).notNull(),
+  valor: real('valor').notNull(),
+  data: text('data').notNull(),
+  descricao: text('descricao'),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  deletedAt: text('deleted_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
 export const messageTemplates = sqliteTable('message_templates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
@@ -668,6 +686,10 @@ export const solicitacoesCarteiraRelations = relations(solicitacoesCarteira, ({ 
 
 export const inadimplenciaEmpresasRelations = relations(inadimplenciaEmpresas, ({ one }) => ({
   atualizadoPorUser: one(users, { fields: [inadimplenciaEmpresas.atualizadoPor], references: [users.id] }),
+}))
+
+export const caixaMovimentacoesRelations = relations(caixaMovimentacoes, ({ one }) => ({
+  criadoPorUser: one(users, { fields: [caixaMovimentacoes.criadoPor], references: [users.id] }),
 }))
 
 export const solicitacoesDesignRelations = relations(solicitacoesDesign, ({ one }) => ({

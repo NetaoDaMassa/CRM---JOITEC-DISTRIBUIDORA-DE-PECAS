@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Wallet,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Wallet, Banknote,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -41,6 +41,7 @@ const ADMIN_LINKS = [
   { to: '/admin/usuarios', label: 'Vendedores', icon: Users },
   { to: '/admin/metas', label: 'Metas', icon: Target },
   { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText },
+  { to: '/admin/caixa', label: 'Caixa', icon: Banknote },
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2 },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup },

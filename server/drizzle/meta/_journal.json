@@ -253,6 +253,13 @@
       "when": 1786620543785,
       "tag": "0035_seed_empresas_comprefer_compretec",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "6",
+      "when": 1786649563997,
+      "tag": "0036_boring_triathlon",
+      "breakpoints": true
     }
   ]
 }
