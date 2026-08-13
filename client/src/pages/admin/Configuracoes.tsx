@@ -1,8 +1,93 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
+
+// Itens de manutenção por horas (filtro de ar, óleo, elemento separador...)
+// — configurável só pra Odin Compressores, que é quem acompanha isso no
+// pós-venda. Cada item tem nome + intervalo em horas; vendedor usa essa
+// lista pra registrar a "primeira preventiva" e o status de cada máquina
+// (client/src/pages/ClienteDetail.tsx).
+function ItensManutencao() {
+  const utils = trpc.useUtils()
+  const { data: itens, isLoading } = trpc.maquinas.listaItensManutencao.useQuery()
+  const [nome, setNome] = useState('')
+  const [horas, setHoras] = useState('')
+
+  function invalidar() {
+    utils.maquinas.listaItensManutencao.invalidate()
+  }
+
+  const criarMut = trpc.maquinas.criarItemManutencao.useMutation({
+    onSuccess() {
+      toast.success('Item adicionado')
+      setNome('')
+      setHoras('')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const removerMut = trpc.maquinas.removerItemManutencao.useMutation({
+    onSuccess() {
+      toast.success('Item removido')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-dark-100">Itens de manutenção por horas</h2>
+      <p className="text-xs text-dark-400">
+        Cada item aparece na ficha de cada máquina vendida, com previsão de troca por horas de uso. Adicione quantos
+        precisar (filtro de ar, filtro de óleo, elemento separador, óleo...).
+      </p>
+
+      {isLoading && <p className="text-sm text-dark-500">Carregando...</p>}
+      {!isLoading && !itens?.length && <p className="text-sm text-dark-500">Nenhum item cadastrado ainda.</p>}
+
+      <div className="divide-y divide-dark-700">
+        {itens?.map((item) => (
+          <div key={item.id} className="flex items-center justify-between py-2">
+            <p className="text-sm text-dark-100">
+              {item.nome} <span className="text-dark-500">— a cada {item.intervaloHoras.toLocaleString('pt-BR')}h</span>
+            </p>
+            <button
+              onClick={() => removerMut.mutate({ id: item.id })}
+              className="text-xs text-dark-500 hover:text-red-400"
+              disabled={removerMut.isPending}
+            >
+              Remover
+            </button>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-end gap-2 pt-2 border-t border-dark-700">
+        <Input label="Nome do item" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex: Elemento separador" className="flex-1" />
+        <Input label="Intervalo (horas)" type="number" min="1" value={horas} onChange={(e) => setHoras(e.target.value)} className="w-36" />
+        <Button
+          size="sm"
+          loading={criarMut.isPending}
+          onClick={() => {
+            if (!nome.trim()) return toast.error('Informe o nome do item')
+            if (!horas || Number(horas) <= 0) return toast.error('Informe o intervalo em horas')
+            criarMut.mutate({ nome: nome.trim(), intervaloHoras: Number(horas) })
+          }}
+        >
+          + Adicionar
+        </Button>
+      </div>
+    </div>
+  )
+}
 
 function IntegracaoGoTo() {
   const utils = trpc.useUtils()
@@ -66,6 +151,9 @@ function IntegracaoGoTo() {
 export default function AdminConfiguracoes() {
   const { data, isLoading } = trpc.configuracoes.get.useQuery()
   const utils = trpc.useUtils()
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
 
   const [maxTentativas, setMaxTentativas] = useState('')
   const [bloqueioMinutos, setBloqueioMinutos] = useState('')
@@ -267,6 +355,8 @@ export default function AdminConfiguracoes() {
       </form>
 
       <IntegracaoGoTo />
+
+      {ehOdinCompressores && <ItensManutencao />}
     </div>
   )
 }

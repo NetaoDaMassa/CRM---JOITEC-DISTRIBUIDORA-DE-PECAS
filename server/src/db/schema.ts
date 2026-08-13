@@ -281,15 +281,55 @@ export const maquinasCliente = sqliteTable('maquinas_cliente', {
   quantidade: integer('quantidade').notNull().default(1),
   dataInstalacao: text('data_instalacao').notNull(),
   horasUsoDia: real('horas_uso_dia').notNull(),
-  intervaloFiltroArHoras: integer('intervalo_filtro_ar_horas').notNull().default(1000),
-  intervaloFiltroOleoHoras: integer('intervalo_filtro_oleo_horas').notNull().default(2000),
-  dataUltimaTrocaFiltroAr: text('data_ultima_troca_filtro_ar'),
-  dataUltimaTrocaFiltroOleo: text('data_ultima_troca_filtro_oleo'),
+  // Consumidor final pra quem a revenda repassou essa máquina — texto livre
+  // (não vira cliente completo, não tem carteira/funil próprio), só pra
+  // entender que a revenda comprou da gente e revendeu pra esse cliente.
+  consumidorFinalNome: text('consumidor_final_nome'),
+  consumidorFinalTelefone: text('consumidor_final_telefone'),
   observacoes: text('observacoes'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
 })
+
+// Itens de manutenção configuráveis por empresa (só Odin Compressores usa
+// isso por enquanto) — substitui os campos fixos de filtro de ar/óleo que
+// existiam antes. Admin cadastra quantos itens quiser (filtro de ar,
+// filtro de óleo, elemento separador, óleo...), cada um com seu intervalo
+// em horas.
+export const itensManutencao = sqliteTable('itens_manutencao', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  intervaloHoras: integer('intervalo_horas').notNull(),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  deletedAt: text('deleted_at'),
+})
+
+// Status de manutenção de UM item numa máquina específica. `horasNaReferencia`
+// + `dataReferencia` são a base pra projetar a próxima troca (mesma lógica de
+// projeção por dias × horas/dia que já existia, só que agora por item
+// configurável em vez de 2 campos fixos). O primeiro registro pra um par
+// máquina+item é a "primeira preventiva": a leitura real de horas da peça
+// naquele momento (não necessariamente 0 — a máquina pode já estar em uso há
+// tempo quando é cadastrada no sistema). "Marcar troca" depois só zera
+// horasNaReferencia e atualiza dataReferencia pra hoje.
+export const maquinaManutencaoStatus = sqliteTable(
+  'maquina_manutencao_status',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    maquinaId: integer('maquina_id').notNull().references(() => maquinasCliente.id, { onDelete: 'cascade' }),
+    itemId: integer('item_id').notNull().references(() => itensManutencao.id, { onDelete: 'cascade' }),
+    horasNaReferencia: real('horas_na_referencia').notNull().default(0),
+    dataReferencia: text('data_referencia').notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    maquinaItemUnico: unique().on(t.maquinaId, t.itemId),
+  })
+)
 
 // Catálogo de produtos da Odin Compressores — nasceu só com compressor (pra
 // alimentar o dropdown de "Modelo" em Nova Máquina), mas cobre o catálogo
@@ -469,20 +509,85 @@ export const solicitacoesCarteira = sqliteTable('solicitacoes_carteira', {
 // Agenda de compromissos futuros (ligar de novo, visitar, reunião...) —
 // alimenta o calendário do vendedor/admin e as notificações do navegador
 // quando o horário chega.
-export const compromissos = sqliteTable('compromissos', {
+export const compromissos = sqliteTable(
+  'compromissos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'cascade' }),
+    tipo: text('tipo', { enum: ['ligacao', 'visita', 'reuniao', 'outro'] }).notNull().default('outro'),
+    titulo: text('titulo').notNull(),
+    descricao: text('descricao'),
+    dataHora: text('data_hora').notNull(),
+    concluido: integer('concluido', { mode: 'boolean' }).notNull().default(false),
+    notificado: integer('notificado', { mode: 'boolean' }).notNull().default(false),
+    // Recorrência: cada ocorrência é uma linha de verdade (gerada na hora de
+    // criar, não expandida em tempo de leitura) — mais simples de consultar
+    // por intervalo de data, mesmo padrão que o resto do sistema já usa
+    // (funil_mensal por exemplo não é "virtual"). `recorrenciaGrupoId` liga
+    // todas as ocorrências da mesma série (é o id da primeira ocorrência) —
+    // só a primeira tem esse campo igual ao próprio id.
+    recorrencia: text('recorrencia', { enum: ['nenhuma', 'diaria', 'semanal', 'quinzenal', 'mensal'] }).notNull().default('nenhuma'),
+    recorrenciaGrupoId: integer('recorrencia_grupo_id'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => ({
+    // Toda navegação do calendário (mês/semana/dia) filtra por vendedor +
+    // intervalo de data — sem índice composto isso varria a tabela inteira
+    // a cada troca de mês/semana.
+    vendedorDataIdx: index('idx_compromissos_vendedor_data').on(t.vendedorId, t.dataHora),
+    grupoIdx: index('idx_compromissos_grupo').on(t.recorrenciaGrupoId),
+  })
+)
+
+// Pedido do vendedor pra equipe de marketing criar uma arte (comunicado,
+// oferta ou banner) — fica pendente até o admin aprovar ou recusar na aba de
+// Aprovações, mesmo fluxo já usado pra pedidos de carteira. Aprovar aqui só
+// libera o pedido pra marketing (não gera nenhuma arte sozinho).
+export const solicitacoesDesign = sqliteTable('solicitacoes_design', {
   id: integer('id').primaryKey({ autoIncrement: true }),
-  vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'cascade' }),
-  tipo: text('tipo', { enum: ['ligacao', 'visita', 'reuniao', 'outro'] }).notNull().default('outro'),
-  titulo: text('titulo').notNull(),
-  descricao: text('descricao'),
-  dataHora: text('data_hora').notNull(),
-  concluido: integer('concluido', { mode: 'boolean' }).notNull().default(false),
-  notificado: integer('notificado', { mode: 'boolean' }).notNull().default(false),
+  vendedorSolicitanteId: integer('vendedor_solicitante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tipo: text('tipo', { enum: ['comunicado', 'oferta', 'banner'] }).notNull(),
+  descricao: text('descricao').notNull(),
+  preco: text('preco'),
+  produto: text('produto'),
+  quantidade: text('quantidade'),
+  dataLimiteEntrega: text('data_limite_entrega'),
+  dataLimiteValidade: text('data_limite_validade'),
+  observacoes: text('observacoes'),
+  status: text('status', { enum: ['pendente', 'aprovado', 'recusado'] }).notNull().default('pendente'),
+  respostaObservacao: text('resposta_observacao'),
+  decididoPor: integer('decidido_por').references(() => users.id, { onDelete: 'set null' }),
+  decididoEm: text('decidido_em'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
-  deletedAt: text('deleted_at'),
 })
+
+// Inadimplência por CARD do Painel Financeiro — só um valor total +
+// quantidade de clientes, atualizado manualmente pelo admin (não tem fonte
+// automática de inadimplência no sistema hoje). Chave por `cardKey` (string
+// fixa definida em `financeiro.ts`), não por empresaId direto, porque um
+// card pode juntar mais de uma empresa (ex: Odin Compressores + Comprefer
+// aparecem como um card só) — não faria sentido pedir pro admin lançar dois
+// valores separados pra algo que ele vê como uma linha única. Uma linha por
+// card (upsert): o histórico de quem mudou fica só no
+// atualizadoPor/atualizadoEm, não guarda série temporal.
+export const inadimplenciaEmpresas = sqliteTable(
+  'inadimplencia_empresas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    cardKey: text('card_key').notNull(),
+    valorTotal: real('valor_total').notNull().default(0),
+    quantidadeClientes: integer('quantidade_clientes').notNull().default(0),
+    atualizadoPor: integer('atualizado_por').references(() => users.id, { onDelete: 'set null' }),
+    atualizadoEm: text('atualizado_em'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    cardUnico: unique().on(t.cardKey),
+  })
+)
 
 export const messageTemplates = sqliteTable('message_templates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -527,8 +632,19 @@ export const clienteEmailsRelations = relations(clienteEmails, ({ one }) => ({
   cliente: one(clientes, { fields: [clienteEmails.clienteId], references: [clientes.id] }),
 }))
 
-export const maquinasClienteRelations = relations(maquinasCliente, ({ one }) => ({
+export const maquinasClienteRelations = relations(maquinasCliente, ({ one, many }) => ({
   cliente: one(clientes, { fields: [maquinasCliente.clienteId], references: [clientes.id] }),
+  statusManutencao: many(maquinaManutencaoStatus),
+}))
+
+export const itensManutencaoRelations = relations(itensManutencao, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [itensManutencao.empresaId], references: [empresas.id] }),
+  status: many(maquinaManutencaoStatus),
+}))
+
+export const maquinaManutencaoStatusRelations = relations(maquinaManutencaoStatus, ({ one }) => ({
+  maquina: one(maquinasCliente, { fields: [maquinaManutencaoStatus.maquinaId], references: [maquinasCliente.id] }),
+  item: one(itensManutencao, { fields: [maquinaManutencaoStatus.itemId], references: [itensManutencao.id] }),
 }))
 
 export const carteiraHistoricoRelations = relations(carteiraHistorico, ({ one }) => ({
@@ -548,6 +664,15 @@ export const solicitacoesCarteiraRelations = relations(solicitacoesCarteira, ({ 
   vendedorSolicitante: one(users, { fields: [solicitacoesCarteira.vendedorSolicitanteId], references: [users.id] }),
   vendedorDestino: one(users, { fields: [solicitacoesCarteira.vendedorDestinoId], references: [users.id] }),
   decisor: one(users, { fields: [solicitacoesCarteira.decididoPor], references: [users.id] }),
+}))
+
+export const inadimplenciaEmpresasRelations = relations(inadimplenciaEmpresas, ({ one }) => ({
+  atualizadoPorUser: one(users, { fields: [inadimplenciaEmpresas.atualizadoPor], references: [users.id] }),
+}))
+
+export const solicitacoesDesignRelations = relations(solicitacoesDesign, ({ one }) => ({
+  vendedorSolicitante: one(users, { fields: [solicitacoesDesign.vendedorSolicitanteId], references: [users.id] }),
+  decisor: one(users, { fields: [solicitacoesDesign.decididoPor], references: [users.id] }),
 }))
 
 export const vendasRelations = relations(vendas, ({ one, many }) => ({

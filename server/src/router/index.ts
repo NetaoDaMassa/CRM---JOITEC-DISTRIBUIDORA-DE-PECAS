@@ -21,6 +21,7 @@ import { maquinasRouter } from './maquinas.js'
 import { telefonesRouter } from './telefones.js'
 import { prospeccaoRouter } from './prospeccao.js'
 import { aprovacoesRouter } from './aprovacoes.js'
+import { financeiroRouter } from './financeiro.js'
 import { vinculosRouter } from './vinculos.js'
 import { emailsRouter } from './emails.js'
 import { activityRouter } from './activity.js'
@@ -52,6 +53,7 @@ export const appRouter = router({
   telefones: telefonesRouter,
   prospeccao: prospeccaoRouter,
   aprovacoes: aprovacoesRouter,
+  financeiro: financeiroRouter,
   vinculos: vinculosRouter,
   emails: emailsRouter,
   activity: activityRouter,

@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Wallet,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -32,7 +32,7 @@ const ADMIN_LINKS = [
   { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES },
   { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays },
   { to: '/admin/clientes', label: 'Clientes', icon: List },
-  { to: '/admin/prospeccao', label: 'Prospecção', icon: Search },
+  { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES },
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare },
   { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft },
   { to: '/admin/banco-clientes', label: 'Banco de Clientes', icon: Landmark },
@@ -53,7 +53,7 @@ const VENDOR_LINKS = [
   { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare },
   { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays },
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List },
-  { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search },
+  { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES },
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3 },
 ]
 
@@ -70,7 +70,9 @@ export default function Sidebar() {
   const logoEmpresa = empresaAtiva ? LOGO_POR_EMPRESA[empresaAtiva.slug] : undefined
 
   const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
-    (l) => !l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug
+    (l) =>
+      (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
+      (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug)
   )
 
   function handleLogout() {
@@ -136,6 +138,17 @@ export default function Sidebar() {
             >
               <Tv size={17} />
               <span className="flex-1">Painel de TV</span>
+            </a>
+          )}
+          {user?.superAdmin && (
+            <a
+              href="/painel-financeiro"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
+            >
+              <Wallet size={17} />
+              <span className="flex-1">Painel Financeiro</span>
             </a>
           )}
           <a

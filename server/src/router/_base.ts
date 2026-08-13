@@ -17,3 +17,13 @@ export const adminProcedure = protectedProcedure.use(({ ctx, next }) => {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito ao administrador' })
   return next({ ctx })
 })
+
+// Pra endpoints que atravessam mais de uma empresa (ex: Painel Financeiro,
+// que consolida 3 empresas de uma vez) — ctx.empresaId continua sendo só a
+// empresa ativa no momento, então esses endpoints ignoram ele e consultam
+// os empresaId que precisarem direto. Só quem é users.superAdmin chega aqui.
+export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (!ctx.user.superAdmin)
+    throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito' })
+  return next({ ctx })
+})

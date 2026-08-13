@@ -29,6 +29,7 @@ import VendorCalendario from './pages/vendor/Calendario'
 import FilaHoje from './pages/vendor/FilaHoje'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
+import PainelFinanceiro from './pages/PainelFinanceiro'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -49,6 +50,12 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function SuperAdminGuard({ children }: { children: React.ReactNode }) {
+  const { user } = useAuth()
+  if (!user?.superAdmin) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
 export default function App() {
   const { user } = useAuth()
 
@@ -62,6 +69,16 @@ export default function App() {
           element={
             <AuthGuard>
               <PainelTV />
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/painel-financeiro"
+          element={
+            <AuthGuard>
+              <SuperAdminGuard>
+                <PainelFinanceiro />
+              </SuperAdminGuard>
             </AuthGuard>
           }
         />

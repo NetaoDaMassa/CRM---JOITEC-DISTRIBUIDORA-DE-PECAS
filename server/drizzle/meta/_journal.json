@@ -211,6 +211,41 @@
       "when": 1786476223346,
       "tag": "0029_solid_wilson_fisk",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "6",
+      "when": 1786554735819,
+      "tag": "0030_chief_psylocke",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "6",
+      "when": 1786562142867,
+      "tag": "0031_fast_lethal_legion",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1786564672490,
+      "tag": "0032_broad_the_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1786565780416,
+      "tag": "0033_rare_nightcrawler",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1786566964594,
+      "tag": "0034_silent_maximus",
+      "breakpoints": true
     }
   ]
 }

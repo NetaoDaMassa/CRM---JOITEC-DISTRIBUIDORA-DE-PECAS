@@ -17,24 +17,117 @@ function formatarDataSimples(iso: string | null): string {
   return `${dia}/${mes}/${ano}`
 }
 
-type Projecao = { diasRestantes: number | null; dataProjetada: string | null; vencido: boolean }
+type ItemStatus =
+  | { itemId: number; nome: string; intervaloHoras: number; semLeitura: true }
+  | {
+      itemId: number
+      nome: string
+      intervaloHoras: number
+      semLeitura: false
+      horasNaReferencia: number
+      dataReferencia: string
+      diasRestantes: number | null
+      dataProjetada: string | null
+      vencido: boolean
+    }
 
-function StatusPeca({ label, projecao, onTrocar, loading }: { label: string; projecao: Projecao; onTrocar: () => void; loading: boolean }) {
-  const cor = projecao.vencido ? 'text-red-400' : (projecao.diasRestantes ?? 999) <= 15 ? 'text-amber-400' : 'text-dark-300'
+// Item sem leitura inicial ainda: pede a "primeira preventiva" (leitura de
+// horas de verdade da peça hoje, não necessariamente 0 — a máquina pode já
+// estar em uso). Com leitura registrada: mostra a projeção e o botão de
+// marcar troca, igual antes.
+function ItemManutencaoStatus({ maquinaId, item }: { maquinaId: number; item: ItemStatus }) {
+  const utils = trpc.useUtils()
+  const [registrando, setRegistrando] = useState(false)
+  const [horasAtuais, setHorasAtuais] = useState('')
+
+  function invalidar() {
+    utils.maquinas.listaPorCliente.invalidate()
+  }
+
+  const registrarMut = trpc.maquinas.registrarLeituraInicial.useMutation({
+    onSuccess() {
+      toast.success('Primeira preventiva registrada')
+      setRegistrando(false)
+      setHorasAtuais('')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const trocarMut = trpc.maquinas.marcarTrocaItem.useMutation({
+    onSuccess() {
+      toast.success('Troca registrada — contagem reiniciada')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  if (item.semLeitura) {
+    return (
+      <div className="py-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm text-dark-200">
+            {item.nome} <span className="text-dark-500">— a cada {item.intervaloHoras.toLocaleString('pt-BR')}h</span>
+          </span>
+          {!registrando && (
+            <Button size="sm" variant="secondary" onClick={() => setRegistrando(true)}>
+              Registrar primeira preventiva
+            </Button>
+          )}
+        </div>
+        {registrando && (
+          <div className="flex items-end gap-2 mt-2">
+            <Input
+              label="Horas de uso da peça hoje"
+              type="number"
+              min="0"
+              value={horasAtuais}
+              onChange={(e) => setHorasAtuais(e.target.value)}
+              placeholder="Ex: 350"
+              className="w-40"
+            />
+            <Button
+              size="sm"
+              loading={registrarMut.isPending}
+              onClick={() =>
+                registrarMut.mutate({
+                  maquinaId,
+                  itemId: item.itemId,
+                  horasAtuais: Number(horasAtuais) || 0,
+                  data: new Date().toISOString().slice(0, 10),
+                })
+              }
+            >
+              Salvar
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => setRegistrando(false)}>
+              Cancelar
+            </Button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const cor = item.vencido ? 'text-red-400' : (item.diasRestantes ?? 999) <= 15 ? 'text-amber-400' : 'text-dark-300'
   return (
     <div className="flex items-center justify-between gap-2 py-1.5">
       <div className="text-sm">
-        <span className="text-dark-200">{label}: </span>
+        <span className="text-dark-200">{item.nome}: </span>
         <span className={cor}>
-          {projecao.diasRestantes === null
+          {item.diasRestantes === null
             ? 'sem estimativa de horas/dia'
-            : projecao.vencido
-              ? `venceu há ${Math.abs(projecao.diasRestantes)} dia(s)`
-              : `em ${projecao.diasRestantes} dia(s)`}
-          {projecao.dataProjetada ? ` (${formatarDataSimples(projecao.dataProjetada)})` : ''}
+            : item.vencido
+              ? `venceu há ${Math.abs(item.diasRestantes)} dia(s)`
+              : `em ${item.diasRestantes} dia(s)`}
+          {item.dataProjetada ? ` (${formatarDataSimples(item.dataProjetada)})` : ''}
         </span>
       </div>
-      <Button size="sm" variant="secondary" loading={loading} onClick={onTrocar}>
+      <Button size="sm" variant="secondary" loading={trocarMut.isPending} onClick={() => trocarMut.mutate({ maquinaId, itemId: item.itemId })}>
         Marcar troca feita
       </Button>
     </div>
@@ -47,12 +140,15 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
   const utils = trpc.useUtils()
   const { data: maquinas, isLoading } = trpc.maquinas.listaPorCliente.useQuery({ clienteId })
   const { data: catalogo } = trpc.maquinas.listaCatalogo.useQuery()
+  const { data: itensManutencao } = trpc.maquinas.listaItensManutencao.useQuery()
   const [mostrarForm, setMostrarForm] = useState(false)
   const [modeloSelecionado, setModeloSelecionado] = useState('')
   const [modeloLivre, setModeloLivre] = useState('')
   const [quantidade, setQuantidade] = useState('1')
   const [dataInstalacao, setDataInstalacao] = useState(() => new Date().toISOString().slice(0, 10))
   const [horasUsoDia, setHorasUsoDia] = useState('8')
+  const [consumidorFinalNome, setConsumidorFinalNome] = useState('')
+  const [consumidorFinalTelefone, setConsumidorFinalTelefone] = useState('')
 
   const temCatalogo = !!catalogo?.length
   const usarModeloLivre = !temCatalogo || modeloSelecionado === OUTRO_MODELO
@@ -69,16 +165,8 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
       setModeloLivre('')
       setQuantidade('1')
       setHorasUsoDia('8')
-    },
-    onError(err) {
-      toast.error(err.message)
-    },
-  })
-
-  const marcarTrocaMut = trpc.maquinas.marcarTroca.useMutation({
-    onSuccess() {
-      toast.success('Troca registrada — contagem reiniciada')
-      invalidar()
+      setConsumidorFinalNome('')
+      setConsumidorFinalTelefone('')
     },
     onError(err) {
       toast.error(err.message)
@@ -105,6 +193,8 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
       quantidade: Number(quantidade) || 1,
       dataInstalacao,
       horasUsoDia: Number(horasUsoDia),
+      consumidorFinalNome: consumidorFinalNome.trim() || undefined,
+      consumidorFinalTelefone: consumidorFinalTelefone.trim() || undefined,
     })
   }
 
@@ -144,9 +234,26 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
             <Input label="Data da venda/instalação" type="date" value={dataInstalacao} onChange={(e) => setDataInstalacao(e.target.value)} />
             <Input label="Horas de uso/dia (estim.)" type="number" min="0" step="0.5" value={horasUsoDia} onChange={(e) => setHorasUsoDia(e.target.value)} />
           </div>
-          <p className="text-xs text-dark-500">
-            Troca de filtro de ar a cada 1.000h e de óleo a cada 2.000h por padrão — dá pra ajustar depois, se essa máquina for diferente.
-          </p>
+          <div className="grid grid-cols-2 gap-3 pt-2 border-t border-dark-700">
+            <Input
+              label="Consumidor final — nome (se essa venda foi pra uma revenda)"
+              value={consumidorFinalNome}
+              onChange={(e) => setConsumidorFinalNome(e.target.value)}
+              placeholder="Opcional"
+            />
+            <Input
+              label="Consumidor final — telefone"
+              value={consumidorFinalTelefone}
+              onChange={(e) => setConsumidorFinalTelefone(e.target.value)}
+              placeholder="Opcional"
+            />
+          </div>
+          {!!itensManutencao?.length && (
+            <p className="text-xs text-dark-500">
+              Depois de cadastrar, registre a "primeira preventiva" de cada item ({itensManutencao.map((i) => i.nome).join(', ')})
+              com a leitura real de horas da máquina hoje.
+            </p>
+          )}
           <Button type="submit" size="sm" loading={criarMut.isPending}>
             Cadastrar máquina
           </Button>
@@ -167,6 +274,12 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
                 <p className="text-xs text-dark-500">
                   Instalado em {formatarDataSimples(m.dataInstalacao)} · ~{m.horasUsoDia}h/dia
                 </p>
+                {m.consumidorFinalNome && (
+                  <p className="text-xs text-dark-500">
+                    Revendido pra {m.consumidorFinalNome}
+                    {m.consumidorFinalTelefone ? ` · ${m.consumidorFinalTelefone}` : ''}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => removerMut.mutate({ id: m.id })}
@@ -177,18 +290,14 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
               </button>
             </div>
             <div className="mt-2">
-              <StatusPeca
-                label="Filtro de ar"
-                projecao={m.filtroAr}
-                onTrocar={() => marcarTrocaMut.mutate({ id: m.id, tipo: 'ar' })}
-                loading={marcarTrocaMut.isPending}
-              />
-              <StatusPeca
-                label="Filtro de óleo"
-                projecao={m.filtroOleo}
-                onTrocar={() => marcarTrocaMut.mutate({ id: m.id, tipo: 'oleo' })}
-                loading={marcarTrocaMut.isPending}
-              />
+              {!itensManutencao?.length && (
+                <p className="text-xs text-dark-500">
+                  Nenhum item de manutenção configurado ainda — cadastre em Configurações.
+                </p>
+              )}
+              {m.itensStatus.map((item) => (
+                <ItemManutencaoStatus key={item.itemId} maquinaId={m.id} item={item} />
+              ))}
             </div>
           </div>
         ))}

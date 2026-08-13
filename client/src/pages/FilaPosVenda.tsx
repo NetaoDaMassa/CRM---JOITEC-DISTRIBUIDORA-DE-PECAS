@@ -8,8 +8,6 @@ function iniciais(nome: string): string {
   return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
 }
 
-const PECA_LABEL: Record<string, string> = { ar: 'Filtro de ar', oleo: 'Filtro de óleo' }
-
 export default function FilaPosVenda() {
   const { user, empresaAtivaId } = useAuth()
   const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
@@ -19,7 +17,7 @@ export default function FilaPosVenda() {
   const ehOdinCompressores = empresaAtiva?.slug === 'odin-compressores'
 
   const { data, isLoading } = trpc.maquinas.filaPosVenda.useQuery(undefined, { enabled: ehOdinCompressores })
-  const marcarTrocaMut = trpc.maquinas.marcarTroca.useMutation({
+  const marcarTrocaMut = trpc.maquinas.marcarTrocaItem.useMutation({
     onSuccess: () => utils.maquinas.filaPosVenda.invalidate(),
   })
 
@@ -41,7 +39,7 @@ export default function FilaPosVenda() {
       <div>
         <h1 className="font-heading text-2xl text-gold-400 font-bold">Fila de Pós-venda</h1>
         <p className="text-dark-400 text-sm">
-          Máquinas já vendidas, do mais urgente pro menos urgente pra oferecer filtro de ar/óleo antes que o cliente precise.
+          Máquinas já vendidas, do mais urgente pro menos urgente pra oferecer a próxima peça de manutenção antes que o cliente precise.
         </p>
       </div>
 
@@ -91,7 +89,7 @@ export default function FilaPosVenda() {
                       {item.modelo} {item.quantidade > 1 ? `× ${item.quantidade}` : ''}
                     </span>
                     <span className={item.vencido ? 'text-red-400' : (item.diasRestantes ?? 999) <= 15 ? 'text-amber-400' : 'text-dark-400'}>
-                      {PECA_LABEL[item.pecaMaisUrgente]}:{' '}
+                      {item.itemMaisUrgente}:{' '}
                       {item.diasRestantes === null
                         ? 'sem estimativa'
                         : item.vencido
@@ -104,7 +102,7 @@ export default function FilaPosVenda() {
               <div className="flex items-center gap-2 shrink-0">
                 <ContatoButtons telefone={item.telefoneWhatsapp} email={null} clienteId={item.clienteId} size="sm" />
                 <button
-                  onClick={() => marcarTrocaMut.mutate({ id: item.maquinaId, tipo: item.pecaMaisUrgente })}
+                  onClick={() => marcarTrocaMut.mutate({ maquinaId: item.maquinaId, itemId: item.itemId })}
                   disabled={marcarTrocaMut.isPending}
                   className="text-xs text-dark-400 hover:text-gold-400 underline whitespace-nowrap"
                 >
