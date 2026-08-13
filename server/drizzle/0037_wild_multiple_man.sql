@@ -1,0 +1,22 @@
+CREATE TABLE `compras_invoices` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`empresa` text NOT NULL,
+	`numero_invoice` text NOT NULL,
+	`fornecedor` text,
+	`status` text DEFAULT 'em_producao' NOT NULL,
+	`data_embarque` text,
+	`data_chegada` text,
+	`invoice_paga` integer DEFAULT false NOT NULL,
+	`valor_dolar` real,
+	`valor_invoice_reais` real,
+	`numero_container` text,
+	`navio` text,
+	`porto_origem` text,
+	`porto_destino` text,
+	`observacoes` text,
+	`criado_por` integer,
+	`deleted_at` text,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
+	`updated_at` text DEFAULT (datetime('now')) NOT NULL,
+	FOREIGN KEY (`criado_por`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
+);

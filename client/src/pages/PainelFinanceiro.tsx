@@ -22,6 +22,49 @@ function iniciais(nome: string): string {
   return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
 }
 
+const EMPRESA_IMPORT_LABEL: Record<string, string> = {
+  'odin-tubos': 'Odin Tubos',
+  'odin-compressores': 'Odin Compressores',
+  joitec: 'Joitec',
+}
+
+const STATUS_IMPORT_LABEL: Record<string, string> = {
+  em_producao: 'Em produção',
+  embarcado: 'Embarcado',
+  a_caminho: 'A caminho',
+  chegou: 'Chegou',
+}
+
+const STATUS_IMPORT_COR: Record<string, string> = {
+  em_producao: 'text-dark-300 bg-dark-700',
+  embarcado: 'text-gold-400 bg-gold-900/20',
+  a_caminho: 'text-blue-400 bg-blue-900/20',
+  chegou: 'text-green-400 bg-green-900/20',
+}
+
+type InvoiceImportacao = {
+  id: number
+  empresa: 'odin-tubos' | 'odin-compressores' | 'joitec'
+  numeroInvoice: string
+  status: 'em_producao' | 'embarcado' | 'a_caminho' | 'chegou'
+  dataEmbarque: string | null
+  dataChegada: string | null
+  invoicePaga: boolean
+  valorDolar: number | null
+  numeroContainer: string | null
+  navio: string | null
+}
+
+function formatarDataImport(d: string | null): string {
+  if (!d) return '—'
+  return new Date(`${d}T00:00:00`).toLocaleDateString('pt-BR')
+}
+
+function formatarDolarImport(v: number | null): string {
+  if (v === null || v === undefined) return '—'
+  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
+}
+
 type Card = {
   cardKey: string
   nome: string
@@ -186,13 +229,113 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
   )
 }
 
+type ResumoData = {
+  cards: Card[]
+  consolidado: {
+    valorMes: number
+    vendasMesQtd: number
+    vendasHojeQtd: number
+    metaFaturamento: number
+    percentualMeta: number
+    inadimplenciaTotal: number
+    diasUteisMes: number
+    diasUteisAteHoje: number
+  }
+}
+
+function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
+  const consolidado = data?.consolidado
+  const metaConsolidadaCor = consolidado?.percentualMeta && consolidado.percentualMeta >= 100 ? 'text-green-400' : 'text-gold-400'
+
+  if (!data || !consolidado) return <p className="text-dark-500">Carregando...</p>
+
+  return (
+    <>
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6 mb-6 grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-6">
+        <div>
+          <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Faturamento consolidado — mês</p>
+          <p className="text-5xl font-bold text-dark-50 font-mono tabular-nums mt-1">{formatarMoeda(consolidado.valorMes)}</p>
+          <p className="text-sm text-dark-400 mt-2">
+            {consolidado.vendasMesQtd} vendas fechadas no grupo · {consolidado.vendasHojeQtd} hoje
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-4 items-center">
+          <div className="text-center">
+            <p className={`text-3xl font-bold font-mono tabular-nums ${metaConsolidadaCor}`}>{consolidado.percentualMeta}%</p>
+            <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Meta do grupo</p>
+          </div>
+          <div className="text-center">
+            <p className="text-3xl font-bold font-mono tabular-nums text-red-400">{formatarMoeda(consolidado.inadimplenciaTotal)}</p>
+            <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Inadimplência total</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        {data.cards.map((card) => (
+          <EmpresaCard key={card.cardKey} card={card} editavel />
+        ))}
+      </div>
+
+      <p className="text-center text-xs text-dark-500 mt-8">Atualiza automaticamente a cada 30s</p>
+    </>
+  )
+}
+
+function CardImportacao({ inv }: { inv: InvoiceImportacao }) {
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <p className="text-sm font-semibold text-dark-100">{EMPRESA_IMPORT_LABEL[inv.empresa]}</p>
+        <span className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${STATUS_IMPORT_COR[inv.status]}`}>
+          {STATUS_IMPORT_LABEL[inv.status]}
+        </span>
+      </div>
+      <p className="text-2xl font-bold text-dark-50 font-mono tabular-nums">{inv.numeroInvoice}</p>
+      {inv.numeroContainer && <p className="text-xs text-dark-500 mt-0.5">Container {inv.numeroContainer}</p>}
+
+      <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-dark-700">
+        <div>
+          <p className="text-sm font-semibold text-dark-100 font-mono tabular-nums">{formatarDataImport(inv.dataEmbarque)}</p>
+          <p className="text-[10px] text-dark-500 uppercase tracking-wide">Embarque</p>
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-dark-100 font-mono tabular-nums">{formatarDataImport(inv.dataChegada)}</p>
+          <p className="text-[10px] text-dark-500 uppercase tracking-wide">Chegada</p>
+        </div>
+      </div>
+
+      <div className="mt-4 pt-4 border-t border-dark-700 flex items-center justify-between">
+        <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">Valor (USD)</p>
+        <p className={`text-lg font-bold font-mono tabular-nums ${inv.invoicePaga ? 'text-green-400' : 'text-dark-500'}`}>
+          {inv.invoicePaga ? formatarDolarImport(inv.valorDolar) : '—'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function SlideImportacoes({ invoices }: { invoices: InvoiceImportacao[] | undefined }) {
+  if (!invoices) return <p className="text-dark-500">Carregando...</p>
+  if (!invoices.length) return <p className="text-dark-500">Nenhuma importação em andamento no momento.</p>
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {invoices.map((inv) => (
+        <CardImportacao key={inv.id} inv={inv} />
+      ))}
+    </div>
+  )
+}
+
 // Painel de TV financeiro, restrito a superAdmin — consolida faturamento,
 // vendas, % de meta e inadimplência (registrada manualmente, não tem fonte
 // automática ainda) das empresas do grupo (ver CARDS_PAINEL em
 // server/src/router/financeiro.ts pra lista + regra de quais empresas
 // juntam num card só). Pensado pra ficar numa sala fechada (não no chão de
 // vendas, que já esconde faturamento de propósito no /painel-tv normal —
-// ver comentário em PainelTV.tsx).
+// ver comentário em PainelTV.tsx). 2ª página (carrossel, igual o
+// /painel-tv normal): status das importações/containers em andamento.
 export default function PainelFinanceiro() {
   const [relogio, setRelogio] = useState(new Date())
   useEffect(() => {
@@ -204,16 +347,32 @@ export default function PainelFinanceiro() {
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   })
+  const { data: invoices } = trpc.compras.painelImportacoes.useQuery(undefined, {
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  })
 
-  const consolidado = data?.consolidado
-  const metaConsolidadaCor = consolidado?.percentualMeta && consolidado.percentualMeta >= 100 ? 'text-green-400' : 'text-gold-400'
+  const slides = [
+    { titulo: 'Financeiro', render: () => <SlideResumoFinanceiro data={data} /> },
+    { titulo: 'Importações', render: () => <SlideImportacoes invoices={invoices} /> },
+  ]
+  const [slideAtual, setSlideAtual] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), 20000)
+    return () => clearInterval(id)
+  }, [slides.length])
+
+  const Slide = slides[slideAtual].render
 
   return (
     <div className="min-h-screen bg-dark-950 text-dark-50 p-8">
       <div className="flex items-center justify-between mb-6 pb-5 border-b border-dark-700">
         <div>
           <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Grupo Odin · Painel Financeiro</p>
-          <h1 className="font-heading text-2xl text-dark-50 font-bold mt-0.5">Visão consolidada das empresas</h1>
+          <h1 className="font-heading text-2xl text-dark-50 font-bold mt-0.5">
+            {slideAtual === 0 ? 'Visão consolidada das empresas' : 'Importações em andamento'}
+          </h1>
         </div>
         <div className="text-right">
           <p className="text-2xl font-mono tabular-nums">{relogio.toLocaleTimeString('pt-BR')}</p>
@@ -223,39 +382,21 @@ export default function PainelFinanceiro() {
         </div>
       </div>
 
-      {!data && <p className="text-dark-500">Carregando...</p>}
+      <Slide />
 
-      {data && consolidado && (
-        <>
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6 mb-6 grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-6">
-            <div>
-              <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Faturamento consolidado — mês</p>
-              <p className="text-5xl font-bold text-dark-50 font-mono tabular-nums mt-1">{formatarMoeda(consolidado.valorMes)}</p>
-              <p className="text-sm text-dark-400 mt-2">
-                {consolidado.vendasMesQtd} vendas fechadas no grupo · {consolidado.vendasHojeQtd} hoje
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-4 items-center">
-              <div className="text-center">
-                <p className={`text-3xl font-bold font-mono tabular-nums ${metaConsolidadaCor}`}>{consolidado.percentualMeta}%</p>
-                <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Meta do grupo</p>
-              </div>
-              <div className="text-center">
-                <p className="text-3xl font-bold font-mono tabular-nums text-red-400">{formatarMoeda(consolidado.inadimplenciaTotal)}</p>
-                <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Inadimplência total</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-            {data.cards.map((card) => (
-              <EmpresaCard key={card.cardKey} card={card} editavel />
-            ))}
-          </div>
-        </>
-      )}
-
-      <p className="text-center text-xs text-dark-500 mt-8">Atualiza automaticamente a cada 30s</p>
+      <div className="flex items-center justify-center gap-2 mt-8">
+        {slides.map((s, i) => (
+          <button
+            key={s.titulo}
+            onClick={() => setSlideAtual(i)}
+            className={`px-3 py-1 rounded-full text-xs transition-colors ${
+              i === slideAtual ? 'bg-gold-400 text-dark-950 font-semibold' : 'bg-dark-700 text-dark-400'
+            }`}
+          >
+            {s.titulo}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

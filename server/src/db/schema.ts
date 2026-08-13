@@ -607,6 +607,37 @@ export const caixaMovimentacoes = sqliteTable('caixa_movimentacoes', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Setor Compras — controle de invoices de importação (container) das 3
+// empresas que importam (Odin Tubos, Odin Compressores, Joitec). Sem
+// `empresaId`/escopo de tenant de propósito: é um setor único do Grupo
+// Odin, compartilhado — qualquer admin, de qualquer empresa ativa, vê e
+// edita a mesma lista (a coluna `empresa` já diz de qual das 3 é cada
+// invoice). Alimenta a segunda página do Painel Financeiro (TV).
+export const comprasInvoices = sqliteTable('compras_invoices', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresa: text('empresa', { enum: ['odin-tubos', 'odin-compressores', 'joitec'] }).notNull(),
+  numeroInvoice: text('numero_invoice').notNull(),
+  fornecedor: text('fornecedor'),
+  status: text('status', { enum: ['em_producao', 'embarcado', 'a_caminho', 'chegou'] }).notNull().default('em_producao'),
+  dataEmbarque: text('data_embarque'),
+  dataChegada: text('data_chegada'),
+  // Regra de negócio: o dólar só é exibido no painel depois que a invoice
+  // está paga — por isso fica um campo separado do "pago", nunca inferido
+  // (evita mostrar R$ 0,00 pra invoice ainda não paga).
+  invoicePaga: integer('invoice_paga', { mode: 'boolean' }).notNull().default(false),
+  valorDolar: real('valor_dolar'),
+  valorInvoiceReais: real('valor_invoice_reais'),
+  numeroContainer: text('numero_container'),
+  navio: text('navio'),
+  portoOrigem: text('porto_origem'),
+  portoDestino: text('porto_destino'),
+  observacoes: text('observacoes'),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  deletedAt: text('deleted_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
 export const messageTemplates = sqliteTable('message_templates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
@@ -690,6 +721,10 @@ export const inadimplenciaEmpresasRelations = relations(inadimplenciaEmpresas, (
 
 export const caixaMovimentacoesRelations = relations(caixaMovimentacoes, ({ one }) => ({
   criadoPorUser: one(users, { fields: [caixaMovimentacoes.criadoPor], references: [users.id] }),
+}))
+
+export const comprasInvoicesRelations = relations(comprasInvoices, ({ one }) => ({
+  criadoPorUser: one(users, { fields: [comprasInvoices.criadoPor], references: [users.id] }),
 }))
 
 export const solicitacoesDesignRelations = relations(solicitacoesDesign, ({ one }) => ({

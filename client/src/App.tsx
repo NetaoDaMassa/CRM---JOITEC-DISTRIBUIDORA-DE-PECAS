@@ -19,6 +19,7 @@ import AdminReports from './pages/admin/Reports'
 import AdminMessageTemplates from './pages/admin/MessageTemplates'
 import AdminConfiguracoes from './pages/admin/Configuracoes'
 import AdminCaixa from './pages/admin/Caixa'
+import AdminCompras from './pages/admin/Compras'
 import AdminBackup from './pages/admin/Backup'
 import AdminMetas from './pages/admin/Metas'
 import AdminKanban from './pages/admin/Kanban'
@@ -109,6 +110,7 @@ export default function App() {
           <Route path="admin/mensagens" element={<AdminGuard><AdminMessageTemplates /></AdminGuard>} />
           <Route path="admin/configuracoes" element={<AdminGuard><AdminConfiguracoes /></AdminGuard>} />
           <Route path="admin/caixa" element={<AdminGuard><AdminCaixa /></AdminGuard>} />
+          <Route path="admin/compras" element={<AdminGuard><AdminCompras /></AdminGuard>} />
           <Route path="admin/backup" element={<AdminGuard><AdminBackup /></AdminGuard>} />
           <Route path="admin/metas" element={<AdminGuard><AdminMetas /></AdminGuard>} />
           <Route path="admin/pos-venda" element={<AdminGuard><FilaPosVenda /></AdminGuard>} />

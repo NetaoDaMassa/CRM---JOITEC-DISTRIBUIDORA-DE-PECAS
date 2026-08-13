@@ -26,6 +26,7 @@ import { vinculosRouter } from './vinculos.js'
 import { emailsRouter } from './emails.js'
 import { activityRouter } from './activity.js'
 import { caixaRouter } from './caixa.js'
+import { comprasRouter } from './compras.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -59,6 +60,7 @@ export const appRouter = router({
   emails: emailsRouter,
   activity: activityRouter,
   caixa: caixaRouter,
+  compras: comprasRouter,
 })
 
 export type AppRouter = typeof appRouter
