@@ -13,7 +13,14 @@ const ATON_LIMIT = 50
 // andamento, pode nem virar venda).
 const POSICAO_VENDA_CONFIRMADA = 'EMITIDO'
 
-type AtonPedido = { total_pedido: number }
+// `posicao` (filtrada na chamada, sempre EMITIDO) e `status` são campos
+// INDEPENDENTES — um pedido cancelado no marketplace depois de ter nota
+// emitida continua com posicao=EMITIDO, só o `status` muda (visto na prática:
+// "CANCELADO NO MARKETPLACE"). Sem checar `status`, pedido cancelado/estornado
+// entrava na soma de faturamento igual venda de verdade — só "NORMAL" conta.
+const STATUS_VENDA_VALIDA = 'NORMAL'
+
+type AtonPedido = { total_pedido: number; status: string }
 type AtonRespostaPedidos = {
   status: string
   mensagem: string
@@ -81,7 +88,11 @@ async function buscarVendasAton(token: string, dataInicialIso: string, dataFinal
   let quantidade = 0
   let valor = 0
   function somarPagina(pagina: AtonRespostaPedidos | null) {
-    for (const pedido of pagina?.resultado?.pedidos ?? []) quantidade++, (valor += pedido.total_pedido ?? 0)
+    for (const pedido of pagina?.resultado?.pedidos ?? []) {
+      if (pedido.status !== STATUS_VENDA_VALIDA) continue
+      quantidade++
+      valor += pedido.total_pedido ?? 0
+    }
   }
 
   const primeira = await buscarPaginaComRetry(token, dataInicialBr, dataFinalBr, 1)
