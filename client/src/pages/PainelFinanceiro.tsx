@@ -28,6 +28,7 @@ type Card = {
   slugLogo: string
   origemExterna: 'aton' | null
   tokenConfigurado: boolean | null
+  descontoPct: number | null
   vendasHoje: { quantidade: number; valor: number }
   vendasMes: { quantidade: number; valor: number }
   ticketMedioMes: number
@@ -121,7 +122,9 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
         <p className="text-[10px] text-red-400 font-semibold mb-3">⚠️ Token Aton ERP não configurado — vendas zeradas</p>
       )}
       {card.origemExterna === 'aton' && card.tokenConfigurado && (
-        <p className="text-[10px] text-dark-500 mb-3">📡 dados ao vivo do Aton ERP</p>
+        <p className="text-[10px] text-dark-500 mb-3">
+          📡 dados ao vivo do Aton ERP{card.descontoPct ? ` · já descontado ${card.descontoPct}%` : ''}
+        </p>
       )}
       {card.origemExterna !== 'aton' && <div className="mb-4" />}
 

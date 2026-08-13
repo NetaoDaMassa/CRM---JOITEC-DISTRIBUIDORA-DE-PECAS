@@ -32,6 +32,16 @@ function chaveTokenAton(cardKey: string): string {
   return `aton_token_${cardKey}`
 }
 
+// A API da Aton só devolve o valor bruto do pedido (igual à nota fiscal) —
+// não expõe comissão/frete/taxa de marketplace em lugar nenhum (nem
+// Pedidos de Venda, nem Financeiro). O gerente do ecommerce confirmou o
+// valor líquido real batendo com a tela de "Conciliação de Pedidos" do
+// Aton (só existe no sistema desktop, não na API pública) — sem um
+// endpoint pra isso, a aproximação é descontar um % médio configurável.
+function chaveDescontoAton(cardKey: string): string {
+  return `aton_desconto_pct_${cardKey}`
+}
+
 export const financeiroRouter = router({
   painelResumo: superAdminProcedure.query(async () => {
     const hoje = hojeBrString()
@@ -57,18 +67,22 @@ export const financeiroRouter = router({
         let vendasMesValor = 0
         let tokenConfigurado: boolean | undefined
 
+        let descontoPct = 0
+
         if (card.origemExterna === 'aton') {
           const token = await getConfigTexto(chaveTokenAton(card.cardKey))
           tokenConfigurado = !!token
+          descontoPct = await getConfigNumero(chaveDescontoAton(card.cardKey), 0)
           if (token) {
             const [hojeAton, mesAton] = await Promise.all([
               buscarVendasAtonComCache(token, hoje, hoje),
               buscarVendasAtonComCache(token, mesAtual, hoje),
             ])
+            const fatorLiquido = 1 - descontoPct / 100
             vendasHojeQtd = hojeAton?.quantidade ?? 0
-            vendasHojeValor = hojeAton?.valor ?? 0
+            vendasHojeValor = (hojeAton?.valor ?? 0) * fatorLiquido
             vendasMesQtd = mesAton?.quantidade ?? 0
-            vendasMesValor = mesAton?.valor ?? 0
+            vendasMesValor = (mesAton?.valor ?? 0) * fatorLiquido
           }
         } else {
           const vendedores = await db.query.users.findMany({
@@ -115,6 +129,7 @@ export const financeiroRouter = router({
           slugLogo: card.slugLogo,
           origemExterna: card.origemExterna ?? null,
           tokenConfigurado: tokenConfigurado ?? null,
+          descontoPct: card.origemExterna === 'aton' ? descontoPct : null,
           vendasHoje: { quantidade: vendasHojeQtd, valor: vendasHojeValor },
           vendasMes: { quantidade: vendasMesQtd, valor: valorMes },
           ticketMedioMes: vendasMesQtd > 0 ? valorMes / vendasMesQtd : 0,
@@ -197,6 +212,7 @@ export const financeiroRouter = router({
         cardKey: card.cardKey,
         nome: card.nome,
         configurado: !!(await getConfigTexto(chaveTokenAton(card.cardKey))),
+        descontoPct: await getConfigNumero(chaveDescontoAton(card.cardKey), 0),
       }))
     )
   }),
@@ -206,6 +222,14 @@ export const financeiroRouter = router({
     .mutation(async ({ input }) => {
       if (!CARDS_ATON.some((c) => c.cardKey === input.cardKey)) throw new Error('Card inválido pra integração Aton ERP')
       await setConfig(chaveTokenAton(input.cardKey), input.token.trim())
+      return { success: true }
+    }),
+
+  salvarDescontoAton: superAdminProcedure
+    .input(z.object({ cardKey: z.string(), descontoPct: z.number().min(0).max(100) }))
+    .mutation(async ({ input }) => {
+      if (!CARDS_ATON.some((c) => c.cardKey === input.cardKey)) throw new Error('Card inválido pra integração Aton ERP')
+      await setConfig(chaveDescontoAton(input.cardKey), input.descontoPct)
       return { success: true }
     }),
 })

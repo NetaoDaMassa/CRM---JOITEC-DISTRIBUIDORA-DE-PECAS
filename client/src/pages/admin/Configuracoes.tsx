@@ -157,12 +157,25 @@ function IntegracaoAton() {
   const utils = trpc.useUtils()
   const { data: cards, isLoading } = trpc.financeiro.statusTokensAton.useQuery()
   const [tokenPorCard, setTokenPorCard] = useState<Record<string, string>>({})
+  const [descontoPorCard, setDescontoPorCard] = useState<Record<string, string>>({})
 
-  const salvarMut = trpc.financeiro.salvarTokenAton.useMutation({
+  const salvarTokenMut = trpc.financeiro.salvarTokenAton.useMutation({
     onSuccess(_data, variables) {
       toast.success('Token salvo')
       setTokenPorCard((prev) => ({ ...prev, [variables.cardKey]: '' }))
       utils.financeiro.statusTokensAton.invalidate()
+      utils.financeiro.painelResumo.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const salvarDescontoMut = trpc.financeiro.salvarDescontoAton.useMutation({
+    onSuccess() {
+      toast.success('Desconto salvo')
+      utils.financeiro.statusTokensAton.invalidate()
+      utils.financeiro.painelResumo.invalidate()
     },
     onError(err) {
       toast.error(err.message)
@@ -172,34 +185,66 @@ function IntegracaoAton() {
   if (isLoading) return null
 
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-4">
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-5">
       <div>
         <h2 className="text-sm font-semibold text-dark-100">Integração Aton ERP (Compretec)</h2>
         <p className="text-xs text-dark-400 mt-1">
-          Vendas do dia/mês e faturamento desses cards vêm direto do Aton ERP. Peça o Token de Autorização pro suporte
-          da Aton, um pra cada loja.
+          Vendas do dia/mês e faturamento desses cards vêm direto do Aton ERP. A Aton só entrega o valor bruto (sem
+          descontar taxa de marketplace) — o "% de desconto" abaixo aproxima o valor líquido recebido.
         </p>
       </div>
       {cards?.map((card) => (
-        <div key={card.cardKey} className="flex items-end gap-2">
-          <div className="flex-1">
-            <Input
-              label={card.nome}
-              type="password"
-              placeholder={card.configurado ? 'Token configurado — cole outro pra substituir' : 'Cole o Token de Autorização'}
-              value={tokenPorCard[card.cardKey] ?? ''}
-              onChange={(e) => setTokenPorCard((prev) => ({ ...prev, [card.cardKey]: e.target.value }))}
-            />
+        <div key={card.cardKey} className="space-y-2 pb-4 border-b border-dark-700 last:border-0 last:pb-0">
+          <p className="text-xs font-semibold text-dark-200">{card.nome}</p>
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <Input
+                label="Token de Autorização"
+                type="password"
+                placeholder={card.configurado ? 'Token configurado — cole outro pra substituir' : 'Cole o Token de Autorização'}
+                value={tokenPorCard[card.cardKey] ?? ''}
+                onChange={(e) => setTokenPorCard((prev) => ({ ...prev, [card.cardKey]: e.target.value }))}
+              />
+            </div>
+            <Button
+              size="sm"
+              loading={salvarTokenMut.isPending}
+              disabled={!tokenPorCard[card.cardKey]?.trim()}
+              onClick={() => salvarTokenMut.mutate({ cardKey: card.cardKey, token: tokenPorCard[card.cardKey] })}
+            >
+              Salvar
+            </Button>
+            {card.configurado && <span className="text-xs text-green-400 shrink-0 mb-2.5">✓ configurado</span>}
           </div>
-          <Button
-            size="sm"
-            loading={salvarMut.isPending}
-            disabled={!tokenPorCard[card.cardKey]?.trim()}
-            onClick={() => salvarMut.mutate({ cardKey: card.cardKey, token: tokenPorCard[card.cardKey] })}
-          >
-            Salvar
-          </Button>
-          {card.configurado && <span className="text-xs text-green-400 shrink-0 mb-2.5">✓ configurado</span>}
+          <div className="flex items-end gap-2">
+            <div className="w-40">
+              <Input
+                label="% de desconto (taxa média)"
+                type="number"
+                min={0}
+                max={100}
+                step="0.01"
+                placeholder="ex: 17.72"
+                value={descontoPorCard[card.cardKey] ?? String(card.descontoPct || '')}
+                onChange={(e) => setDescontoPorCard((prev) => ({ ...prev, [card.cardKey]: e.target.value }))}
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              loading={salvarDescontoMut.isPending}
+              onClick={() => {
+                const valor = Number(descontoPorCard[card.cardKey] ?? card.descontoPct)
+                if (Number.isNaN(valor) || valor < 0 || valor > 100) return toast.error('Desconto precisa ser entre 0 e 100')
+                salvarDescontoMut.mutate({ cardKey: card.cardKey, descontoPct: valor })
+              }}
+            >
+              Salvar desconto
+            </Button>
+            {card.descontoPct > 0 && (
+              <span className="text-xs text-dark-500 shrink-0 mb-2.5">atual: {card.descontoPct}%</span>
+            )}
+          </div>
         </div>
       ))}
     </div>
