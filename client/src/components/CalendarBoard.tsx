@@ -5,6 +5,7 @@ import { trpc } from '../lib/trpc'
 import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
+import LegendaIcones from './LegendaIcones'
 
 const TIPO_LABEL: Record<string, string> = { ligacao: 'Ligação', visita: 'Visita', reuniao: 'Reunião', outro: 'Outro' }
 const TIPO_ICONE: Record<string, string> = { ligacao: '📞', visita: '🚗', reuniao: '🤝', outro: '📌' }
@@ -284,6 +285,7 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
           <Button size="sm" onClick={() => setNovoAberto(true)}>
             + Agendar
           </Button>
+          <LegendaIcones />
         </div>
       </div>
 

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { and, desc, eq, gte, isNull, lte, sql, sum } from 'drizzle-orm'
-import { router, adminProcedure } from './_base.js'
+import { router, featureProcedure } from './_base.js'
+
+const caixaProcedure = featureProcedure('caixa')
 import { db } from '../db/client.js'
 import { caixaMovimentacoes } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
@@ -13,7 +15,7 @@ import { registrarAuditoria } from '../lib/auditoria.js'
 export const caixaRouter = router({
   // `mesReferencia` no formato "YYYY-MM" — lista os lançamentos do mês e já
   // devolve os totais pra não precisar somar duas vezes no client.
-  listar: adminProcedure
+  listar: caixaProcedure
     .input(z.object({ mesReferencia: z.string().regex(/^\d{4}-\d{2}$/) }))
     .query(async ({ ctx, input }) => {
       const inicioMes = `${input.mesReferencia}-01`
@@ -51,7 +53,7 @@ export const caixaRouter = router({
       }
     }),
 
-  criar: adminProcedure
+  criar: caixaProcedure
     .input(
       z.object({
         tipo: z.enum(['entrada', 'saida']),
@@ -76,7 +78,7 @@ export const caixaRouter = router({
 
   // Entradas/saídas/saldo agrupados por mês, últimos 12 meses (incluindo o
   // atual) — pra dar uma visão histórica além do mês selecionado na tela.
-  resumoMensal: adminProcedure.query(async ({ ctx }) => {
+  resumoMensal: caixaProcedure.query(async ({ ctx }) => {
     const hoje = new Date()
     const mesLimite = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - 11, 1))
     const dataLimite = `${mesLimite.getUTCFullYear()}-${String(mesLimite.getUTCMonth() + 1).padStart(2, '0')}-01`
@@ -100,7 +102,7 @@ export const caixaRouter = router({
     }))
   }),
 
-  remover: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+  remover: caixaProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const registro = await db.query.caixaMovimentacoes.findFirst({ where: eq(caixaMovimentacoes.id, input.id) })
     if (!registro || registro.empresaId !== ctx.empresaId) throw new Error('Lançamento não encontrado')
 

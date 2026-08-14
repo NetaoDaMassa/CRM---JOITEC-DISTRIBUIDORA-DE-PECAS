@@ -16,6 +16,7 @@ import TelefonesExtras from './ui/TelefonesExtras'
 import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
 import HistoricoCliente from './HistoricoCliente'
+import LegendaIcones from './LegendaIcones'
 
 const ETAPAS = [
   { value: 'novo', label: 'Novo' },
@@ -245,6 +246,8 @@ export default function FunilBoard({ cards, permitirVendaRapida }: { cards: Card
   const cardAberto = cards.find((c) => c.funilMensalId === cardAbertoId) ?? null
   const [busca, setBusca] = useState('')
   const [ordenacao, setOrdenacao] = useState('padrao')
+  const [dataInicioFiltro, setDataInicioFiltro] = useState('')
+  const [dataFimFiltro, setDataFimFiltro] = useState('')
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -269,10 +272,22 @@ export default function FunilBoard({ cards, permitirVendaRapida }: { cards: Card
       )
     : cards
 
+  // Filtro por período em cima de quando o card entrou na etapa atual —
+  // além do mês inteiro que a página já seleciona, dá pra estreitar pra uma
+  // janela de dias específica (ex: "quem mudou de etapa essa semana").
+  const cardsNoPeriodo = dataInicioFiltro || dataFimFiltro
+    ? cardsFiltrados.filter((c) => {
+        const dataCard = c.dataEntradaEtapa.slice(0, 10)
+        if (dataInicioFiltro && dataCard < dataInicioFiltro) return false
+        if (dataFimFiltro && dataCard > dataFimFiltro) return false
+        return true
+      })
+    : cardsFiltrados
+
   // Ordenação dentro de cada coluna — "padrão" mantém a ordem que já vem do
   // backend (mais antigo sem contato primeiro, ver buscarFunilDoVendedor).
   // As demais opções reordenam só a visualização, não mudam nada no banco.
-  const cardsOrdenados = [...cardsFiltrados].sort((a, b) => {
+  const cardsOrdenados = [...cardsNoPeriodo].sort((a, b) => {
     switch (ordenacao) {
       case 'nome':
         return a.razaoSocial.localeCompare(b.razaoSocial, 'pt-BR')
@@ -368,6 +383,22 @@ export default function FunilBoard({ cards, permitirVendaRapida }: { cards: Card
               { value: 'mais_venda', label: 'Maior valor fechado' },
             ]}
           />
+        </div>
+        <Input label="Entrou na etapa de" type="date" value={dataInicioFiltro} onChange={(e) => setDataInicioFiltro(e.target.value)} />
+        <Input label="até" type="date" value={dataFimFiltro} onChange={(e) => setDataFimFiltro(e.target.value)} />
+        {(dataInicioFiltro || dataFimFiltro) && (
+          <button
+            onClick={() => {
+              setDataInicioFiltro('')
+              setDataFimFiltro('')
+            }}
+            className="text-xs text-dark-400 hover:text-gold-400 pb-2.5"
+          >
+            Limpar período
+          </button>
+        )}
+        <div className="ml-auto">
+          <LegendaIcones />
         </div>
         {permitirVendaRapida && (
           <Button onClick={() => setVendaRapidaAberta(true)} className="shrink-0">
@@ -1454,6 +1485,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const [nomeContato, setNomeContato] = useState(card.nomeContato ?? '')
   const [statusFiscal, setStatusFiscal] = useState(card.statusFiscal ?? '')
   const [observacoes, setObservacoes] = useState(card.observacoes ?? '')
+  const [origemMarketing, setOrigemMarketing] = useState(card.origemMarketing)
 
   const atualizarMut = trpc.clientes.update.useMutation({
     onSuccess() {
@@ -1473,7 +1505,14 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
     return (
       <div>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-dark-100">Dados do cliente</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-sm font-semibold text-dark-100">Dados do cliente</h3>
+            {card.origemMarketing && (
+              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-pink-900/30 text-pink-300 border border-pink-700/40">
+                Marketing
+              </span>
+            )}
+          </div>
           <button onClick={() => setEditando(true)} className="text-xs text-gold-400 hover:underline">
             {faltandoAlgo ? 'Completar cadastro →' : 'Editar'}
           </button>
@@ -1571,6 +1610,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           nomeContato: nomeContato || undefined,
           statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | 'consumidor_final' | undefined,
           observacoes: observacoes || undefined,
+          origemMarketing,
         })
       }}
       className="space-y-2"
@@ -1597,6 +1637,10 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           ]}
         />
       </div>
+      <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
+        <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
+        Cliente de Marketing
+      </label>
       <Textarea
         label="Anotações sobre o cliente"
         rows={2}

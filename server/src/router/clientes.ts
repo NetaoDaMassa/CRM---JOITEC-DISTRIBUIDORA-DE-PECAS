@@ -228,6 +228,7 @@ export const clientesRouter = router({
         statusFiscal: z.enum(['isento', 'normal', 'consumidor_final']).optional(),
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
+        origemMarketing: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -268,6 +269,7 @@ export const clientesRouter = router({
         ticketMedioHistorico: input.ticketMedioHistorico,
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
+        origemMarketing: input.origemMarketing ?? false,
       })
       const clienteId = Number(result.lastInsertRowid)
 
@@ -301,6 +303,7 @@ export const clientesRouter = router({
         statusFiscal: z.enum(['isento', 'normal', 'consumidor_final']).optional(),
         observacoes: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
+        origemMarketing: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

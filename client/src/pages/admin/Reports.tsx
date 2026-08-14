@@ -88,10 +88,11 @@ function TooltipPadrao({ active, payload, label }: { active?: boolean; payload?:
 }
 
 const ABAS = [
-  { value: 'visao_geral', label: 'Visão geral' },
-  { value: 'contatos', label: 'Contatos & Ligações' },
-  { value: 'orcamentos', label: 'Orçamentos & Vendas' },
-  { value: 'alertas', label: 'Alertas' },
+  { value: 'visao_geral', label: 'Visão geral', superAdminOnly: false },
+  { value: 'contatos', label: 'Contatos & Ligações', superAdminOnly: false },
+  { value: 'orcamentos', label: 'Orçamentos & Vendas', superAdminOnly: false },
+  { value: 'alertas', label: 'Alertas', superAdminOnly: false },
+  { value: 'todas_empresas', label: 'Todas as Empresas', superAdminOnly: true },
 ] as const
 type Aba = (typeof ABAS)[number]['value']
 
@@ -103,6 +104,8 @@ export default function AdminReports() {
   const [regiao, setRegiao] = useState('')
   const [granularidadeOrcamentos, setGranularidadeOrcamentos] = useState<'dia' | 'semana' | 'mes'>('dia')
   const [aba, setAba] = useState<Aba>('visao_geral')
+  const [dataInicioTodas, setDataInicioTodas] = useState(primeiroDiaMesString())
+  const [dataFimTodas, setDataFimTodas] = useState(hojeBrString())
 
   const [buscaCurvaAbc, setBuscaCurvaAbc] = useState('')
   const [buscaContatos, setBuscaContatos] = useState('')
@@ -128,12 +131,34 @@ export default function AdminReports() {
   const { data: ligacoesPorCliente } = trpc.reports.ligacoesPorCliente.useQuery(periodo)
   const { data: mixProdutosPorVendedor } = trpc.reports.mixProdutosPorVendedor.useQuery(periodo)
   const { data: vendas } = trpc.reports.vendas.useQuery(periodo)
+  const { data: vendasMarketing } = trpc.reports.vendas.useQuery({ ...periodo, apenasMarketing: true })
   const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery(filtroAtual)
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery(filtroAtual)
   const { data: clientesSemOrcamentoEContato } = trpc.reports.clientesSemOrcamentoEContato.useQuery(filtroAtual)
   const { data: orcamentosPorVendedor } = trpc.reports.orcamentosPorVendedor.useQuery({ ...periodo, granularidade: granularidadeOrcamentos })
   const { data: itensMaisComprados } = trpc.reports.itensMaisComprados.useQuery(periodo)
   const { data: motivosPerdas } = trpc.reports.motivosPerdas.useQuery(periodo)
+  const { data: vendasTodasEmpresas } = trpc.reports.vendasTodasEmpresas.useQuery(
+    { dataInicio: dataInicioTodas, dataFim: dataFimTodas },
+    { enabled: aba === 'todas_empresas' && !!user?.superAdmin }
+  )
+
+  function aplicarPresetTodas(preset: 'hoje' | 'semana' | 'mes') {
+    const hoje = new Date()
+    const hojeStr = hojeBrString()
+    if (preset === 'hoje') {
+      setDataInicioTodas(hojeStr)
+      setDataFimTodas(hojeStr)
+    } else if (preset === 'semana') {
+      const seteDiasAtras = new Date(hoje)
+      seteDiasAtras.setDate(hoje.getDate() - 6)
+      setDataInicioTodas(seteDiasAtras.toISOString().slice(0, 10))
+      setDataFimTodas(hojeStr)
+    } else {
+      setDataInicioTodas(primeiroDiaMesString())
+      setDataFimTodas(hojeStr)
+    }
+  }
 
   const curvaAbcFiltrada = useMemo(() => {
     const busca = buscaCurvaAbc.toLowerCase()
@@ -214,7 +239,7 @@ export default function AdminReports() {
       </div>
 
       <div className="flex gap-1 border-b border-dark-700 overflow-x-auto">
-        {ABAS.map((t) => (
+        {ABAS.filter((t) => !t.superAdminOnly || user?.superAdmin).map((t) => (
           <button
             key={t.value}
             onClick={() => setAba(t.value)}
@@ -229,7 +254,7 @@ export default function AdminReports() {
 
       {aba === 'visao_geral' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
               <p className="text-xs text-dark-500">Vendas no período</p>
               <p className="text-lg font-semibold text-dark-50">{vendas?.quantidade ?? 0}</p>
@@ -245,6 +270,11 @@ export default function AdminReports() {
               <p className="text-xs text-dark-400">
                 {positivacao?.ativados ?? 0} de {positivacao?.totalCarteira ?? 0} clientes compraram
               </p>
+            </div>
+            <div className="bg-dark-800 border border-pink-700/40 rounded-2xl p-4">
+              <p className="text-xs text-dark-500">Vendas — Clientes de Marketing</p>
+              <p className="text-lg font-semibold text-dark-50">{vendasMarketing?.quantidade ?? 0}</p>
+              <p className="text-xs text-dark-400">{formatarMoeda(vendasMarketing?.valorTotal)}</p>
             </div>
           </div>
 
@@ -947,6 +977,63 @@ export default function AdminReports() {
                   {!motivosPerdas?.porItem.length && <p className="text-sm text-dark-500">Nenhuma perda com peça informada.</p>}
                 </div>
               </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {aba === 'todas_empresas' && user?.superAdmin && (
+        <div className="space-y-6">
+          <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-dark-100">Vendas — todas as empresas do grupo</h2>
+                <p className="text-xs text-dark-500 mt-0.5">Soma as vendas fechadas das 3 empresas juntas no período escolhido.</p>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="flex gap-1">
+                  <button onClick={() => aplicarPresetTodas('hoje')} className="text-xs px-2.5 py-1.5 rounded-lg bg-dark-700 text-dark-300 hover:text-gold-400 hover:bg-dark-600 transition-colors">
+                    Hoje
+                  </button>
+                  <button onClick={() => aplicarPresetTodas('semana')} className="text-xs px-2.5 py-1.5 rounded-lg bg-dark-700 text-dark-300 hover:text-gold-400 hover:bg-dark-600 transition-colors">
+                    Últimos 7 dias
+                  </button>
+                  <button onClick={() => aplicarPresetTodas('mes')} className="text-xs px-2.5 py-1.5 rounded-lg bg-dark-700 text-dark-300 hover:text-gold-400 hover:bg-dark-600 transition-colors">
+                    Mês
+                  </button>
+                </div>
+                <Input label="De" type="date" value={dataInicioTodas} onChange={(e) => setDataInicioTodas(e.target.value)} />
+                <Input label="Até" type="date" value={dataFimTodas} onChange={(e) => setDataFimTodas(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-dark-900/50 border border-dark-700 rounded-xl p-4">
+                <p className="text-xs text-dark-500">Vendas no período</p>
+                <p className="text-lg font-semibold text-dark-50">{vendasTodasEmpresas?.quantidadeGeral ?? 0}</p>
+              </div>
+              <div className="bg-dark-900/50 border border-dark-700 rounded-xl p-4">
+                <p className="text-xs text-dark-500">Valor total</p>
+                <p className="text-lg font-semibold text-dark-50">{formatarMoeda(vendasTodasEmpresas?.valorTotalGeral)}</p>
+              </div>
+              <div className="bg-dark-900/50 border border-dark-700 rounded-xl p-4">
+                <p className="text-xs text-dark-500">Ticket médio</p>
+                <p className="text-lg font-semibold text-dark-50">{formatarMoeda(vendasTodasEmpresas?.ticketMedioGeral)}</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-dark-500 mb-2">Por empresa</p>
+            <div className="divide-y divide-dark-700">
+              {vendasTodasEmpresas?.porEmpresa.map((e) => (
+                <div key={e.empresaId} className="flex items-center justify-between py-2.5 text-sm">
+                  <span className="text-dark-200">{e.nome}</span>
+                  <div className="text-right">
+                    <p className="text-dark-100 font-medium">{formatarMoeda(e.valorTotal)}</p>
+                    <p className="text-xs text-dark-500">{pluralizarSimples(e.quantidade, 'venda', 'vendas')}</p>
+                  </div>
+                </div>
+              ))}
+              {!vendasTodasEmpresas?.porEmpresa.length && <p className="text-sm text-dark-500 py-2">Nenhuma venda no período.</p>}
             </div>
           </section>
         </div>

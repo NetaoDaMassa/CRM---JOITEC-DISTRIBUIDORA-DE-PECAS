@@ -281,6 +281,20 @@
       "when": 1786714438735,
       "tag": "0039_deep_thunderball",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1786716590329,
+      "tag": "0040_lying_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "6",
+      "when": 1786729152462,
+      "tag": "0041_aromatic_lockheed",
+      "breakpoints": true
     }
   ]
 }

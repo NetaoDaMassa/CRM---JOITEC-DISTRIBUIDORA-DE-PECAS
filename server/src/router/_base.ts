@@ -1,5 +1,8 @@
 import { initTRPC, TRPCError } from '@trpc/server'
+import { and, eq } from 'drizzle-orm'
 import type { Context } from '../types/context.js'
+import { db } from '../db/client.js'
+import { permissoesAdmin } from '../db/schema.js'
 
 const t = initTRPC.context<Context>().create()
 
@@ -27,3 +30,17 @@ export const superAdminProcedure = protectedProcedure.use(({ ctx, next }) => {
     throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito' })
   return next({ ctx })
 })
+
+// Setores sensíveis (Compras, Caixa) — além de ser admin, precisa ter a
+// feature liberada em permissoesAdmin (superAdmin sempre passa, nunca
+// depende de linha na tabela). Uso: `featureProcedure('compras')`.
+export function featureProcedure(feature: string) {
+  return adminProcedure.use(async ({ ctx, next }) => {
+    if (ctx.user.superAdmin) return next({ ctx })
+    const liberado = await db.query.permissoesAdmin.findFirst({
+      where: and(eq(permissoesAdmin.userId, ctx.user.id), eq(permissoesAdmin.feature, feature)),
+    })
+    if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito a esse setor' })
+    return next({ ctx })
+  })
+}

@@ -154,6 +154,11 @@ export const clientes = sqliteTable('clientes', {
   canalOrigem: text('canal_origem', {
     enum: ['google', 'indicacao', 'redes_sociais', 'porta_a_porta', 'outro'],
   }),
+  // Cliente veio de uma ação de Marketing (ads, campanha etc.) — diferente
+  // de `canalOrigem` (que é só pra prospecção feita pelo próprio vendedor).
+  // Marcado manualmente no "Completar cadastro", pra dar pra medir depois o
+  // retorno de vendas dos clientes de Marketing separado do resto.
+  origemMarketing: integer('origem_marketing', { mode: 'boolean' }).notNull().default(false),
   versao: integer('versao').notNull().default(1),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
@@ -663,6 +668,27 @@ export const comprasNacionais = sqliteTable('compras_nacionais', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
+
+// Permissões por item de menu, por admin — presença de uma linha
+// (userId, feature) = acesso liberado. superAdmin nunca precisa de linhas
+// aqui (sempre vê tudo, ver `superAdmin` na tabela users). `feature` é uma
+// das chaves fixas de ADMIN_LINKS no Sidebar do client.
+export const permissoesAdmin = sqliteTable(
+  'permissoes_admin',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    feature: text('feature').notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    usuarioFeature: unique().on(t.userId, t.feature),
+  })
+)
+
+export const permissoesAdminRelations = relations(permissoesAdmin, ({ one }) => ({
+  user: one(users, { fields: [permissoesAdmin.userId], references: [users.id] }),
+}))
 
 export const messageTemplates = sqliteTable('message_templates', {
   id: integer('id').primaryKey({ autoIncrement: true }),

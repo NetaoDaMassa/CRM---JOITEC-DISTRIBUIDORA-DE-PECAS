@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { and, desc, eq, isNull, ne } from 'drizzle-orm'
-import { router, adminProcedure, superAdminProcedure } from './_base.js'
+import { router, featureProcedure, superAdminProcedure } from './_base.js'
+
+const comprasProcedure = featureProcedure('compras')
 import { db } from '../db/client.js'
 import { comprasInvoices, comprasNacionais } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
@@ -28,7 +30,7 @@ const camposInvoice = {
 }
 
 export const comprasRouter = router({
-  listar: adminProcedure
+  listar: comprasProcedure
     .input(z.object({ empresa: z.enum(EMPRESA_VALUES).optional(), status: z.enum(STATUS_VALUES).optional() }).optional())
     .query(async ({ input }) => {
       const filtros = [isNull(comprasInvoices.deletedAt)]
@@ -41,7 +43,7 @@ export const comprasRouter = router({
       })
     }),
 
-  criar: adminProcedure
+  criar: comprasProcedure
     .input(z.object(camposInvoice))
     .mutation(async ({ ctx, input }) => {
       const result = await db.insert(comprasInvoices).values({
@@ -63,7 +65,7 @@ export const comprasRouter = router({
       return { id }
     }),
 
-  atualizar: adminProcedure
+  atualizar: comprasProcedure
     .input(z.object({ id: z.number() }).extend(camposInvoice))
     .mutation(async ({ ctx, input }) => {
       const { id, ...campos } = input
@@ -92,7 +94,7 @@ export const comprasRouter = router({
       return { success: true }
     }),
 
-  remover: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+  remover: comprasProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const existente = await db.query.comprasInvoices.findFirst({ where: eq(comprasInvoices.id, input.id) })
     if (!existente || existente.deletedAt) throw new Error('Invoice não encontrada')
 
@@ -116,7 +118,7 @@ export const comprasRouter = router({
   // fluxo (a_caminho/chegou/entrada_nota) depois que o diretor de compras
   // aprova; se ele recusar, fica marcada "recusado" (histórico, não
   // exclui).
-  listarNacionais: adminProcedure
+  listarNacionais: comprasProcedure
     .input(z.object({ status: z.enum(STATUS_NACIONAL_VALUES).optional() }).optional())
     .query(async ({ input }) => {
       const filtros = [isNull(comprasNacionais.deletedAt)]
@@ -132,7 +134,7 @@ export const comprasRouter = router({
       })
     }),
 
-  criarNacional: adminProcedure
+  criarNacional: comprasProcedure
     .input(
       z.object({
         fornecedor: z.string().min(1),
@@ -156,7 +158,7 @@ export const comprasRouter = router({
       return { id }
     }),
 
-  aprovarNacional: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+  aprovarNacional: comprasProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const existente = await db.query.comprasNacionais.findFirst({ where: eq(comprasNacionais.id, input.id) })
     if (!existente || existente.deletedAt) throw new Error('Solicitação não encontrada')
     if (existente.status !== 'aguardando_aprovacao') throw new Error('Essa solicitação já foi decidida')
@@ -170,7 +172,7 @@ export const comprasRouter = router({
     return { success: true }
   }),
 
-  recusarNacional: adminProcedure
+  recusarNacional: comprasProcedure
     .input(z.object({ id: z.number(), motivo: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const existente = await db.query.comprasNacionais.findFirst({ where: eq(comprasNacionais.id, input.id) })
@@ -194,7 +196,7 @@ export const comprasRouter = router({
 
   // Avança o status já aprovado (a_caminho → chegou → entrada_nota) — não
   // usa pra aprovação/recusa, só pro pós-aprovação seguir o fluxo.
-  atualizarStatusNacional: adminProcedure
+  atualizarStatusNacional: comprasProcedure
     .input(z.object({ id: z.number(), status: z.enum(['a_caminho', 'chegou', 'entrada_nota']) }))
     .mutation(async ({ ctx, input }) => {
       const existente = await db.query.comprasNacionais.findFirst({ where: eq(comprasNacionais.id, input.id) })
@@ -208,7 +210,7 @@ export const comprasRouter = router({
       return { success: true }
     }),
 
-  removerNacional: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+  removerNacional: comprasProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const existente = await db.query.comprasNacionais.findFirst({ where: eq(comprasNacionais.id, input.id) })
     if (!existente || existente.deletedAt) throw new Error('Solicitação não encontrada')
 

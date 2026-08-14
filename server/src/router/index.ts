@@ -21,12 +21,14 @@ import { maquinasRouter } from './maquinas.js'
 import { telefonesRouter } from './telefones.js'
 import { prospeccaoRouter } from './prospeccao.js'
 import { aprovacoesRouter } from './aprovacoes.js'
+import { designRouter } from './design.js'
 import { financeiroRouter } from './financeiro.js'
 import { vinculosRouter } from './vinculos.js'
 import { emailsRouter } from './emails.js'
 import { activityRouter } from './activity.js'
 import { caixaRouter } from './caixa.js'
 import { comprasRouter } from './compras.js'
+import { permissoesRouter } from './permissoes.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -55,12 +57,14 @@ export const appRouter = router({
   telefones: telefonesRouter,
   prospeccao: prospeccaoRouter,
   aprovacoes: aprovacoesRouter,
+  design: designRouter,
   financeiro: financeiroRouter,
   vinculos: vinculosRouter,
   emails: emailsRouter,
   activity: activityRouter,
   caixa: caixaRouter,
   compras: comprasRouter,
+  permissoes: permissoesRouter,
 })
 
 export type AppRouter = typeof appRouter

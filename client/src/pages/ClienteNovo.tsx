@@ -32,6 +32,7 @@ export default function ClienteNovo() {
   const [telefonesExtras, setTelefonesExtras] = useState<{ numero: string; rotulo: string }[]>([])
   const [email, setEmail] = useState('')
   const [vendedorAtualId, setVendedorAtualId] = useState('')
+  const [origemMarketing, setOrigemMarketing] = useState(false)
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
 
@@ -88,6 +89,7 @@ export default function ClienteNovo() {
       telefoneWhatsapp: telefoneWhatsapp || undefined,
       email: email || undefined,
       vendedorAtualId: vendedorAtualId ? Number(vendedorAtualId) : undefined,
+      origemMarketing,
     })
   }
 
@@ -151,6 +153,10 @@ export default function ClienteNovo() {
             options={(vendors ?? []).map((v) => ({ value: v.id, label: v.name }))}
           />
         )}
+        <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
+          <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
+          Cliente de Marketing
+        </label>
         <Button type="submit" loading={createMut.isPending} className="w-full">
           Cadastrar
         </Button>

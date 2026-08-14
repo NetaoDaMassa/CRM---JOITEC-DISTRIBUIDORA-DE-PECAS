@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Wallet, Banknote, Ship,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -26,26 +26,28 @@ const LOGO_POR_EMPRESA: Record<string, string> = {
 // outras empresas não têm essa tela.
 const SO_ODIN_COMPRESSORES = 'odin-compressores'
 
-const ADMIN_LINKS = [
-  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/admin/kanban', label: 'Kanban', icon: KanbanSquare },
-  { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES },
-  { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays },
-  { to: '/admin/clientes', label: 'Clientes', icon: List },
-  { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES },
-  { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare },
-  { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft },
-  { to: '/admin/banco-clientes', label: 'Banco de Clientes', icon: Landmark },
-  { to: '/admin/importar', label: 'Importar', icon: Upload },
-  { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3 },
-  { to: '/admin/usuarios', label: 'Vendedores', icon: Users },
-  { to: '/admin/metas', label: 'Metas', icon: Target },
-  { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText },
-  { to: '/admin/caixa', label: 'Caixa', icon: Banknote },
-  { to: '/admin/compras', label: 'Compras', icon: Ship },
-  { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2 },
-  { to: '/admin/configuracoes', label: 'Configurações', icon: Settings },
-  { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup },
+// `feature` é a chave usada em permissoesAdmin/FEATURES_ADMIN (server) —
+// controla quem vê cada item pra admins não-superAdmin.
+export const ADMIN_LINKS = [
+  { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, feature: 'dashboard' },
+  { to: '/admin/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
+  { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
+  { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays, feature: 'agenda' },
+  { to: '/admin/clientes', label: 'Clientes', icon: List, feature: 'clientes' },
+  { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
+  { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
+  { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft, feature: 'carteira' },
+  { to: '/admin/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
+  { to: '/admin/importar', label: 'Importar', icon: Upload, feature: 'importar' },
+  { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
+  { to: '/admin/usuarios', label: 'Vendedores', icon: Users, feature: 'usuarios' },
+  { to: '/admin/metas', label: 'Metas', icon: Target, feature: 'metas' },
+  { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText, feature: 'mensagens' },
+  { to: '/admin/caixa', label: 'Caixa', icon: Banknote, feature: 'caixa' },
+  { to: '/admin/compras', label: 'Compras', icon: Ship, feature: 'compras' },
+  { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
+  { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
+  { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
 ]
 
 const VENDOR_LINKS = [
@@ -57,6 +59,7 @@ const VENDOR_LINKS = [
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES },
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3 },
+  { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette },
 ]
 
 export default function Sidebar() {
@@ -71,10 +74,17 @@ export default function Sidebar() {
   const empresaAtiva = empresas?.find((e) => e.id === empresaAtivaId)
   const logoEmpresa = empresaAtiva ? LOGO_POR_EMPRESA[empresaAtiva.slug] : undefined
 
+  // superAdmin sempre vê tudo, sem depender da query — evita a Sidebar
+  // "piscar" vazia pro João enquanto minhasPermissoes ainda carrega.
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && user.role === 'admin' && !user.superAdmin,
+  })
+
   const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
     (l) =>
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
-      (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug)
+      (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
+      (user?.role !== 'admin' || user.superAdmin || !!minhasFeatures?.includes((l as { feature?: string }).feature ?? ''))
   )
 
   function handleLogout() {
@@ -141,6 +151,21 @@ export default function Sidebar() {
               <Tv size={17} />
               <span className="flex-1">Painel de TV</span>
             </a>
+          )}
+          {user?.superAdmin && (
+            <NavLink
+              to="/admin/permissoes"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
+                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
+                }`
+              }
+            >
+              <ShieldCheck size={17} />
+              <span className="flex-1">Permissões</span>
+            </NavLink>
           )}
           {user?.superAdmin && (
             <a

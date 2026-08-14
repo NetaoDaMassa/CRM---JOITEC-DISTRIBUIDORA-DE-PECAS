@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
+import { trpc } from './lib/trpc'
 import Layout from './components/Layout'
 import Login from './pages/Login'
 import TrocarSenha from './pages/TrocarSenha'
@@ -24,11 +25,13 @@ import AdminBackup from './pages/admin/Backup'
 import AdminMetas from './pages/admin/Metas'
 import AdminKanban from './pages/admin/Kanban'
 import AdminCalendario from './pages/admin/Calendario'
+import AdminPermissoes from './pages/admin/Permissoes'
 
 import VendorDashboard from './pages/vendor/Dashboard'
 import VendorKanban from './pages/vendor/Kanban'
 import VendorCalendario from './pages/vendor/Calendario'
 import FilaHoje from './pages/vendor/FilaHoje'
+import SolicitarDesign from './pages/vendor/SolicitarDesign'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
@@ -55,6 +58,26 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
 function SuperAdminGuard({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
   if (!user?.superAdmin) return <Navigate to="/" replace />
+  return <>{children}</>
+}
+
+// Bloqueia acesso direto por URL a uma página que o admin não tem
+// permissão pra ver (o Sidebar já filtra o link, isso cobre quem digita a
+// URL na mão). superAdmin sempre passa, sem depender de linha na tabela.
+function FeatureGuard({ feature, children }: { feature: string; children: React.ReactNode }) {
+  const { user } = useAuth()
+  const { data: minhasFeatures, isLoading } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && user.role === 'admin' && !user.superAdmin,
+  })
+  if (!user || user.role !== 'admin' || user.superAdmin) return <>{children}</>
+  if (isLoading) return null
+  if (!minhasFeatures?.includes(feature)) {
+    return (
+      <div className="p-6 text-center text-dark-400">
+        <p>Você não tem permissão pra acessar essa área. Fale com o administrador.</p>
+      </div>
+    )
+  }
   return <>{children}</>
 }
 
@@ -93,27 +116,28 @@ export default function App() {
           }
         >
           {/* Admin routes */}
-          <Route path="admin" element={<AdminGuard><AdminDashboard /></AdminGuard>} />
-          <Route path="admin/kanban" element={<AdminGuard><AdminKanban /></AdminGuard>} />
-          <Route path="admin/calendario" element={<AdminGuard><AdminCalendario /></AdminGuard>} />
-          <Route path="admin/clientes" element={<AdminGuard><Clientes /></AdminGuard>} />
-          <Route path="admin/prospeccao" element={<AdminGuard><Prospeccao /></AdminGuard>} />
-          <Route path="admin/aprovacoes" element={<AdminGuard><AdminAprovacoes /></AdminGuard>} />
-          <Route path="admin/clientes/novo" element={<AdminGuard><ClienteNovo /></AdminGuard>} />
-          <Route path="admin/clientes/:id" element={<AdminGuard><ClienteDetail /></AdminGuard>} />
-          <Route path="admin/carteira" element={<AdminGuard><AdminCarteira /></AdminGuard>} />
-          <Route path="admin/banco-clientes" element={<AdminGuard><AdminBancoClientes /></AdminGuard>} />
-          <Route path="admin/importar" element={<AdminGuard><AdminImportar /></AdminGuard>} />
-          <Route path="admin/lixeira" element={<AdminGuard><AdminLixeira /></AdminGuard>} />
-          <Route path="admin/relatorios" element={<AdminGuard><AdminReports /></AdminGuard>} />
-          <Route path="admin/usuarios" element={<AdminGuard><AdminUsers /></AdminGuard>} />
-          <Route path="admin/mensagens" element={<AdminGuard><AdminMessageTemplates /></AdminGuard>} />
-          <Route path="admin/configuracoes" element={<AdminGuard><AdminConfiguracoes /></AdminGuard>} />
-          <Route path="admin/caixa" element={<AdminGuard><AdminCaixa /></AdminGuard>} />
-          <Route path="admin/compras" element={<AdminGuard><AdminCompras /></AdminGuard>} />
-          <Route path="admin/backup" element={<AdminGuard><AdminBackup /></AdminGuard>} />
-          <Route path="admin/metas" element={<AdminGuard><AdminMetas /></AdminGuard>} />
-          <Route path="admin/pos-venda" element={<AdminGuard><FilaPosVenda /></AdminGuard>} />
+          <Route path="admin" element={<AdminGuard><FeatureGuard feature="dashboard"><AdminDashboard /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/kanban" element={<AdminGuard><FeatureGuard feature="kanban"><AdminKanban /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/calendario" element={<AdminGuard><FeatureGuard feature="agenda"><AdminCalendario /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/clientes" element={<AdminGuard><FeatureGuard feature="clientes"><Clientes /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/prospeccao" element={<AdminGuard><FeatureGuard feature="prospeccao"><Prospeccao /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/aprovacoes" element={<AdminGuard><FeatureGuard feature="aprovacoes"><AdminAprovacoes /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/clientes/novo" element={<AdminGuard><FeatureGuard feature="clientes"><ClienteNovo /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/clientes/:id" element={<AdminGuard><FeatureGuard feature="clientes"><ClienteDetail /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/carteira" element={<AdminGuard><FeatureGuard feature="carteira"><AdminCarteira /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/banco-clientes" element={<AdminGuard><FeatureGuard feature="banco_clientes"><AdminBancoClientes /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/importar" element={<AdminGuard><FeatureGuard feature="importar"><AdminImportar /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/lixeira" element={<AdminGuard><FeatureGuard feature="lixeira"><AdminLixeira /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/relatorios" element={<AdminGuard><FeatureGuard feature="relatorios"><AdminReports /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/usuarios" element={<AdminGuard><FeatureGuard feature="usuarios"><AdminUsers /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/mensagens" element={<AdminGuard><FeatureGuard feature="mensagens"><AdminMessageTemplates /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/configuracoes" element={<AdminGuard><FeatureGuard feature="configuracoes"><AdminConfiguracoes /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/caixa" element={<AdminGuard><FeatureGuard feature="caixa"><AdminCaixa /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras" element={<AdminGuard><FeatureGuard feature="compras"><AdminCompras /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/backup" element={<AdminGuard><FeatureGuard feature="backup"><AdminBackup /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/pos-venda" element={<AdminGuard><FeatureGuard feature="pos_venda"><FilaPosVenda /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/permissoes" element={<AdminGuard><SuperAdminGuard><AdminPermissoes /></SuperAdminGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
@@ -126,6 +150,7 @@ export default function App() {
           <Route path="vendedor/clientes/:id" element={<ClienteDetail />} />
           <Route path="vendedor/relatorios" element={<AdminReports />} />
           <Route path="vendedor/calendario" element={<VendorCalendario />} />
+          <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
 
           <Route
             index

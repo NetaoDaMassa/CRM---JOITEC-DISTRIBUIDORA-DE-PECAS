@@ -34,6 +34,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
           estado: true,
           cidade: true,
           versao: true,
+          origemMarketing: true,
         },
         with: {
           telefonesExtras: { orderBy: (t, { asc }) => [asc(t.id)] },
@@ -197,6 +198,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
     estado: f.cliente.estado,
     cidade: f.cliente.cidade,
     clienteVersao: f.cliente.versao,
+    origemMarketing: f.cliente.origemMarketing,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
     proximoCompromisso: (() => {
       const c = proximoCompromissoPorCliente.get(f.cliente.id)

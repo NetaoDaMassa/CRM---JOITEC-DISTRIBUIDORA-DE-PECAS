@@ -1,8 +1,8 @@
 import { z } from 'zod'
 import { and, between, count, desc, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
-import { router, protectedProcedure } from './_base.js'
+import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, funilMensal, registroContato, itensPedido, users, vendas as vendasTable, logAuditoria } from '../db/schema.js'
+import { clientes, empresas, funilMensal, registroContato, itensPedido, users, vendas as vendasTable, logAuditoria } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 
 // Vendedores que o usuário logado tem permissão de ver neste relatório —
@@ -324,7 +324,7 @@ export const reportsRouter = router({
     }))
   }),
 
-  vendas: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+  vendas: protectedProcedure.input(periodoInput.extend({ apenasMarketing: z.boolean().optional() })).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
     // Idem curvaAbc: filtra por funil_mensal.vendedorId (quem fechou o
@@ -335,6 +335,7 @@ export const reportsRouter = router({
     if (filtroVend) filtros.push(filtroVend)
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
+    if (input.apenasMarketing) filtros.push(eq(clientes.origemMarketing, true))
 
     const [{ quantidade, valorTotal }] = await db
       .select({
@@ -353,6 +354,50 @@ export const reportsRouter = router({
       ticketMedio: quantidade > 0 ? (valorTotal ?? 0) / quantidade : 0,
     }
   }),
+
+  // Total de vendas somando as 3 empresas do Grupo Odin de uma vez —
+  // separado do `vendas` normal (que é sempre escopado pra ctx.empresaId)
+  // porque aqui não tem uma empresa ativa única, é uma visão consolidada.
+  // Só o superAdmin (o João) enxerga isso, igual o resto do Painel
+  // Financeiro.
+  vendasTodasEmpresas: superAdminProcedure
+    .input(z.object({ dataInicio: z.string(), dataFim: z.string() }))
+    .query(async ({ input }) => {
+      const { inicio, fim } = limitesDia(input)
+
+      const linhas = await db
+        .select({
+          empresaId: clientes.empresaId,
+          quantidade: count(),
+          valorTotal: sum(vendasTable.valorFechado).mapWith(Number),
+        })
+        .from(vendasTable)
+        .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
+        .where(and(between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt)))
+        .groupBy(clientes.empresaId)
+
+      const todasEmpresas = await db.query.empresas.findMany({ columns: { id: true, nome: true } })
+      const porEmpresaId = new Map(linhas.map((l) => [l.empresaId, l]))
+
+      const porEmpresa = todasEmpresas
+        .map((e) => ({
+          empresaId: e.id,
+          nome: e.nome,
+          quantidade: porEmpresaId.get(e.id)?.quantidade ?? 0,
+          valorTotal: porEmpresaId.get(e.id)?.valorTotal ?? 0,
+        }))
+        .sort((a, b) => b.valorTotal - a.valorTotal)
+
+      const quantidadeGeral = porEmpresa.reduce((soma, e) => soma + e.quantidade, 0)
+      const valorTotalGeral = porEmpresa.reduce((soma, e) => soma + e.valorTotal, 0)
+
+      return {
+        porEmpresa,
+        quantidadeGeral,
+        valorTotalGeral,
+        ticketMedioGeral: quantidadeGeral > 0 ? valorTotalGeral / quantidadeGeral : 0,
+      }
+    }),
 
   diasSemContato: protectedProcedure
     .input(filtroAtualInput)

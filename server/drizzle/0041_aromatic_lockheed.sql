@@ -1,0 +1,1 @@
+ALTER TABLE `clientes` ADD `origem_marketing` integer DEFAULT false NOT NULL;

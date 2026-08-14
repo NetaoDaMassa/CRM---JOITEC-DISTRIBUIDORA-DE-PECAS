@@ -429,6 +429,7 @@ export default function ClienteDetail() {
   const [statusFiscal, setStatusFiscal] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [ticketMedio, setTicketMedio] = useState('')
+  const [origemMarketing, setOrigemMarketing] = useState(false)
   const [carregado, setCarregado] = useState(false)
 
   if (cliente && !carregado) {
@@ -441,6 +442,7 @@ export default function ClienteDetail() {
     setStatusFiscal(cliente.statusFiscal ?? '')
     setObservacoes(cliente.observacoes ?? '')
     setTicketMedio(cliente.ticketMedioHistorico?.toString() ?? '')
+    setOrigemMarketing(cliente.origemMarketing)
     setCarregado(true)
   }
 
@@ -506,6 +508,7 @@ export default function ClienteDetail() {
       statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | 'consumidor_final' | undefined,
       observacoes: observacoes || undefined,
       ticketMedioHistorico: ticketMedio ? Number(ticketMedio.replace(',', '.')) : undefined,
+      origemMarketing,
     })
   }
 
@@ -553,6 +556,10 @@ export default function ClienteDetail() {
             { value: 'consumidor_final', label: 'Consumidor Final' },
           ]}
         />
+        <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
+          <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
+          Cliente de Marketing
+        </label>
         <Textarea
           label="Anotações sobre o cliente"
           rows={3}
