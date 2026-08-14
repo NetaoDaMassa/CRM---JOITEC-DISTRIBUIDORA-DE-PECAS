@@ -639,6 +639,31 @@ export const comprasInvoices = sqliteTable('compras_invoices', {
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Compras nacionais — aba separada de `comprasInvoices` (que é só pra
+// importação/container). Toda solicitação nasce em "aguardando_aprovacao"
+// e precisa passar pelo diretor de compras (aprovar/recusar) antes de
+// virar uma compra em andamento de verdade.
+export const comprasNacionais = sqliteTable('compras_nacionais', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  fornecedor: text('fornecedor').notNull(),
+  produtos: text('produtos').notNull(),
+  valorTotal: real('valor_total').notNull(),
+  status: text('status', {
+    enum: ['aguardando_aprovacao', 'a_caminho', 'chegou', 'entrada_nota', 'recusado'],
+  })
+    .notNull()
+    .default('aguardando_aprovacao'),
+  dataPrevistaChegada: text('data_prevista_chegada'),
+  observacoes: text('observacoes'),
+  solicitadoPor: integer('solicitado_por').references(() => users.id, { onDelete: 'set null' }),
+  aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  aprovadoEm: text('aprovado_em'),
+  motivoRecusa: text('motivo_recusa'),
+  deletedAt: text('deleted_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
 export const messageTemplates = sqliteTable('message_templates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
@@ -726,6 +751,11 @@ export const caixaMovimentacoesRelations = relations(caixaMovimentacoes, ({ one 
 
 export const comprasInvoicesRelations = relations(comprasInvoices, ({ one }) => ({
   criadoPorUser: one(users, { fields: [comprasInvoices.criadoPor], references: [users.id] }),
+}))
+
+export const comprasNacionaisRelations = relations(comprasNacionais, ({ one }) => ({
+  solicitadoPorUser: one(users, { fields: [comprasNacionais.solicitadoPor], references: [users.id] }),
+  aprovadoPorUser: one(users, { fields: [comprasNacionais.aprovadoPor], references: [users.id] }),
 }))
 
 export const solicitacoesDesignRelations = relations(solicitacoesDesign, ({ one }) => ({
