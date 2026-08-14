@@ -267,6 +267,13 @@
       "when": 1786652364090,
       "tag": "0037_wild_multiple_man",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "6",
+      "when": 1786709808979,
+      "tag": "0038_wide_thor",
+      "breakpoints": true
     }
   ]
 }

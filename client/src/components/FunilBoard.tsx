@@ -162,11 +162,81 @@ export function sugestaoProximoPasso(card: Card): string | null {
 type RouterOutputs = inferRouterOutputs<AppRouter>
 export type Card = RouterOutputs['funil']['meuFunil'][number]
 
+// Venda de balcão (consumidor final) — só aparece pra Compretec Loja
+// Física (gate no vendor/Kanban.tsx, que decide se passa
+// `permitirVendaRapida`). Cria o cliente + fecha a venda numa tacada só,
+// sem PDF nem etapas intermediárias — pensado pra registrar rápido no
+// balcão da loja.
+function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const utils = trpc.useUtils()
+  const [nomeCliente, setNomeCliente] = useState('Consumidor Final')
+  const [valor, setValor] = useState('')
+  const [telefone, setTelefone] = useState('')
+  const [formaPagamento, setFormaPagamento] = useState('')
+  const [cupomFiscal, setCupomFiscal] = useState('')
+
+  const mut = trpc.vendas.registrarVendaRapida.useMutation({
+    onSuccess() {
+      toast.success('Venda registrada')
+      utils.funil.meuFunil.invalidate()
+      setNomeCliente('Consumidor Final')
+      setValor('')
+      setTelefone('')
+      setFormaPagamento('')
+      setCupomFiscal('')
+      onClose()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function registrar() {
+    const valorNum = Number(valor.replace(',', '.'))
+    if (!nomeCliente.trim()) return toast.error('Informe o nome do cliente')
+    if (!valorNum || valorNum <= 0) return toast.error('Informe o valor do pedido')
+    mut.mutate({
+      nomeCliente: nomeCliente.trim(),
+      valorFechado: valorNum,
+      telefone: telefone.trim() || undefined,
+      condicaoPagamento: formaPagamento || undefined,
+      numeroCupomFiscal: cupomFiscal.trim() || undefined,
+    })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Registrar venda" size="sm">
+      <div className="space-y-3">
+        <Input label="Nome do cliente" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
+        <Input label="Valor do pedido (R$)" type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <Input label="Telefone (opcional)" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
+        <Select
+          label="Forma de pagamento (opcional)"
+          value={formaPagamento}
+          onChange={(e) => setFormaPagamento(e.target.value)}
+          placeholder="Não informado"
+          options={[
+            { value: 'Dinheiro', label: 'Dinheiro' },
+            { value: 'Pix', label: 'Pix' },
+            { value: 'Cartão', label: 'Cartão' },
+            { value: 'Outro', label: 'Outro' },
+          ]}
+        />
+        <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
+        <Button className="w-full" loading={mut.isPending} onClick={registrar}>
+          Registrar venda
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
 // Board de Kanban compartilhado entre o vendedor vendo o próprio funil
 // (`/vendedor/kanban`) e o admin vendo o funil de um vendedor específico
 // (`/admin/kanban`) — mesmo card, mesmo modal, só muda de onde os dados vêm.
-export default function FunilBoard({ cards }: { cards: Card[] }) {
+export default function FunilBoard({ cards, permitirVendaRapida }: { cards: Card[]; permitirVendaRapida?: boolean }) {
   const utils = trpc.useUtils()
+  const [vendaRapidaAberta, setVendaRapidaAberta] = useState(false)
   // Guarda só o id, não o objeto — assim, quando uma mutação invalida a
   // query e `cards` chega atualizado (ex: edição de um contato, ou o clique
   // no WhatsApp registrando um contato pendente), o modal aberto reflete o
@@ -299,7 +369,14 @@ export default function FunilBoard({ cards }: { cards: Card[] }) {
             ]}
           />
         </div>
+        {permitirVendaRapida && (
+          <Button onClick={() => setVendaRapidaAberta(true)} className="shrink-0">
+            + Registrar venda
+          </Button>
+        )}
       </div>
+
+      {permitirVendaRapida && <VendaRapidaModal open={vendaRapidaAberta} onClose={() => setVendaRapidaAberta(false)} />}
 
       <div ref={topScrollRef} onScroll={sincronizarDoTopo} className="overflow-x-auto overflow-y-hidden h-4 mb-1">
         <div style={{ width: boardWidth, height: 1 }} />

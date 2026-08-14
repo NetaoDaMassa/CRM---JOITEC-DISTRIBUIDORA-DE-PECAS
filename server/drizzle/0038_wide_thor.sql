@@ -1,0 +1,1 @@
+ALTER TABLE `vendas` ADD `numero_cupom_fiscal` text;

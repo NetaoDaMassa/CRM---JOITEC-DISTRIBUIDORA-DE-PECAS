@@ -249,6 +249,7 @@ export const vendas = sqliteTable('vendas', {
   mesReferencia: text('mes_referencia').notNull(),
   valorFechado: real('valor_fechado').notNull(),
   condicaoPagamento: text('condicao_pagamento'),
+  numeroCupomFiscal: text('numero_cupom_fiscal'),
   pdfPedidoPath: text('pdf_pedido_path'),
   dataFechamento: text('data_fechamento').notNull().default(sql`(datetime('now'))`),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),

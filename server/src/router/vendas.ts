@@ -2,11 +2,76 @@ import { z } from 'zod'
 import { eq } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, itensPedido, vendas } from '../db/schema.js'
-import { agoraSqlite } from '../lib/dataBr.js'
+import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas } from '../db/schema.js'
+import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
+import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
 
+// Só a Compretec Loja Física usa o botão de venda rápida (venda de balcão,
+// consumidor final) — pedido do João depois de criar o Thiago/Marcos/Flavio
+// como vendedores dessa empresa.
+const SLUG_VENDA_RAPIDA = 'compretec-loja-fisica'
+
 export const vendasRouter = router({
+  // Venda de balcão (consumidor final) — cria cliente + funil já em
+  // "fechado" + venda numa tacada só, sem passar pelas etapas normais
+  // (novo→abordagem→...) nem exigir PDF do pedido, já que é uma venda de
+  // loja física que já aconteceu no momento do registro.
+  registrarVendaRapida: protectedProcedure
+    .input(
+      z.object({
+        nomeCliente: z.string().min(1),
+        valorFechado: z.number().positive(),
+        telefone: z.string().optional(),
+        condicaoPagamento: z.string().optional(),
+        numeroCupomFiscal: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+      if (empresa?.slug !== SLUG_VENDA_RAPIDA) throw new Error('Recurso disponível só pra Compretec Loja Física')
+
+      const codigo = `M${Date.now()}`
+      const clienteResult = await db.insert(clientes).values({
+        empresaId: ctx.empresaId,
+        razaoSocial: input.nomeCliente,
+        codigo,
+        regiao: 'sul',
+        telefoneWhatsapp: input.telefone || undefined,
+        statusFiscal: 'consumidor_final',
+        cadastradoPor: ctx.user.id,
+        vendedorAtualId: ctx.user.id,
+        dataUltimaCompra: agoraSqlite(),
+      })
+      const clienteId = Number(clienteResult.lastInsertRowid)
+
+      await db.insert(carteiraHistorico).values({ clienteId, vendedorId: ctx.user.id })
+
+      const mesReferencia = mesReferenciaAtual()
+      const funilResult = await db.insert(funilMensal).values({
+        clienteId,
+        vendedorId: ctx.user.id,
+        mesReferencia,
+        etapa: 'fechado',
+        dataEntradaEtapa: agoraSqlite(),
+      })
+      const funilMensalId = Number(funilResult.lastInsertRowid)
+
+      const vendaResult = await db.insert(vendas).values({
+        funilMensalId,
+        clienteId,
+        vendedorId: ctx.user.id,
+        mesReferencia,
+        valorFechado: input.valorFechado,
+        condicaoPagamento: input.condicaoPagamento || null,
+        numeroCupomFiscal: input.numeroCupomFiscal || null,
+      })
+
+      await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'criar', alteradoPor: ctx.user.id })
+
+      return { clienteId, funilMensalId, vendaId: Number(vendaResult.lastInsertRowid) }
+    }),
+
   // Cliente já fechou esse mês e comprou de novo — em vez de reabrir/mudar
   // etapa (o card continua "Fechado", é o mesmo relacionamento), só soma
   // mais uma venda ao mês dele. `moverEtapa` continua sendo o único jeito de

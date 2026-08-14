@@ -1,11 +1,15 @@
 import { useState } from 'react'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import FunilBoard from '../../components/FunilBoard'
 import { primeiroDiaMesString } from '../../lib/utils'
 
 export default function VendorKanban() {
   const [mesReferencia, setMesReferencia] = useState(primeiroDiaMesString())
   const { data: cards } = trpc.funil.meuFunil.useQuery({ mesReferencia })
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const ehCompretecLojaFisica = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'compretec-loja-fisica'
 
   return (
     <div className="p-6">
@@ -18,7 +22,7 @@ export default function VendorKanban() {
           className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5"
         />
       </div>
-      <FunilBoard cards={cards ?? []} />
+      <FunilBoard cards={cards ?? []} permitirVendaRapida={ehCompretecLojaFisica} />
     </div>
   )
 }
