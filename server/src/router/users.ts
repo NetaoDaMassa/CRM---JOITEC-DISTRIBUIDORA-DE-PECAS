@@ -109,6 +109,7 @@ export const usersRouter = router({
       z.object({
         id: z.number(),
         name: z.string().min(2).optional(),
+        username: z.string().min(3).optional(),
         regiao: z.enum(REGIAO_VALUES).optional(),
         role: z.enum(['admin', 'vendor']).optional(),
         isActive: z.boolean().optional(),
@@ -120,6 +121,14 @@ export const usersRouter = router({
       const { id, ...updates } = input
       const target = await db.query.users.findFirst({ where: and(eq(users.id, id), eq(users.empresaId, ctx.empresaId)) })
       if (!target) throw new Error('Usuário não encontrado')
+
+      // username é único globalmente (mesmo motivo do create) — checa contra
+      // qualquer outro usuário, não só dentro da empresa.
+      if (updates.username && updates.username !== target.username) {
+        const existing = await db.query.users.findFirst({ where: eq(users.username, updates.username) })
+        if (existing) throw new Error('Nome de usuário já existe')
+      }
+
       await db.update(users).set(updates).where(eq(users.id, id))
       return { success: true }
     }),

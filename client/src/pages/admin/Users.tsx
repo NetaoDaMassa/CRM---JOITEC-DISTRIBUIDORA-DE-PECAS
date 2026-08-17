@@ -164,7 +164,13 @@ export default function AdminUsers() {
     try {
       let userId: number
       if (editUser) {
-        await updateMut.mutateAsync({ id: editUser.id, name: form.name, role: form.role, regiao: (form.regiao || undefined) as any })
+        await updateMut.mutateAsync({
+          id: editUser.id,
+          name: form.name,
+          username: form.username,
+          role: form.role,
+          regiao: (form.regiao || undefined) as any,
+        })
         userId = editUser.id
       } else {
         const data = await createMut.mutateAsync({ name: form.name, username: form.username, role: form.role, regiao: (form.regiao || undefined) as any })
@@ -393,12 +399,16 @@ export default function AdminUsers() {
         <form className="space-y-4" onSubmit={handleSalvarUsuario}>
           <Input label="Nome completo" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
           <Input
-            label="Usuário"
+            label="Usuário (login)"
             value={form.username}
             onChange={(e) => setForm({ ...form, username: e.target.value })}
             required
-            disabled={!!editUser}
           />
+          {!!editUser && (
+            <p className="text-xs text-dark-500 -mt-2">
+              Cuidado: isso muda o que a pessoa digita pra entrar no sistema — avise ela se trocar.
+            </p>
+          )}
           <Select
             label="Região"
             value={form.regiao}
