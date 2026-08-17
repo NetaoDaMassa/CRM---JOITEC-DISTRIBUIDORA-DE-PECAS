@@ -218,4 +218,75 @@ export const comprasRouter = router({
     await registrarAuditoria({ tabela: 'compras_nacionais', registroId: input.id, acao: 'excluir', alteradoPor: ctx.user.id })
     return { success: true }
   }),
+
+  // Painel de indicadores gerais de Compras (importação + nacional juntos).
+  // Meses são sempre os últimos 6 a partir de hoje, mesmo sem dado — o
+  // gráfico não "pula" mês vazio.
+  indicadores: comprasProcedure.query(async () => {
+    const [invoices, nacionais] = await Promise.all([
+      db.query.comprasInvoices.findMany({ where: isNull(comprasInvoices.deletedAt) }),
+      db.query.comprasNacionais.findMany({ where: isNull(comprasNacionais.deletedAt) }),
+    ])
+
+    const hoje = new Date()
+    const meses = Array.from({ length: 6 }, (_, i) => {
+      const d = new Date(hoje.getFullYear(), hoje.getMonth() - (5 - i), 1)
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    })
+    const gastoPorMes = meses.map((mes) => ({
+      mes,
+      valorImportacoes:
+        invoices.filter((i) => i.createdAt.slice(0, 7) === mes).reduce((s, i) => s + (i.valorInvoiceReais ?? 0), 0),
+      valorNacionais: nacionais.filter((n) => n.createdAt.slice(0, 7) === mes).reduce((s, n) => s + n.valorTotal, 0),
+    }))
+
+    // Tempo médio de entrega: importações usam embarque→chegada (dois
+    // campos explícitos, confiável em qualquer status "chegou"). Nacionais
+    // não têm um campo de "chegou de verdade" separado — aproxima com
+    // aprovado→última atualização, só pras que estão EXATAMENTE em
+    // "chegou" agora (evita contar quem já passou pra "entrada_nota", cujo
+    // updatedAt não é mais o momento da chegada).
+    function mediaDias(pares: { de: string | null; ate: string | null }[]): number | null {
+      const dias = pares
+        .filter((p): p is { de: string; ate: string } => !!p.de && !!p.ate)
+        .map((p) => (new Date(p.ate).getTime() - new Date(p.de).getTime()) / (1000 * 60 * 60 * 24))
+        .filter((d) => d >= 0)
+      if (dias.length === 0) return null
+      return Math.round((dias.reduce((s, d) => s + d, 0) / dias.length) * 10) / 10
+    }
+
+    const tempoMedioEntregaDias = {
+      importacoes: mediaDias(invoices.filter((i) => i.status === 'chegou').map((i) => ({ de: i.dataEmbarque, ate: i.dataChegada }))),
+      nacionais: mediaDias(nacionais.filter((n) => n.status === 'chegou').map((n) => ({ de: n.aprovadoEm, ate: n.updatedAt }))),
+    }
+
+    const nacionaisDecididas = nacionais.filter((n) => n.status !== 'aguardando_aprovacao')
+    const taxaRecusaNacionais =
+      nacionaisDecididas.length > 0
+        ? Math.round((nacionaisDecididas.filter((n) => n.status === 'recusado').length / nacionaisDecididas.length) * 1000) / 10
+        : 0
+
+    const gastoPorFornecedorMap = new Map<string, number>()
+    for (const i of invoices) {
+      if (!i.fornecedor || !i.valorInvoiceReais) continue
+      gastoPorFornecedorMap.set(i.fornecedor, (gastoPorFornecedorMap.get(i.fornecedor) ?? 0) + i.valorInvoiceReais)
+    }
+    for (const n of nacionais) {
+      if (n.status === 'recusado') continue
+      gastoPorFornecedorMap.set(n.fornecedor, (gastoPorFornecedorMap.get(n.fornecedor) ?? 0) + n.valorTotal)
+    }
+    const gastoPorFornecedor = [...gastoPorFornecedorMap.entries()]
+      .map(([fornecedor, valor]) => ({ fornecedor, valor }))
+      .sort((a, b) => b.valor - a.valor)
+      .slice(0, 8)
+
+    return {
+      gastoPorMes,
+      tempoMedioEntregaDias,
+      taxaRecusaNacionais,
+      qtdNacionaisRecusadas: nacionaisDecididas.filter((n) => n.status === 'recusado').length,
+      qtdNacionaisDecididas: nacionaisDecididas.length,
+      gastoPorFornecedor,
+    }
+  }),
 })

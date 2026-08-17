@@ -1,10 +1,122 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { trpc } from '../../lib/trpc'
 import { Input, Textarea } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
+
+// Mesma paleta fixa do resto do app (Reports.tsx/PainelTV.tsx) — azul já é
+// "medida principal" em todo gráfico de magnitude, laranja é o par
+// categórico dela quando tem uma 2ª série.
+const COR_IMPORTACOES = '#3987e5'
+const COR_NACIONAIS = '#d95926'
+const COR_GRID = '#2a3644'
+const COR_TICK = '#898781'
+
+function formatarMoedaCompacta(v: number): string {
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+}
+
+function TooltipMoeda({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
+      {label && <p className="text-dark-100 font-medium mb-1">{label}</p>}
+      {payload.map((p) => (
+        <p key={p.name} style={{ color: p.color }}>
+          {p.name}: {formatarMoedaCompacta(p.value)}
+        </p>
+      ))}
+    </div>
+  )
+}
+
+const MES_LABEL: Record<string, string> = {
+  '01': 'Jan', '02': 'Fev', '03': 'Mar', '04': 'Abr', '05': 'Mai', '06': 'Jun',
+  '07': 'Jul', '08': 'Ago', '09': 'Set', '10': 'Out', '11': 'Nov', '12': 'Dez',
+}
+
+function StatTile({ label, valor, sublabel }: { label: string; valor: string; sublabel?: string }) {
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+      <p className="text-xs text-dark-500 uppercase tracking-wide">{label}</p>
+      <p className="text-2xl font-bold text-dark-50 font-mono tabular-nums mt-1">{valor}</p>
+      {sublabel && <p className="text-xs text-dark-500 mt-0.5">{sublabel}</p>}
+    </div>
+  )
+}
+
+function AbaIndicadores() {
+  const { data, isLoading } = trpc.compras.indicadores.useQuery()
+
+  if (isLoading) return <p className="text-dark-400 text-sm p-4">Carregando...</p>
+  if (!data) return null
+
+  const gastoPorMesFmt = data.gastoPorMes.map((m) => ({
+    ...m,
+    mesLabel: `${MES_LABEL[m.mes.slice(5, 7)]}/${m.mes.slice(2, 4)}`,
+  }))
+
+  const valorTotal6Meses = data.gastoPorMes.reduce((s, m) => s + m.valorImportacoes + m.valorNacionais, 0)
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <StatTile label="Gasto (últimos 6 meses)" valor={formatarMoedaCompacta(valorTotal6Meses)} />
+        <StatTile
+          label="Tempo médio — Importação"
+          valor={data.tempoMedioEntregaDias.importacoes !== null ? `${data.tempoMedioEntregaDias.importacoes} dias` : '—'}
+          sublabel="embarque → chegada"
+        />
+        <StatTile
+          label="Tempo médio — Nacional"
+          valor={data.tempoMedioEntregaDias.nacionais !== null ? `${data.tempoMedioEntregaDias.nacionais} dias` : '—'}
+          sublabel="aprovação → chegada"
+        />
+        <StatTile
+          label="Taxa de recusa (nacionais)"
+          valor={`${data.taxaRecusaNacionais}%`}
+          sublabel={`${data.qtdNacionaisRecusadas} de ${data.qtdNacionaisDecididas} decididas`}
+        />
+      </div>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <h2 className="text-sm font-semibold text-dark-100 mb-4">Gasto por mês</h2>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={gastoPorMesFmt} barGap={4}>
+            <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} vertical={false} />
+            <XAxis dataKey="mesLabel" stroke={COR_TICK} fontSize={12} tickLine={false} axisLine={{ stroke: COR_GRID }} />
+            <YAxis stroke={COR_TICK} fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => formatarMoedaCompacta(v)} width={90} />
+            <Tooltip content={<TooltipMoeda />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+            <Legend wrapperStyle={{ fontSize: 12, color: COR_TICK }} />
+            <Bar dataKey="valorImportacoes" name="Importação" fill={COR_IMPORTACOES} radius={[4, 4, 0, 0]} />
+            <Bar dataKey="valorNacionais" name="Nacional" fill={COR_NACIONAIS} radius={[4, 4, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <h2 className="text-sm font-semibold text-dark-100 mb-1">Gasto por fornecedor</h2>
+        <p className="text-xs text-dark-500 mb-4">Top 8 — importação + nacional somados, pedidos recusados não contam.</p>
+        {data.gastoPorFornecedor.length === 0 ? (
+          <p className="text-sm text-dark-500">Nenhum fornecedor com valor registrado ainda.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height={Math.max(180, data.gastoPorFornecedor.length * 42)}>
+            <BarChart data={data.gastoPorFornecedor} layout="vertical" margin={{ left: 8 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} horizontal={false} />
+              <XAxis type="number" stroke={COR_TICK} fontSize={12} tickLine={false} axisLine={{ stroke: COR_GRID }} tickFormatter={(v) => formatarMoedaCompacta(v)} />
+              <YAxis type="category" dataKey="fornecedor" stroke={COR_TICK} fontSize={12} tickLine={false} axisLine={false} width={140} />
+              <Tooltip content={<TooltipMoeda />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+              <Bar dataKey="valor" name="Gasto" fill={COR_IMPORTACOES} radius={[0, 4, 4, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </section>
+    </div>
+  )
+}
 
 const EMPRESA_LABEL: Record<string, string> = {
   'odin-tubos': 'Odin Tubos',
@@ -587,7 +699,7 @@ function AbaComprasNacionais() {
 // de compras). Sem escopo de empresa ativa de propósito: é um setor único
 // do grupo, compartilhado entre admins de qualquer empresa.
 export default function Compras() {
-  const [aba, setAba] = useState<'importacao' | 'nacional'>('importacao')
+  const [aba, setAba] = useState<'importacao' | 'nacional' | 'indicadores'>('importacao')
 
   return (
     <div className="p-6 max-w-5xl space-y-4">
@@ -608,9 +720,19 @@ export default function Compras() {
         >
           Compras Nacionais
         </button>
+        <button
+          onClick={() => setAba('indicadores')}
+          className={`px-3 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+            aba === 'indicadores' ? 'text-gold-400 border-b-2 border-gold-400' : 'text-dark-400 hover:text-dark-100'
+          }`}
+        >
+          Indicadores
+        </button>
       </div>
 
-      {aba === 'importacao' ? <AbaImportacoes /> : <AbaComprasNacionais />}
+      {aba === 'importacao' && <AbaImportacoes />}
+      {aba === 'nacional' && <AbaComprasNacionais />}
+      {aba === 'indicadores' && <AbaIndicadores />}
     </div>
   )
 }
