@@ -137,9 +137,10 @@ export const financeiroRouter = router({
         ).reduce((s, v) => s + v, 0)
 
         const valorMes = vendasMesValor
-        const metaFaturamentoDia = metaFaturamento ? metaFaturamento / diasUteisMes : null
-        const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
-
+        // % simples da meta do mês inteiro (não o ritmo acumulado até hoje
+        // que o resto do sistema usa) — pedido direto do João: aqui no
+        // Painel Financeiro ele quer "quanto já vendeu do total da meta",
+        // sem prorratear pelos dias úteis já passados.
         const inad = inadPorCard.get(card.cardKey)
 
         return {
@@ -153,8 +154,8 @@ export const financeiroRouter = router({
           vendasMes: { quantidade: vendasMesQtd, valor: valorMes },
           ticketMedioMes: vendasMesQtd > 0 ? valorMes / vendasMesQtd : 0,
           metaFaturamento,
-          percentualMeta: metaAcumuladaAteHoje ? Math.round((valorMes / metaAcumuladaAteHoje) * 1000) / 10 : 0,
-          bateuMeta: metaAcumuladaAteHoje ? valorMes >= metaAcumuladaAteHoje : false,
+          percentualMeta: metaFaturamento ? Math.round((valorMes / metaFaturamento) * 1000) / 10 : 0,
+          bateuMeta: metaFaturamento ? valorMes >= metaFaturamento : false,
           inadimplencia: {
             valorTotal: inad?.valorTotal ?? 0,
             quantidadeClientes: inad?.quantidadeClientes ?? 0,
@@ -166,8 +167,6 @@ export const financeiroRouter = router({
 
     const valorMesConsolidado = cards.reduce((s, c) => s + c.vendasMes.valor, 0)
     const metaFaturamentoConsolidada = cards.reduce((s, c) => s + c.metaFaturamento, 0)
-    const metaFaturamentoDiaConsolidada = metaFaturamentoConsolidada ? metaFaturamentoConsolidada / diasUteisMes : null
-    const metaAcumuladaConsolidada = metaFaturamentoDiaConsolidada ? metaFaturamentoDiaConsolidada * diasUteisAteHoje : null
 
     return {
       cards,
@@ -176,7 +175,7 @@ export const financeiroRouter = router({
         vendasMesQtd: cards.reduce((s, c) => s + c.vendasMes.quantidade, 0),
         vendasHojeQtd: cards.reduce((s, c) => s + c.vendasHoje.quantidade, 0),
         metaFaturamento: metaFaturamentoConsolidada,
-        percentualMeta: metaAcumuladaConsolidada ? Math.round((valorMesConsolidado / metaAcumuladaConsolidada) * 1000) / 10 : 0,
+        percentualMeta: metaFaturamentoConsolidada ? Math.round((valorMesConsolidado / metaFaturamentoConsolidada) * 1000) / 10 : 0,
         inadimplenciaTotal: cards.reduce((s, c) => s + c.inadimplencia.valorTotal, 0),
         diasUteisMes,
         diasUteisAteHoje,
