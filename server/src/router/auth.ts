@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import { eq } from 'drizzle-orm'
 import { router, publicProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, logAcessoUsuario } from '../db/schema.js'
+import { users, logAcessoUsuario, contasVinculadas } from '../db/schema.js'
 import { signToken } from '../lib/jwt.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
 import { agoraSqlite } from '../lib/dataBr.js'
@@ -75,6 +75,67 @@ export const authRouter = router({
     }),
 
   me: protectedProcedure.query(({ ctx }) => ctx.user),
+
+  // Contas vinculadas (mesma pessoa, empresa diferente — ver
+  // contas_vinculadas no schema) que o usuário logado pode trocar sem
+  // digitar senha de novo.
+  minhasContasVinculadas: protectedProcedure.query(async ({ ctx }) => {
+    const vinculos = await db.query.contasVinculadas.findMany({ where: eq(contasVinculadas.userId, ctx.user.id) })
+    if (vinculos.length === 0) return []
+
+    const contas = await db.query.users.findMany({
+      where: (u, { inArray, and: andFn, eq: eqFn }) =>
+        andFn(
+          inArray(
+            u.id,
+            vinculos.map((v) => v.contaVinculadaId)
+          ),
+          eqFn(u.isActive, true)
+        ),
+      columns: { id: true, name: true, empresaId: true },
+    })
+    const todasEmpresas = await db.query.empresas.findMany({ columns: { id: true, nome: true } })
+    const nomeEmpresa = new Map(todasEmpresas.map((e) => [e.id, e.nome]))
+    return contas.map((c) => ({ id: c.id, name: c.name, empresaNome: nomeEmpresa.get(c.empresaId) ?? '?' }))
+  }),
+
+  // Troca pra uma conta vinculada sem pedir senha — só funciona se existir
+  // um vínculo de verdade (cadastrado pelo superAdmin em Permissões), não é
+  // um "entrar como qualquer um".
+  trocarConta: protectedProcedure
+    .input(z.object({ contaId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const vinculo = await db.query.contasVinculadas.findFirst({
+        where: (v, { and: andFn, eq: eqFn }) => andFn(eqFn(v.userId, ctx.user.id), eqFn(v.contaVinculadaId, input.contaId)),
+      })
+      if (!vinculo) throw new Error('Essa conta não está vinculada à sua')
+
+      const conta = await db.query.users.findFirst({ where: eq(users.id, input.contaId) })
+      if (!conta || !conta.isActive) throw new Error('Conta não encontrada ou desativada')
+
+      await registrarAcesso(conta.id)
+
+      const token = signToken({
+        id: conta.id,
+        username: conta.username,
+        name: conta.name,
+        role: conta.role,
+        empresaId: conta.empresaId,
+        superAdmin: conta.superAdmin,
+      })
+      return {
+        token,
+        user: {
+          id: conta.id,
+          name: conta.name,
+          username: conta.username,
+          role: conta.role,
+          empresaId: conta.empresaId,
+          superAdmin: conta.superAdmin,
+          senhaTrocarNoLogin: conta.senhaTrocarNoLogin,
+        },
+      }
+    }),
 
   trocarSenha: protectedProcedure
     .input(z.object({ novaSenha: z.string().min(8) }))

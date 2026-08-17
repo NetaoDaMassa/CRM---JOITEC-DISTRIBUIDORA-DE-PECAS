@@ -55,6 +55,25 @@ export const users = sqliteTable('users', {
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Vincula duas contas que são a mesma pessoa em empresas diferentes (ex:
+// Sergio tem login separado em Joitec e em Odin Tubos, cada carteira
+// pertence à empresa certa) — permite "trocar empresa" sem digitar senha
+// de novo, sem precisar de um modelo real de multi-empresa por usuário.
+// Sempre gravado nos dois sentidos (par simétrico): se A pode trocar pra
+// B, B também pode trocar pra A.
+export const contasVinculadas = sqliteTable(
+  'contas_vinculadas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    contaVinculadaId: integer('conta_vinculada_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    parUnico: unique().on(t.userId, t.contaVinculadaId),
+  })
+)
+
 // Um registro por login — dá o histórico de acesso dia a dia (não só o
 // último login), pra admin ver quais vendedores não estão entrando no CRM.
 export const logAcessoUsuario = sqliteTable(

@@ -63,9 +63,19 @@ const VENDOR_LINKS = [
 ]
 
 export default function Sidebar() {
-  const { user, logout, empresaAtivaId, trocarEmpresa } = useAuth()
+  const { user, logout, empresaAtivaId, trocarEmpresa, login } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
+
+  // Contas vinculadas (mesma pessoa, outra empresa — ex: Sergio em Joitec e
+  // em Odin Tubos) — vem vazio pra quem não tem nenhuma, sem custo extra.
+  const { data: contasVinculadas } = trpc.auth.minhasContasVinculadas.useQuery(undefined, { enabled: !!user && !user.superAdmin })
+  const trocarContaMut = trpc.auth.trocarConta.useMutation({
+    onSuccess(data) {
+      login(data.token, data.user as any)
+      window.location.reload()
+    },
+  })
 
   // Pra superAdmin devolve todas as empresas (seletor de troca); pra
   // qualquer outro usuário devolve só a própria (só pra mostrar o nome dela
@@ -121,6 +131,28 @@ export default function Sidebar() {
             {empresas.map((e) => (
               <option key={e.id} value={e.id}>
                 {e.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {!user?.superAdmin && !!contasVinculadas?.length && (
+        <div className="px-4 pt-3">
+          <label className="text-xs text-dark-500 block mb-1">Trocar empresa</label>
+          <select
+            value=""
+            disabled={trocarContaMut.isPending}
+            onChange={(e) => {
+              const contaId = Number(e.target.value)
+              if (contaId) trocarContaMut.mutate({ contaId })
+            }}
+            className="w-full bg-dark-800 border border-dark-700 rounded-lg text-sm text-dark-100 px-2 py-1.5"
+          >
+            <option value="">{empresaAtiva?.nome ?? '...'} (atual)</option>
+            {contasVinculadas.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.empresaNome}
               </option>
             ))}
           </select>
