@@ -76,15 +76,20 @@ export default function Sidebar() {
 
   // superAdmin sempre vê tudo, sem depender da query — evita a Sidebar
   // "piscar" vazia pro João enquanto minhasPermissoes ainda carrega.
+  // Vendedor também usa essa query agora, só pra saber se ainda tem alguma
+  // aba de relatório liberada (ver filtro de VENDOR_LINKS abaixo).
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
-    enabled: !!user && user.role === 'admin' && !user.superAdmin,
+    enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
   })
 
   const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
     (l) =>
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
-      (user?.role !== 'admin' || user.superAdmin || !!minhasFeatures?.includes((l as { feature?: string }).feature ?? ''))
+      (user?.role !== 'admin' || user.superAdmin || !!minhasFeatures?.includes((l as { feature?: string }).feature ?? '')) &&
+      // Some enquanto carrega (evita flicker); some de vez só quando a
+      // resposta já chegou e nenhuma aba de relatório está liberada.
+      (l.to !== '/vendedor/relatorios' || minhasFeatures === undefined || minhasFeatures.some((f) => f.startsWith('relatorio_')))
   )
 
   function handleLogout() {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -88,16 +88,25 @@ function TooltipPadrao({ active, payload, label }: { active?: boolean; payload?:
 }
 
 const ABAS = [
-  { value: 'visao_geral', label: 'Visão geral', superAdminOnly: false },
-  { value: 'contatos', label: 'Contatos & Ligações', superAdminOnly: false },
-  { value: 'orcamentos', label: 'Orçamentos & Vendas', superAdminOnly: false },
-  { value: 'alertas', label: 'Alertas', superAdminOnly: false },
-  { value: 'todas_empresas', label: 'Todas as Empresas', superAdminOnly: true },
+  { value: 'visao_geral', label: 'Visão geral', superAdminOnly: false, feature: 'relatorio_visao_geral' },
+  { value: 'contatos', label: 'Contatos & Ligações', superAdminOnly: false, feature: 'relatorio_contatos' },
+  { value: 'orcamentos', label: 'Orçamentos & Vendas', superAdminOnly: false, feature: 'relatorio_orcamentos' },
+  { value: 'alertas', label: 'Alertas', superAdminOnly: false, feature: 'relatorio_alertas' },
+  { value: 'todas_empresas', label: 'Todas as Empresas', superAdminOnly: true, feature: null },
 ] as const
 type Aba = (typeof ABAS)[number]['value']
 
 export default function AdminReports() {
   const { user } = useAuth()
+  // Controla aba por aba dentro de Relatórios — pra admin e pra vendedor (a
+  // página "Relatórios" já é reaproveitada pelos dois, ver App.tsx). Aba
+  // "Todas as Empresas" nunca depende disso (é superAdminOnly, fixo).
+  const { data: minhasFeaturesRelatorio } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && !user.superAdmin,
+  })
+  const abasPermitidas = ABAS.filter(
+    (t) => (t.superAdminOnly ? user?.superAdmin : user?.superAdmin || !!minhasFeaturesRelatorio?.includes(t.feature ?? ''))
+  )
   const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
   const [dataFim, setDataFim] = useState(hojeBrString())
   const [vendedorId, setVendedorId] = useState('')
@@ -106,6 +115,14 @@ export default function AdminReports() {
   const [aba, setAba] = useState<Aba>('visao_geral')
   const [dataInicioTodas, setDataInicioTodas] = useState(primeiroDiaMesString())
   const [dataFimTodas, setDataFimTodas] = useState(hojeBrString())
+
+  // Se a aba selecionada (ou a inicial "visao_geral") não estiver mais entre
+  // as permitidas assim que a permissão carrega, pula pra primeira liberada.
+  useEffect(() => {
+    if (!user || (!user.superAdmin && minhasFeaturesRelatorio === undefined)) return
+    if (!abasPermitidas.some((t) => t.value === aba)) setAba(abasPermitidas[0]?.value ?? 'visao_geral')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [minhasFeaturesRelatorio, user?.superAdmin])
 
   const [buscaCurvaAbc, setBuscaCurvaAbc] = useState('')
   const [buscaContatos, setBuscaContatos] = useState('')
@@ -238,8 +255,14 @@ export default function AdminReports() {
         </div>
       </div>
 
+      {!user?.superAdmin && minhasFeaturesRelatorio === undefined ? (
+        <p className="text-dark-400 text-sm">Carregando...</p>
+      ) : abasPermitidas.length === 0 ? (
+        <p className="text-dark-400 text-sm">Você ainda não tem nenhuma aba de relatório liberada. Fale com o administrador.</p>
+      ) : (
+        <>
       <div className="flex gap-1 border-b border-dark-700 overflow-x-auto">
-        {ABAS.filter((t) => !t.superAdminOnly || user?.superAdmin).map((t) => (
+        {abasPermitidas.map((t) => (
           <button
             key={t.value}
             onClick={() => setAba(t.value)}
@@ -1037,6 +1060,8 @@ export default function AdminReports() {
             </div>
           </section>
         </div>
+      )}
+        </>
       )}
     </div>
   )
