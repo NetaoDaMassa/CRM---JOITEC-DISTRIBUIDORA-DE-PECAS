@@ -251,6 +251,68 @@ function IntegracaoAton() {
   )
 }
 
+// Login do CRM próprio da Odin Compressores (odincrm.duckdns.org, sistema
+// separado) — usado só pra somar o faturamento do mês dela no card "Odin
+// Compressores / Comprefer" do Painel Financeiro. Nunca mostra a senha de
+// volta, só se já foi configurada.
+function IntegracaoOdinCrm() {
+  const utils = trpc.useUtils()
+  const { data, isLoading } = trpc.financeiro.statusOdinCrm.useQuery()
+  const [email, setEmail] = useState('')
+  const [senha, setSenha] = useState('')
+
+  const salvarMut = trpc.financeiro.salvarCredenciaisOdinCrm.useMutation({
+    onSuccess() {
+      toast.success('Credenciais salvas')
+      setEmail('')
+      setSenha('')
+      utils.financeiro.statusOdinCrm.invalidate()
+      utils.financeiro.painelResumo.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  if (isLoading) return null
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-3">
+      <div>
+        <h2 className="text-sm font-semibold text-dark-100">Integração CRM Odin Compressores</h2>
+        <p className="text-xs text-dark-400 mt-1">
+          Soma o faturamento do mês do odincrm.duckdns.org no card "Odin Compressores / Comprefer" do Painel
+          Financeiro. {data?.configurado && <span className="text-green-400">✓ configurado</span>}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label="E-mail de login"
+          type="email"
+          placeholder={data?.configurado ? 'Configurado — preencha pra trocar' : 'usuario@empresa.com.br'}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <Input
+          label="Senha"
+          type="password"
+          placeholder={data?.configurado ? 'Configurada — preencha pra trocar' : '••••••••'}
+          value={senha}
+          onChange={(e) => setSenha(e.target.value)}
+        />
+      </div>
+      <Button
+        size="sm"
+        loading={salvarMut.isPending}
+        disabled={!email.trim() || !senha.trim()}
+        onClick={() => salvarMut.mutate({ email, senha })}
+      >
+        Salvar
+      </Button>
+    </div>
+  )
+}
+
 export default function AdminConfiguracoes() {
   const { data, isLoading } = trpc.configuracoes.get.useQuery()
   const utils = trpc.useUtils()
@@ -460,6 +522,7 @@ export default function AdminConfiguracoes() {
       <IntegracaoGoTo />
 
       {user?.superAdmin && <IntegracaoAton />}
+      {user?.superAdmin && <IntegracaoOdinCrm />}
 
       {ehOdinCompressores && <ItensManutencao />}
     </div>

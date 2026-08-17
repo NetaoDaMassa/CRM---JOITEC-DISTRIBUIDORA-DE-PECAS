@@ -93,7 +93,11 @@ export default function App() {
           path="/painel-tv"
           element={
             <AuthGuard>
-              <PainelTV />
+              <AdminGuard>
+                <FeatureGuard feature="painel_tv">
+                  <PainelTV />
+                </FeatureGuard>
+              </AdminGuard>
             </AuthGuard>
           }
         />
@@ -101,9 +105,11 @@ export default function App() {
           path="/painel-financeiro"
           element={
             <AuthGuard>
-              <SuperAdminGuard>
-                <PainelFinanceiro />
-              </SuperAdminGuard>
+              <AdminGuard>
+                <FeatureGuard feature="painel_financeiro">
+                  <PainelFinanceiro />
+                </FeatureGuard>
+              </AdminGuard>
             </AuthGuard>
           }
         />

@@ -12,7 +12,7 @@ import { db } from './db/client.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
-import { backfillPermissoesRelatorios } from './lib/permissoesBackfill.js'
+import { backfillPermissoesRelatorios, backfillPermissaoPainelTv } from './lib/permissoesBackfill.js'
 
 config()
 
@@ -161,6 +161,7 @@ async function start() {
     await migrate(db, { migrationsFolder: path.resolve('drizzle') })
     console.log('[db] migrações aplicadas')
     await backfillPermissoesRelatorios()
+    await backfillPermissaoPainelTv()
   } catch (err) {
     console.error('[db] falha ao aplicar migrações:', err)
     process.exit(1)

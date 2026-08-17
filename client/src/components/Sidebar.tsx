@@ -146,7 +146,7 @@ export default function Sidebar() {
               <span className="flex-1">{label}</span>
             </NavLink>
           ))}
-          {user?.role === 'admin' && (
+          {user?.role === 'admin' && (user.superAdmin || minhasFeatures?.includes('painel_tv')) && (
             <a
               href="/painel-tv"
               target="_blank"
@@ -172,7 +172,7 @@ export default function Sidebar() {
               <span className="flex-1">Permissões</span>
             </NavLink>
           )}
-          {user?.superAdmin && (
+          {user?.role === 'admin' && (user.superAdmin || minhasFeatures?.includes('painel_financeiro')) && (
             <a
               href="/painel-financeiro"
               target="_blank"

@@ -6,6 +6,7 @@ import { users, funilMensal, vendas, inadimplenciaEmpresas } from '../db/schema.
 import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite, diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesReferenciaAtual } from '../lib/dataBr.js'
 import { buscarVendasAtonComCache } from '../lib/atonErp.js'
+import { buscarFaturamentoOdinCrmComCache } from '../lib/odinCrmApi.js'
 
 // Cards do Painel Financeiro. Cada card soma 1+ empresaId — a maioria é uma
 // empresa só, mas Odin Compressores e Comprefer aparecem como um único card
@@ -17,11 +18,11 @@ import { buscarVendasAtonComCache } from '../lib/atonErp.js'
 // `origemExterna: 'aton'` marca os cards que não têm vendedor/funil no CRM
 // (venda acontece 100% no ERP Aton) — pra esses, vendas/faturamento vêm da
 // API da Aton em vez de somar `vendas`/`funil_mensal` local.
-const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[]; origemExterna?: 'aton' }[] = [
+const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[]; origemExterna?: 'aton'; somaOdinCrm?: boolean }[] = [
   { cardKey: 'joitec-distribuidora', nome: 'Joitec Distribuidora de Peças', slugLogo: 'joitec', empresaIds: [1] },
   { cardKey: 'joitec-automacao', nome: 'Joitec Automação', slugLogo: 'joitec-automacao', empresaIds: [3] },
   { cardKey: 'odin-tubos', nome: 'Odin Tubos e Conexões', slugLogo: 'odin-tubos', empresaIds: [2] },
-  { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5] },
+  { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5], somaOdinCrm: true },
   { cardKey: 'compretec-ecommerce', nome: 'Compretec E-commerce', slugLogo: 'compretec', empresaIds: [6], origemExterna: 'aton' },
   { cardKey: 'compretec-loja-fisica', nome: 'Compretec Loja Física', slugLogo: 'compretec', empresaIds: [7], origemExterna: 'aton' },
 ]
@@ -31,6 +32,13 @@ const CARDS_ATON = CARDS_PAINEL.filter((c) => c.origemExterna === 'aton')
 function chaveTokenAton(cardKey: string): string {
   return `aton_token_${cardKey}`
 }
+
+// Credenciais do CRM próprio da Odin Compressores (odincrm.duckdns.org) —
+// só existe 1 conta/config pro grupo inteiro, diferente da Aton que tem 1
+// token por loja. Somado só em "vendas do mês" (ver odinCrmApi.ts — a API
+// de lá só tem relatório mensal, sem filtro de dia).
+const CHAVE_ODIN_CRM_EMAIL = 'odincrm_email'
+const CHAVE_ODIN_CRM_SENHA = 'odincrm_senha'
 
 // A API da Aton só devolve o valor bruto do pedido (igual à nota fiscal) —
 // não expõe comissão/frete/taxa de marketplace em lugar nenhum (nem
@@ -109,6 +117,17 @@ export const financeiroRouter = router({
             .where(and(eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt), filtroVendedor))
           vendasMesQtd = qtdMes
           vendasMesValor = valMes ?? 0
+
+          if (card.somaOdinCrm) {
+            const [email, senha] = await Promise.all([getConfigTexto(CHAVE_ODIN_CRM_EMAIL), getConfigTexto(CHAVE_ODIN_CRM_SENHA)])
+            if (email && senha) {
+              const externo = await buscarFaturamentoOdinCrmComCache(email, senha, mesAtual.slice(0, 7))
+              if (externo) {
+                vendasMesQtd += externo.quantidade
+                vendasMesValor += externo.valor
+              }
+            }
+          }
         }
 
         // Soma a meta configurada de cada empresa que entra no card (0 se
@@ -230,6 +249,20 @@ export const financeiroRouter = router({
     .mutation(async ({ input }) => {
       if (!CARDS_ATON.some((c) => c.cardKey === input.cardKey)) throw new Error('Card inválido pra integração Aton ERP')
       await setConfig(chaveDescontoAton(input.cardKey), input.descontoPct)
+      return { success: true }
+    }),
+
+  // Status da credencial do CRM da Odin Compressores — nunca devolve a
+  // senha pro client, só se já foi configurada.
+  statusOdinCrm: superAdminProcedure.query(async () => {
+    return { configurado: !!(await getConfigTexto(CHAVE_ODIN_CRM_EMAIL)) }
+  }),
+
+  salvarCredenciaisOdinCrm: superAdminProcedure
+    .input(z.object({ email: z.string().email(), senha: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      await setConfig(CHAVE_ODIN_CRM_EMAIL, input.email.trim())
+      await setConfig(CHAVE_ODIN_CRM_SENHA, input.senha)
       return { success: true }
     }),
 })

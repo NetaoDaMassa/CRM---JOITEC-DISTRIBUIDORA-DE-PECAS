@@ -33,3 +33,23 @@ export async function backfillPermissoesRelatorios() {
   await db.insert(permissoesAdmin).values(linhas)
   console.log(`[permissoes] backfill de abas de relatório aplicado a ${alvoIds.size} usuário(s)`)
 }
+
+// Mesma ideia, só pro "Painel de TV": antes dessa mudança QUALQUER admin
+// (não só superAdmin) já enxergava o link, sem precisar de permissão —
+// então todo admin não-superAdmin já ativo ganha a feature automaticamente
+// pra não perder acesso do nada. "Painel Financeiro" NÃO entra aqui de
+// propósito: sempre foi trancado só pro superAdmin (SuperAdminGuard), então
+// o padrão novo é continuar fechado até o superAdmin liberar alguém.
+export async function backfillPermissaoPainelTv() {
+  const jaRodou = await db.query.permissoesAdmin.findFirst({ where: eq(permissoesAdmin.feature, 'painel_tv') })
+  if (jaRodou) return
+
+  const admins = await db.query.users.findMany({
+    where: and(eq(users.role, 'admin'), eq(users.superAdmin, false), eq(users.isActive, true)),
+    columns: { id: true },
+  })
+  if (admins.length === 0) return
+
+  await db.insert(permissoesAdmin).values(admins.map((a) => ({ userId: a.id, feature: 'painel_tv' })))
+  console.log(`[permissoes] backfill de Painel de TV aplicado a ${admins.length} admin(s)`)
+}

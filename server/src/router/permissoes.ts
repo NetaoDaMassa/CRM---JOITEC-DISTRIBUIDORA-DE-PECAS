@@ -27,6 +27,8 @@ export const FEATURES_ADMIN = [
   'lixeira',
   'configuracoes',
   'backup',
+  'painel_financeiro',
+  'painel_tv',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima

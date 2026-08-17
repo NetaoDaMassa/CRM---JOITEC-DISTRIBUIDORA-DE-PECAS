@@ -4,7 +4,14 @@ import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { ADMIN_LINKS } from '../../components/Sidebar'
 
-const FEATURES = ADMIN_LINKS.map((l) => ({ feature: l.feature, label: l.label }))
+// Painel Financeiro e Painel de TV não são itens do menu comum (ADMIN_LINKS)
+// — são links à parte no Sidebar, renderizados fora do links.map(). Somados
+// aqui na mão pra aparecerem junto no checklist de permissões.
+const FEATURES = [
+  ...ADMIN_LINKS.map((l) => ({ feature: l.feature, label: l.label })),
+  { feature: 'painel_financeiro', label: 'Painel Financeiro' },
+  { feature: 'painel_tv', label: 'Painel de TV' },
+]
 
 const FEATURES_RELATORIOS = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
