@@ -229,6 +229,7 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
       dataFechamento: v.dataFechamento,
       tipoComprovante: v.tipoComprovante,
       faturado: v.faturado,
+      numeroPedido: v.numeroPedido,
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,

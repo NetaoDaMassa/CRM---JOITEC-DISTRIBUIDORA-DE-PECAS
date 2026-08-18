@@ -277,6 +277,10 @@ export const vendas = sqliteTable('vendas', {
   valorFechado: real('valor_fechado').notNull(),
   condicaoPagamento: text('condicao_pagamento'),
   numeroCupomFiscal: text('numero_cupom_fiscal'),
+  // Só a venda rápida (Compretec Loja Física) exige isso — pedido direto do
+  // João pra identificar o card na hora (aparece junto do nome do cliente
+  // no Kanban, ex: "Consumidor Final - 10210").
+  numeroPedido: text('numero_pedido'),
   pdfPedidoPath: text('pdf_pedido_path'),
   dataFechamento: text('data_fechamento').notNull().default(sql`(datetime('now'))`),
   // Etapa "Faturamento" (Compretec Loja Física) — tipo do comprovante fiscal

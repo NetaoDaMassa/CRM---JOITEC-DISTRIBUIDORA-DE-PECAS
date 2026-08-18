@@ -22,6 +22,7 @@ export const vendasRouter = router({
     .input(
       z.object({
         nomeCliente: z.string().min(1),
+        numeroPedido: z.string().min(1),
         valorFechado: z.number().positive(),
         telefone: z.string().optional(),
         condicaoPagamento: z.string().optional(),
@@ -87,23 +88,26 @@ export const vendasRouter = router({
         valorFechado: input.valorFechado,
         condicaoPagamento: input.condicaoPagamento || null,
         numeroCupomFiscal: input.numeroCupomFiscal || null,
+        numeroPedido: input.numeroPedido,
         pdfPedidoPath: input.pdfPedidoPath,
         dataFechamento,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
 
-      // Venda de balcão é dinheiro de verdade entrando no caixa da loja no
-      // mesmo instante — soma sozinho no Caixa, sem precisar lançar de novo
-      // na mão (pedido direto do João).
-      await db.insert(caixaMovimentacoes).values({
-        empresaId: ctx.empresaId,
-        tipo: 'entrada',
-        valor: input.valorFechado,
-        data: input.dataPedido,
-        descricao: `Venda balcão — ${input.nomeCliente}`,
-        origemVendaId: vendaId,
-        criadoPor: ctx.user.id,
-      })
+      // Só soma no Caixa quando o pagamento foi em Dinheiro de verdade — Pix
+      // e Cartão não passam pelo caixa físico da loja, ficam de fora
+      // (pedido direto do João: "Caixa - somente dinheiro").
+      if (input.condicaoPagamento === 'Dinheiro') {
+        await db.insert(caixaMovimentacoes).values({
+          empresaId: ctx.empresaId,
+          tipo: 'entrada',
+          valor: input.valorFechado,
+          data: input.dataPedido,
+          descricao: `Venda balcão — ${input.nomeCliente}`,
+          origemVendaId: vendaId,
+          criadoPor: ctx.user.id,
+        })
+      }
 
       await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'criar', alteradoPor: ctx.user.id })
 

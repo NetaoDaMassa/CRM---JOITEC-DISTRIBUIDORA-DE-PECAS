@@ -61,6 +61,13 @@ function formatarMoeda(v: number | null): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// "Consumidor Final - 10210" — só vendas de balcão (venda rápida) têm
+// número de pedido; usa a venda mais recente do card, igual BadgeFaturamento.
+function nomeComPedido(card: Card): string {
+  const numeroPedido = card.vendas[card.vendas.length - 1]?.numeroPedido
+  return numeroPedido ? `${card.razaoSocial} - ${numeroPedido}` : card.razaoSocial
+}
+
 // Campos de valor usam `type="text"` (não "number") porque o input nativo
 // number só aceita ponto decimal e barra a vírgula — no formato brasileiro
 // ("1.250,50", ponto de milhar + vírgula decimal) isso travava o vendedor
@@ -174,7 +181,9 @@ export type Card = RouterOutputs['funil']['meuFunil'][number]
 // direto do João depois de casos sem comprovante nenhum registrado).
 function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClose: () => void; vendedorId?: number }) {
   const utils = trpc.useUtils()
+  const { user } = useAuth()
   const [nomeCliente, setNomeCliente] = useState('Consumidor Final')
+  const [numeroPedido, setNumeroPedido] = useState('')
   const [valor, setValor] = useState('')
   const [telefone, setTelefone] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
@@ -182,12 +191,20 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10))
   const [pdfArquivo, setPdfArquivo] = useState<File | null>(null)
   const [enviandoPdf, setEnviandoPdf] = useState(false)
+  // Só admin escolhe — vendedor sempre registra em nome de si mesmo (backend
+  // resolve por ctx.user.id quando isso fica undefined). Começa com o que
+  // veio do seletor da página (admin/Kanban.tsx), mas dá pra trocar aqui
+  // dentro sem precisar sair do modal.
+  const [vendedorIdSelecionado, setVendedorIdSelecionado] = useState<number | undefined>(vendedorId)
+  const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
 
   const mut = trpc.vendas.registrarVendaRapida.useMutation({
     onSuccess() {
       toast.success('Venda registrada')
       utils.funil.meuFunil.invalidate()
+      utils.funil.funilPorVendedor.invalidate()
       setNomeCliente('Consumidor Final')
+      setNumeroPedido('')
       setValor('')
       setTelefone('')
       setFormaPagamento('')
@@ -214,22 +231,25 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   async function registrar() {
     const valorNum = Number(valor.replace(',', '.'))
     if (!nomeCliente.trim()) return toast.error('Informe o nome do cliente')
+    if (!numeroPedido.trim()) return toast.error('Informe o número do pedido')
     if (!valorNum || valorNum <= 0) return toast.error('Informe o valor do pedido')
     if (!dataPedido) return toast.error('Informe a data do pedido')
     if (!pdfArquivo) return toast.error('Anexe o PDF do pedido')
+    if (user?.role === 'admin' && !vendedorIdSelecionado) return toast.error('Selecione o vendedor')
 
     try {
       setEnviandoPdf(true)
       const pdfPedidoPath = await enviarPdf(pdfArquivo)
       mut.mutate({
         nomeCliente: nomeCliente.trim(),
+        numeroPedido: numeroPedido.trim(),
         valorFechado: valorNum,
         telefone: telefone.trim() || undefined,
         condicaoPagamento: formaPagamento || undefined,
         numeroCupomFiscal: cupomFiscal.trim() || undefined,
         dataPedido,
         pdfPedidoPath,
-        vendedorId,
+        vendedorId: user?.role === 'admin' ? vendedorIdSelecionado : undefined,
       })
     } catch (err: any) {
       toast.error(err.message ?? 'Falha ao enviar o PDF.')
@@ -241,7 +261,17 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   return (
     <Modal open={open} onClose={onClose} title="Registrar venda" size="sm">
       <div className="space-y-3">
+        {user?.role === 'admin' && (
+          <Select
+            label="Vendedor"
+            value={vendedorIdSelecionado ? String(vendedorIdSelecionado) : ''}
+            onChange={(e) => setVendedorIdSelecionado(e.target.value ? Number(e.target.value) : undefined)}
+            placeholder="Selecione..."
+            options={(vendedores ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
+          />
+        )}
         <Input label="Nome do cliente" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
+        <Input label="Número do pedido" value={numeroPedido} onChange={(e) => setNumeroPedido(e.target.value)} placeholder="Ex: 10210" />
         <Input label="Valor do pedido (R$)" type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} />
         <Input label="Data do pedido" type="date" value={dataPedido} onChange={(e) => setDataPedido(e.target.value)} />
         <Input label="Telefone (opcional)" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
@@ -490,7 +520,7 @@ export default function FunilBoard({
                           {iniciais(card.razaoSocial)}
                         </div>
                         <div className="pt-1">
-                          <p className="text-sm font-medium text-dark-100 leading-tight">{card.razaoSocial}</p>
+                          <p className="text-sm font-medium text-dark-100 leading-tight">{nomeComPedido(card)}</p>
                           {card.orcamentoLabel && (
                             <p className="text-xs text-gold-400 font-medium">{card.orcamentoLabel}</p>
                           )}
@@ -1148,7 +1178,7 @@ function CardModal({
   }
 
   return (
-    <Modal open onClose={onClose} title={card.orcamentoLabel ? `${card.razaoSocial} — ${card.orcamentoLabel}` : card.razaoSocial} size="lg">
+    <Modal open onClose={onClose} title={card.orcamentoLabel ? `${nomeComPedido(card)} — ${card.orcamentoLabel}` : nomeComPedido(card)} size="lg">
       <div className="space-y-5">
         {user?.superAdmin && (
           <div className="flex justify-end">
