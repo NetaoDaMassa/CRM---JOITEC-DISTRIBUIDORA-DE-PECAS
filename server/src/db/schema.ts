@@ -233,7 +233,10 @@ export const funilMensal = sqliteTable('funil_mensal', {
   vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   mesReferencia: text('mes_referencia').notNull(), // YYYY-MM-01
   etapa: text('etapa', {
-    enum: ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'],
+    // 'faturamento' só existe pra Compretec Loja Física (ver
+    // ETAPAS_FATURAMENTO no FunilBoard.tsx) — vem sempre depois de
+    // 'fechado', pro card já vendido acompanhar se saiu cupom/nota fiscal.
+    enum: ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'faturamento', 'perdido', 'sem_contato', 'consumidor_final'],
   }).notNull().default('novo'),
   dataEntradaEtapa: text('data_entrada_etapa').notNull().default(sql`(datetime('now'))`),
   qtdTentativasContato: integer('qtd_tentativas_contato').notNull().default(0),
@@ -276,6 +279,12 @@ export const vendas = sqliteTable('vendas', {
   numeroCupomFiscal: text('numero_cupom_fiscal'),
   pdfPedidoPath: text('pdf_pedido_path'),
   dataFechamento: text('data_fechamento').notNull().default(sql`(datetime('now'))`),
+  // Etapa "Faturamento" (Compretec Loja Física) — tipo do comprovante fiscal
+  // dessa venda e se já foi emitido de verdade. `tipoComprovante` fica null
+  // até alguém confirmar; `faturado` sempre começa falso mesmo se o
+  // vendedor já escolheu o tipo (só vira true quando confirma que saiu).
+  tipoComprovante: text('tipo_comprovante', { enum: ['cupom_fiscal', 'nota_fiscal'] }),
+  faturado: integer('faturado', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
 })

@@ -188,4 +188,28 @@ export const vendasRouter = router({
 
       return { success: true }
     }),
+
+  // Etapa "Faturamento" (só Compretec Loja Física) — confirma se saiu cupom
+  // ou nota fiscal dessa venda, e se já foi faturado de fato. Os dois campos
+  // são independentes: dá pra marcar o tipo antes de confirmar que faturou.
+  atualizarFaturamento: protectedProcedure
+    .input(
+      z.object({
+        vendaId: z.number(),
+        tipoComprovante: z.enum(['cupom_fiscal', 'nota_fiscal']).optional(),
+        faturado: z.boolean().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const venda = await db.query.vendas.findFirst({ where: eq(vendas.id, input.vendaId) })
+      if (!venda) throw new Error('Venda não encontrada')
+      if (ctx.user.role !== 'admin' && venda.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+
+      const updates: { tipoComprovante?: 'cupom_fiscal' | 'nota_fiscal'; faturado?: boolean } = {}
+      if (input.tipoComprovante !== undefined) updates.tipoComprovante = input.tipoComprovante
+      if (input.faturado !== undefined) updates.faturado = input.faturado
+
+      await db.update(vendas).set(updates).where(eq(vendas.id, input.vendaId))
+      return { success: true }
+    }),
 })

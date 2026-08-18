@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, between, count, eq, gte, isNull, sql } from 'drizzle-orm'
+import { and, between, count, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { compromissos, funilMensal, registroContato } from '../db/schema.js'
@@ -67,7 +67,10 @@ export const compromissosRouter = router({
       const fim = `${input.dataFim} 23:59:59`
 
       const filtrosVendas = [
-        eq(funilMensal.etapa, 'fechado'),
+        // 'faturamento' entra aqui também — card de Compretec Loja Física
+        // que já vendeu (fechado) e avançou pra Faturamento continua
+        // contando como venda no histórico do dia que fechou.
+        inArray(funilMensal.etapa, ['fechado', 'faturamento']),
         between(funilMensal.dataEntradaEtapa, inicio, fim),
         isNull(funilMensal.deletedAt),
       ]

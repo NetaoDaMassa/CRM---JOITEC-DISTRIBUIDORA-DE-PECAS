@@ -8,7 +8,17 @@ import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
 import { validarClienteFaturamento } from './vinculos.js'
 
-const ETAPA_VALUES = ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'perdido', 'sem_contato', 'consumidor_final'] as const
+const ETAPA_VALUES = [
+  'novo',
+  'abordagem',
+  'interessado',
+  'negociacao',
+  'fechado',
+  'faturamento',
+  'perdido',
+  'sem_contato',
+  'consumidor_final',
+] as const
 
 // Compartilhado entre `meuFunil` (vendedor vendo o próprio funil) e
 // `funilPorVendedor` (admin vendo o funil de qualquer vendedor específico) —
@@ -217,6 +227,8 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
       condicaoPagamento: v.condicaoPagamento,
       pdfPedidoPath: v.pdfPedidoPath,
       dataFechamento: v.dataFechamento,
+      tipoComprovante: v.tipoComprovante,
+      faturado: v.faturado,
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,
@@ -328,6 +340,10 @@ export const funilRouter = router({
         }
         if (input.valorFechado === undefined) throw new Error('Informe o valor fechado.')
         if (!input.pdfPedidoPath) throw new Error('Anexe o PDF do pedido/nota para fechar a venda.')
+      }
+
+      if (input.etapa === 'faturamento' && funil.etapa !== 'fechado') {
+        throw new Error('Só é possível mover pra Faturamento a partir de "Fechado".')
       }
 
       if (input.etapa === 'perdido') {

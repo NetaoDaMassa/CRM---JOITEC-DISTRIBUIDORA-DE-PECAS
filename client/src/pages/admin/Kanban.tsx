@@ -47,7 +47,12 @@ export default function AdminKanban() {
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
       {!isLoading && vendedorId !== null && (
-        <FunilBoard cards={cards ?? []} permitirVendaRapida={ehCompretecLojaFisica} vendedorIdVendaRapida={vendedorId} />
+        <FunilBoard
+          cards={cards ?? []}
+          permitirVendaRapida={ehCompretecLojaFisica}
+          vendedorIdVendaRapida={vendedorId}
+          mostrarFaturamento={ehCompretecLojaFisica}
+        />
       )}
     </div>
   )

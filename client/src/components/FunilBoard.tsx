@@ -24,6 +24,9 @@ const ETAPAS = [
   { value: 'interessado', label: 'Interessado' },
   { value: 'negociacao', label: 'Negociação' },
   { value: 'fechado', label: 'Fechado' },
+  // Só existe pra Compretec Loja Física — filtrada via `mostrarFaturamento`
+  // (FunilBoard/CardModal), nunca aparece nos boards de outra empresa.
+  { value: 'faturamento', label: 'Faturamento' },
   { value: 'perdido', label: 'Perdido' },
   { value: 'sem_contato', label: 'Sem contato' },
   { value: 'consumidor_final', label: 'Consumidor Final / Repassado' },
@@ -271,6 +274,7 @@ export default function FunilBoard({
   cards,
   permitirVendaRapida,
   vendedorIdVendaRapida,
+  mostrarFaturamento,
 }: {
   cards: Card[]
   permitirVendaRapida?: boolean
@@ -278,7 +282,10 @@ export default function FunilBoard({
   // registrada por ele (o vendor/Kanban.tsx não passa — lá é sempre o
   // próprio usuário logado, resolvido no backend por ctx.user.id).
   vendedorIdVendaRapida?: number
+  // Etapa "Faturamento" — só Compretec Loja Física passa isso como true.
+  mostrarFaturamento?: boolean
 }) {
+  const etapasVisiveis = mostrarFaturamento ? ETAPAS : ETAPAS.filter((e) => e.value !== 'faturamento')
   const utils = trpc.useUtils()
   const [vendaRapidaAberta, setVendaRapidaAberta] = useState(false)
   // Guarda só o id, não o objeto — assim, quando uma mutação invalida a
@@ -459,7 +466,7 @@ export default function FunilBoard({
       </div>
 
       <div ref={boardRef} onScroll={sincronizarDoBoard} className="flex gap-4 overflow-x-auto pb-4">
-        {ETAPAS.map((etapa) => {
+        {etapasVisiveis.map((etapa) => {
           const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value)
           return (
             <div key={etapa.value} className="shrink-0 w-72">
@@ -533,6 +540,9 @@ export default function FunilBoard({
                       {sugestao && (
                         <p className="text-xs text-gold-300 bg-gold-900/10 border border-gold-700/30 rounded-lg px-2 py-1 mt-2">{sugestao}</p>
                       )}
+                      {card.etapa === 'faturamento' && card.vendas.length > 0 && (
+                        <BadgeFaturamento venda={card.vendas[card.vendas.length - 1]} />
+                      )}
                       <div className="flex items-center justify-between mt-2">
                         <div>
                           {card.valorOrcado != null && <p className="text-xs text-dark-400">Orçado: {formatarMoeda(card.valorOrcado)}</p>}
@@ -570,6 +580,7 @@ export default function FunilBoard({
         <CardModal
           key={cardAberto.funilMensalId}
           card={cardAberto}
+          mostrarFaturamento={mostrarFaturamento}
           onClose={() => setCardAbertoId(null)}
           onChanged={() => {
             invalidarTudo()
@@ -611,6 +622,73 @@ function AnexoPdfInput({
         <Paperclip size={18} />
         {nomeArquivo ? `📎 ${nomeArquivo}` : 'Clique para anexar o PDF'}
       </button>
+    </div>
+  )
+}
+
+const TIPO_COMPROVANTE_LABEL: Record<string, string> = { cupom_fiscal: 'Cupom Fiscal', nota_fiscal: 'Nota Fiscal' }
+
+// Aparece "fora do card" (na frente do Kanban, sem abrir o modal) — pedido
+// direto do João. Mostra o status de faturamento da venda mais recente do
+// card, só na etapa Faturamento.
+function BadgeFaturamento({ venda }: { venda: { tipoComprovante: string | null; faturado: boolean } }) {
+  if (venda.faturado) {
+    return (
+      <p className="text-xs font-medium text-green-400 bg-green-900/20 border border-green-700/30 rounded-lg px-2 py-1 mt-2">
+        ✅ Faturado{venda.tipoComprovante ? ` (${TIPO_COMPROVANTE_LABEL[venda.tipoComprovante]})` : ''}
+      </p>
+    )
+  }
+  if (venda.tipoComprovante) {
+    return (
+      <p className="text-xs font-medium text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-lg px-2 py-1 mt-2">
+        ⏳ Aguardando faturar ({TIPO_COMPROVANTE_LABEL[venda.tipoComprovante]})
+      </p>
+    )
+  }
+  return (
+    <p className="text-xs font-medium text-dark-400 bg-dark-900/40 border border-dark-700 rounded-lg px-2 py-1 mt-2">
+      ⏳ Selecionar cupom/nota fiscal
+    </p>
+  )
+}
+
+// Controles de dentro do card (modal) pra etapa Faturamento — mesma venda do
+// BadgeFaturamento (que mostra o resumo fora do card), aqui dá pra editar.
+function ControleFaturamento({ venda }: { venda: { id: number; tipoComprovante: string | null; faturado: boolean } }) {
+  const utils = trpc.useUtils()
+  const mut = trpc.vendas.atualizarFaturamento.useMutation({
+    onSuccess() {
+      utils.funil.meuFunil.invalidate()
+      utils.funil.funilPorVendedor.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <div className="flex items-center gap-3 pt-1.5 border-t border-dark-700/60">
+      <div className="flex-1">
+        <Select
+          value={venda.tipoComprovante ?? ''}
+          onChange={(e) => mut.mutate({ vendaId: venda.id, tipoComprovante: e.target.value as any })}
+          placeholder="Cupom ou nota fiscal?"
+          options={[
+            { value: 'cupom_fiscal', label: 'Cupom Fiscal' },
+            { value: 'nota_fiscal', label: 'Nota Fiscal' },
+          ]}
+        />
+      </div>
+      <label className="flex items-center gap-1.5 text-xs text-dark-200 whitespace-nowrap">
+        <input
+          type="checkbox"
+          className="accent-gold-500"
+          checked={venda.faturado}
+          onChange={(e) => mut.mutate({ vendaId: venda.id, faturado: e.target.checked })}
+        />
+        Faturado
+      </label>
     </div>
   )
 }
@@ -677,7 +755,18 @@ function ItensPedidoEditor({
   )
 }
 
-function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => void; onChanged: () => void }) {
+function CardModal({
+  card,
+  onClose,
+  onChanged,
+  mostrarFaturamento,
+}: {
+  card: Card
+  onClose: () => void
+  onChanged: () => void
+  mostrarFaturamento?: boolean
+}) {
+  const etapasVisiveis = mostrarFaturamento ? ETAPAS : ETAPAS.filter((e) => e.value !== 'faturamento')
   const utils = trpc.useUtils()
   const [tipo, setTipo] = useState('ligacao')
   const [resultado, setResultado] = useState('')
@@ -1097,7 +1186,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           </a>
         )}
 
-        {card.etapa === 'fechado' && (
+        {(card.etapa === 'fechado' || card.etapa === 'faturamento') && (
           <div className="border-t border-dark-700 pt-4 space-y-3">
             <h3 className="text-sm font-semibold text-dark-100">
               💰 Vendas do mês ({formatarMoeda(card.valorFechadoTotal)} no total)
@@ -1134,29 +1223,32 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                     </div>
                   </form>
                 ) : (
-                  <div key={v.id} className="flex items-center justify-between text-sm bg-dark-900/40 rounded-lg px-3 py-1.5">
-                    <span className="text-dark-100">{formatarMoeda(v.valorFechado)}</span>
-                    <span className="text-xs text-dark-400">{v.condicaoPagamento || '—'}</span>
-                    <span className="text-xs text-dark-500">{timeAgo(v.dataFechamento)}</span>
-                    {v.pdfPedidoPath && (
-                      <a
-                        href={v.pdfPedidoPath.startsWith('/uploads/') ? v.pdfPedidoPath : `/uploads/${v.pdfPedidoPath}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-gold-400 hover:underline"
-                      >
-                        📄 Ver PDF
-                      </a>
-                    )}
-                    <button type="button" onClick={() => abrirEdicaoVenda(v)} className="text-xs text-gold-400 hover:underline">
-                      Editar
-                    </button>
+                  <div key={v.id} className="bg-dark-900/40 rounded-lg px-3 py-1.5 space-y-1.5">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-dark-100">{formatarMoeda(v.valorFechado)}</span>
+                      <span className="text-xs text-dark-400">{v.condicaoPagamento || '—'}</span>
+                      <span className="text-xs text-dark-500">{timeAgo(v.dataFechamento)}</span>
+                      {v.pdfPedidoPath && (
+                        <a
+                          href={v.pdfPedidoPath.startsWith('/uploads/') ? v.pdfPedidoPath : `/uploads/${v.pdfPedidoPath}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-gold-400 hover:underline"
+                        >
+                          📄 Ver PDF
+                        </a>
+                      )}
+                      <button type="button" onClick={() => abrirEdicaoVenda(v)} className="text-xs text-gold-400 hover:underline">
+                        Editar
+                      </button>
+                    </div>
+                    {card.etapa === 'faturamento' && <ControleFaturamento venda={v} />}
                   </div>
                 )
               )}
             </div>
 
-            {!novaVendaAberta ? (
+            {card.etapa === 'fechado' && (!novaVendaAberta ? (
               <Button type="button" size="sm" variant="secondary" onClick={() => setNovaVendaAberta(true)}>
                 + Registrar nova venda
               </Button>
@@ -1216,7 +1308,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
                   </Button>
                 </div>
               </form>
-            )}
+            ))}
           </div>
         )}
 
@@ -1332,7 +1424,7 @@ function CardModal({ card, onClose, onChanged }: { card: Card; onClose: () => vo
           <div className="space-y-2">
             <p className="text-xs font-bold text-gold-400 uppercase tracking-wide">Status</p>
             <div className="bg-dark-900/40 border border-dark-700 rounded-2xl p-2 space-y-1">
-              {ETAPAS.map((etapa) => {
+              {etapasVisiveis.map((etapa) => {
                 const selecionada = etapaSelecionada === etapa.value
                 const atual = card.etapa === etapa.value
                 return (
