@@ -2,11 +2,12 @@ import { z } from 'zod'
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
 import { validarClienteFaturamento } from './vinculos.js'
+import { SLUG_VENDA_RAPIDA } from './vendas.js'
 
 const ETAPA_VALUES = [
   'novo',
@@ -290,6 +291,7 @@ export const funilRouter = router({
         valorOrcado: z.number().optional(),
         valorFechado: z.number().optional(),
         condicaoPagamento: z.string().optional(),
+        numeroPedido: z.string().optional(),
         pdfPedidoPath: z.string().optional(),
         pdfPropostaPath: z.string().optional(),
         clienteIdFaturamento: z.number().optional(),
@@ -341,6 +343,13 @@ export const funilRouter = router({
         }
         if (input.valorFechado === undefined) throw new Error('Informe o valor fechado.')
         if (!input.pdfPedidoPath) throw new Error('Anexe o PDF do pedido/nota para fechar a venda.')
+
+        // Compretec Loja Física exige número do pedido em qualquer venda, não
+        // só na venda rápida — inclusive pra cliente padrão/negociado normal.
+        const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+        if (empresa?.slug === SLUG_VENDA_RAPIDA && !input.numeroPedido) {
+          throw new Error('Informe o número do pedido.')
+        }
       }
 
       if (input.etapa === 'faturamento' && funil.etapa !== 'fechado') {
@@ -403,6 +412,7 @@ export const funilRouter = router({
           mesReferencia: funil.mesReferencia,
           valorFechado: input.valorFechado!,
           condicaoPagamento: input.condicaoPagamento ?? null,
+          numeroPedido: input.numeroPedido || null,
           pdfPedidoPath: input.pdfPedidoPath,
         })
         const vendaId = Number(vendaResult.lastInsertRowid)

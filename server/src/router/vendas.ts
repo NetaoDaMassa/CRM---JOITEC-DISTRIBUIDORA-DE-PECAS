@@ -10,7 +10,7 @@ import { validarClienteFaturamento } from './vinculos.js'
 // Só a Compretec Loja Física usa o botão de venda rápida (venda de balcão,
 // consumidor final) — pedido do João depois de criar o Thiago/Marcos/Flavio
 // como vendedores dessa empresa.
-const SLUG_VENDA_RAPIDA = 'compretec-loja-fisica'
+export const SLUG_VENDA_RAPIDA = 'compretec-loja-fisica'
 
 export const vendasRouter = router({
   // Venda de balcão (consumidor final) — cria cliente + funil já em
@@ -125,6 +125,7 @@ export const vendasRouter = router({
         funilMensalId: z.number(),
         valorFechado: z.number(),
         condicaoPagamento: z.string().optional(),
+        numeroPedido: z.string().optional(),
         pdfPedidoPath: z.string(),
         clienteIdFaturamento: z.number().optional(),
         itens: z
@@ -146,6 +147,13 @@ export const vendasRouter = router({
         throw new Error('Só é possível registrar uma venda adicional em um cliente que já fechou esse mês.')
       }
 
+      // Compretec Loja Física exige número do pedido em qualquer venda, não
+      // só na venda rápida — inclusive pra cliente padrão/negociado normal.
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+      if (empresa?.slug === SLUG_VENDA_RAPIDA && !input.numeroPedido) {
+        throw new Error('Informe o número do pedido.')
+      }
+
       const clienteFaturamentoId = input.clienteIdFaturamento ?? funil.clienteId
       if (clienteFaturamentoId !== funil.clienteId) {
         await validarClienteFaturamento(funil.clienteId, clienteFaturamentoId, ctx.empresaId)
@@ -158,6 +166,7 @@ export const vendasRouter = router({
         mesReferencia: funil.mesReferencia,
         valorFechado: input.valorFechado,
         condicaoPagamento: input.condicaoPagamento ?? null,
+        numeroPedido: input.numeroPedido || null,
         pdfPedidoPath: input.pdfPedidoPath,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
@@ -189,6 +198,7 @@ export const vendasRouter = router({
         vendaId: z.number(),
         valorFechado: z.number().optional(),
         condicaoPagamento: z.string().optional(),
+        numeroPedido: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -201,6 +211,7 @@ export const vendasRouter = router({
         .set({
           valorFechado: input.valorFechado ?? venda.valorFechado,
           condicaoPagamento: input.condicaoPagamento !== undefined ? input.condicaoPagamento || null : venda.condicaoPagamento,
+          numeroPedido: input.numeroPedido !== undefined ? input.numeroPedido || null : venda.numeroPedido,
         })
         .where(eq(vendas.id, input.vendaId))
 

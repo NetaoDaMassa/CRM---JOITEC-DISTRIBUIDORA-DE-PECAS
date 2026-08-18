@@ -34,6 +34,14 @@ const ETAPAS = [
 
 const ETAPA_LABEL: Record<string, string> = Object.fromEntries(ETAPAS.map((e) => [e.value, e.label]))
 
+const FORMAS_PAGAMENTO = [
+  { value: 'Dinheiro', label: 'Dinheiro' },
+  { value: 'Pix', label: 'Pix' },
+  { value: 'Cartão Crédito', label: 'Cartão Crédito' },
+  { value: 'Cartão Débito', label: 'Cartão Débito' },
+  { value: 'Outro', label: 'Outro' },
+]
+
 // Quantos contatos foram registrados desde que o card entrou na etapa atual
 // (não é o total do mês) — é o número que importa pra decidir se já é hora
 // de insistir mais ou mover o cliente pra negociação/perdido.
@@ -280,13 +288,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
           value={formaPagamento}
           onChange={(e) => setFormaPagamento(e.target.value)}
           placeholder="Não informado"
-          options={[
-            { value: 'Dinheiro', label: 'Dinheiro' },
-            { value: 'Pix', label: 'Pix' },
-            { value: 'Cartão Crédito', label: 'Cartão Crédito' },
-            { value: 'Cartão Débito', label: 'Cartão Débito' },
-            { value: 'Outro', label: 'Outro' },
-          ]}
+          options={FORMAS_PAGAMENTO}
         />
         <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
         <AnexoPdfInput label="PDF do pedido" nomeArquivo={pdfArquivo?.name} onSelecionar={setPdfArquivo} />
@@ -817,6 +819,7 @@ function CardModal({
   const [valorOrcado, setValorOrcado] = useState(formatarValorInput(card.valorOrcado))
   const [valorFechado, setValorFechado] = useState('')
   const [condicaoPagamento, setCondicaoPagamento] = useState('')
+  const [numeroPedido, setNumeroPedido] = useState('')
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfPathEnviado, setPdfPathEnviado] = useState<string | null>(null)
   const [novaVendaAberta, setNovaVendaAberta] = useState(false)
@@ -1044,6 +1047,7 @@ function CardModal({
       if (!valorFechado) return toast.error('Informe o valor fechado.')
       if (Number.isNaN(parseValorBr(valorFechado))) return toast.error('Valor fechado inválido — use só números, ex: 1.250,50.')
       if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
+      if (mostrarFaturamento && !numeroPedido.trim()) return toast.error('Informe o número do pedido.')
       try {
         pdfPedidoPath = await obterPdfPath()
       } catch {
@@ -1079,6 +1083,7 @@ function CardModal({
       valorOrcado: valorOrcado ? parseValorBr(valorOrcado) : undefined,
       valorFechado: valorFechado ? parseValorBr(valorFechado) : undefined,
       condicaoPagamento: condicaoPagamento || undefined,
+      numeroPedido: numeroPedido.trim() || undefined,
       pdfPedidoPath,
       pdfPropostaPath,
       motivoPerdaCategoria: (motivoCategoria || undefined) as any,
@@ -1105,6 +1110,7 @@ function CardModal({
       setNovaVendaAberta(false)
       setValorFechado('')
       setCondicaoPagamento('')
+      setNumeroPedido('')
       setPdfFile(null)
       setPdfPathEnviado(null)
       setItensPedido([])
@@ -1121,6 +1127,7 @@ function CardModal({
     if (!valorFechado) return toast.error('Informe o valor da venda.')
     if (Number.isNaN(parseValorBr(valorFechado))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
     if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
+    if (mostrarFaturamento && !numeroPedido.trim()) return toast.error('Informe o número do pedido.')
 
     let pdfPedidoPath: string
     try {
@@ -1133,6 +1140,7 @@ function CardModal({
       funilMensalId: card.funilMensalId,
       valorFechado: parseValorBr(valorFechado),
       condicaoPagamento: condicaoPagamento || undefined,
+      numeroPedido: numeroPedido.trim() || undefined,
       pdfPedidoPath,
       clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
       itens: itensPedido
@@ -1148,6 +1156,7 @@ function CardModal({
   const [vendaEditandoId, setVendaEditandoId] = useState<number | null>(null)
   const [vendaEditValor, setVendaEditValor] = useState('')
   const [vendaEditCondicao, setVendaEditCondicao] = useState('')
+  const [vendaEditNumeroPedido, setVendaEditNumeroPedido] = useState('')
 
   const editarVendaMut = trpc.vendas.editar.useMutation({
     onSuccess() {
@@ -1164,6 +1173,7 @@ function CardModal({
     setVendaEditandoId(v.id)
     setVendaEditValor(formatarValorInput(v.valorFechado))
     setVendaEditCondicao(v.condicaoPagamento ?? '')
+    setVendaEditNumeroPedido(v.numeroPedido ?? '')
   }
 
   function handleSalvarEdicaoVenda(e: React.FormEvent) {
@@ -1175,6 +1185,7 @@ function CardModal({
       vendaId: vendaEditandoId,
       valorFechado: parseValorBr(vendaEditValor),
       condicaoPagamento: vendaEditCondicao || undefined,
+      numeroPedido: vendaEditNumeroPedido.trim() || undefined,
     })
   }
 
@@ -1277,11 +1288,29 @@ function CardModal({
                         value={vendaEditValor}
                         onChange={(e) => setVendaEditValor(e.target.value)}
                       />
-                      <Input
-                        label="Condição de pagamento"
-                        value={vendaEditCondicao}
-                        onChange={(e) => setVendaEditCondicao(e.target.value)}
-                      />
+                      {mostrarFaturamento ? (
+                        <Select
+                          label="Forma de pagamento"
+                          value={vendaEditCondicao}
+                          onChange={(e) => setVendaEditCondicao(e.target.value)}
+                          placeholder="Não informado"
+                          options={FORMAS_PAGAMENTO}
+                        />
+                      ) : (
+                        <Input
+                          label="Condição de pagamento"
+                          value={vendaEditCondicao}
+                          onChange={(e) => setVendaEditCondicao(e.target.value)}
+                        />
+                      )}
+                      {mostrarFaturamento && (
+                        <Input
+                          label="Número do pedido"
+                          value={vendaEditNumeroPedido}
+                          onChange={(e) => setVendaEditNumeroPedido(e.target.value)}
+                          placeholder="Ex: 10210"
+                        />
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button type="submit" size="sm" loading={editarVendaMut.isPending}>
@@ -1343,12 +1372,30 @@ function CardModal({
                   value={valorFechado}
                   onChange={(e) => setValorFechado(e.target.value)}
                 />
-                <Input
-                  label="Condição de pagamento"
-                  value={condicaoPagamento}
-                  onChange={(e) => setCondicaoPagamento(e.target.value)}
-                  placeholder="À vista, boleto 30/60..."
-                />
+                {mostrarFaturamento ? (
+                  <Select
+                    label="Forma de pagamento"
+                    value={condicaoPagamento}
+                    onChange={(e) => setCondicaoPagamento(e.target.value)}
+                    placeholder="Não informado"
+                    options={FORMAS_PAGAMENTO}
+                  />
+                ) : (
+                  <Input
+                    label="Condição de pagamento"
+                    value={condicaoPagamento}
+                    onChange={(e) => setCondicaoPagamento(e.target.value)}
+                    placeholder="À vista, boleto 30/60..."
+                  />
+                )}
+                {mostrarFaturamento && (
+                  <Input
+                    label="Número do pedido — obrigatório"
+                    value={numeroPedido}
+                    onChange={(e) => setNumeroPedido(e.target.value)}
+                    placeholder="Ex: 10210"
+                  />
+                )}
                 <div className="flex flex-col gap-1">
                   <AnexoPdfInput
                     label="PDF do pedido/nota — obrigatório"
@@ -1582,12 +1629,30 @@ function CardModal({
                 value={valorFechado}
                 onChange={(e) => setValorFechado(e.target.value)}
               />
-              <Input
-                label="Condição de pagamento"
-                value={condicaoPagamento}
-                onChange={(e) => setCondicaoPagamento(e.target.value)}
-                placeholder="À vista, boleto 30/60..."
-              />
+              {mostrarFaturamento ? (
+                <Select
+                  label="Forma de pagamento"
+                  value={condicaoPagamento}
+                  onChange={(e) => setCondicaoPagamento(e.target.value)}
+                  placeholder="Não informado"
+                  options={FORMAS_PAGAMENTO}
+                />
+              ) : (
+                <Input
+                  label="Condição de pagamento"
+                  value={condicaoPagamento}
+                  onChange={(e) => setCondicaoPagamento(e.target.value)}
+                  placeholder="À vista, boleto 30/60..."
+                />
+              )}
+              {mostrarFaturamento && (
+                <Input
+                  label="Número do pedido — obrigatório"
+                  value={numeroPedido}
+                  onChange={(e) => setNumeroPedido(e.target.value)}
+                  placeholder="Ex: 10210"
+                />
+              )}
               <div className="flex flex-col gap-1">
                 <AnexoPdfInput
                   label="PDF do pedido/nota — obrigatório"
