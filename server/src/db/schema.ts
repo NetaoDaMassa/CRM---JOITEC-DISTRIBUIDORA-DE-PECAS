@@ -636,6 +636,11 @@ export const caixaMovimentacoes = sqliteTable('caixa_movimentacoes', {
   valor: real('valor').notNull(),
   data: text('data').notNull(),
   descricao: text('descricao'),
+  // Preenchido só quando a entrada nasceu sozinha de uma venda de balcão
+  // (Compretec Loja Física, `vendas.registrarVendaRapida`) — nunca setado em
+  // lançamento manual. Serve pra saber a origem e não deixar cair pro null
+  // "sem querer" se a venda for excluída de verdade um dia.
+  origemVendaId: integer('origem_venda_id').references(() => vendas.id, { onDelete: 'set null' }),
   criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
   deletedAt: text('deleted_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),

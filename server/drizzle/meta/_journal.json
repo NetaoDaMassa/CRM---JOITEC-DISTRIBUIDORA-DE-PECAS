@@ -309,6 +309,13 @@
       "when": 1787065718663,
       "tag": "0043_lame_ultron",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "6",
+      "when": 1787075636387,
+      "tag": "0044_clear_proudstar",
+      "breakpoints": true
     }
   ]
 }

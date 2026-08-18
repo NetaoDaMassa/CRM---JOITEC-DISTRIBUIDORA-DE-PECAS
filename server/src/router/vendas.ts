@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas, users } from '../db/schema.js'
+import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas, users, caixaMovimentacoes } from '../db/schema.js'
 import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
@@ -90,10 +90,24 @@ export const vendasRouter = router({
         pdfPedidoPath: input.pdfPedidoPath,
         dataFechamento,
       })
+      const vendaId = Number(vendaResult.lastInsertRowid)
+
+      // Venda de balcão é dinheiro de verdade entrando no caixa da loja no
+      // mesmo instante — soma sozinho no Caixa, sem precisar lançar de novo
+      // na mão (pedido direto do João).
+      await db.insert(caixaMovimentacoes).values({
+        empresaId: ctx.empresaId,
+        tipo: 'entrada',
+        valor: input.valorFechado,
+        data: input.dataPedido,
+        descricao: `Venda balcão — ${input.nomeCliente}`,
+        origemVendaId: vendaId,
+        criadoPor: ctx.user.id,
+      })
 
       await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'criar', alteradoPor: ctx.user.id })
 
-      return { clienteId, funilMensalId, vendaId: Number(vendaResult.lastInsertRowid) }
+      return { clienteId, funilMensalId, vendaId }
     }),
 
   // Cliente já fechou esse mês e comprou de novo — em vez de reabrir/mudar

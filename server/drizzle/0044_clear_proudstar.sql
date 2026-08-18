@@ -1,0 +1,1 @@
+ALTER TABLE `caixa_movimentacoes` ADD `origem_venda_id` integer REFERENCES vendas(id);
