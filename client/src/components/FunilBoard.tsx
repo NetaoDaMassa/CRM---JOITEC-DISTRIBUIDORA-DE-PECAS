@@ -450,11 +450,6 @@ export default function FunilBoard({
         <div className="ml-auto">
           <LegendaIcones />
         </div>
-        {permitirVendaRapida && (
-          <Button onClick={() => setVendaRapidaAberta(true)} className="shrink-0">
-            + Registrar venda
-          </Button>
-        )}
       </div>
 
       {permitirVendaRapida && (
@@ -474,6 +469,11 @@ export default function FunilBoard({
                 <span className="text-sm font-semibold text-dark-200">{etapa.label}</span>
                 <span className="text-dark-500 text-xs">{colCards.length}</span>
               </div>
+              {etapa.value === 'fechado' && permitirVendaRapida && (
+                <Button size="sm" className="w-full mb-2" onClick={() => setVendaRapidaAberta(true)}>
+                  + Registrar venda
+                </Button>
+              )}
               <div className="space-y-2">
                 {colCards.map((card) => {
                   const ultimoContato = card.contatos[0]
