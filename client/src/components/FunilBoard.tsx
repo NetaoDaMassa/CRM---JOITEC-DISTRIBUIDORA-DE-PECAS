@@ -283,7 +283,8 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
           options={[
             { value: 'Dinheiro', label: 'Dinheiro' },
             { value: 'Pix', label: 'Pix' },
-            { value: 'Cartão', label: 'Cartão' },
+            { value: 'Cartão Crédito', label: 'Cartão Crédito' },
+            { value: 'Cartão Débito', label: 'Cartão Débito' },
             { value: 'Outro', label: 'Outro' },
           ]}
         />
