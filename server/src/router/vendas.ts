@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas } from '../db/schema.js'
+import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas, users } from '../db/schema.js'
 import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
@@ -15,8 +15,9 @@ const SLUG_VENDA_RAPIDA = 'compretec-loja-fisica'
 export const vendasRouter = router({
   // Venda de balcão (consumidor final) — cria cliente + funil já em
   // "fechado" + venda numa tacada só, sem passar pelas etapas normais
-  // (novo→abordagem→...) nem exigir PDF do pedido, já que é uma venda de
-  // loja física que já aconteceu no momento do registro.
+  // (novo→abordagem→...) do funil — mas exige PDF do pedido e data do
+  // pedido, igual ao fechamento normal (pedido direto do João depois de
+  // vendas de balcão sem nenhum comprovante registrado).
   registrarVendaRapida: protectedProcedure
     .input(
       z.object({
@@ -25,11 +26,32 @@ export const vendasRouter = router({
         telefone: z.string().optional(),
         condicaoPagamento: z.string().optional(),
         numeroCupomFiscal: z.string().optional(),
+        dataPedido: z.string(),
+        pdfPedidoPath: z.string().min(1),
+        // Só o admin usa isso, pra registrar em nome de um vendedor
+        // específico (o board dele mostra o funil de outra pessoa) — se
+        // omitido, ou se quem chama não é admin, o crédito vai sempre pro
+        // próprio usuário logado.
+        vendedorId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
       if (empresa?.slug !== SLUG_VENDA_RAPIDA) throw new Error('Recurso disponível só pra Compretec Loja Física')
+
+      let vendedorAlvoId = ctx.user.id
+      if (input.vendedorId && input.vendedorId !== ctx.user.id) {
+        if (ctx.user.role !== 'admin') throw new Error('Só um admin pode registrar venda em nome de outro vendedor')
+        const alvo = await db.query.users.findFirst({ where: and(eq(users.id, input.vendedorId), eq(users.empresaId, ctx.empresaId)) })
+        if (!alvo) throw new Error('Vendedor não encontrado nessa empresa')
+        vendedorAlvoId = alvo.id
+      }
+
+      // `dataPedido` chega como "YYYY-MM-DD" (input type="date") — junta com
+      // a hora atual pra virar o mesmo formato "YYYY-MM-DD HH:MM:SS" que o
+      // resto do app usa em `dataFechamento` (nunca ISO com T/Z, senão
+      // quebra os filtros de intervalo de data que comparam como texto).
+      const dataFechamento = `${input.dataPedido} ${agoraSqlite().slice(11)}`
 
       const codigo = `M${Date.now()}`
       const clienteResult = await db.insert(clientes).values({
@@ -40,17 +62,17 @@ export const vendasRouter = router({
         telefoneWhatsapp: input.telefone || undefined,
         statusFiscal: 'consumidor_final',
         cadastradoPor: ctx.user.id,
-        vendedorAtualId: ctx.user.id,
+        vendedorAtualId: vendedorAlvoId,
         dataUltimaCompra: agoraSqlite(),
       })
       const clienteId = Number(clienteResult.lastInsertRowid)
 
-      await db.insert(carteiraHistorico).values({ clienteId, vendedorId: ctx.user.id })
+      await db.insert(carteiraHistorico).values({ clienteId, vendedorId: vendedorAlvoId })
 
       const mesReferencia = mesReferenciaAtual()
       const funilResult = await db.insert(funilMensal).values({
         clienteId,
-        vendedorId: ctx.user.id,
+        vendedorId: vendedorAlvoId,
         mesReferencia,
         etapa: 'fechado',
         dataEntradaEtapa: agoraSqlite(),
@@ -60,11 +82,13 @@ export const vendasRouter = router({
       const vendaResult = await db.insert(vendas).values({
         funilMensalId,
         clienteId,
-        vendedorId: ctx.user.id,
+        vendedorId: vendedorAlvoId,
         mesReferencia,
         valorFechado: input.valorFechado,
         condicaoPagamento: input.condicaoPagamento || null,
         numeroCupomFiscal: input.numeroCupomFiscal || null,
+        pdfPedidoPath: input.pdfPedidoPath,
+        dataFechamento,
       })
 
       await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'criar', alteradoPor: ctx.user.id })

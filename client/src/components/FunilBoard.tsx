@@ -164,17 +164,21 @@ type RouterOutputs = inferRouterOutputs<AppRouter>
 export type Card = RouterOutputs['funil']['meuFunil'][number]
 
 // Venda de balcão (consumidor final) — só aparece pra Compretec Loja
-// Física (gate no vendor/Kanban.tsx, que decide se passa
-// `permitirVendaRapida`). Cria o cliente + fecha a venda numa tacada só,
-// sem PDF nem etapas intermediárias — pensado pra registrar rápido no
-// balcão da loja.
-function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+// Física (gate em vendor/Kanban.tsx e admin/Kanban.tsx, que decidem se
+// passam `permitirVendaRapida`). Cria o cliente + fecha a venda numa
+// tacada só, sem passar pelas etapas normais do funil — mas exige PDF do
+// pedido e data do pedido, igual ao fechamento normal de venda (pedido
+// direto do João depois de casos sem comprovante nenhum registrado).
+function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClose: () => void; vendedorId?: number }) {
   const utils = trpc.useUtils()
   const [nomeCliente, setNomeCliente] = useState('Consumidor Final')
   const [valor, setValor] = useState('')
   const [telefone, setTelefone] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
   const [cupomFiscal, setCupomFiscal] = useState('')
+  const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10))
+  const [pdfArquivo, setPdfArquivo] = useState<File | null>(null)
+  const [enviandoPdf, setEnviandoPdf] = useState(false)
 
   const mut = trpc.vendas.registrarVendaRapida.useMutation({
     onSuccess() {
@@ -185,6 +189,8 @@ function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => voi
       setTelefone('')
       setFormaPagamento('')
       setCupomFiscal('')
+      setDataPedido(new Date().toISOString().slice(0, 10))
+      setPdfArquivo(null)
       onClose()
     },
     onError(err) {
@@ -192,17 +198,41 @@ function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => voi
     },
   })
 
-  function registrar() {
+  async function enviarPdf(arquivo: File): Promise<string> {
+    const token = localStorage.getItem('odin_token')
+    const form = new FormData()
+    form.append('file', arquivo)
+    const res = await fetch('/upload/pedido', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form })
+    if (!res.ok) throw new Error('Falha ao enviar o PDF.')
+    const data = await res.json()
+    return data.path
+  }
+
+  async function registrar() {
     const valorNum = Number(valor.replace(',', '.'))
     if (!nomeCliente.trim()) return toast.error('Informe o nome do cliente')
     if (!valorNum || valorNum <= 0) return toast.error('Informe o valor do pedido')
-    mut.mutate({
-      nomeCliente: nomeCliente.trim(),
-      valorFechado: valorNum,
-      telefone: telefone.trim() || undefined,
-      condicaoPagamento: formaPagamento || undefined,
-      numeroCupomFiscal: cupomFiscal.trim() || undefined,
-    })
+    if (!dataPedido) return toast.error('Informe a data do pedido')
+    if (!pdfArquivo) return toast.error('Anexe o PDF do pedido')
+
+    try {
+      setEnviandoPdf(true)
+      const pdfPedidoPath = await enviarPdf(pdfArquivo)
+      mut.mutate({
+        nomeCliente: nomeCliente.trim(),
+        valorFechado: valorNum,
+        telefone: telefone.trim() || undefined,
+        condicaoPagamento: formaPagamento || undefined,
+        numeroCupomFiscal: cupomFiscal.trim() || undefined,
+        dataPedido,
+        pdfPedidoPath,
+        vendedorId,
+      })
+    } catch (err: any) {
+      toast.error(err.message ?? 'Falha ao enviar o PDF.')
+    } finally {
+      setEnviandoPdf(false)
+    }
   }
 
   return (
@@ -210,6 +240,7 @@ function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => voi
       <div className="space-y-3">
         <Input label="Nome do cliente" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
         <Input label="Valor do pedido (R$)" type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} />
+        <Input label="Data do pedido" type="date" value={dataPedido} onChange={(e) => setDataPedido(e.target.value)} />
         <Input label="Telefone (opcional)" value={telefone} onChange={(e) => setTelefone(e.target.value)} />
         <Select
           label="Forma de pagamento (opcional)"
@@ -224,7 +255,8 @@ function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => voi
           ]}
         />
         <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
-        <Button className="w-full" loading={mut.isPending} onClick={registrar}>
+        <AnexoPdfInput label="PDF do pedido" nomeArquivo={pdfArquivo?.name} onSelecionar={setPdfArquivo} />
+        <Button className="w-full" loading={mut.isPending || enviandoPdf} onClick={registrar}>
           Registrar venda
         </Button>
       </div>
@@ -235,7 +267,18 @@ function VendaRapidaModal({ open, onClose }: { open: boolean; onClose: () => voi
 // Board de Kanban compartilhado entre o vendedor vendo o próprio funil
 // (`/vendedor/kanban`) e o admin vendo o funil de um vendedor específico
 // (`/admin/kanban`) — mesmo card, mesmo modal, só muda de onde os dados vêm.
-export default function FunilBoard({ cards, permitirVendaRapida }: { cards: Card[]; permitirVendaRapida?: boolean }) {
+export default function FunilBoard({
+  cards,
+  permitirVendaRapida,
+  vendedorIdVendaRapida,
+}: {
+  cards: Card[]
+  permitirVendaRapida?: boolean
+  // Só o admin usa isso: qual vendedor recebe o crédito da venda rápida
+  // registrada por ele (o vendor/Kanban.tsx não passa — lá é sempre o
+  // próprio usuário logado, resolvido no backend por ctx.user.id).
+  vendedorIdVendaRapida?: number
+}) {
   const utils = trpc.useUtils()
   const [vendaRapidaAberta, setVendaRapidaAberta] = useState(false)
   // Guarda só o id, não o objeto — assim, quando uma mutação invalida a
@@ -407,7 +450,9 @@ export default function FunilBoard({ cards, permitirVendaRapida }: { cards: Card
         )}
       </div>
 
-      {permitirVendaRapida && <VendaRapidaModal open={vendaRapidaAberta} onClose={() => setVendaRapidaAberta(false)} />}
+      {permitirVendaRapida && (
+        <VendaRapidaModal open={vendaRapidaAberta} onClose={() => setVendaRapidaAberta(false)} vendedorId={vendedorIdVendaRapida} />
+      )}
 
       <div ref={topScrollRef} onScroll={sincronizarDoTopo} className="overflow-x-auto overflow-y-hidden h-4 mb-1">
         <div style={{ width: boardWidth, height: 1 }} />
