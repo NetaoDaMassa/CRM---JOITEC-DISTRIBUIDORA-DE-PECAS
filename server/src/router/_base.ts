@@ -44,3 +44,20 @@ export function featureProcedure(feature: string) {
     return next({ ctx })
   })
 }
+
+// Telas que hoje são "admin-only" mas o superAdmin pode liberar pra um
+// vendedor específico (ex: Banco de Clientes) — qualquer admin continua
+// passando direto (nunca fica mais restrito que hoje), vendedor só passa
+// com a feature liberada em Permissões. Diferente de `featureProcedure`
+// (que exige role admin sempre); esse aqui é o único jeito de um vendedor
+// chegar numa rota historicamente admin-only.
+export function adminOrFeatureProcedure(feature: string) {
+  return protectedProcedure.use(async ({ ctx, next }) => {
+    if (ctx.user.role === 'admin' || ctx.user.superAdmin) return next({ ctx })
+    const liberado = await db.query.permissoesAdmin.findFirst({
+      where: and(eq(permissoesAdmin.userId, ctx.user.id), eq(permissoesAdmin.feature, feature)),
+    })
+    if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito a esse setor' })
+    return next({ ctx })
+  })
+}

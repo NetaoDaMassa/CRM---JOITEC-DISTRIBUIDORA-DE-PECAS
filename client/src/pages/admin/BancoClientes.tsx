@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -11,6 +12,7 @@ import { paraCsv, baixarCsv } from '../../lib/csv'
 // um pra carteira de alguém, reaproveitando a mesma mutation de transferência
 // individual usada em /admin/carteira.
 export default function BancoClientes() {
+  const { user } = useAuth()
   const [q, setQ] = useState('')
   const [origemBanco, setOrigemBanco] = useState('')
   const [estado, setEstado] = useState('')
@@ -71,6 +73,19 @@ export default function BancoClientes() {
     },
   })
 
+  // Vendedor não escolhe destino (só pra admin) — sempre atribui pra própria
+  // carteira, o backend nem aceita outro id.
+  const autoAtribuirMut = trpc.clientes.bancoAutoAtribuir.useMutation({
+    onSuccess() {
+      toast.success('Cliente adicionado à sua carteira')
+      utils.clientes.banco.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   const vendorOptions = (vendors ?? []).map((v) => ({ value: v.id, label: v.name }))
   const totalBanco = (resumo ?? []).reduce((soma, r) => soma + r.quantidade, 0)
 
@@ -86,7 +101,8 @@ export default function BancoClientes() {
         <div>
           <h1 className="font-heading text-xl text-dark-50">Banco de Clientes</h1>
           <p className="text-sm text-dark-400">
-            Todo cliente ativo sem vendedor atribuído ({totalBanco} no total) — escolha um vendedor e atribua pra carteira.
+            Todo cliente ativo sem vendedor atribuído ({totalBanco} no total) —{' '}
+            {user?.role === 'vendor' ? 'pegue um cliente pra sua carteira.' : 'escolha um vendedor e atribua pra carteira.'}
           </p>
         </div>
         <Button variant="secondary" size="sm" loading={exportando} onClick={exportarCsv} className="shrink-0">
@@ -160,15 +176,23 @@ export default function BancoClientes() {
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <Select
-                value={vendedorPorLinha[c.id] ?? ''}
-                onChange={(e) => setVendedorPorLinha((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                placeholder="Vendedor..."
-                options={vendorOptions}
-              />
-              <Button size="sm" loading={transferirMut.isPending} onClick={() => atribuir(c.id)}>
-                Atribuir
-              </Button>
+              {user?.role === 'vendor' ? (
+                <Button size="sm" loading={autoAtribuirMut.isPending} onClick={() => autoAtribuirMut.mutate({ clienteId: c.id })}>
+                  Pegar cliente
+                </Button>
+              ) : (
+                <>
+                  <Select
+                    value={vendedorPorLinha[c.id] ?? ''}
+                    onChange={(e) => setVendedorPorLinha((prev) => ({ ...prev, [c.id]: e.target.value }))}
+                    placeholder="Vendedor..."
+                    options={vendorOptions}
+                  />
+                  <Button size="sm" loading={transferirMut.isPending} onClick={() => atribuir(c.id)}>
+                    Atribuir
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         ))}

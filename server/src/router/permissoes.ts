@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { permissoesAdmin, users } from '../db/schema.js'
@@ -29,6 +29,25 @@ export const FEATURES_ADMIN = [
   'backup',
   'painel_financeiro',
   'painel_tv',
+] as const
+
+// Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
+// algumas chaves que também existem em FEATURES_ADMIN (kanban, agenda,
+// clientes, prospeccao, pos_venda, banco_clientes, relatorios) — é a mesma
+// string, mas nunca colide: o Sidebar já filtra ADMIN_LINKS ou VENDOR_LINKS
+// pelo role antes de checar a feature, então cada papel só enxerga os itens
+// da própria lista.
+export const FEATURES_VENDEDOR = [
+  'meu_painel',
+  'fila_hoje',
+  'pos_venda',
+  'kanban',
+  'agenda',
+  'clientes',
+  'prospeccao',
+  'banco_clientes',
+  'relatorios',
+  'solicitar_design',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima
@@ -64,9 +83,8 @@ export const permissoesRouter = router({
     return admins.map((a) => ({ ...a, features: porUsuario.get(a.id) ?? [] }))
   }),
 
-  // Mesma ideia de listarAdmins, mas pra vendedores — usado só na tela de
-  // "Relatórios por vendedor" (abas de dentro de Relatórios, não tem os
-  // outros itens de menu porque vendedor não usa ADMIN_LINKS).
+  // Mesma ideia de listarAdmins, mas pra vendedores — itens da Sidebar dele
+  // (VENDOR_LINKS) + abas de relatório, tudo junto na mesma tela.
   listarVendedores: superAdminProcedure.query(async () => {
     const vendedores = await db.query.users.findMany({
       where: eq(users.role, 'vendor'),
@@ -74,7 +92,7 @@ export const permissoesRouter = router({
       orderBy: (u, { asc }) => [asc(u.name)],
     })
     const todasPermissoes = await db.query.permissoesAdmin.findMany({
-      where: inArray(permissoesAdmin.feature, [...FEATURES_RELATORIOS]),
+      where: inArray(permissoesAdmin.feature, [...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS]),
     })
     const porUsuario = new Map<number, string[]>()
     for (const p of todasPermissoes) {
@@ -93,40 +111,21 @@ export const permissoesRouter = router({
     return linhas.map((l) => l.feature)
   }),
 
-  // Substitui o conjunto inteiro de features liberadas pro admin alvo
-  // (itens de menu + abas de relatórios, as duas listas juntas).
+  // Substitui o conjunto inteiro de features liberadas pra pessoa alvo
+  // (itens de menu + abas de relatórios juntos) — funciona pra admin OU
+  // vendedor, a mesma tabela/mecanismo pros dois papéis agora.
   atualizar: superAdminProcedure
-    .input(z.object({ userId: z.number(), features: z.array(z.enum([...FEATURES_ADMIN, ...FEATURES_RELATORIOS])) }))
+    .input(
+      z.object({
+        userId: z.number(),
+        features: z.array(z.enum([...FEATURES_ADMIN, ...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS])),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const alvo = await db.query.users.findFirst({ where: eq(users.id, input.userId) })
-      if (!alvo || alvo.role !== 'admin') throw new Error('Usuário admin não encontrado')
+      if (!alvo || (alvo.role !== 'admin' && alvo.role !== 'vendor')) throw new Error('Usuário não encontrado')
 
       await db.delete(permissoesAdmin).where(eq(permissoesAdmin.userId, input.userId))
-      if (input.features.length > 0) {
-        await db.insert(permissoesAdmin).values(input.features.map((feature) => ({ userId: input.userId, feature })))
-      }
-
-      await registrarAuditoria({
-        tabela: 'permissoes_admin',
-        registroId: input.userId,
-        acao: 'editar',
-        valorNovo: input.features.join(','),
-        alteradoPor: ctx.user.id,
-      })
-      return { success: true }
-    }),
-
-  // Só as abas de relatório, só pra vendedor — não mexe em nada mais (admin
-  // usa `atualizar` acima, que já inclui as abas de relatório junto).
-  atualizarRelatorios: superAdminProcedure
-    .input(z.object({ userId: z.number(), features: z.array(z.enum(FEATURES_RELATORIOS)) }))
-    .mutation(async ({ ctx, input }) => {
-      const alvo = await db.query.users.findFirst({ where: eq(users.id, input.userId) })
-      if (!alvo || alvo.role !== 'vendor') throw new Error('Usuário vendedor não encontrado')
-
-      await db
-        .delete(permissoesAdmin)
-        .where(and(eq(permissoesAdmin.userId, input.userId), inArray(permissoesAdmin.feature, [...FEATURES_RELATORIOS])))
       if (input.features.length > 0) {
         await db.insert(permissoesAdmin).values(input.features.map((feature) => ({ userId: input.userId, feature })))
       }

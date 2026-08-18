@@ -155,6 +155,7 @@ export default function App() {
           <Route path="vendedor/clientes/novo" element={<ClienteNovo />} />
           <Route path="vendedor/clientes/:id" element={<ClienteDetail />} />
           <Route path="vendedor/relatorios" element={<AdminReports />} />
+          <Route path="vendedor/banco-clientes" element={<AdminBancoClientes />} />
           <Route path="vendedor/calendario" element={<VendorCalendario />} />
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
 

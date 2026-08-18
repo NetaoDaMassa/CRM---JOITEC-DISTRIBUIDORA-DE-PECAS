@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure } from './_base.js'
+import { router, protectedProcedure, adminProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
@@ -481,5 +481,26 @@ export const funilRouter = router({
   // rede de segurança se o servidor ficou fora do ar na virada.
   rodarResetMensal: adminProcedure.mutation(async () => {
     return executarResetMensal()
+  }),
+
+  // Exclui um card do Kanban direto (não é a Lixeira — o cliente continua
+  // existindo, só esse card/pipeline do mês some). Não existia nenhum jeito
+  // de fazer isso pela tela antes (só via SQL direto) — pedido do João pra
+  // limpar duplicatas/erros sem precisar me chamar toda vez. Só o admin
+  // master, em qualquer empresa (ctx.empresaId não trava — ele já troca de
+  // empresa pelo seletor, então o card sempre pertence à empresa ativa dele
+  // no momento, mas nunca precisa bater userId/vendedor como os outros).
+  excluirCard: superAdminProcedure.input(z.object({ funilMensalId: z.number() })).mutation(async ({ ctx, input }) => {
+    const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
+    if (!funil || funil.deletedAt) throw new Error('Card não encontrado')
+
+    await db.update(funilMensal).set({ deletedAt: agoraSqlite() }).where(eq(funilMensal.id, input.funilMensalId))
+    await registrarAuditoria({
+      tabela: 'funil_mensal',
+      registroId: input.funilMensalId,
+      acao: 'excluir',
+      alteradoPor: ctx.user.id,
+    })
+    return { success: true }
   }),
 })

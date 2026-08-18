@@ -767,6 +767,17 @@ function CardModal({
   mostrarFaturamento?: boolean
 }) {
   const etapasVisiveis = mostrarFaturamento ? ETAPAS : ETAPAS.filter((e) => e.value !== 'faturamento')
+  const { user } = useAuth()
+  const [confirmarExclusaoCard, setConfirmarExclusaoCard] = useState(false)
+  const excluirCardMut = trpc.funil.excluirCard.useMutation({
+    onSuccess() {
+      toast.success('Card excluído')
+      onChanged()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
   const utils = trpc.useUtils()
   const [tipo, setTipo] = useState('ligacao')
   const [resultado, setResultado] = useState('')
@@ -1139,6 +1150,34 @@ function CardModal({
   return (
     <Modal open onClose={onClose} title={card.orcamentoLabel ? `${card.razaoSocial} — ${card.orcamentoLabel}` : card.razaoSocial} size="lg">
       <div className="space-y-5">
+        {user?.superAdmin && (
+          <div className="flex justify-end">
+            {!confirmarExclusaoCard ? (
+              <button
+                type="button"
+                onClick={() => setConfirmarExclusaoCard(true)}
+                className="text-xs text-red-400 hover:text-red-300 hover:underline"
+              >
+                🗑️ Excluir este card
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 bg-red-900/20 border border-red-700/40 rounded-lg px-3 py-2">
+                <span className="text-xs text-red-300">Excluir este card? O cliente continua existindo, só some do funil.</span>
+                <Button
+                  size="sm"
+                  variant="danger"
+                  loading={excluirCardMut.isPending}
+                  onClick={() => excluirCardMut.mutate({ funilMensalId: card.funilMensalId })}
+                >
+                  Excluir
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setConfirmarExclusaoCard(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
         {sugestaoProximoPasso(card) && (
           <div className="text-sm text-gold-300 bg-gold-900/10 border border-gold-700/30 rounded-xl px-3 py-2">
             <span className="font-semibold">Sugestão: </span>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
-import { ADMIN_LINKS } from '../../components/Sidebar'
+import { ADMIN_LINKS, VENDOR_LINKS } from '../../components/Sidebar'
 
 // Painel Financeiro e Painel de TV não são itens do menu comum (ADMIN_LINKS)
 // — são links à parte no Sidebar, renderizados fora do links.map(). Somados
@@ -12,6 +12,8 @@ const FEATURES = [
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
 ]
+
+const FEATURES_VENDEDOR = VENDOR_LINKS.map((l) => ({ feature: l.feature, label: l.label }))
 
 const FEATURES_RELATORIOS = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
@@ -137,16 +139,16 @@ export default function Permissoes() {
         </div>
       )}
 
-      <PermissoesRelatoriosVendedores />
+      <PermissoesVendedor />
 
       <VinculoContas />
     </div>
   )
 }
 
-// Mesma ideia da seção de admin acima, mas só as abas de Relatórios, pra
-// vendedor (vendedor não tem os outros itens de menu — não usa ADMIN_LINKS).
-function PermissoesRelatoriosVendedores() {
+// Mesma ideia da seção de admin acima, agora com os itens de menu do
+// vendedor (VENDOR_LINKS) + as abas de Relatórios juntos numa tela só.
+function PermissoesVendedor() {
   const [userIdSelecionado, setUserIdSelecionado] = useState<number | null>(null)
   const [featuresSelecionadas, setFeaturesSelecionadas] = useState<string[]>([])
 
@@ -163,7 +165,7 @@ function PermissoesRelatoriosVendedores() {
     if (vendedorAtual) setFeaturesSelecionadas(vendedorAtual.features)
   }, [vendedorAtual?.id])
 
-  const atualizarMut = trpc.permissoes.atualizarRelatorios.useMutation({
+  const atualizarMut = trpc.permissoes.atualizar.useMutation({
     onSuccess() {
       toast.success('Permissões salvas')
       utils.permissoes.listarVendedores.invalidate()
@@ -185,8 +187,8 @@ function PermissoesRelatoriosVendedores() {
   return (
     <div className="space-y-3">
       <div>
-        <h2 className="font-heading text-lg text-dark-50">Relatórios por vendedor</h2>
-        <p className="text-sm text-dark-400">Escolha quais abas de Relatórios cada vendedor enxerga na própria tela.</p>
+        <h2 className="font-heading text-lg text-dark-50">Permissões do vendedor</h2>
+        <p className="text-sm text-dark-400">Escolha quais itens do menu e quais abas de Relatórios cada vendedor enxerga.</p>
       </div>
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
@@ -216,7 +218,7 @@ function PermissoesRelatoriosVendedores() {
             {vendedorAtual ? (
               <>
                 <div className="grid grid-cols-2 gap-2">
-                  {FEATURES_RELATORIOS.map(({ feature, label }) => (
+                  {FEATURES_VENDEDOR.map(({ feature, label }) => (
                     <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                       <input
                         type="checkbox"
@@ -228,6 +230,26 @@ function PermissoesRelatoriosVendedores() {
                     </label>
                   ))}
                 </div>
+
+                <div className="pt-2 border-t border-dark-700">
+                  <p className="text-xs text-dark-500 mb-2">
+                    Abas dentro de Relatórios (só valem se "Relatórios" acima também estiver marcado)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {FEATURES_RELATORIOS.map(({ feature, label }) => (
+                      <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
+                        <input
+                          type="checkbox"
+                          className="accent-gold-500"
+                          checked={featuresSelecionadas.includes(feature)}
+                          onChange={() => toggleFeature(feature)}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
                 <Button loading={atualizarMut.isPending} onClick={salvar}>
                   Salvar permissões de {vendedorAtual.name}
                 </Button>

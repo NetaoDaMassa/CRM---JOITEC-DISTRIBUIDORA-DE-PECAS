@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, asc, count, desc, eq, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure } from './_base.js'
+import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users } from '../db/schema.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
@@ -8,6 +8,7 @@ import { buscarCnpj } from '../lib/brasilApi.js'
 import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
+import { transferirCliente } from './carteira.js'
 
 const PAGE_SIZE = 20
 // Rótulo pra cliente sem vendedor que não veio de nenhuma importação com
@@ -404,7 +405,7 @@ export const clientesRouter = router({
   // origem (esses ganham o rótulo real; os demais caem em "Sem origem
   // definida", ex: cadastro manual sem vendedor). O admin distribui pra
   // carteira de alguém usando `carteira.transferirIndividual`, que já existe.
-  bancoResumo: adminProcedure.query(async ({ ctx }) => {
+  bancoResumo: adminOrFeatureProcedure('banco_clientes').query(async ({ ctx }) => {
     const linhas = await db
       .select({ origemBanco: sql<string>`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`, quantidade: count() })
       .from(clientes)
@@ -417,7 +418,7 @@ export const clientesRouter = router({
   // Estados com pelo menos 1 cliente no banco (sem vendedor) — alimenta o
   // filtro de estado na tela, só com opções que realmente existem no banco
   // agora (não a lista fixa de 27 UFs, a maioria ficaria vazia).
-  bancoEstados: adminProcedure.query(async ({ ctx }) => {
+  bancoEstados: adminOrFeatureProcedure('banco_clientes').query(async ({ ctx }) => {
     const linhas = await db
       .selectDistinct({ estado: clientes.estado })
       .from(clientes)
@@ -433,7 +434,7 @@ export const clientesRouter = router({
     return linhas.map((l) => l.estado).filter((e): e is string => !!e)
   }),
 
-  banco: adminProcedure
+  banco: adminOrFeatureProcedure('banco_clientes')
     .input(
       z.object({
         q: z.string().optional(),
@@ -459,7 +460,7 @@ export const clientesRouter = router({
   // Mesmos filtros de `banco`, sem paginação — alimenta o botão "Exportar
   // planilha" (a lista na tela é paginada de 20 em 20, não dá pra exportar
   // reaproveitando ela).
-  bancoExportar: adminProcedure
+  bancoExportar: adminOrFeatureProcedure('banco_clientes')
     .input(
       z.object({
         q: z.string().optional(),
@@ -485,6 +486,22 @@ export const clientesRouter = router({
         },
       })
     }),
+
+  // Auto-atribuição do Banco de Clientes — só existe pra quem NÃO é admin
+  // (o admin continua usando `carteira.transferirIndividual`, que deixa
+  // escolher qualquer vendedor). Sempre atribui pro próprio usuário logado,
+  // nunca aceita um vendedorId vindo do client — é assim que um vendedor
+  // com a feature 'banco_clientes' consegue "pegar" um cliente do banco pra
+  // própria carteira sem ganhar o poder de mexer na carteira de outro.
+  bancoAutoAtribuir: adminOrFeatureProcedure('banco_clientes').input(z.object({ clienteId: z.number() })).mutation(async ({ ctx, input }) => {
+    const cliente = await db.query.clientes.findFirst({
+      where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId)),
+    })
+    if (!cliente) throw new Error('Cliente não encontrado no banco')
+
+    await transferirCliente(input.clienteId, ctx.user.id, ctx.user.id)
+    return { success: true }
+  }),
 })
 
 function bancoFiltros(

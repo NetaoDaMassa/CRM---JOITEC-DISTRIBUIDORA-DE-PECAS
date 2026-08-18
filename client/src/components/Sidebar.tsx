@@ -50,16 +50,24 @@ export const ADMIN_LINKS = [
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
 ]
 
-const VENDOR_LINKS = [
-  { to: '/vendedor', label: 'Meu Painel', icon: LayoutDashboard, end: true },
-  { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: ListChecks },
-  { to: '/vendedor/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES },
-  { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare },
-  { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays },
-  { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List },
-  { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES },
-  { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3 },
-  { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette },
+// Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
+// controla quem vê cada item. Reaproveita as MESMAS chaves do admin quando
+// faz sentido (ex: 'banco_clientes') — a tabela não distingue role, só
+// (userId, feature), então liberar 'banco_clientes' pra um vendedor dá
+// acesso à mesma tela que o admin usa (rota própria, ver App.tsx).
+export const VENDOR_LINKS = [
+  { to: '/vendedor', label: 'Meu Painel', icon: LayoutDashboard, end: true, feature: 'meu_painel' },
+  { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: ListChecks, feature: 'fila_hoje' },
+  { to: '/vendedor/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
+  { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
+  { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays, feature: 'agenda' },
+  { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List, feature: 'clientes' },
+  { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
+  { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
+  // Mesma chave 'relatorios' do admin (controla o link aparecer ou não) —
+  // dentro da página, os relatorio_* controlam aba por aba, igual antes.
+  { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
+  { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
 ]
 
 export default function Sidebar() {
@@ -92,14 +100,14 @@ export default function Sidebar() {
     enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
   })
 
+  // Mesma regra pros dois papéis agora: superAdmin sempre vê tudo; qualquer
+  // outro (admin ou vendedor) precisa ter a `feature` do item liberada em
+  // Permissões.
   const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
     (l) =>
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
-      (user?.role !== 'admin' || user.superAdmin || !!minhasFeatures?.includes((l as { feature?: string }).feature ?? '')) &&
-      // Some enquanto carrega (evita flicker); some de vez só quando a
-      // resposta já chegou e nenhuma aba de relatório está liberada.
-      (l.to !== '/vendedor/relatorios' || minhasFeatures === undefined || minhasFeatures.some((f) => f.startsWith('relatorio_')))
+      (user?.superAdmin || !!minhasFeatures?.includes(l.feature))
   )
 
   function handleLogout() {
