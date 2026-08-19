@@ -4,6 +4,7 @@ import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } f
 import { db } from '../db/client.js'
 import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users } from '../db/schema.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
+import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
 import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
@@ -218,6 +219,7 @@ export const clientesRouter = router({
       z.object({
         razaoSocial: z.string().min(2),
         cnpj: z.string().optional(),
+        cpf: z.string().optional(),
         codigo: z.string().optional(),
         inscricaoEstadual: z.string().optional(),
         regiao: z.enum(REGIAO_VALUES),
@@ -243,6 +245,16 @@ export const clientesRouter = router({
         if (existente && !existente.deletedAt) throw new Error('Já existe um cliente com este CNPJ')
       }
 
+      let cpfLimpo: string | undefined
+      if (input.cpf) {
+        if (!cpfValido(input.cpf)) throw new Error('CPF inválido')
+        cpfLimpo = limparCpf(input.cpf)
+        const existente = await db.query.clientes.findFirst({
+          where: and(eq(clientes.cpf, cpfLimpo), eq(clientes.empresaId, ctx.empresaId)),
+        })
+        if (existente && !existente.deletedAt) throw new Error('Já existe um cliente com este CPF')
+      }
+
       // Cadastro manual não vem com o "Código" do sistema legado (só a
       // importação em massa traz) — gera um código próprio, prefixado "M"
       // pra nunca colidir com os códigos "C0xxxxx" importados.
@@ -258,6 +270,7 @@ export const clientesRouter = router({
         empresaId: ctx.empresaId,
         razaoSocial: input.razaoSocial,
         cnpj: cnpjLimpo,
+        cpf: cpfLimpo,
         codigo,
         inscricaoEstadual: input.inscricaoEstadual,
         regiao: input.regiao,
@@ -294,6 +307,7 @@ export const clientesRouter = router({
         versao: z.number(),
         razaoSocial: z.string().min(2).optional(),
         cnpj: z.string().optional(),
+        cpf: z.string().optional(),
         codigo: z.string().optional(),
         inscricaoEstadual: z.string().optional(),
         estado: z.string().optional(),
@@ -308,7 +322,7 @@ export const clientesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, versao, cnpj, codigo, ...rest } = input
+      const { id, versao, cnpj, cpf, codigo, ...rest } = input
       const cliente = await db.query.clientes.findFirst({
         where: and(eq(clientes.id, id), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)),
       })
@@ -326,6 +340,17 @@ export const clientesRouter = router({
           if (existente && !existente.deletedAt && existente.id !== id) throw new Error('Já existe um cliente com este CNPJ')
         }
         updates.cnpj = cnpjLimpo
+      }
+      if (cpf) {
+        if (!cpfValido(cpf)) throw new Error('CPF inválido')
+        const cpfLimpo = limparCpf(cpf)
+        if (cpfLimpo !== cliente.cpf) {
+          const existente = await db.query.clientes.findFirst({
+            where: and(eq(clientes.cpf, cpfLimpo), eq(clientes.empresaId, ctx.empresaId)),
+          })
+          if (existente && !existente.deletedAt && existente.id !== id) throw new Error('Já existe um cliente com este CPF')
+        }
+        updates.cpf = cpfLimpo
       }
       // Código é sempre o código do SAP — único por empresa (ver comentário
       // no schema), então troca de código passa pela mesma checagem de

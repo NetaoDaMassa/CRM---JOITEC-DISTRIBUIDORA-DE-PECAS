@@ -1749,6 +1749,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const [editando, setEditando] = useState(false)
   const [codigo, setCodigo] = useState(card.codigo ?? '')
   const [cnpj, setCnpj] = useState(card.cnpj ?? '')
+  const [cpf, setCpf] = useState(card.cpf ?? '')
   const [inscricaoEstadual, setInscricaoEstadual] = useState(card.inscricaoEstadual ?? '')
   const [cidade, setCidade] = useState(card.cidade ?? '')
   const [estado, setEstado] = useState(card.estado ?? '')
@@ -1771,7 +1772,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
     },
   })
 
-  const faltandoAlgo = !card.cnpj || !card.email || !card.cidade || !card.estado || !card.inscricaoEstadual || !card.nomeContato
+  const faltandoAlgo = (!card.cnpj && !card.cpf) || !card.email || !card.cidade || !card.estado || !card.inscricaoEstadual || !card.nomeContato
 
   if (!editando) {
     return (
@@ -1795,6 +1796,9 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           </p>
           <p className="text-dark-500">
             CNPJ: <span className={card.cnpj ? 'text-dark-300' : 'text-amber-400'}>{card.cnpj ?? 'não informado'}</span>
+          </p>
+          <p className="text-dark-500">
+            CPF: <span className={card.cpf ? 'text-dark-300' : 'text-amber-400'}>{card.cpf ?? 'não informado'}</span>
           </p>
           <p className="text-dark-500">
             Cidade/UF:{' '}
@@ -1874,6 +1878,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           versao: card.clienteVersao,
           codigo: codigo || undefined,
           cnpj: cnpj || undefined,
+          cpf: cpf || undefined,
           inscricaoEstadual: inscricaoEstadual || undefined,
           cidade: cidade || undefined,
           estado: estado || undefined,
@@ -1891,6 +1896,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
       <div className="grid grid-cols-2 gap-2">
         <Input label="Código (SAP)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
         <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+        <Input label="CPF" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" />
         <Input label="Inscrição Estadual" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} />
         <Input label="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
         <Input label="Estado (UF)" value={estado} onChange={(e) => setEstado(e.target.value.toUpperCase())} maxLength={2} />

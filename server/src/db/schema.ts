@@ -130,6 +130,9 @@ export const clientes = sqliteTable('clientes', {
   // uma segunda empresa nunca conseguiria ter um código/CNPJ que coincida
   // por acaso com o de um cliente da outra.
   cnpj: text('cnpj'),
+  // Pessoa física — alternativa ao CNPJ, não os dois juntos (o formulário de
+  // cadastro pergunta "pessoa física ou jurídica" e mostra só o campo certo).
+  cpf: text('cpf'),
   codigo: text('codigo').notNull(),
   codigoAntigo: text('codigo_antigo'),
   inscricaoEstadual: text('inscricao_estadual'),

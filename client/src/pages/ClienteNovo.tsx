@@ -21,8 +21,10 @@ export default function ClienteNovo() {
   const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
   const utils = trpc.useUtils()
 
+  const [tipoPessoa, setTipoPessoa] = useState<'juridica' | 'fisica'>('juridica')
   const [razaoSocial, setRazaoSocial] = useState('')
   const [cnpj, setCnpj] = useState('')
+  const [cpf, setCpf] = useState('')
   const [codigo, setCodigo] = useState('')
   const [inscricaoEstadual, setInscricaoEstadual] = useState('')
   const [regiao, setRegiao] = useState('')
@@ -80,7 +82,8 @@ export default function ClienteNovo() {
     if (!regiao) return toast.error('Selecione a região.')
     createMut.mutate({
       razaoSocial,
-      cnpj,
+      cnpj: tipoPessoa === 'juridica' ? cnpj : undefined,
+      cpf: tipoPessoa === 'fisica' ? cpf : undefined,
       codigo: codigo || undefined,
       inscricaoEstadual: inscricaoEstadual || undefined,
       regiao: regiao as any,
@@ -97,17 +100,46 @@ export default function ClienteNovo() {
     <div className="p-6 max-w-xl space-y-4">
       <h1 className="font-heading text-xl text-dark-50">Novo cliente</h1>
       <form onSubmit={handleSubmit} className="space-y-4 bg-dark-800 border border-dark-600 rounded-2xl p-5">
-        <div className="flex gap-2 items-end">
-          <Input label="CNPJ (opcional)" value={cnpj} onChange={(e) => setCnpj(e.target.value)} className="flex-1" />
-          <Button type="button" variant="secondary" onClick={buscarCnpj} loading={buscandoCnpj}>
-            Buscar CNPJ
-          </Button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setTipoPessoa('juridica')}
+            className={`flex-1 text-sm rounded-xl px-3 py-2 border ${
+              tipoPessoa === 'juridica' ? 'bg-gold-500/10 border-gold-500 text-gold-300' : 'border-dark-600 text-dark-300'
+            }`}
+          >
+            Pessoa Jurídica
+          </button>
+          <button
+            type="button"
+            onClick={() => setTipoPessoa('fisica')}
+            className={`flex-1 text-sm rounded-xl px-3 py-2 border ${
+              tipoPessoa === 'fisica' ? 'bg-gold-500/10 border-gold-500 text-gold-300' : 'border-dark-600 text-dark-300'
+            }`}
+          >
+            Pessoa Física
+          </button>
         </div>
+        {tipoPessoa === 'juridica' ? (
+          <div className="flex gap-2 items-end">
+            <Input label="CNPJ (opcional)" value={cnpj} onChange={(e) => setCnpj(e.target.value)} className="flex-1" />
+            <Button type="button" variant="secondary" onClick={buscarCnpj} loading={buscandoCnpj}>
+              Buscar CNPJ
+            </Button>
+          </div>
+        ) : (
+          <Input label="CPF (opcional)" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" />
+        )}
         <Input label="Razão social" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} required />
-        <div className="grid grid-cols-2 gap-3">
+        {tipoPessoa === 'juridica' && (
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Código (opcional)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+            <Input label="Inscrição Estadual (opcional)" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} />
+          </div>
+        )}
+        {tipoPessoa === 'fisica' && (
           <Input label="Código (opcional)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
-          <Input label="Inscrição Estadual (opcional)" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} />
-        </div>
+        )}
         <div className="grid grid-cols-3 gap-3">
           <Select label="Região" value={regiao} onChange={(e) => setRegiao(e.target.value)} placeholder="Selecione..." options={REGIOES} />
           <Input label="Estado" value={estado} onChange={(e) => setEstado(e.target.value)} />
