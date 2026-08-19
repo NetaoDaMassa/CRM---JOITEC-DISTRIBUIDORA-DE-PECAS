@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, inArray, isNull, or } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
@@ -505,7 +505,24 @@ export const funilRouter = router({
     const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
     if (!funil || funil.deletedAt) throw new Error('Card não encontrado')
 
-    await db.update(funilMensal).set({ deletedAt: agoraSqlite() }).where(eq(funilMensal.id, input.funilMensalId))
+    const agora = agoraSqlite()
+    await db.update(funilMensal).set({ deletedAt: agora }).where(eq(funilMensal.id, input.funilMensalId))
+
+    // Sem isso, vendas já lançadas nesse card continuam com deletedAt nulo e
+    // seguem somando pra sempre no Painel Financeiro/relatórios mesmo com o
+    // card fora do Kanban — foi exatamente isso que gerou um "fantasma" de
+    // R$100 mil no total de agosto da Compretec Loja Física (2026-08-18).
+    const vendasDoCard = await db.query.vendas.findMany({
+      where: and(eq(vendas.funilMensalId, input.funilMensalId), isNull(vendas.deletedAt)),
+    })
+    if (vendasDoCard.length) {
+      await db.update(vendas).set({ deletedAt: agora }).where(eq(vendas.funilMensalId, input.funilMensalId))
+      await db
+        .update(caixaMovimentacoes)
+        .set({ deletedAt: agora })
+        .where(inArray(caixaMovimentacoes.origemVendaId, vendasDoCard.map((v) => v.id)))
+    }
+
     await registrarAuditoria({
       tabela: 'funil_mensal',
       registroId: input.funilMensalId,
