@@ -280,6 +280,7 @@ export const vendas = sqliteTable('vendas', {
   valorFechado: real('valor_fechado').notNull(),
   condicaoPagamento: text('condicao_pagamento'),
   numeroCupomFiscal: text('numero_cupom_fiscal'),
+  numeroNotaFiscal: text('numero_nota_fiscal'),
   // Só a venda rápida (Compretec Loja Física) exige isso — pedido direto do
   // João pra identificar o card na hora (aparece junto do nome do cliente
   // no Kanban, ex: "Consumidor Final - 10210").

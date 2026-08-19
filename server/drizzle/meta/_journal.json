@@ -330,6 +330,13 @@
       "when": 1787148410072,
       "tag": "0046_useful_demogoblin",
       "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1787149823946,
+      "tag": "0047_stiff_proteus",
+      "breakpoints": true
     }
   ]
 }

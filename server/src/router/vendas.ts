@@ -27,6 +27,7 @@ export const vendasRouter = router({
         telefone: z.string().optional(),
         condicaoPagamento: z.string().optional(),
         numeroCupomFiscal: z.string().optional(),
+        numeroNotaFiscal: z.string().optional(),
         dataPedido: z.string(),
         pdfPedidoPath: z.string().min(1),
         // Só o admin usa isso, pra registrar em nome de um vendedor
@@ -88,6 +89,7 @@ export const vendasRouter = router({
         valorFechado: input.valorFechado,
         condicaoPagamento: input.condicaoPagamento || null,
         numeroCupomFiscal: input.numeroCupomFiscal || null,
+        numeroNotaFiscal: input.numeroNotaFiscal || null,
         numeroPedido: input.numeroPedido,
         pdfPedidoPath: input.pdfPedidoPath,
         dataFechamento,

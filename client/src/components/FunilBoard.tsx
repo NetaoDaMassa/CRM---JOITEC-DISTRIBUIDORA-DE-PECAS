@@ -39,6 +39,7 @@ const FORMAS_PAGAMENTO = [
   { value: 'Pix', label: 'Pix' },
   { value: 'Cartão Crédito', label: 'Cartão Crédito' },
   { value: 'Cartão Débito', label: 'Cartão Débito' },
+  { value: 'Boleto', label: 'Boleto' },
   { value: 'Outro', label: 'Outro' },
 ]
 
@@ -196,6 +197,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   const [telefone, setTelefone] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
   const [cupomFiscal, setCupomFiscal] = useState('')
+  const [notaFiscal, setNotaFiscal] = useState('')
   const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10))
   const [pdfArquivo, setPdfArquivo] = useState<File | null>(null)
   const [enviandoPdf, setEnviandoPdf] = useState(false)
@@ -217,6 +219,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
       setTelefone('')
       setFormaPagamento('')
       setCupomFiscal('')
+      setNotaFiscal('')
       setDataPedido(new Date().toISOString().slice(0, 10))
       setPdfArquivo(null)
       onClose()
@@ -255,6 +258,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
         telefone: telefone.trim() || undefined,
         condicaoPagamento: formaPagamento || undefined,
         numeroCupomFiscal: cupomFiscal.trim() || undefined,
+        numeroNotaFiscal: notaFiscal.trim() || undefined,
         dataPedido,
         pdfPedidoPath,
         vendedorId: user?.role === 'admin' ? vendedorIdSelecionado : undefined,
@@ -291,6 +295,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
           options={FORMAS_PAGAMENTO}
         />
         <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
+        <Input label="Nº da nota fiscal (opcional)" value={notaFiscal} onChange={(e) => setNotaFiscal(e.target.value)} />
         <AnexoPdfInput label="PDF do pedido" nomeArquivo={pdfArquivo?.name} onSelecionar={setPdfArquivo} />
         <Button className="w-full" loading={mut.isPending || enviandoPdf} onClick={registrar}>
           Registrar venda
