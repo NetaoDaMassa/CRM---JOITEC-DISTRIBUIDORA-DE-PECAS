@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
-import { router, protectedProcedure } from './_base.js'
+import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas, users, caixaMovimentacoes } from '../db/schema.js'
 import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
@@ -28,6 +28,7 @@ export const vendasRouter = router({
         condicaoPagamento: z.string().optional(),
         numeroCupomFiscal: z.string().optional(),
         numeroNotaFiscal: z.string().optional(),
+        tipoComprovante: z.enum(['cupom_fiscal', 'nota_fiscal']).optional(),
         dataPedido: z.string(),
         pdfPedidoPath: z.string().min(1),
         // Só o admin usa isso, pra registrar em nome de um vendedor
@@ -90,6 +91,7 @@ export const vendasRouter = router({
         condicaoPagamento: input.condicaoPagamento || null,
         numeroCupomFiscal: input.numeroCupomFiscal || null,
         numeroNotaFiscal: input.numeroNotaFiscal || null,
+        tipoComprovante: input.tipoComprovante ?? null,
         numeroPedido: input.numeroPedido,
         pdfPedidoPath: input.pdfPedidoPath,
         dataFechamento,
@@ -128,6 +130,7 @@ export const vendasRouter = router({
         valorFechado: z.number(),
         condicaoPagamento: z.string().optional(),
         numeroPedido: z.string().optional(),
+        tipoComprovante: z.enum(['cupom_fiscal', 'nota_fiscal']).optional(),
         pdfPedidoPath: z.string(),
         clienteIdFaturamento: z.number().optional(),
         itens: z
@@ -169,6 +172,7 @@ export const vendasRouter = router({
         valorFechado: input.valorFechado,
         condicaoPagamento: input.condicaoPagamento ?? null,
         numeroPedido: input.numeroPedido || null,
+        tipoComprovante: input.tipoComprovante ?? null,
         pdfPedidoPath: input.pdfPedidoPath,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
@@ -234,7 +238,11 @@ export const vendasRouter = router({
     .mutation(async ({ ctx, input }) => {
       const venda = await db.query.vendas.findFirst({ where: eq(vendas.id, input.vendaId) })
       if (!venda) throw new Error('Venda não encontrada')
-      if (ctx.user.role !== 'admin' && venda.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+      if (ctx.user.role !== 'admin' && venda.vendedorId !== ctx.user.id) {
+        // Quem processa faturamento de todos os vendedores (ex: Daniela)
+        // precisa confirmar cupom/nota fiscal em vendas que não são dela.
+        if (!(await temFeature(ctx.user.id, 'faturamento_geral'))) throw new Error('Acesso negado')
+      }
 
       const updates: { tipoComprovante?: 'cupom_fiscal' | 'nota_fiscal'; faturado?: boolean } = {}
       if (input.tipoComprovante !== undefined) updates.tipoComprovante = input.tipoComprovante

@@ -54,10 +54,20 @@ export function featureProcedure(feature: string) {
 export function adminOrFeatureProcedure(feature: string) {
   return protectedProcedure.use(async ({ ctx, next }) => {
     if (ctx.user.role === 'admin' || ctx.user.superAdmin) return next({ ctx })
-    const liberado = await db.query.permissoesAdmin.findFirst({
-      where: and(eq(permissoesAdmin.userId, ctx.user.id), eq(permissoesAdmin.feature, feature)),
-    })
+    const liberado = await temFeature(ctx.user.id, feature)
     if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito a esse setor' })
     return next({ ctx })
   })
+}
+
+// Mesma checagem de `adminOrFeatureProcedure`, mas exportada solta pra usar
+// DENTRO de uma mutation que já é protectedProcedure e só precisa liberar
+// uma ação específica (não a rota inteira) pra quem tem a feature — ex:
+// moverEtapa deixa mover pra "Faturamento" quem tem 'faturamento_geral',
+// sem abrir mão da checagem de dono pras outras etapas.
+export async function temFeature(userId: number, feature: string): Promise<boolean> {
+  const liberado = await db.query.permissoesAdmin.findFirst({
+    where: and(eq(permissoesAdmin.userId, userId), eq(permissoesAdmin.feature, feature)),
+  })
+  return !!liberado
 }

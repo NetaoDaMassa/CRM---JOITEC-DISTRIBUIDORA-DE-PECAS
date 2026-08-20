@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -25,6 +25,10 @@ const LOGO_POR_EMPRESA: Record<string, string> = {
 // negócio da Odin Compressores (revenda que já comprou compressor) — as
 // outras empresas não têm essa tela.
 const SO_ODIN_COMPRESSORES = 'odin-compressores'
+// Faturamento Geral (Fechado/Faturamento de todos os vendedores num board
+// só) só existe pra Compretec Loja Física — é a única empresa com etapa
+// "Faturamento" no funil.
+const SO_COMPRETEC_LOJA_FISICA = 'compretec-loja-fisica'
 
 // `feature` é a chave usada em permissoesAdmin/FEATURES_ADMIN (server) —
 // controla quem vê cada item pra admins não-superAdmin.
@@ -64,6 +68,13 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List, feature: 'clientes' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
+  {
+    to: '/vendedor/faturamento-geral',
+    label: 'Faturamento Geral',
+    icon: Receipt,
+    somenteEmpresa: SO_COMPRETEC_LOJA_FISICA,
+    feature: 'faturamento_geral',
+  },
   // Mesma chave 'relatorios' do admin (controla o link aparecer ou não) —
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },

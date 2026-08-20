@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull, or } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure, superAdminProcedure } from './_base.js'
+import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
+import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
@@ -21,14 +21,16 @@ const ETAPA_VALUES = [
   'consumidor_final',
 ] as const
 
-// Compartilhado entre `meuFunil` (vendedor vendo o próprio funil) e
-// `funilPorVendedor` (admin vendo o funil de qualquer vendedor específico) —
-// mesmo formato de card pros dois casos, só muda de quem é o funil.
-async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxIsAdmin: boolean, mesReferencia?: string) {
+// Compartilhado entre `meuFunil` (vendedor vendo o próprio funil),
+// `funilPorVendedor` (admin vendo o funil de qualquer vendedor específico) e
+// `funilFaturamentoGeral` (visão da empresa toda, só Fechado/Faturamento) —
+// mesmo formato de card pros três casos, só muda o filtro de quais cards
+// entram.
+async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAdmin: boolean, mesReferencia?: string) {
   const mes = mesReferencia ?? mesReferenciaAtual()
 
   const funis = await db.query.funilMensal.findMany({
-    where: and(eq(funilMensal.vendedorId, vendedorId), eq(funilMensal.mesReferencia, mes), isNull(funilMensal.deletedAt)),
+    where: and(filtroFunil, eq(funilMensal.mesReferencia, mes), isNull(funilMensal.deletedAt)),
     with: {
       cliente: {
         columns: {
@@ -248,6 +250,29 @@ async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxI
   }))
 }
 
+async function buscarFunilDoVendedor(vendedorId: number, ctxUserId: number, ctxIsAdmin: boolean, mesReferencia?: string) {
+  return buscarFunilComFiltro(eq(funilMensal.vendedorId, vendedorId), ctxUserId, ctxIsAdmin, mesReferencia)
+}
+
+// Visão "Faturamento Geral" (Compretec Loja Física) — todos os cards
+// Fechado/Faturamento da empresa inteira, de qualquer vendedor, não só o de
+// uma pessoa. Pedido do João pra dar acesso a quem cuida do faturamento
+// (ex: Daniela) sem precisar trocar de vendedor card por card.
+async function buscarFaturamentoGeral(empresaId: number, ctxUserId: number, ctxIsAdmin: boolean, mesReferencia?: string) {
+  const clientesDaEmpresa = await db.query.clientes.findMany({
+    where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt)),
+    columns: { id: true },
+  })
+  const clienteIds = clientesDaEmpresa.map((c) => c.id)
+  if (!clienteIds.length) return []
+  return buscarFunilComFiltro(
+    and(inArray(funilMensal.clienteId, clienteIds), inArray(funilMensal.etapa, ['fechado', 'faturamento']))!,
+    ctxUserId,
+    ctxIsAdmin,
+    mesReferencia
+  )
+}
+
 const ETAPAS_ABERTAS_FILA = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 const TAMANHO_FILA_HOJE = 20
 
@@ -284,6 +309,16 @@ export const funilRouter = router({
       return buscarFunilDoVendedor(input.vendedorId, ctx.user.id, true, input.mesReferencia)
     }),
 
+  // Visão "Faturamento Geral" — todos os cards Fechado/Faturamento da
+  // empresa, juntando todos os vendedores num board só. Feito pro pedido do
+  // João de dar acesso à Daniela (cuida do faturamento da Compretec Loja
+  // Física) sem ela precisar ficar trocando de vendedor um por um.
+  funilFaturamentoGeral: adminOrFeatureProcedure('faturamento_geral')
+    .input(z.object({ mesReferencia: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      return buscarFaturamentoGeral(ctx.empresaId, ctx.user.id, ctx.user.role === 'admin', input?.mesReferencia)
+    }),
+
   moverEtapa: protectedProcedure
     .input(
       z.object({
@@ -294,6 +329,7 @@ export const funilRouter = router({
         valorFechado: z.number().optional(),
         condicaoPagamento: z.string().optional(),
         numeroPedido: z.string().optional(),
+        tipoComprovante: z.enum(['cupom_fiscal', 'nota_fiscal']).optional(),
         pdfPedidoPath: z.string().optional(),
         pdfPropostaPath: z.string().optional(),
         clienteIdFaturamento: z.number().optional(),
@@ -317,7 +353,14 @@ export const funilRouter = router({
     .mutation(async ({ ctx, input }) => {
       const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
       if (!funil) throw new Error('Card não encontrado')
-      if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+      if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) {
+        // Único caso em que alguém sem ser dono do card pode mexer: mover
+        // Fechado → Faturamento, e só quem tem a feature 'faturamento_geral'
+        // (ex: Daniela, que processa faturamento de todos os vendedores).
+        const podeMoverFaturamento =
+          funil.etapa === 'fechado' && input.etapa === 'faturamento' && (await temFeature(ctx.user.id, 'faturamento_geral'))
+        if (!podeMoverFaturamento) throw new Error('Acesso negado')
+      }
 
       if (funil.etapa === 'novo' && input.etapa !== 'novo' && funil.qtdTentativasContato === 0) {
         throw new Error('Registre ao menos um contato antes de mover este cliente para fora de "Novo".')
@@ -415,6 +458,7 @@ export const funilRouter = router({
           valorFechado: input.valorFechado!,
           condicaoPagamento: input.condicaoPagamento ?? null,
           numeroPedido: input.numeroPedido || null,
+          tipoComprovante: input.tipoComprovante ?? null,
           pdfPedidoPath: input.pdfPedidoPath,
         })
         const vendaId = Number(vendaResult.lastInsertRowid)

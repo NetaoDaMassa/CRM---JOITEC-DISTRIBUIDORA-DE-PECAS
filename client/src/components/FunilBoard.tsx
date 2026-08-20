@@ -230,6 +230,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   const [formaPagamento, setFormaPagamento] = useState('')
   const [cupomFiscal, setCupomFiscal] = useState('')
   const [notaFiscal, setNotaFiscal] = useState('')
+  const [tipoComprovante, setTipoComprovante] = useState('')
   const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10))
   const [pdfArquivo, setPdfArquivo] = useState<File | null>(null)
   const [enviandoPdf, setEnviandoPdf] = useState(false)
@@ -252,6 +253,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
       setFormaPagamento('')
       setCupomFiscal('')
       setNotaFiscal('')
+      setTipoComprovante('')
       setDataPedido(new Date().toISOString().slice(0, 10))
       setPdfArquivo(null)
       onClose()
@@ -291,6 +293,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
         condicaoPagamento: formaPagamento || undefined,
         numeroCupomFiscal: cupomFiscal.trim() || undefined,
         numeroNotaFiscal: notaFiscal.trim() || undefined,
+        tipoComprovante: (tipoComprovante || undefined) as 'cupom_fiscal' | 'nota_fiscal' | undefined,
         dataPedido,
         pdfPedidoPath,
         vendedorId: user?.role === 'admin' ? vendedorIdSelecionado : undefined,
@@ -326,6 +329,13 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
           placeholder="Não informado"
           options={FORMAS_PAGAMENTO}
         />
+        <Select
+          label="Modelo do documento fiscal (opcional)"
+          value={tipoComprovante}
+          onChange={(e) => setTipoComprovante(e.target.value)}
+          placeholder="Não informado"
+          options={TIPO_COMPROVANTE_OPTIONS}
+        />
         <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
         <Input label="Nº da nota fiscal (opcional)" value={notaFiscal} onChange={(e) => setNotaFiscal(e.target.value)} />
         <AnexoPdfInput label="PDF do pedido" nomeArquivo={pdfArquivo?.name} onSelecionar={setPdfArquivo} />
@@ -345,6 +355,7 @@ export default function FunilBoard({
   permitirVendaRapida,
   vendedorIdVendaRapida,
   mostrarFaturamento,
+  apenasEtapas,
 }: {
   cards: Card[]
   permitirVendaRapida?: boolean
@@ -354,8 +365,16 @@ export default function FunilBoard({
   vendedorIdVendaRapida?: number
   // Etapa "Faturamento" — só Compretec Loja Física passa isso como true.
   mostrarFaturamento?: boolean
+  // Restringe o board a só essas etapas (ex: ['fechado', 'faturamento'] na
+  // visão "Faturamento Geral" da Daniela) — sem isso, mostra tudo (ou tudo
+  // exceto Faturamento, conforme `mostrarFaturamento`).
+  apenasEtapas?: string[]
 }) {
-  const etapasVisiveis = mostrarFaturamento ? ETAPAS : ETAPAS.filter((e) => e.value !== 'faturamento')
+  const etapasVisiveis = apenasEtapas
+    ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
+    : mostrarFaturamento
+    ? ETAPAS
+    : ETAPAS.filter((e) => e.value !== 'faturamento')
   const utils = trpc.useUtils()
   const [vendaRapidaAberta, setVendaRapidaAberta] = useState(false)
   // Guarda só o id, não o objeto — assim, quando uma mutação invalida a
@@ -610,7 +629,7 @@ export default function FunilBoard({
                       {sugestao && (
                         <p className="text-xs text-gold-300 bg-gold-900/10 border border-gold-700/30 rounded-lg px-2 py-1 mt-2">{sugestao}</p>
                       )}
-                      {card.etapa === 'faturamento' && card.vendas.length > 0 && (
+                      {mostrarFaturamento && (card.etapa === 'fechado' || card.etapa === 'faturamento') && card.vendas.length > 0 && (
                         <BadgeFaturamento venda={card.vendas[card.vendas.length - 1]} />
                       )}
                       <div className="flex items-center justify-between mt-2">
@@ -651,6 +670,7 @@ export default function FunilBoard({
           key={cardAberto.funilMensalId}
           card={cardAberto}
           mostrarFaturamento={mostrarFaturamento}
+          apenasEtapas={apenasEtapas}
           onClose={() => setCardAbertoId(null)}
           onChanged={() => {
             invalidarTudo()
@@ -696,7 +716,11 @@ function AnexoPdfInput({
   )
 }
 
-const TIPO_COMPROVANTE_LABEL: Record<string, string> = { cupom_fiscal: 'Cupom Fiscal', nota_fiscal: 'Nota Fiscal' }
+const TIPO_COMPROVANTE_LABEL: Record<string, string> = { cupom_fiscal: 'Cupom Fiscal (modelo 65)', nota_fiscal: 'Nota Fiscal (modelo 55)' }
+const TIPO_COMPROVANTE_OPTIONS = [
+  { value: 'nota_fiscal', label: '55 - Nota Fiscal (NF-e)' },
+  { value: 'cupom_fiscal', label: '65 - Cupom Fiscal (NFC-e)' },
+]
 
 // Aparece "fora do card" (na frente do Kanban, sem abrir o modal) — pedido
 // direto do João. Mostra o status de faturamento da venda mais recente do
@@ -744,10 +768,7 @@ function ControleFaturamento({ venda }: { venda: { id: number; tipoComprovante: 
           value={venda.tipoComprovante ?? ''}
           onChange={(e) => mut.mutate({ vendaId: venda.id, tipoComprovante: e.target.value as any })}
           placeholder="Cupom ou nota fiscal?"
-          options={[
-            { value: 'cupom_fiscal', label: 'Cupom Fiscal' },
-            { value: 'nota_fiscal', label: 'Nota Fiscal' },
-          ]}
+          options={TIPO_COMPROVANTE_OPTIONS}
         />
       </div>
       <label className="flex items-center gap-1.5 text-xs text-dark-200 whitespace-nowrap">
@@ -830,13 +851,19 @@ function CardModal({
   onClose,
   onChanged,
   mostrarFaturamento,
+  apenasEtapas,
 }: {
   card: Card
   onClose: () => void
   onChanged: () => void
   mostrarFaturamento?: boolean
+  apenasEtapas?: string[]
 }) {
-  const etapasVisiveis = mostrarFaturamento ? ETAPAS : ETAPAS.filter((e) => e.value !== 'faturamento')
+  const etapasVisiveis = apenasEtapas
+    ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
+    : mostrarFaturamento
+    ? ETAPAS
+    : ETAPAS.filter((e) => e.value !== 'faturamento')
   const { user } = useAuth()
   const [confirmarExclusaoCard, setConfirmarExclusaoCard] = useState(false)
   const excluirCardMut = trpc.funil.excluirCard.useMutation({
@@ -857,6 +884,7 @@ function CardModal({
   const [valorFechado, setValorFechado] = useState('')
   const [condicaoPagamento, setCondicaoPagamento] = useState('')
   const [numeroPedido, setNumeroPedido] = useState('')
+  const [tipoComprovante, setTipoComprovante] = useState('')
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfPathEnviado, setPdfPathEnviado] = useState<string | null>(null)
   const [novaVendaAberta, setNovaVendaAberta] = useState(false)
@@ -1121,6 +1149,7 @@ function CardModal({
       valorFechado: valorFechado ? parseValorBr(valorFechado) : undefined,
       condicaoPagamento: condicaoPagamento || undefined,
       numeroPedido: numeroPedido.trim() || undefined,
+      tipoComprovante: (tipoComprovante || undefined) as 'cupom_fiscal' | 'nota_fiscal' | undefined,
       pdfPedidoPath,
       pdfPropostaPath,
       motivoPerdaCategoria: (motivoCategoria || undefined) as any,
@@ -1148,6 +1177,7 @@ function CardModal({
       setValorFechado('')
       setCondicaoPagamento('')
       setNumeroPedido('')
+      setTipoComprovante('')
       setPdfFile(null)
       setPdfPathEnviado(null)
       setItensPedido([])
@@ -1178,6 +1208,7 @@ function CardModal({
       valorFechado: parseValorBr(valorFechado),
       condicaoPagamento: condicaoPagamento || undefined,
       numeroPedido: numeroPedido.trim() || undefined,
+      tipoComprovante: (tipoComprovante || undefined) as 'cupom_fiscal' | 'nota_fiscal' | undefined,
       pdfPedidoPath,
       clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
       itens: itensPedido
@@ -1431,6 +1462,15 @@ function CardModal({
                     value={numeroPedido}
                     onChange={(e) => setNumeroPedido(e.target.value)}
                     placeholder="Ex: 10210"
+                  />
+                )}
+                {mostrarFaturamento && (
+                  <Select
+                    label="Modelo do documento fiscal (opcional)"
+                    value={tipoComprovante}
+                    onChange={(e) => setTipoComprovante(e.target.value)}
+                    placeholder="Não informado"
+                    options={TIPO_COMPROVANTE_OPTIONS}
                   />
                 )}
                 <div className="flex flex-col gap-1">
@@ -1688,6 +1728,15 @@ function CardModal({
                   value={numeroPedido}
                   onChange={(e) => setNumeroPedido(e.target.value)}
                   placeholder="Ex: 10210"
+                />
+              )}
+              {mostrarFaturamento && (
+                <Select
+                  label="Modelo do documento fiscal (opcional)"
+                  value={tipoComprovante}
+                  onChange={(e) => setTipoComprovante(e.target.value)}
+                  placeholder="Não informado"
+                  options={TIPO_COMPROVANTE_OPTIONS}
                 />
               )}
               <div className="flex flex-col gap-1">

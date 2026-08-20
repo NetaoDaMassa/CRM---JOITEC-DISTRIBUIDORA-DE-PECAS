@@ -48,6 +48,9 @@ export const FEATURES_VENDEDOR = [
   'banco_clientes',
   'relatorios',
   'solicitar_design',
+  // Visão "Faturamento Geral" (Compretec Loja Física) — todos os cards
+  // Fechado/Faturamento da empresa, de qualquer vendedor, num board só.
+  'faturamento_geral',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima
