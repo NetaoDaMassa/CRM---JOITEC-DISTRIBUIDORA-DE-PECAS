@@ -665,6 +665,7 @@ export default function AdminReports() {
                         { chave: 'razaoSocial', rotulo: 'Cliente' },
                         { chave: 'vendedorNome', rotulo: 'Vendedor' },
                         { chave: 'valorOrcado', rotulo: 'Valor orçado' },
+                        { chave: 'diasEmAberto', rotulo: 'Dias em aberto' },
                       ],
                       orcamentosAbertos?.linhas ?? []
                     )
@@ -680,7 +681,10 @@ export default function AdminReports() {
                 <div key={l.clienteId} className="flex items-center justify-between py-2 text-sm">
                   <span className="text-dark-200">{l.razaoSocial}</span>
                   <span className="text-dark-400">
-                    {l.valorOrcado != null ? formatarMoeda(l.valorOrcado) : '—'} · {l.vendedorNome}
+                    {l.valorOrcado != null ? formatarMoeda(l.valorOrcado) : '—'} · {l.vendedorNome} ·{' '}
+                    <span className={(l.diasEmAberto ?? 0) >= 15 ? 'text-amber-400' : ''}>
+                      {l.diasEmAberto ?? '—'} dia{l.diasEmAberto === 1 ? '' : 's'}
+                    </span>
                   </span>
                 </div>
               ))}

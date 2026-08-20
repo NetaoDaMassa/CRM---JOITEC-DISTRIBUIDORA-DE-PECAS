@@ -539,8 +539,12 @@ export const reportsRouter = router({
       .where(and(...filtros))
       .orderBy(desc(funilMensal.valorOrcado))
 
+    // Dias parado em negociação desde que entrou na etapa — pedido do João
+    // pra enxergar quais orçamentos estão esfriando, não só o valor.
+    const linhasComDias = linhas.map((l) => ({ ...l, diasEmAberto: diasDesde(l.dataEntradaEtapa) }))
+
     const valorTotal = linhas.reduce((acc, l) => acc + (l.valorOrcado ?? 0), 0)
-    return { linhas, quantidade: linhas.length, valorTotal }
+    return { linhas: linhasComDias, quantidade: linhas.length, valorTotal }
   }),
 
   motivosPerdas: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
