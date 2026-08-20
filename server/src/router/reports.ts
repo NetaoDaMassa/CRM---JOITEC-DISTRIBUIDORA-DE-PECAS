@@ -99,14 +99,22 @@ export const reportsRouter = router({
 
   positivacaoCarteira: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
-    // isNotNull(vendedorAtualId): sem filtrar um vendedor específico, isso
-    // conta a empresa toda — inclusive quem está parado no Banco de Clientes
-    // (sem vendedor). João quer só a carteira ativa aqui (pedido 2026-08-20);
-    // `positivacaoPorVendedor` já ficava correto "de graça" porque filtra
-    // vendedor por vendedor (vendedorAtualId = null nunca bate com nenhum).
-    const filtrosCarteira = [isNull(clientes.deletedAt), isNotNull(clientes.vendedorAtualId), eq(clientes.empresaId, ctx.empresaId)]
-    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
-    if (filtroVend) filtrosCarteira.push(filtroVend)
+    // Sem filtrar um vendedor específico, isso contava a empresa inteira —
+    // inclusive quem está parado no Banco de Clientes (sem vendedor) e quem
+    // pertence a um vendedor já desativado. João quer só a carteira ativa
+    // aqui (pedido 2026-08-20), pra bater exatamente com a soma de
+    // `positivacaoPorVendedor` (que só lista vendedores com isActive=true
+    // via `vendedoresPermitidos` — vendedorAtualId nulo ou de alguém
+    // desativado nunca aparece lá).
+    const vendedoresAtivos = await vendedoresPermitidos(ctx, input.vendedorId)
+    const idsVendedoresAtivos = vendedoresAtivos.map((v) => v.id)
+    const filtrosCarteira = [
+      isNull(clientes.deletedAt),
+      eq(clientes.empresaId, ctx.empresaId),
+      // idsVendedoresAtivos já reflete o filtro de vendedorId (admin filtrando
+      // um só, ou vendedor vendo só a si mesmo) — ver vendedoresPermitidos.
+      idsVendedoresAtivos.length ? inArray(clientes.vendedorAtualId, idsVendedoresAtivos) : sql`0`,
+    ]
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtrosCarteira.push(filtroReg)
 
