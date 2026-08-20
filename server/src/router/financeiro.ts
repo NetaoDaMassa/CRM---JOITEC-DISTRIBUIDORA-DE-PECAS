@@ -24,7 +24,11 @@ const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaId
   { cardKey: 'odin-tubos', nome: 'Odin Tubos e Conexões', slugLogo: 'odin-tubos', empresaIds: [2] },
   { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5], somaOdinCrm: true },
   { cardKey: 'compretec-ecommerce', nome: 'Compretec E-commerce', slugLogo: 'compretec', empresaIds: [6], origemExterna: 'aton' },
-  { cardKey: 'compretec-loja-fisica', nome: 'Compretec Loja Física', slugLogo: 'compretec', empresaIds: [7], origemExterna: 'aton' },
+  // Loja Física passou a usar venda rápida/Kanban dentro do próprio CRM
+  // (pedido do João 2026-08-19) — desligado do Aton, agora soma vendas/
+  // funil_mensal local igual Joitec/Odin Tubos. E-commerce continua Aton
+  // (venda 100% no marketplace, sem vendedor/funil no CRM).
+  { cardKey: 'compretec-loja-fisica', nome: 'Compretec Loja Física', slugLogo: 'compretec', empresaIds: [7] },
 ]
 
 const CARDS_ATON = CARDS_PAINEL.filter((c) => c.origemExterna === 'aton')
