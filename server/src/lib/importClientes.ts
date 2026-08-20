@@ -32,7 +32,14 @@ export async function importarClientesCsv(
   alteradoPor: number,
   empresaId: number
 ): Promise<ImportFileResult> {
-  const wb = XLSX.read(buffer, { type: 'buffer' })
+  // .csv sem BOM UTF-8 (comum em export de planilha/editor de texto) vem
+  // sempre acentuado ("Código", "Vendedor"...) — lido como buffer bruto, o
+  // xlsx assume um codepage errado e transforma "Código" em "CÃ³digo",
+  // fazendo `getCol` nunca casar e todo o arquivo falhar com "Sem código"
+  // silenciosamente. Decodificar como string UTF-8 antes resolve pro .csv;
+  // .xlsx/.xls continuam binários, não dá pra fazer o mesmo com eles.
+  const ehCsv = nomeArquivo.toLowerCase().endsWith('.csv')
+  const wb = ehCsv ? XLSX.read(buffer.toString('utf8'), { type: 'string' }) : XLSX.read(buffer, { type: 'buffer' })
   const sheet = wb.Sheets[wb.SheetNames[0]]
   // `raw: false` pedia pro xlsx formatar o valor como o Excel exibiria — pra
   // números de 14 dígitos (CNPJ) isso vira notação científica ("5.5E+13"),
