@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, between, count, desc, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
+import { and, between, count, desc, eq, inArray, isNotNull, isNull, sql, sum } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, empresas, funilMensal, registroContato, itensPedido, users, vendas as vendasTable, logAuditoria } from '../db/schema.js'
@@ -99,7 +99,12 @@ export const reportsRouter = router({
 
   positivacaoCarteira: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
-    const filtrosCarteira = [isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)]
+    // isNotNull(vendedorAtualId): sem filtrar um vendedor específico, isso
+    // conta a empresa toda — inclusive quem está parado no Banco de Clientes
+    // (sem vendedor). João quer só a carteira ativa aqui (pedido 2026-08-20);
+    // `positivacaoPorVendedor` já ficava correto "de graça" porque filtra
+    // vendedor por vendedor (vendedorAtualId = null nunca bate com nenhum).
+    const filtrosCarteira = [isNull(clientes.deletedAt), isNotNull(clientes.vendedorAtualId), eq(clientes.empresaId, ctx.empresaId)]
     const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
     if (filtroVend) filtrosCarteira.push(filtroVend)
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
