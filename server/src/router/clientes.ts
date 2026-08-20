@@ -70,7 +70,7 @@ export const clientesRouter = router({
         // independente de como foi salvo — antes, batia só se a formatação
         // digitada fosse idêntica à salva, então quase nunca achava nada.
         const termoDigitos = termo.replace(/\D/g, '')
-        // Só entra nesse ramo (CNPJ/telefone por dígito) se o termo for só
+        // Só entra nesse ramo (CNPJ/CPF/telefone por dígito) se o termo for só
         // números/pontuação de telefone — um código como "C000001" tem letra e
         // fica de fora, senão os dígitos batiam em qualquer CNPJ que contivesse
         // aquela sequência em algum lugar, poluindo a busca por código.
@@ -84,6 +84,10 @@ export const clientesRouter = router({
             sql`exists (select 1 from cliente_telefones where cliente_telefones.cliente_id = clientes.id and replace(replace(replace(replace(cliente_telefones.numero,'-',''),' ',''),'(',''),')','') like ${digitosLike})`
           )
           condicoes.push(like(clientes.cnpj, digitosLike))
+          // CPF (cliente pessoa física, ex: Compretec Loja Física) ficou de
+          // fora quando o campo foi criado — sem isso a busca nunca achava
+          // ninguém cadastrado só com CPF, mesmo digitando o número certo.
+          condicoes.push(like(clientes.cpf, digitosLike))
         }
         filtros.push(or(...condicoes)!)
       }
