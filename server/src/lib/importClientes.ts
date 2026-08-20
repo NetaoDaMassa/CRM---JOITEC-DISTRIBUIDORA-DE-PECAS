@@ -32,14 +32,23 @@ export async function importarClientesCsv(
   alteradoPor: number,
   empresaId: number
 ): Promise<ImportFileResult> {
-  // .csv sem BOM UTF-8 (comum em export de planilha/editor de texto) vem
-  // sempre acentuado ("Código", "Vendedor"...) — lido como buffer bruto, o
-  // xlsx assume um codepage errado e transforma "Código" em "CÃ³digo",
-  // fazendo `getCol` nunca casar e todo o arquivo falhar com "Sem código"
-  // silenciosamente. Decodificar como string UTF-8 antes resolve pro .csv;
-  // .xlsx/.xls continuam binários, não dá pra fazer o mesmo com eles.
+  // .csv sem BOM vem sempre acentuado ("Código", "Vendedor"...) — lido como
+  // buffer bruto, o xlsx assume um codepage errado e transforma "Código" em
+  // lixo, fazendo `getCol` nunca casar e todo o arquivo falhar com "Sem
+  // código" silenciosamente. Decodificar como texto resolve, mas o
+  // charset varia: Excel "CSV UTF-8" grava BOM + UTF-8 (Buffer decodifica
+  // certo em UTF-8 direto), enquanto o "CSV" comum do Excel PT-BR (Windows)
+  // grava em cp1252/ANSI sem BOM — UTF-8 nesse caso vira "CÃ³digo" (bytes
+  // inválidos, gera replacement character �). `latin1` do Node é idêntico a
+  // cp1252 pros acentos do português (só diverge no intervalo 0x80–0x9F,
+  // aspas curvas/travessão que não aparecem em cabeçalho de planilha), então
+  // detectar U+FFFD após decodificar em UTF-8 e cair pra latin1 nesse caso
+  // cobre os dois formatos reais que o Excel produz. .xlsx/.xls continuam
+  // binários, não dá pra fazer o mesmo com eles.
   const ehCsv = nomeArquivo.toLowerCase().endsWith('.csv')
-  const wb = ehCsv ? XLSX.read(buffer.toString('utf8'), { type: 'string' }) : XLSX.read(buffer, { type: 'buffer' })
+  let textoCsv = ehCsv ? buffer.toString('utf8') : ''
+  if (ehCsv && textoCsv.includes('�')) textoCsv = buffer.toString('latin1')
+  const wb = ehCsv ? XLSX.read(textoCsv, { type: 'string' }) : XLSX.read(buffer, { type: 'buffer' })
   const sheet = wb.Sheets[wb.SheetNames[0]]
   // `raw: false` pedia pro xlsx formatar o valor como o Excel exibiria — pra
   // números de 14 dígitos (CNPJ) isso vira notação científica ("5.5E+13"),
