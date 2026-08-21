@@ -45,6 +45,9 @@ export default function Caixa() {
   const [valor, setValor] = useState('')
   const [data, setData] = useState(hojeString())
   const [descricao, setDescricao] = useState('')
+  // Filtro da listagem (não mexe nos cards de Entradas/Saídas/Saldo — esses
+  // continuam somando o período inteiro, só a lista de baixo é filtrada).
+  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'entrada' | 'saida'>('todos')
 
   // Trocar o seletor de mês realinha o período pro mês inteiro; editar
   // início/fim direto (abaixo) deixa o período livre, sem travar em mês
@@ -59,6 +62,8 @@ export default function Caixa() {
   const utils = trpc.useUtils()
   const { data: resumo, isLoading } = trpc.caixa.listar.useQuery({ dataInicio, dataFim })
   const { data: resumoMensal } = trpc.caixa.resumoMensal.useQuery()
+
+  const registrosFiltrados = (resumo?.registros ?? []).filter((r) => filtroTipo === 'todos' || r.tipo === filtroTipo)
 
   function invalidar() {
     utils.caixa.listar.invalidate({ dataInicio, dataFim })
@@ -124,10 +129,21 @@ export default function Caixa() {
               className="bg-transparent text-sm text-dark-100 outline-none"
             />
           </div>
+          <div className="w-32">
+            <Select
+              value={filtroTipo}
+              onChange={(e) => setFiltroTipo(e.target.value as 'todos' | 'entrada' | 'saida')}
+              options={[
+                { value: 'todos', label: 'Todos' },
+                { value: 'entrada', label: 'Entrada' },
+                { value: 'saida', label: 'Saída' },
+              ]}
+            />
+          </div>
           <Button
             variant="secondary"
             size="sm"
-            disabled={!resumo?.registros.length}
+            disabled={!registrosFiltrados.length}
             onClick={() =>
               baixarCsv(
                 `caixa-${dataInicio}_a_${dataFim}.csv`,
@@ -138,7 +154,7 @@ export default function Caixa() {
                     { chave: 'valor', rotulo: 'Valor' },
                     { chave: 'descricao', rotulo: 'Descrição' },
                   ],
-                  (resumo?.registros ?? []).map((r) => ({
+                  registrosFiltrados.map((r) => ({
                     data: new Date(`${r.data}T00:00:00`).toLocaleDateString('pt-BR'),
                     tipo: r.tipo === 'entrada' ? 'Entrada' : 'Saída',
                     valor: r.valor,
@@ -205,8 +221,12 @@ export default function Caixa() {
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
         {isLoading && <p className="p-4 text-dark-400 text-sm">Carregando...</p>}
-        {!isLoading && !resumo?.registros.length && <p className="p-4 text-dark-400 text-sm">Nenhum lançamento nesse período.</p>}
-        {resumo?.registros.map((r) => (
+        {!isLoading && !registrosFiltrados.length && (
+          <p className="p-4 text-dark-400 text-sm">
+            {filtroTipo === 'todos' ? 'Nenhum lançamento nesse período.' : 'Nenhum lançamento desse tipo nesse período.'}
+          </p>
+        )}
+        {registrosFiltrados.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
             <div className="min-w-0 flex items-center gap-3">
               <span
