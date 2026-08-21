@@ -10,9 +10,18 @@ import EmailButton from './EmailButton'
 // o DDI duplicado — um DDD 55 (Rio Grande do Sul) sozinho tem 10-11 dígitos e
 // não deve ser mexido.
 function soDigitos(v: string): string {
-  const digitos = v.replace(/\D/g, '')
+  let digitos = v.replace(/\D/g, '')
   if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {
-    return digitos.slice(2)
+    digitos = digitos.slice(2)
+  }
+  // Número BR válido tem 10 (fixo, DDD+8) ou 11 (celular, DDD+9) dígitos —
+  // um "0" a mais na frente (comum de digitar "0DDD9XXXXXXXX", como se fosse
+  // prefixo de operadora) deixa 11/12 dígitos começando em "0" (nenhum DDD
+  // real começa em 0). Sem tirar esse zero, o link fica errado tanto pro
+  // WhatsApp quanto pro discador SIP (MicroSIP), que aí devolve "Serviço
+  // indisponível" — foi exatamente o que o João reportou.
+  if ((digitos.length === 11 || digitos.length === 12) && digitos.startsWith('0')) {
+    digitos = digitos.slice(1)
   }
   return digitos
 }
