@@ -23,7 +23,14 @@ jobs:
             set -e
             cd "${{ secrets.VPS_PROJECT_PATH }}"
             echo ">> Buscando atualizações..."
-            git pull
+            # "git pull" sozinho depende de qual branch/tracking já estava checado na
+            # VPS — se algum dia divergiu (branch errado, commit local solto etc.), ele
+            # pode reportar "up to date" sem realmente atualizar nada. fetch + checkout +
+            # reset --hard força a VPS a ficar EXATAMENTE igual ao "main" do GitHub,
+            # sempre, não importa o que estava checado antes.
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
             echo ">> Rebuild e restart dos containers..."
             docker compose up -d --build
             echo ">> Limpando imagens antigas..."
