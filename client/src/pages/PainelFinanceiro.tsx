@@ -133,11 +133,14 @@ function InadimplenciaEditor({ card, onClose }: { card: Card; onClose: () => voi
   )
 }
 
-function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
+function EmpresaCard({ card, editavel, idealHoje }: { card: Card; editavel: boolean; idealHoje: number }) {
   const [editando, setEditando] = useState(false)
   const meta = card.percentualMeta
-  const metaCor = card.bateuMeta ? 'text-green-400' : 'text-gold-400'
-  const barraCor = card.bateuMeta ? 'bg-green-500' : 'bg-gold-400'
+  // Cor/badge refletem se está no ritmo ideal do dia (não só se já bateu os
+  // 100% do mês — isso só acontece perto do fim do mês mesmo indo bem).
+  const noRitmo = meta >= idealHoje
+  const metaCor = noRitmo ? 'text-green-400' : 'text-gold-400'
+  const barraCor = noRitmo ? 'bg-green-500' : 'bg-gold-400'
   const logo = LOGO_POR_SLUG[card.slugLogo]
 
   return (
@@ -154,10 +157,10 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
         )}
         <span
           className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${
-            card.bateuMeta ? 'text-green-400 bg-green-900/30' : 'text-gold-400 bg-gold-900/20'
+            noRitmo ? 'text-green-400 bg-green-900/30' : 'text-gold-400 bg-gold-900/20'
           }`}
         >
-          {card.bateuMeta ? '🎯 Meta em dia' : '⏳ Abaixo do ritmo'}
+          {noRitmo ? '🎯 No ritmo' : '⏳ Abaixo do ritmo'}
         </span>
       </div>
       <p className="text-sm font-semibold text-dark-100">{card.nome}</p>
@@ -171,8 +174,16 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
       )}
       {card.origemExterna !== 'aton' && <div className="mb-4" />}
 
-      <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">% da meta batida</p>
-      <p className={`text-3xl font-bold font-mono tabular-nums mt-1 ${metaCor}`}>{meta}%</p>
+      <div className="flex items-baseline gap-4">
+        <div>
+          <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">% da meta batida</p>
+          <p className={`text-3xl font-bold font-mono tabular-nums mt-1 ${metaCor}`}>{meta}%</p>
+        </div>
+        <div>
+          <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">ideal p/ hoje</p>
+          <p className="text-lg font-bold font-mono tabular-nums text-dark-400 mt-1">{idealHoje}%</p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-dark-700">
         <div>
@@ -186,8 +197,13 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
       </div>
 
       <div className="mt-4 pt-4 border-t border-dark-700">
-        <div className="h-2 bg-dark-700 rounded-full overflow-hidden">
+        <div className="relative h-2 bg-dark-700 rounded-full overflow-hidden">
           <div className={`h-full rounded-full ${barraCor}`} style={{ width: `${Math.min(100, meta)}%` }} />
+          <div
+            className="absolute top-0 h-2 w-0.5 bg-dark-50"
+            style={{ left: `${Math.min(100, idealHoje)}%` }}
+            title={`Ideal pra hoje: ${idealHoje}%`}
+          />
         </div>
       </div>
 
@@ -232,6 +248,7 @@ type ResumoData = {
     vendasHojeQtd: number
     metaFaturamento: number
     percentualMeta: number
+    percentualIdealHoje: number
     inadimplenciaTotal: number
     diasUteisMes: number
     diasUteisAteHoje: number
@@ -240,7 +257,8 @@ type ResumoData = {
 
 function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
   const consolidado = data?.consolidado
-  const metaConsolidadaCor = consolidado?.percentualMeta && consolidado.percentualMeta >= 100 ? 'text-green-400' : 'text-gold-400'
+  const noRitmo = !!consolidado && consolidado.percentualMeta >= consolidado.percentualIdealHoje
+  const metaConsolidadaCor = noRitmo ? 'text-green-400' : 'text-gold-400'
 
   if (!data || !consolidado) return <p className="text-dark-500">Carregando...</p>
 
@@ -249,7 +267,13 @@ function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6 mb-6 grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-6">
         <div>
           <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">% da meta batida — grupo</p>
-          <p className={`text-5xl font-bold font-mono tabular-nums mt-1 ${metaConsolidadaCor}`}>{consolidado.percentualMeta}%</p>
+          <div className="flex items-baseline gap-5">
+            <p className={`text-5xl font-bold font-mono tabular-nums mt-1 ${metaConsolidadaCor}`}>{consolidado.percentualMeta}%</p>
+            <div>
+              <p className="text-2xl font-bold font-mono tabular-nums text-dark-400">{consolidado.percentualIdealHoje}%</p>
+              <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">ideal p/ hoje</p>
+            </div>
+          </div>
           <p className="text-sm text-dark-400 mt-2">
             {consolidado.vendasMesQtd} vendas fechadas no grupo · {consolidado.vendasHojeQtd} hoje
           </p>
@@ -264,7 +288,7 @@ function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         {data.cards.map((card) => (
-          <EmpresaCard key={card.cardKey} card={card} editavel />
+          <EmpresaCard key={card.cardKey} card={card} editavel idealHoje={consolidado.percentualIdealHoje} />
         ))}
       </div>
 

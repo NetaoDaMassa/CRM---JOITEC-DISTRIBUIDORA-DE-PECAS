@@ -71,26 +71,37 @@ export default function AdminDashboard() {
             <h2 className="text-sm font-semibold text-gold-400">🏢 Meta geral da empresa (mês)</h2>
             <span
               className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                data.metaEmpresa.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
+                data.metaEmpresa.percentualMetaFaturamento >= (data.percentualIdealHoje ?? 0) ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
               }`}
             >
-              Ritmo do dia {formatarPercentual(data.metaEmpresa.percentualMetaDia)}% {data.metaEmpresa.bateuMetaDia ? '✅' : '❌'}
+              {data.metaEmpresa.percentualMetaFaturamento >= (data.percentualIdealHoje ?? 0) ? '✅ NO RITMO' : '❌ ABAIXO DO RITMO'}
             </span>
           </div>
-          <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums">
-            {formatarPercentual(data.metaEmpresa.percentualMetaFaturamento)}%
-            {data.metaEmpresa.bateuMetaFaturamento && <span className="text-lg ml-1">✅</span>}
-          </p>
+          <div className="flex items-baseline gap-5">
+            <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums">
+              {formatarPercentual(data.metaEmpresa.percentualMetaFaturamento)}%
+              {data.metaEmpresa.bateuMetaFaturamento && <span className="text-lg ml-1">✅</span>}
+            </p>
+            <div>
+              <p className="text-xl font-bold text-dark-400 font-mono tabular-nums">{formatarPercentual(data.percentualIdealHoje)}%</p>
+              <p className="text-[10px] text-dark-500 uppercase tracking-wide">ideal pra hoje</p>
+            </div>
+          </div>
           <p className="text-sm text-dark-400 mt-1">
             {formatarMoeda(data.metaEmpresa.valorFechadoMes)} / {formatarMoeda(data.metaEmpresa.metaFaturamento)}
           </p>
-          <div className="h-2.5 bg-dark-900 rounded-full mt-3 overflow-hidden">
+          <div className="relative h-2.5 bg-dark-900 rounded-full mt-3 overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{
                 width: `${Math.min(100, data.metaEmpresa.percentualMetaFaturamento)}%`,
                 background: data.metaEmpresa.bateuMetaFaturamento ? COR_META_BATIDA : '#24aff4',
               }}
+            />
+            <div
+              className="absolute top-0 h-2.5 w-0.5 bg-dark-50"
+              style={{ left: `${Math.min(100, data.percentualIdealHoje ?? 0)}%` }}
+              title={`Ideal pra hoje: ${data.percentualIdealHoje}%`}
             />
           </div>
         </div>
@@ -155,14 +166,14 @@ export default function AdminDashboard() {
               <div className="flex flex-col items-end gap-1">
                 <span
                   className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                    v.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
+                    v.percentualMetaFaturamento >= (data?.percentualIdealHoje ?? 0) ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
                   }`}
-                  title="Ritmo acumulado do dia"
+                  title={`Ideal pra hoje: ${data?.percentualIdealHoje ?? 0}%`}
                 >
-                  {formatarMoeda(v.valorFechadoMes)} {v.bateuMetaDia ? '✅' : '❌'}
+                  {formatarPercentual(v.percentualMetaFaturamento)}% {v.percentualMetaFaturamento >= (data?.percentualIdealHoje ?? 0) ? '✅' : '❌'}
                 </span>
                 <span className="text-[11px] text-dark-400" title="Meta do mês">
-                  Meta: {v.metaFaturamento ? formatarMoeda(v.metaFaturamento) : '—'}
+                  ideal {formatarPercentual(data?.percentualIdealHoje)}% · meta {v.metaFaturamento ? formatarMoeda(v.metaFaturamento) : '—'}
                 </span>
               </div>
             </div>

@@ -180,6 +180,11 @@ export const financeiroRouter = router({
         vendasHojeQtd: cards.reduce((s, c) => s + c.vendasHoje.quantidade, 0),
         metaFaturamento: metaFaturamentoConsolidada,
         percentualMeta: metaFaturamentoConsolidada ? Math.round((valorMesConsolidado / metaFaturamentoConsolidada) * 1000) / 10 : 0,
+        // Quanto da meta já deveria ter sido batido a essa altura do mês —
+        // dias úteis já passados ÷ dias úteis do mês. Pedido do João: mostrar
+        // ao lado do % real ("no dia 21/08 já era pra estar em 40%, tá em
+        // 30%"), não só o % simples do total.
+        percentualIdealHoje: diasUteisMes > 0 ? Math.round((diasUteisAteHoje / diasUteisMes) * 1000) / 10 : 0,
         inadimplenciaTotal: cards.reduce((s, c) => s + c.inadimplencia.valorTotal, 0),
         diasUteisMes,
         diasUteisAteHoje,

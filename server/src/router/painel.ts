@@ -344,6 +344,12 @@ export const painelRouter = router({
       bateuMetaDia: vendasMesValorNum >= metaAcumuladaAteHojeEmpresa,
     }
 
+    // Quanto da meta (do mês inteiro, não só o acumulado) já deveria ter
+    // sido batido a essa altura — dias úteis já passados ÷ dias úteis do
+    // mês. Mesmo número serve pra empresa e pra qualquer vendedor, já que
+    // não depende de meta individual, só do calendário.
+    const percentualIdealHoje = diasUteisMes > 0 ? Math.round((diasUteisAteHoje / diasUteisMes) * 1000) / 10 : 0
+
     return {
       vendedores: vendedoresComDados.sort((a, b) => b.valorFechadoMes - a.valorFechadoMes),
       rankingLigacoes: [...vendedoresComDados].sort((a, b) => b.ligacoesHoje - a.ligacoesHoje),
@@ -366,6 +372,7 @@ export const painelRouter = router({
       negociosAbertos,
       orcamentosAbertos: { valor: orcamentosAbertosValor ?? 0, quantidade: orcamentosAbertosQtd },
       metaEmpresa,
+      percentualIdealHoje,
     }
   }),
 
@@ -442,6 +449,10 @@ export const painelRouter = router({
     const metaLigacoesAcumulada = Math.round(metaLigacoesDia * diasUteisAteHoje)
     const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null
     const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
+    // Quanto da meta do mês inteiro já deveria ter sido batido a essa altura
+    // — dias úteis já passados ÷ dias úteis do mês (ver mesmo cálculo em
+    // `resumo`, acima).
+    const percentualIdealHoje = diasUteisMes > 0 ? Math.round((diasUteisAteHoje / diasUteisMes) * 1000) / 10 : 0
 
     // Posição no ranking do time (só pra saber a colocação, sem expor os
     // valores de faturamento dos colegas).
@@ -536,6 +547,7 @@ export const painelRouter = router({
       percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 1000) / 10 : 0,
       metaAcumuladaAteHoje,
       percentualRitmo: metaAcumuladaAteHoje ? Math.round((valorMes / metaAcumuladaAteHoje) * 1000) / 10 : 0,
+      percentualIdealHoje,
       posicaoRanking,
       totalVendedores: todosVendedores.length,
       historico,

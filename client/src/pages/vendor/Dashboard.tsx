@@ -41,6 +41,25 @@ function BarraProgresso({ percentual, destaque }: { percentual: number; destaque
   )
 }
 
+// Mesma barra, mas com um traço marcando onde a meta "deveria" estar hoje
+// (proporcional aos dias úteis já passados no mês) — deixa visual a
+// diferença entre ritmo ideal e ritmo real, não só um número solto.
+function BarraProgressoComMarcador({ percentual, ideal, destaque }: { percentual: number; ideal: number; destaque: boolean }) {
+  return (
+    <div className="relative w-full bg-dark-700 rounded-full h-2 mt-1.5">
+      <div
+        className="h-2 rounded-full transition-all"
+        style={{ width: `${Math.min(100, percentual)}%`, backgroundColor: destaque ? COR_META_BATIDA : COR_VENDAS }}
+      />
+      <div
+        className="absolute top-0 h-2 w-0.5 bg-dark-50"
+        style={{ left: `${Math.min(100, ideal)}%` }}
+        title={`Ideal pra hoje: ${ideal}%`}
+      />
+    </div>
+  )
+}
+
 export default function VendorDashboard() {
   const { user } = useAuth()
   const { data } = trpc.painel.meuResumo.useQuery()
@@ -115,20 +134,34 @@ export default function VendorDashboard() {
           )}
         </div>
 
-        <div className={`rounded-2xl p-5 border-2 ${(data?.percentualRitmo ?? 0) >= 100 ? 'border-green-500 bg-green-900/10' : 'border-dark-600 bg-dark-800'}`}>
+        <div
+          className={`rounded-2xl p-5 border-2 ${
+            (data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? 'border-green-500 bg-green-900/10' : 'border-dark-600 bg-dark-800'
+          }`}
+        >
           <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-semibold text-dark-100">📅 Meta diária (ritmo acumulado)</p>
-            {(data?.percentualRitmo ?? 0) >= 100 ? (
-              <span className="text-xs font-bold text-green-400 bg-green-900/30 px-2 py-1 rounded-full">✅ BATEU HOJE</span>
+            <p className="text-sm font-semibold text-dark-100">📅 Ritmo do mês</p>
+            {(data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? (
+              <span className="text-xs font-bold text-green-400 bg-green-900/30 px-2 py-1 rounded-full">✅ NO RITMO</span>
             ) : (
-              <span className="text-xs font-bold text-red-400 bg-red-900/20 px-2 py-1 rounded-full">❌ NÃO BATEU AINDA</span>
+              <span className="text-xs font-bold text-red-400 bg-red-900/20 px-2 py-1 rounded-full">❌ ABAIXO DO RITMO</span>
             )}
           </div>
-          <p className="text-3xl font-bold text-dark-50 mt-1">{formatarPercentual(data?.percentualRitmo)}%</p>
-          <BarraProgresso percentual={data?.percentualRitmo ?? 0} destaque={(data?.percentualRitmo ?? 0) >= 100} />
-          <p className="text-xs text-dark-500 mt-1.5">
-            Acumulado até hoje: {formatarMoeda(data?.metaAcumuladaAteHoje ?? 0)} · você fechou {formatarMoeda(data?.vendasMes.valor ?? 0)}
-          </p>
+          <div className="flex items-baseline gap-5 mt-1">
+            <div>
+              <p className="text-3xl font-bold text-dark-50">{formatarPercentual(data?.percentualMetaFaturamento)}%</p>
+              <p className="text-[10px] text-dark-500 uppercase tracking-wide">você está em</p>
+            </div>
+            <div>
+              <p className="text-xl font-bold text-dark-400">{formatarPercentual(data?.percentualIdealHoje)}%</p>
+              <p className="text-[10px] text-dark-500 uppercase tracking-wide">ideal pra hoje</p>
+            </div>
+          </div>
+          <BarraProgressoComMarcador
+            percentual={data?.percentualMetaFaturamento ?? 0}
+            ideal={data?.percentualIdealHoje ?? 0}
+            destaque={(data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0)}
+          />
         </div>
       </div>
 
