@@ -4,7 +4,7 @@ import { router, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas } from '../db/schema.js'
 import { getConfigNumero, getConfigTexto } from '../lib/configuracoes.js'
-import { buscarChamadasPabxone360 } from '../lib/pabxone360.js'
+import { buscarChamadasPabxone360, registrarLigacoesAutomaticasPabxone360 } from '../lib/pabxone360.js'
 
 // Integração de TESTE com a PABXONE360 — só Odin Tubos e Conexões usa esse
 // PABX hoje, e os ramais ainda são compartilhados (não 1 por vendedora), por
@@ -42,6 +42,29 @@ export const pabxRouter = router({
         semRamal,
         duracaoMinimaSegundos: duracaoMinima,
         chamadas,
+      }
+    }),
+
+  // Dispara manualmente o mesmo processamento do scheduler (que roda a
+  // cada 10min sozinho) — só pra testar/validar sem esperar o próximo ciclo.
+  sincronizarAgora: superAdminProcedure
+    .input(z.object({ dataInicio: z.string(), dataFim: z.string() }))
+    .mutation(async ({ input }) => {
+      const [usuario, token] = await Promise.all([
+        getConfigTexto('pabxone360_usuario'),
+        getConfigTexto('pabxone360_token'),
+      ])
+      if (!usuario || !token) throw new Error('Credenciais da PABXONE360 não configuradas')
+      const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 15)
+
+      const inicio = new Date(`${input.dataInicio}T00:00:00`)
+      const fim = new Date(`${input.dataFim}T23:59:59`)
+      const resultados = await registrarLigacoesAutomaticasPabxone360(usuario, token, inicio, fim, duracaoMinima)
+
+      return {
+        total: resultados.length,
+        registradas: resultados.filter((r) => r.registroContatoId).length,
+        resultados,
       }
     }),
 })

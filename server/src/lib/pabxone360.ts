@@ -1,14 +1,23 @@
 // Integração de teste com a API da PABXONE360 (telefonia da Odin Tubos e
-// Conexões) — pedido do João pra ver tentativas de ligação x ligações
-// efetivas. Só REST + polling (a API não tem webhook, diferente da GoTo
-// Connect em goto.ts), autenticação por header "usuario"/"token" fixos por
-// conta, não OAuth. Ainda é só teste: os dois ramais cadastrados (201/202)
-// são compartilhados entre várias vendedoras, não dá pra atribuir a
-// ligação a uma vendedora específica ainda — por isso essa lib só devolve
-// um resumo agregado da empresa, sem tentar gravar em registro_contato
-// (que exige vendedorId/funilMensalId certos). Quando mais ramais forem
-// cadastrados 1-por-pessoa, isso vira a integração de verdade.
+// Conexões — empresa/sistema totalmente separado da integração GoTo Connect
+// em goto.ts, não misturar). Pedido do João: ver tentativas de ligação x
+// ligações efetivas, e registrar automaticamente no CRM mesmo quando o
+// vendedor liga direto pelo MicroSIP (sem passar pelo botão do CRM). Só
+// REST + polling (a API não tem webhook), autenticação por header
+// "usuario"/"token" fixos por conta, não OAuth.
+//
+// Os ramais (201/202) hoje são compartilhados entre várias vendedoras, não
+// dá pra atribuir a ligação a uma pessoa pelo ramal. Contorna isso do mesmo
+// jeito que goto.ts já faz: casa pelo NÚMERO DE TELEFONE do cliente (últimos
+// 10-11 dígitos), não pelo ramal — o cliente já tem um vendedor dono da
+// carteira, é esse quem recebe o registro, não importa qual ramal atendeu.
+import { and, eq, isNull } from 'drizzle-orm'
+import { db } from '../db/client.js'
+import { clientes, empresas, funilMensal, registroContato, pabxLigacoesProcessadas } from '../db/schema.js'
+import { agoraSqlite, mesReferenciaAtual } from './dataBr.js'
+
 const BASE_URL = 'https://pabxone360.com.br/suite/api'
+const SLUG_ODIN_TUBOS = 'odin-tubos'
 
 export interface ChamadaPabx {
   chamadaId: string
@@ -120,4 +129,182 @@ export async function buscarChamadasPabxone360(
       efetiva: c.sip_code === '200' && duracaoSegundos >= duracaoMinimaSegundos,
     }
   })
+}
+
+function soDigitos(v: string): string {
+  return v.replace(/\D/g, '')
+}
+
+// "21/08/2026 13:28:27" (formato BR que a PABXONE360 devolve) ->
+// "2026-08-21 13:28:27" (formato que o resto do banco usa) — os dois têm
+// 19 caracteres, então um length check sozinho não pegaria a troca de
+// ordem dia/mês/ano; sem essa conversão, dataHora ficaria fora de ordem
+// em qualquer filtro de período que compare como texto.
+function paraDataHoraSqlite(dataBr: string): string | null {
+  const m = dataBr.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2})$/)
+  if (!m) return null
+  const [, dia, mes, ano, hora] = m
+  return `${ano}-${mes}-${dia} ${hora}`
+}
+
+// Compara pelos últimos 10-11 dígitos, igual goto.ts — evita casar errado
+// por coincidência de final de número quando o DDD é diferente.
+function numeroBate(numeroCliente: string, sufixo10: string, sufixo11: string | null): boolean {
+  const d = soDigitos(numeroCliente)
+  if (d.length < 10) return false
+  if (sufixo11 && d.length >= 11 && d.slice(-11) === sufixo11) return true
+  return d.slice(-10) === sufixo10
+}
+
+// Ligação feita (ramal na origem) x recebida (ramal no destino) — só
+// interessa quando exatamente um lado tem ramal e o outro é telefone
+// externo de verdade; ramal-para-ramal (ligação interna) não tem cliente
+// nenhum envolvido, ignora.
+function extrairNumeroExterno(chamada: { origem: string; destino: string; ramal: string | null }): string | null {
+  const origemTemRamal = /-\d+$/.test(chamada.origem)
+  const destinoTemRamal = /-\d+$/.test(chamada.destino)
+  if (origemTemRamal === destinoTemRamal) return null // interno ou sem ramal nenhum
+  const bruto = origemTemRamal ? chamada.destino : chamada.origem
+  // Ligação recebida vem como "47997008385 (DID: 4835124536)" — só os
+  // dígitos antes do parênteses interessam pro casamento.
+  return bruto.split('(')[0].trim()
+}
+
+interface ResultadoRegistroPabx {
+  chamadaId: string
+  clienteId?: number
+  registroContatoId?: number
+  motivoNaoRegistrado?: string
+}
+
+// Roda a cada X minutos (scheduler.ts): busca ligações recentes da
+// PABXONE360, casa pelo telefone do cliente (não pelo ramal — ver
+// cabeçalho do arquivo) e grava registro_contato automaticamente, exatamente
+// como se o vendedor tivesse clicado "Registrar contato" — só que sem
+// precisar abrir o card. Idempotente via pabxLigacoesProcessadas (chamadaId
+// único), então rodar de novo sobre o mesmo período não duplica nada.
+export async function registrarLigacoesAutomaticasPabxone360(
+  usuario: string,
+  token: string,
+  dataInicio: Date,
+  dataFim: Date,
+  duracaoMinimaSegundos: number
+): Promise<ResultadoRegistroPabx[]> {
+  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.slug, SLUG_ODIN_TUBOS) })
+  if (!empresa) throw new Error('Empresa Odin Tubos e Conexões não encontrada')
+
+  const chamadas = await buscarChamadasPabxone360(usuario, token, dataInicio, dataFim, duracaoMinimaSegundos)
+  const resultados: ResultadoRegistroPabx[] = []
+
+  for (const chamada of chamadas) {
+    // Reserva o chamadaId ANTES de processar — se outra rodada já pegou
+    // essa mesma chamada (períodos de busca se sobrepõem de propósito, pra
+    // não perder ligação se uma rodada falhar), rowsAffected vem 0 e pula.
+    const claim = await db.insert(pabxLigacoesProcessadas).values({ chamadaId: chamada.chamadaId }).onConflictDoNothing()
+    if (claim.rowsAffected === 0) continue
+
+    async function finalizar(campos: {
+      direcao?: 'INBOUND' | 'OUTBOUND'
+      numeroExterno?: string | null
+      clienteId?: number
+      registroContatoId?: number
+      motivoNaoRegistrado?: string
+    }) {
+      await db
+        .update(pabxLigacoesProcessadas)
+        .set({
+          direcao: campos.direcao,
+          numeroExterno: campos.numeroExterno,
+          duracaoSegundos: chamada.duracaoSegundos,
+          sipCode: chamada.sipCode,
+          clienteId: campos.clienteId,
+          registroContatoId: campos.registroContatoId,
+          motivoNaoRegistrado: campos.motivoNaoRegistrado,
+        })
+        .where(eq(pabxLigacoesProcessadas.chamadaId, chamada.chamadaId))
+      resultados.push({
+        chamadaId: chamada.chamadaId,
+        clienteId: campos.clienteId,
+        registroContatoId: campos.registroContatoId,
+        motivoNaoRegistrado: campos.motivoNaoRegistrado,
+      })
+    }
+
+    const numeroExterno = extrairNumeroExterno(chamada)
+    if (!numeroExterno) {
+      await finalizar({ motivoNaoRegistrado: 'sem_numero_externo_identificavel' })
+      continue
+    }
+    const direcao = /-\d+$/.test(chamada.origem) ? 'OUTBOUND' : 'INBOUND'
+
+    const digitos = soDigitos(numeroExterno)
+    if (digitos.length < 10) {
+      await finalizar({ direcao, numeroExterno, motivoNaoRegistrado: 'numero_invalido' })
+      continue
+    }
+    const sufixo11 = digitos.length >= 11 ? digitos.slice(-11) : null
+    const sufixo10 = digitos.slice(-10)
+
+    const todosClientes = await db.query.clientes.findMany({
+      where: and(isNull(clientes.deletedAt), eq(clientes.empresaId, empresa.id)),
+      columns: { id: true, telefoneWhatsapp: true, vendedorAtualId: true },
+      with: { telefonesExtras: { columns: { numero: true } } },
+    })
+    const clientesQueBatem = todosClientes.filter(
+      (c) =>
+        (c.telefoneWhatsapp && numeroBate(c.telefoneWhatsapp, sufixo10, sufixo11)) ||
+        c.telefonesExtras.some((t) => numeroBate(t.numero, sufixo10, sufixo11))
+    )
+
+    if (clientesQueBatem.length === 0) {
+      await finalizar({ direcao, numeroExterno, motivoNaoRegistrado: 'cliente_nao_encontrado' })
+      continue
+    }
+    if (clientesQueBatem.length > 1) {
+      await finalizar({ direcao, numeroExterno, motivoNaoRegistrado: 'numero_ambiguo' })
+      continue
+    }
+
+    const cliente = clientesQueBatem[0]
+    if (!cliente.vendedorAtualId) {
+      await finalizar({ direcao, numeroExterno, clienteId: cliente.id, motivoNaoRegistrado: 'cliente_sem_vendedor' })
+      continue
+    }
+
+    const funil = await db.query.funilMensal.findFirst({
+      where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferenciaAtual()), isNull(funilMensal.deletedAt)),
+    })
+    if (!funil) {
+      await finalizar({ direcao, numeroExterno, clienteId: cliente.id, motivoNaoRegistrado: 'sem_funil_mes_atual' })
+      continue
+    }
+
+    const observacao = chamada.efetiva
+      ? `Ligação captada automaticamente pela integração PABXONE360 (${direcao === 'OUTBOUND' ? 'feita' : 'recebida'}, ramal ${chamada.ramal ?? '?'}) — duração ${chamada.duracaoSegundos}s.`
+      : `Ligação captada automaticamente pela integração PABXONE360 — não atendida ou muito curta (SIP ${chamada.sipCode}, ${chamada.duracaoSegundos}s).`
+
+    const [registro] = await db
+      .insert(registroContato)
+      .values({
+        funilMensalId: funil.id,
+        vendedorId: funil.vendedorId,
+        tipo: 'ligacao',
+        origem: 'ligacao_automatica',
+        duracaoSegundos: chamada.duracaoSegundos,
+        efetiva: chamada.efetiva,
+        resultado: chamada.efetiva ? undefined : 'nao_respondeu',
+        observacao,
+        dataHora: paraDataHoraSqlite(chamada.dataHora) ?? agoraSqlite(),
+      })
+      .returning({ id: registroContato.id })
+
+    await db
+      .update(funilMensal)
+      .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
+      .where(eq(funilMensal.id, funil.id))
+
+    await finalizar({ direcao, numeroExterno, clienteId: cliente.id, registroContatoId: registro?.id })
+  }
+
+  return resultados
 }

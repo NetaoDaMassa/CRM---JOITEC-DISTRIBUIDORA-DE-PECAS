@@ -502,6 +502,26 @@ export const gotoLogIntegracao = sqliteTable('goto_log_integracao', {
   criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
 })
 
+// Idempotência do polling da PABXONE360 (Odin Tubos e Conexões, teste
+// isolado — não tem relação nenhuma com a integração GoTo Connect acima,
+// são empresas/telefonias diferentes). Como não tem webhook, cada rodada
+// de sincronização busca as ligações recentes de novo — essa tabela evita
+// registrar a mesma chamada duas vezes entre uma rodada e outra.
+export const pabxLigacoesProcessadas = sqliteTable('pabx_ligacoes_processadas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadaId: text('chamada_id').notNull().unique(),
+  direcao: text('direcao', { enum: ['INBOUND', 'OUTBOUND'] }),
+  numeroExterno: text('numero_externo'),
+  duracaoSegundos: integer('duracao_segundos'),
+  sipCode: text('sip_code'),
+  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+  registroContatoId: integer('registro_contato_id').references(() => registroContato.id, { onDelete: 'set null' }),
+  // Por que não virou registroContato (ex: "nenhum cliente com telefone
+  // batendo", "cliente ambíguo", "sem vendedor", "sem ramal identificado").
+  motivoNaoRegistrado: text('motivo_nao_registrado'),
+  criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
+})
+
 export const notifications = sqliteTable('notifications', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
