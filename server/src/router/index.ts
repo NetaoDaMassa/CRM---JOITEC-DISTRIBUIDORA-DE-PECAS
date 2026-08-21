@@ -30,6 +30,7 @@ import { caixaRouter } from './caixa.js'
 import { comprasRouter } from './compras.js'
 import { permissoesRouter } from './permissoes.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
+import { integracoesRouter } from './integracoes.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -67,6 +68,7 @@ export const appRouter = router({
   compras: comprasRouter,
   permissoes: permissoesRouter,
   contasVinculadas: contasVinculadasRouter,
+  integracoes: integracoesRouter,
 })
 
 export type AppRouter = typeof appRouter

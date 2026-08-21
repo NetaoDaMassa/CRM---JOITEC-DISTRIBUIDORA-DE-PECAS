@@ -591,6 +591,67 @@ const SlideNegociacoes = memo(function SlideNegociacoes({ data }: { data: Painel
   )
 })
 
+type LeadsNovoData = NonNullable<RouterOutputs['integracoes']['leadsNovoMarketing']>
+
+// Leads que chegaram pelo CRM de marketing (site, tráfego pago etc.) e ainda
+// estão em "Novo" por lá, esperando alguém puxar pra carteira daqui — cruzado
+// por vendedor pelo username, que é o mesmo nos dois sistemas.
+const SlideLeadsNovo = memo(function SlideLeadsNovo({ data }: { data: LeadsNovoData }) {
+  const maiorFila = Math.max(0, ...data.vendedores.map((v) => v.leadsNovo))
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_CONTATOS}` }}>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="text-lg font-semibold text-gold-400">📥 Leads aguardando atendimento (Novo)</h2>
+        <span className="text-sm font-bold text-amber-400 bg-amber-900/20 px-3 py-1 rounded-full">
+          {data.totalLeadsNovo} lead{data.totalLeadsNovo !== 1 ? 's' : ''} esperando
+        </span>
+      </div>
+      {!data.vendedores.length && <p className="text-sm text-dark-500">Nenhum vendedor cadastrado nos dois sistemas ainda.</p>}
+      {!!data.vendedores.length && (
+        <ResponsiveContainer width="100%" height={data.vendedores.length * 32 + 10}>
+          <BarChart
+            data={data.vendedores.map((v) => ({ nome: v.nome, valor: v.leadsNovo }))}
+            layout="vertical"
+            margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
+            barCategoryGap={6}
+          >
+            <XAxis type="number" hide domain={[0, 'dataMax']} />
+            <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
+            <Tooltip content={<TooltipGrafico formatarValor={(v: number) => `${v} lead(s) esperando`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+            <Bar
+              dataKey="valor"
+              radius={[0, 4, 4, 0]}
+              maxBarSize={22}
+              isAnimationActive={false}
+              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}`} />}
+            >
+              {data.vendedores.map((v, i) => (
+                <Cell key={v.id ?? i} fill={maiorFila > 0 && v.leadsNovo === maiorFila ? '#dc4444' : COR_CONTATOS} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      )}
+      <div className="space-y-3 mt-4">
+        {data.vendedores.map((v, i) => (
+          <div key={v.id ?? i} className="flex items-center gap-3">
+            <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
+            <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} size="sm" />
+            <span className="flex-1 font-medium text-dark-100">{v.nome}</span>
+            {v.leadsNovo > 0 && <span className="text-xs" title="Tem lead esperando">📥</span>}
+            <span className="text-sm font-mono tabular-nums text-dark-100 w-10 text-right">{v.leadsNovo}</span>
+          </div>
+        ))}
+      </div>
+      {data.semVendedor > 0 && (
+        <p className="text-xs text-dark-500 mt-4 pt-3 border-t border-dark-700/60">
+          + {data.semVendedor} lead{data.semVendedor !== 1 ? 's' : ''} "Novo" sem vendedor atribuído no CRM de marketing.
+        </p>
+      )}
+    </div>
+  )
+})
+
 export default function PainelTV() {
   const [relogio, setRelogio] = useState(new Date())
   useEffect(() => {
@@ -605,6 +666,14 @@ export default function PainelTV() {
   const { data } = trpc.painel.resumo.useQuery(undefined, { refetchInterval: 15000, refetchIntervalInBackground: true })
   const { celebracao, fecharCelebracao } = useCelebrarMeta(data?.vendedores)
 
+  // Some sozinho da rotação se a ponte com o CRM de marketing não estiver
+  // configurada (MARKETING_CRM_URL/MARKETING_CRM_API_KEY vazios no servidor)
+  // ou se a empresa ativa aqui não existir por lá.
+  const { data: leadsNovoMarketing } = trpc.integracoes.leadsNovoMarketing.useQuery(undefined, {
+    refetchInterval: 15000,
+    refetchIntervalInBackground: true,
+  })
+
   const slides = [
     { titulo: 'Visão geral', render: SlideVisaoGeral },
     { titulo: 'Semana', render: SlideRankingSemanal },
@@ -612,6 +681,7 @@ export default function PainelTV() {
     { titulo: 'Conversão', render: SlideConversao },
     { titulo: 'Tendências', render: SlideTendencias },
     { titulo: 'Orçamentos', render: SlideNegociacoes },
+    ...(leadsNovoMarketing ? [{ titulo: 'Leads aguardando', render: () => <SlideLeadsNovo data={leadsNovoMarketing} /> }] : []),
   ]
   const [slideAtual, setSlideAtual] = useState(0)
   const { data: segundosPorSlide } = trpc.configuracoes.painelTvSegundosPorSlide.useQuery()

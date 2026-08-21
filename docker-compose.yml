@@ -23,6 +23,10 @@ services:
       GOTO_CLIENT_ID: ${GOTO_CLIENT_ID:-}
       GOTO_CLIENT_SECRET: ${GOTO_CLIENT_SECRET:-}
       GOTO_REDIRECT_URI: ${GOTO_REDIRECT_URI:-}
+      # Opcional — ponte com o CRM de marketing (odin-tubos-crm) pro slide
+      # "Leads aguardando" do Painel de TV. Se vazio, o slide some sozinho.
+      MARKETING_CRM_URL: ${MARKETING_CRM_URL:-}
+      MARKETING_CRM_API_KEY: ${MARKETING_CRM_API_KEY:-}
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads
