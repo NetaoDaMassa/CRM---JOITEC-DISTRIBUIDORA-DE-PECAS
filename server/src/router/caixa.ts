@@ -13,19 +13,23 @@ import { registrarAuditoria } from '../lib/auditoria.js'
 // Física, mas escopado por empresaId igual o resto do app (não é
 // exclusivo dela).
 export const caixaRouter = router({
-  // `mesReferencia` no formato "YYYY-MM" — lista os lançamentos do mês e já
-  // devolve os totais pra não precisar somar duas vezes no client.
+  // `dataInicio`/`dataFim` no formato "YYYY-MM-DD" — lista os lançamentos do
+  // período e já devolve os totais pra não precisar somar duas vezes no
+  // client. Antes só aceitava mês fechado; João pediu um filtro de data
+  // livre (ex: conferir só a primeira quinzena, ou atravessar dois meses).
   listar: caixaProcedure
-    .input(z.object({ mesReferencia: z.string().regex(/^\d{4}-\d{2}$/) }))
+    .input(
+      z.object({
+        dataInicio: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        dataFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+    )
     .query(async ({ ctx, input }) => {
-      const inicioMes = `${input.mesReferencia}-01`
-      const fimMes = `${input.mesReferencia}-31 23:59:59`
-
       const where = and(
         eq(caixaMovimentacoes.empresaId, ctx.empresaId),
         isNull(caixaMovimentacoes.deletedAt),
-        gte(caixaMovimentacoes.data, inicioMes),
-        lte(caixaMovimentacoes.data, fimMes)
+        gte(caixaMovimentacoes.data, input.dataInicio),
+        lte(caixaMovimentacoes.data, input.dataFim)
       )
 
       const registros = await db.query.caixaMovimentacoes.findMany({

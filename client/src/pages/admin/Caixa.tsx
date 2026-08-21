@@ -21,6 +21,17 @@ function hojeString(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+function primeiroDiaDoMes(mes: string): string {
+  return `${mes}-01`
+}
+
+function ultimoDiaDoMes(mes: string): string {
+  const [ano, mesNum] = mes.split('-').map(Number)
+  // Dia 0 do mês seguinte = último dia do mês atual (truque padrão de Date).
+  const ultimo = new Date(ano, mesNum, 0)
+  return `${ultimo.getFullYear()}-${String(ultimo.getMonth() + 1).padStart(2, '0')}-${String(ultimo.getDate()).padStart(2, '0')}`
+}
+
 // Caixa da empresa — o admin lança entrada/saída de dinheiro manualmente,
 // com saldo consolidado por mês. Simples de propósito (sem categorias,
 // sem conciliação bancária): é só um registro de "entrou X, saiu Y" por
@@ -28,17 +39,29 @@ function hojeString(): string {
 // loja mês a mês.
 export default function Caixa() {
   const [mesReferencia, setMesReferencia] = useState(mesAtualString())
+  const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes(mesAtualString()))
+  const [dataFim, setDataFim] = useState(ultimoDiaDoMes(mesAtualString()))
   const [tipo, setTipo] = useState<'entrada' | 'saida'>('entrada')
   const [valor, setValor] = useState('')
   const [data, setData] = useState(hojeString())
   const [descricao, setDescricao] = useState('')
 
+  // Trocar o seletor de mês realinha o período pro mês inteiro; editar
+  // início/fim direto (abaixo) deixa o período livre, sem travar em mês
+  // fechado — pedido do João pra dar pra conferir só uma quinzena, ou um
+  // período que atravessa a virada do mês.
+  function selecionarMes(mes: string) {
+    setMesReferencia(mes)
+    setDataInicio(primeiroDiaDoMes(mes))
+    setDataFim(ultimoDiaDoMes(mes))
+  }
+
   const utils = trpc.useUtils()
-  const { data: resumo, isLoading } = trpc.caixa.listar.useQuery({ mesReferencia })
+  const { data: resumo, isLoading } = trpc.caixa.listar.useQuery({ dataInicio, dataFim })
   const { data: resumoMensal } = trpc.caixa.resumoMensal.useQuery()
 
   function invalidar() {
-    utils.caixa.listar.invalidate({ mesReferencia })
+    utils.caixa.listar.invalidate({ dataInicio, dataFim })
     utils.caixa.resumoMensal.invalidate()
   }
 
@@ -78,20 +101,36 @@ export default function Caixa() {
           <h1 className="font-heading text-xl text-dark-50">Caixa</h1>
           <p className="text-sm text-dark-400">Entradas e saídas de dinheiro, com saldo consolidado por mês.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <input
             type="month"
             value={mesReferencia}
-            onChange={(e) => setMesReferencia(e.target.value)}
+            onChange={(e) => selecionarMes(e.target.value)}
+            title="Mês inteiro"
             className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-sm text-dark-100"
           />
+          <div className="flex items-center gap-1.5 bg-dark-800 border border-dark-600 rounded-lg px-2 py-1">
+            <input
+              type="date"
+              value={dataInicio}
+              onChange={(e) => setDataInicio(e.target.value)}
+              className="bg-transparent text-sm text-dark-100 outline-none"
+            />
+            <span className="text-dark-500 text-xs">até</span>
+            <input
+              type="date"
+              value={dataFim}
+              onChange={(e) => setDataFim(e.target.value)}
+              className="bg-transparent text-sm text-dark-100 outline-none"
+            />
+          </div>
           <Button
             variant="secondary"
             size="sm"
             disabled={!resumo?.registros.length}
             onClick={() =>
               baixarCsv(
-                `caixa-${mesReferencia}.csv`,
+                `caixa-${dataInicio}_a_${dataFim}.csv`,
                 paraCsv(
                   [
                     { chave: 'data', rotulo: 'Data' },
@@ -166,7 +205,7 @@ export default function Caixa() {
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
         {isLoading && <p className="p-4 text-dark-400 text-sm">Carregando...</p>}
-        {!isLoading && !resumo?.registros.length && <p className="p-4 text-dark-400 text-sm">Nenhum lançamento nesse mês.</p>}
+        {!isLoading && !resumo?.registros.length && <p className="p-4 text-dark-400 text-sm">Nenhum lançamento nesse período.</p>}
         {resumo?.registros.map((r) => (
           <div key={r.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
             <div className="min-w-0 flex items-center gap-3">
