@@ -762,6 +762,238 @@ export const messageTemplates = sqliteTable('message_templates', {
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// ─────────────────────────────────────────────────────────────────────────
+// Devolução (portado do sistema separado "Controle de Devoluções — Grupo
+// Odin", controle-devolucao.duckdns.org — Postgres próprio, RBAC próprio).
+// Aqui não recria login/empresa próprios: usuário é `users` normal (o papel
+// dentro do módulo — gestor padrão, gestor de estoque, admin de empresa,
+// poder de excluir chamado, poder de finalizar fora de ordem — vira feature
+// em `permissoesAdmin`, mesmo mecanismo do resto do CRM) e empresa é
+// `empresas` normal (mapeamento com as 4 empresas do sistema original:
+// joitec→1, odin-tubos→2, odin-compressores→4, compretec→7 "Loja Física").
+// IDs viram autoincrement (era uuid no Postgres original) — a migração dos
+// dados existentes remapeia os uuids antigos pra esses ids novos.
+// ─────────────────────────────────────────────────────────────────────────
+
+export const devolucaoChamados = sqliteTable('devolucao_chamados', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  protocolo: text('protocolo').notNull().unique(),
+  status: text('status', {
+    enum: [
+      'novo',
+      'em_andamento',
+      'analise',
+      'nota_fiscal_devolucao',
+      'chegada_materiais',
+      'preparacao_envio',
+      'rastreio_transportadora',
+      'finalizado',
+    ],
+  })
+    .notNull()
+    .default('novo'),
+  // 'preparacao_envio'/'rastreio_transportadora' só existem no fluxo da Odin
+  // Compressores (avança sozinho depois da análise, sem arrastar no Kanban).
+  origem: text('origem', { enum: ['cliente', 'vendedor'] }).notNull(),
+  criadoPorUserId: integer('criado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+  clienteCnpj: text('cliente_cnpj'),
+  clienteWhatsapp: text('cliente_whatsapp'),
+  clienteEmail: text('cliente_email'),
+  clienteCodigo: text('cliente_codigo'),
+  clienteNome: text('cliente_nome'),
+  numeroNotaFiscal: text('numero_nota_fiscal'),
+  numeroNotaFiscalVenda: text('numero_nota_fiscal_venda'),
+  numeroPedidoVenda: text('numero_pedido_venda'),
+  descricao: text('descricao'),
+  observacao: text('observacao'),
+  transportadoraNome: text('transportadora_nome'),
+  dataChegadaPrevista: text('data_chegada_prevista'),
+  dataSaidaPrevista: text('data_saida_prevista'),
+  dataInicioTratamento: text('data_inicio_tratamento'),
+  pularNotaFiscalDevolucao: integer('pular_nota_fiscal_devolucao', { mode: 'boolean' }).notNull().default(false),
+  origemDemonstracaoId: integer('origem_demonstracao_id').references((): any => devolucaoDemonstracoes.id, { onDelete: 'set null' }),
+  fechadoEm: text('fechado_em'),
+  // Campos legados (pré ticket_services no sistema original) — não usados
+  // por telas novas, mantidos só pra não perder dado de chamados antigos.
+  legacyMaquinaNumeroSerie: text('legacy_maquina_numero_serie'),
+  legacyMaquinaModelo: text('legacy_maquina_modelo'),
+  legacyTecnicoPago: integer('legacy_tecnico_pago', { mode: 'boolean' }),
+  legacyTecnicoValorPagamento: real('legacy_tecnico_valor_pagamento'),
+  legacyTecnicoDescricaoServico: text('legacy_tecnico_descricao_servico'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoOcorrencias = sqliteTable(
+  'devolucao_ocorrencias',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+    tipo: text('tipo', { enum: ['envio_errado', 'falta_materiais', 'produto_defeito', 'outro'] }).notNull(),
+    rotuloCustom: text('rotulo_custom'),
+  },
+  (t) => ({
+    chamadoTipo: unique().on(t.chamadoId, t.tipo),
+  })
+)
+
+export const devolucaoMateriais = sqliteTable('devolucao_materiais', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+  codigoItem: text('codigo_item').notNull(),
+  descricaoItem: text('descricao_item').notNull(),
+  quantidade: real('quantidade').notNull().default(1),
+  numeroSerie: text('numero_serie'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// URL/nome de arquivo aleatorizados na hora do upload (mesmo motivo do
+// sistema original: não deixar o nome do arquivo vazar dado do cliente nem
+// virar link adivinhável) — ver rota de upload no router.
+export const devolucaoAnexos = sqliteTable('devolucao_anexos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+  contexto: text('contexto', { enum: ['abertura', 'analise', 'mecanica'] }).notNull().default('abertura'),
+  urlArquivo: text('url_arquivo').notNull(),
+  nomeArquivo: text('nome_arquivo').notNull(),
+  tipoArquivo: text('tipo_arquivo'),
+  enviadoPorUserId: integer('enviado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoHistoricoStatus = sqliteTable('devolucao_historico_status', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+  statusAnterior: text('status_anterior'),
+  statusNovo: text('status_novo').notNull(),
+  alteradoPorUserId: integer('alterado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  nota: text('nota'),
+  alteradoEm: text('alterado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+// who_erred/impacto na comissão nunca podem ser mandados pro front pra quem
+// não tem a feature 'devolucoes_ver_comissao' — sanitizar isso é
+// responsabilidade do router (ver comentário lá), não desta tabela.
+export const devolucaoAnalises = sqliteTable('devolucao_analises', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }).unique(),
+  resultado: text('resultado', { enum: ['positivo', 'negativo'] }).notNull(),
+  motivoNegativa: text('motivo_negativa'),
+  creditoRestante: real('credito_restante'),
+  quemErrou: text('quem_errou', { enum: ['cliente', 'estoque', 'transportadora', 'vendedor', 'defeito'] }),
+  tipoResolucao: text('tipo_resolucao', {
+    enum: ['saldo_credito', 'troca_produto', 'abatimento_boleto', 'dinheiro_volta', 'envio_materiais'],
+  }),
+  impactaComissao: integer('impacta_comissao', { mode: 'boolean' }).notNull().default(false),
+  valorImpactoComissao: real('valor_impacto_comissao'),
+  anexoNotaDevolucaoId: integer('anexo_nota_devolucao_id').references(() => devolucaoAnexos.id, { onDelete: 'set null' }),
+  analisadoPorUserId: integer('analisado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  analisadoEm: text('analisado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoAnaliseProdutos = sqliteTable('devolucao_analise_produtos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  analiseId: integer('analise_id').notNull().references(() => devolucaoAnalises.id, { onDelete: 'cascade' }),
+  codigoProduto: text('codigo_produto'),
+  descricaoProduto: text('descricao_produto').notNull(),
+  quantidade: real('quantidade').notNull().default(1),
+})
+
+// 'recebido'/'manutencao' só existem no fluxo da Odin Compressores.
+export const devolucaoMecanicaItens = sqliteTable('devolucao_mecanica_itens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  codigoItem: text('codigo_item').notNull(),
+  descricaoItem: text('descricao_item').notNull(),
+  quantidade: real('quantidade').notNull().default(1),
+  status: text('status', {
+    enum: ['enviado', 'retornado', 'testado', 'arrumado', 'descarte', 'recebido', 'manutencao'],
+  })
+    .notNull()
+    .default('enviado'),
+  enviadoEm: text('enviado_em'),
+  retornadoEm: text('retornado_em'),
+  testadoEm: text('testado_em'),
+  resolvidoEm: text('resolvido_em'),
+  atualizadoPorUserId: integer('atualizado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  observacao: text('observacao'),
+  descricaoManutencao: text('descricao_manutencao'),
+  condicaoRetorno: text('condicao_retorno', { enum: ['novo', 'usado'] }),
+  motivoDescarte: text('motivo_descarte'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoMecanicaHistorico = sqliteTable('devolucao_mecanica_historico', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  itemId: integer('item_id').notNull().references(() => devolucaoMecanicaItens.id, { onDelete: 'cascade' }),
+  statusAnterior: text('status_anterior'),
+  statusNovo: text('status_novo').notNull(),
+  alteradoPorUserId: integer('alterado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  alteradoEm: text('alterado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoFeedbacks = sqliteTable('devolucao_feedbacks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+  textoFeedback: text('texto_feedback').notNull(),
+  recebidoVia: text('recebido_via').notNull().default('whatsapp'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoAtualizacoes = sqliteTable('devolucao_atualizacoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
+  autorUserId: integer('autor_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  mensagem: text('mensagem').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoServicos = sqliteTable('devolucao_servicos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }).unique(),
+  teveServico: integer('teve_servico', { mode: 'boolean' }).notNull(),
+  valorCobrado: real('valor_cobrado'),
+  horasTrabalhadas: real('horas_trabalhadas'),
+  executadoPor: text('executado_por'),
+  statusPagamento: text('status_pagamento', { enum: ['credito', 'pago'] }),
+  valorFinal: real('valor_final'),
+  registradoPorUserId: integer('registrado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  registradoEm: text('registrado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoDemonstracoes = sqliteTable('devolucao_demonstracoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  clienteNome: text('cliente_nome').notNull(),
+  anexoNotaUrl: text('anexo_nota_url'),
+  vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'restrict' }),
+  enviadoEm: text('enviado_em').notNull().default(sql`(date('now'))`),
+  retornoPrevistoEm: text('retorno_previsto_em'),
+  observacao: text('observacao'),
+  status: text('status', { enum: ['ativa', 'retornada', 'convertida_venda', 'devolucao_aberta'] }).notNull().default('ativa'),
+  criadoPorUserId: integer('criado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  contagemRenovacao: integer('contagem_renovacao').notNull().default(0),
+  numeroNotaVenda: text('numero_nota_venda'),
+  chamadoVinculadoId: integer('chamado_vinculado_id').references(() => devolucaoChamados.id, { onDelete: 'set null' }),
+  clienteCnpj: text('cliente_cnpj'),
+  clienteLocalizacao: text('cliente_localizacao'),
+  nomeClienteVenda: text('nome_cliente_venda'),
+  dataVenda: text('data_venda'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const devolucaoDemonstracaoItens = sqliteTable('devolucao_demonstracao_itens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  demonstracaoId: integer('demonstracao_id').notNull().references(() => devolucaoDemonstracoes.id, { onDelete: 'cascade' }),
+  descricaoProduto: text('descricao_produto').notNull(),
+  numeroSerie: text('numero_serie'),
+  quantidade: real('quantidade').notNull().default(1),
+})
+
 // Relations
 export const usersRelations = relations(users, ({ many }) => ({
   clientesCarteira: many(clientes),
@@ -879,4 +1111,93 @@ export const notificationsRelations = relations(notifications, ({ one }) => ({
 export const compromissosRelations = relations(compromissos, ({ one }) => ({
   vendedor: one(users, { fields: [compromissos.vendedorId], references: [users.id] }),
   cliente: one(clientes, { fields: [compromissos.clienteId], references: [clientes.id] }),
+}))
+
+export const devolucaoChamadosRelations = relations(devolucaoChamados, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [devolucaoChamados.empresaId], references: [empresas.id] }),
+  criadoPor: one(users, { fields: [devolucaoChamados.criadoPorUserId], references: [users.id] }),
+  vendedor: one(users, { fields: [devolucaoChamados.vendedorId], references: [users.id] }),
+  origemDemonstracao: one(devolucaoDemonstracoes, {
+    fields: [devolucaoChamados.origemDemonstracaoId],
+    references: [devolucaoDemonstracoes.id],
+  }),
+  ocorrencias: many(devolucaoOcorrencias),
+  materiais: many(devolucaoMateriais),
+  anexos: many(devolucaoAnexos),
+  historicoStatus: many(devolucaoHistoricoStatus),
+  analise: one(devolucaoAnalises, { fields: [devolucaoChamados.id], references: [devolucaoAnalises.chamadoId] }),
+  mecanicaItens: many(devolucaoMecanicaItens),
+  feedbacks: many(devolucaoFeedbacks),
+  atualizacoes: many(devolucaoAtualizacoes),
+  servicos: one(devolucaoServicos, { fields: [devolucaoChamados.id], references: [devolucaoServicos.chamadoId] }),
+}))
+
+export const devolucaoOcorrenciasRelations = relations(devolucaoOcorrencias, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoOcorrencias.chamadoId], references: [devolucaoChamados.id] }),
+}))
+
+export const devolucaoMateriaisRelations = relations(devolucaoMateriais, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoMateriais.chamadoId], references: [devolucaoChamados.id] }),
+}))
+
+export const devolucaoAnexosRelations = relations(devolucaoAnexos, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoAnexos.chamadoId], references: [devolucaoChamados.id] }),
+  enviadoPor: one(users, { fields: [devolucaoAnexos.enviadoPorUserId], references: [users.id] }),
+}))
+
+export const devolucaoHistoricoStatusRelations = relations(devolucaoHistoricoStatus, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoHistoricoStatus.chamadoId], references: [devolucaoChamados.id] }),
+  alteradoPor: one(users, { fields: [devolucaoHistoricoStatus.alteradoPorUserId], references: [users.id] }),
+}))
+
+export const devolucaoAnalisesRelations = relations(devolucaoAnalises, ({ one, many }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoAnalises.chamadoId], references: [devolucaoChamados.id] }),
+  anexoNotaDevolucao: one(devolucaoAnexos, { fields: [devolucaoAnalises.anexoNotaDevolucaoId], references: [devolucaoAnexos.id] }),
+  analisadoPor: one(users, { fields: [devolucaoAnalises.analisadoPorUserId], references: [users.id] }),
+  produtos: many(devolucaoAnaliseProdutos),
+}))
+
+export const devolucaoAnaliseProdutosRelations = relations(devolucaoAnaliseProdutos, ({ one }) => ({
+  analise: one(devolucaoAnalises, { fields: [devolucaoAnaliseProdutos.analiseId], references: [devolucaoAnalises.id] }),
+}))
+
+export const devolucaoMecanicaItensRelations = relations(devolucaoMecanicaItens, ({ one, many }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoMecanicaItens.chamadoId], references: [devolucaoChamados.id] }),
+  empresa: one(empresas, { fields: [devolucaoMecanicaItens.empresaId], references: [empresas.id] }),
+  atualizadoPor: one(users, { fields: [devolucaoMecanicaItens.atualizadoPorUserId], references: [users.id] }),
+  historico: many(devolucaoMecanicaHistorico),
+}))
+
+export const devolucaoMecanicaHistoricoRelations = relations(devolucaoMecanicaHistorico, ({ one }) => ({
+  item: one(devolucaoMecanicaItens, { fields: [devolucaoMecanicaHistorico.itemId], references: [devolucaoMecanicaItens.id] }),
+  alteradoPor: one(users, { fields: [devolucaoMecanicaHistorico.alteradoPorUserId], references: [users.id] }),
+}))
+
+export const devolucaoFeedbacksRelations = relations(devolucaoFeedbacks, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoFeedbacks.chamadoId], references: [devolucaoChamados.id] }),
+}))
+
+export const devolucaoAtualizacoesRelations = relations(devolucaoAtualizacoes, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoAtualizacoes.chamadoId], references: [devolucaoChamados.id] }),
+  autor: one(users, { fields: [devolucaoAtualizacoes.autorUserId], references: [users.id] }),
+}))
+
+export const devolucaoServicosRelations = relations(devolucaoServicos, ({ one }) => ({
+  chamado: one(devolucaoChamados, { fields: [devolucaoServicos.chamadoId], references: [devolucaoChamados.id] }),
+  registradoPor: one(users, { fields: [devolucaoServicos.registradoPorUserId], references: [users.id] }),
+}))
+
+export const devolucaoDemonstracoesRelations = relations(devolucaoDemonstracoes, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [devolucaoDemonstracoes.empresaId], references: [empresas.id] }),
+  vendedor: one(users, { fields: [devolucaoDemonstracoes.vendedorId], references: [users.id] }),
+  criadoPor: one(users, { fields: [devolucaoDemonstracoes.criadoPorUserId], references: [users.id] }),
+  chamadoVinculado: one(devolucaoChamados, { fields: [devolucaoDemonstracoes.chamadoVinculadoId], references: [devolucaoChamados.id] }),
+  itens: many(devolucaoDemonstracaoItens),
+}))
+
+export const devolucaoDemonstracaoItensRelations = relations(devolucaoDemonstracaoItens, ({ one }) => ({
+  demonstracao: one(devolucaoDemonstracoes, {
+    fields: [devolucaoDemonstracaoItens.demonstracaoId],
+    references: [devolucaoDemonstracoes.id],
+  }),
 }))

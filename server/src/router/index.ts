@@ -32,6 +32,7 @@ import { permissoesRouter } from './permissoes.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
 import { integracoesRouter } from './integracoes.js'
 import { pabxRouter } from './pabx.js'
+import { devolucoesRouter } from './devolucoes.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -71,6 +72,7 @@ export const appRouter = router({
   contasVinculadas: contasVinculadasRouter,
   integracoes: integracoesRouter,
   pabx: pabxRouter,
+  devolucoes: devolucoesRouter,
 })
 
 export type AppRouter = typeof appRouter

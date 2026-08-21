@@ -3,6 +3,7 @@ import cors from 'cors'
 import path from 'path'
 import fs from 'fs'
 import multer from 'multer'
+import { randomUUID } from 'crypto'
 import { createExpressMiddleware } from '@trpc/server/adapters/express'
 import { config } from 'dotenv'
 import { appRouter } from './router/index.js'
@@ -106,6 +107,42 @@ app.post('/upload/comprovante-exclusao', upload.single('file'), async (req, res)
   }
 
   res.json({ path: `/uploads/${req.file.filename}` })
+})
+
+// Anexos de chamado de Devolução — nome de arquivo aleatorizado (crypto,
+// nunca o nome original) igual ao sistema original: evita que o link
+// (servido sem login em /uploads) vaze o nome do arquivo que o cliente
+// mandou, ou vire um link adivinhável. Aceita imagem/vídeo/áudio/PDF, até
+// 15MB/arquivo — mesmos limites do sistema original.
+const storageDevolucao = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `devolucao-${randomUUID()}${ext}`)
+  },
+})
+const MIME_PERMITIDOS_DEVOLUCAO = ['image/', 'video/', 'audio/', 'application/pdf']
+const uploadDevolucao = multer({
+  storage: storageDevolucao,
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => {
+    cb(null, MIME_PERMITIDOS_DEVOLUCAO.some((m) => file.mimetype.startsWith(m)))
+  },
+})
+
+// Uso interno (vendedor/admin logado, dentro do CRM).
+app.post('/upload/devolucao-anexo', uploadDevolucao.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype })
+})
+
+// Formulário público do cliente (/solicitacao) — sem login, é o link que
+// vai ser compartilhado com clientes de fora.
+app.post('/upload/devolucao-anexo-publico', uploadDevolucao.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype })
 })
 
 // Importação em massa de clientes (Excel/CSV) — em memória, não vai pro disco

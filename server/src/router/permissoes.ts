@@ -29,6 +29,21 @@ export const FEATURES_ADMIN = [
   'backup',
   'painel_financeiro',
   'painel_tv',
+  // Devolução (Grupo Odin) — 'devolucoes' já libera o Kanban de chamados
+  // pra admin (que sempre passa por ser admin); as demais são poderes extra
+  // que um admin normal não tem por padrão, precisam ser concedidos:
+  // 'devolucoes_mecanica' (módulo Mecânica, equivalente ao antigo "gestor de
+  // estoque"), 'devolucoes_demonstracao', 'devolucoes_ver_comissao' (campos
+  // "quem errou"/impacto na comissão — sigiloso, nunca on por padrão),
+  // 'devolucoes_excluir_chamado' e 'devolucoes_finalizar_fora_ordem' (os 2
+  // poderes que no sistema original eram fixos por e-mail — Paola/Andreia —
+  // agora concedidos por aqui, a quem for).
+  'devolucoes',
+  'devolucoes_mecanica',
+  'devolucoes_demonstracao',
+  'devolucoes_ver_comissao',
+  'devolucoes_excluir_chamado',
+  'devolucoes_finalizar_fora_ordem',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
@@ -51,6 +66,16 @@ export const FEATURES_VENDEDOR = [
   // Visão "Faturamento Geral" (Compretec Loja Física) — todos os cards
   // Fechado/Faturamento da empresa, de qualquer vendedor, num board só.
   'faturamento_geral',
+  // Devolução — mesmas chaves de FEATURES_ADMIN (ver comentário lá). Um
+  // vendedor com 'devolucoes' + 'devolucoes_mecanica' concedidos, por
+  // exemplo, cobre o antigo papel "gestor padrão" do sistema original, sem
+  // precisar virar admin de verdade (que abriria todo o resto do CRM).
+  'devolucoes',
+  'devolucoes_mecanica',
+  'devolucoes_demonstracao',
+  'devolucoes_ver_comissao',
+  'devolucoes_excluir_chamado',
+  'devolucoes_finalizar_fora_ordem',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima
