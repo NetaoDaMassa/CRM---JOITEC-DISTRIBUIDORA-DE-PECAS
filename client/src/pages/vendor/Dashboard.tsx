@@ -11,6 +11,7 @@ import { hojeBrString } from '../../lib/utils'
 const COR_VENDAS = '#3987e5'
 const COR_CONTATOS = '#c2691a'
 const COR_META_BATIDA = '#0ca30c'
+const COR_ABAIXO = '#e5484d'
 
 function formatarMoeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -49,7 +50,7 @@ function BarraProgressoComMarcador({ percentual, ideal, destaque }: { percentual
     <div className="relative w-full bg-dark-700 rounded-full h-2 mt-1.5">
       <div
         className="h-2 rounded-full transition-all"
-        style={{ width: `${Math.min(100, percentual)}%`, backgroundColor: destaque ? COR_META_BATIDA : COR_VENDAS }}
+        style={{ width: `${Math.min(100, percentual)}%`, backgroundColor: destaque ? COR_META_BATIDA : COR_ABAIXO }}
       />
       <div
         className="absolute top-0 h-2 w-0.5 bg-dark-50"
@@ -136,7 +137,7 @@ export default function VendorDashboard() {
 
         <div
           className={`rounded-2xl p-5 border-2 ${
-            (data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? 'border-green-500 bg-green-900/10' : 'border-dark-600 bg-dark-800'
+            (data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? 'border-green-500 bg-green-900/10' : 'border-red-500/60 bg-red-900/10'
           }`}
         >
           <div className="flex items-center justify-between mb-1">
@@ -149,7 +150,13 @@ export default function VendorDashboard() {
           </div>
           <div className="flex items-baseline gap-5 mt-1">
             <div>
-              <p className="text-3xl font-bold text-dark-50">{formatarPercentual(data?.percentualMetaFaturamento)}%</p>
+              <p
+                className={`text-3xl font-bold ${
+                  (data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? 'text-dark-50' : 'text-red-400'
+                }`}
+              >
+                {formatarPercentual(data?.percentualMetaFaturamento)}%
+              </p>
               <p className="text-[10px] text-dark-500 uppercase tracking-wide">você está em</p>
             </div>
             <div>

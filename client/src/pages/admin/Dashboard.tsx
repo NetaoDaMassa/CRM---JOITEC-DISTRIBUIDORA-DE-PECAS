@@ -65,20 +65,22 @@ export default function AdminDashboard() {
         <p className="text-dark-400 text-sm">Visão geral da produção da Joitec, num relance.</p>
       </div>
 
-      {data?.metaEmpresa && (
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5" style={{ borderLeft: '4px solid #24aff4' }}>
+      {data?.metaEmpresa && (() => {
+        const noRitmoEmpresa = data.metaEmpresa.percentualMetaFaturamento >= (data.percentualIdealHoje ?? 0)
+        return (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5" style={{ borderLeft: `4px solid ${noRitmoEmpresa ? COR_META_BATIDA : '#e5484d'}` }}>
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <h2 className="text-sm font-semibold text-gold-400">🏢 Meta geral da empresa (mês)</h2>
             <span
               className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${
-                data.metaEmpresa.percentualMetaFaturamento >= (data.percentualIdealHoje ?? 0) ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
+                noRitmoEmpresa ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
               }`}
             >
-              {data.metaEmpresa.percentualMetaFaturamento >= (data.percentualIdealHoje ?? 0) ? '✅ NO RITMO' : '❌ ABAIXO DO RITMO'}
+              {noRitmoEmpresa ? '✅ NO RITMO' : '❌ ABAIXO DO RITMO'}
             </span>
           </div>
           <div className="flex items-baseline gap-5">
-            <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums">
+            <p className={`text-3xl font-bold font-mono tabular-nums ${noRitmoEmpresa ? 'text-dark-50' : 'text-red-400'}`}>
               {formatarPercentual(data.metaEmpresa.percentualMetaFaturamento)}%
               {data.metaEmpresa.bateuMetaFaturamento && <span className="text-lg ml-1">✅</span>}
             </p>
@@ -95,7 +97,7 @@ export default function AdminDashboard() {
               className="h-full rounded-full transition-all"
               style={{
                 width: `${Math.min(100, data.metaEmpresa.percentualMetaFaturamento)}%`,
-                background: data.metaEmpresa.bateuMetaFaturamento ? COR_META_BATIDA : '#24aff4',
+                background: noRitmoEmpresa ? COR_META_BATIDA : '#e5484d',
               }}
             />
             <div
@@ -105,7 +107,8 @@ export default function AdminDashboard() {
             />
           </div>
         </div>
-      )}
+        )
+      })()}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">

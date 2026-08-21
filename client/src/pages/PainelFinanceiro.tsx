@@ -139,8 +139,8 @@ function EmpresaCard({ card, editavel, idealHoje }: { card: Card; editavel: bool
   // Cor/badge refletem se está no ritmo ideal do dia (não só se já bateu os
   // 100% do mês — isso só acontece perto do fim do mês mesmo indo bem).
   const noRitmo = meta >= idealHoje
-  const metaCor = noRitmo ? 'text-green-400' : 'text-gold-400'
-  const barraCor = noRitmo ? 'bg-green-500' : 'bg-gold-400'
+  const metaCor = noRitmo ? 'text-green-400' : 'text-red-400'
+  const barraCor = noRitmo ? 'bg-green-500' : 'bg-red-500'
   const logo = LOGO_POR_SLUG[card.slugLogo]
 
   return (
@@ -157,7 +157,7 @@ function EmpresaCard({ card, editavel, idealHoje }: { card: Card; editavel: bool
         )}
         <span
           className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${
-            noRitmo ? 'text-green-400 bg-green-900/30' : 'text-gold-400 bg-gold-900/20'
+            noRitmo ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
           }`}
         >
           {noRitmo ? '🎯 No ritmo' : '⏳ Abaixo do ritmo'}
@@ -258,7 +258,7 @@ type ResumoData = {
 function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
   const consolidado = data?.consolidado
   const noRitmo = !!consolidado && consolidado.percentualMeta >= consolidado.percentualIdealHoje
-  const metaConsolidadaCor = noRitmo ? 'text-green-400' : 'text-gold-400'
+  const metaConsolidadaCor = noRitmo ? 'text-green-400' : 'text-red-400'
 
   if (!data || !consolidado) return <p className="text-dark-500">Carregando...</p>
 
