@@ -82,7 +82,12 @@ export function WhatsappButton({
 export function LigarButton({ telefone, size = 'sm' }: { telefone: string; size?: 'sm' | 'md' }) {
   return (
     <a
-      href={`tel:+55${soDigitos(telefone)}`}
+      // O MicroSIP (discador SIP usado com a PABXONE360) não aceita o
+      // formato internacional "+55DDDNUMERO" — a chamada cai como "Serviço
+      // indisponível" mesmo com o número certo. O formato que funciona é o
+      // de discagem nacional com prefixo "0" (confirmado pelo João testando
+      // ao vivo), então troca "+55" por "0" na frente do número limpo.
+      href={`tel:0${soDigitos(telefone)}`}
       onClick={(e) => e.stopPropagation()}
       title={`Ligar — ${telefone}`}
       className={`inline-flex items-center justify-center rounded-lg bg-gold-600/20 hover:bg-gold-600/40 text-gold-400 hover:text-gold-300 border border-gold-600/30 hover:border-gold-500/60 transition-all shrink-0 ${size === 'sm' ? 'w-7 h-7' : 'w-8 h-8'}`}
