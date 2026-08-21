@@ -518,9 +518,14 @@ export const funilRouter = router({
     .mutation(async ({ ctx, input }) => {
       const origem = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
       if (!origem) throw new Error('Card não encontrado')
-      if (ctx.user.role !== 'admin' && origem.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
-      if (origem.etapa !== 'negociacao' && origem.etapa !== 'fechado') {
-        throw new Error('Só é possível abrir um novo orçamento a partir de Negociação ou de um pedido já Fechado.')
+      if (ctx.user.role !== 'admin' && origem.vendedorId !== ctx.user.id) {
+        // Mesma exceção de moverEtapa/atualizarFaturamento: quem processa
+        // faturamento de todos os vendedores (ex: Daniela) pode abrir um
+        // segundo orçamento a partir de um card em Faturamento que não é dela.
+        if (!(await temFeature(ctx.user.id, 'faturamento_geral'))) throw new Error('Acesso negado')
+      }
+      if (origem.etapa !== 'negociacao' && origem.etapa !== 'fechado' && origem.etapa !== 'faturamento') {
+        throw new Error('Só é possível abrir um novo orçamento a partir de Negociação, Fechado ou Faturamento.')
       }
 
       const result = await db.insert(funilMensal).values({

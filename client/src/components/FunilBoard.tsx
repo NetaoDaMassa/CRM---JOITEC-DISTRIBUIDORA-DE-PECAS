@@ -246,6 +246,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
       toast.success('Venda registrada')
       utils.funil.meuFunil.invalidate()
       utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
       setNomeCliente('Consumidor Final')
       setNumeroPedido('')
       setValor('')
@@ -391,6 +392,7 @@ export default function FunilBoard({
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
     utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
   }
 
   const termo = busca.trim().toLowerCase()
@@ -755,6 +757,7 @@ function ControleFaturamento({ venda }: { venda: { id: number; tipoComprovante: 
     onSuccess() {
       utils.funil.meuFunil.invalidate()
       utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
     },
     onError(err) {
       toast.error(err.message)
@@ -903,6 +906,7 @@ function CardModal({
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
     utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
     utils.compromissos.listar.invalidate()
   }
 
@@ -1313,14 +1317,14 @@ function CardModal({
 
         <SolicitarAcaoCarteira card={card} />
 
-        {(card.etapa === 'negociacao' || card.etapa === 'fechado') && (
+        {(card.etapa === 'negociacao' || card.etapa === 'fechado' || card.etapa === 'faturamento') && (
           <button
             type="button"
             onClick={() => criarOrcamentoMut.mutate({ funilMensalId: card.funilMensalId })}
             disabled={criarOrcamentoMut.isPending}
             className="text-xs text-gold-400 hover:underline disabled:opacity-50"
           >
-            + Abrir {card.etapa === 'fechado' ? 'uma nova negociação' : 'outro orçamento'} pra este cliente
+            + Abrir {card.etapa === 'negociacao' ? 'outro orçamento' : 'uma nova negociação'} pra este cliente
           </button>
         )}
 
@@ -1851,6 +1855,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
       toast.success('Dados do cliente atualizados')
       utils.funil.meuFunil.invalidate()
       utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
       setEditando(false)
     },
     onError(err) {
@@ -2018,6 +2023,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
         onChanged={() => {
           utils.funil.meuFunil.invalidate()
           utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
         }}
       />
       <EmailsExtras
@@ -2026,6 +2032,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
         onChanged={() => {
           utils.funil.meuFunil.invalidate()
           utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
         }}
       />
       <div className="flex gap-2">
@@ -2053,6 +2060,7 @@ function SolicitarAcaoCarteira({ card }: { card: Card }) {
   function invalidar() {
     utils.funil.meuFunil.invalidate()
     utils.funil.funilPorVendedor.invalidate()
+      utils.funil.funilFaturamentoGeral.invalidate()
   }
 
   const solicitarMut = trpc.aprovacoes.solicitar.useMutation({
