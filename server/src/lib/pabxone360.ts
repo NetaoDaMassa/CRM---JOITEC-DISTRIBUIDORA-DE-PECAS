@@ -141,10 +141,17 @@ function soDigitos(v: string): string {
 // ordem dia/mês/ano; sem essa conversão, dataHora ficaria fora de ordem
 // em qualquer filtro de período que compare como texto.
 function paraDataHoraSqlite(dataBr: string): string | null {
-  const m = dataBr.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}:\d{2}:\d{2})$/)
+  const m = dataBr.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2}):(\d{2})$/)
   if (!m) return null
-  const [, dia, mes, ano, hora] = m
-  return `${ano}-${mes}-${dia} ${hora}`
+  const [, dia, mes, ano, hh, mm, ss] = m
+  // A API devolve hora LOCAL do Brasil (BRT, UTC-3) — mas o banco guarda
+  // tudo em UTC (mesma convenção do datetime('now') do SQLite e da própria
+  // agoraSqlite(), que usa toISOString()); a tela é quem converte de volta
+  // pra local na hora de mostrar. Sem somar as 3h aqui, o horário aparecia
+  // 3h atrasado no histórico de contatos (bug real, reportado 2026-08-21).
+  const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
+  const utcMs = Date.UTC(Number(ano), Number(mes) - 1, Number(dia), Number(hh), Number(mm), Number(ss)) + TZ_OFFSET_MS
+  return new Date(utcMs).toISOString().replace('T', ' ').slice(0, 19)
 }
 
 // Compara pelos últimos 10-11 dígitos, igual goto.ts — evita casar errado
