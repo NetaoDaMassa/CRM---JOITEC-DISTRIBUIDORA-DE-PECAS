@@ -253,17 +253,13 @@ function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
     <>
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6 mb-6 grid grid-cols-1 md:grid-cols-[1.3fr_1fr] gap-6">
         <div>
-          <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Faturamento consolidado — mês</p>
-          <p className="text-5xl font-bold text-dark-50 font-mono tabular-nums mt-1">{formatarMoeda(consolidado.valorMes)}</p>
+          <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">% da meta batida — grupo</p>
+          <p className={`text-5xl font-bold font-mono tabular-nums mt-1 ${metaConsolidadaCor}`}>{consolidado.percentualMeta}%</p>
           <p className="text-sm text-dark-400 mt-2">
             {consolidado.vendasMesQtd} vendas fechadas no grupo · {consolidado.vendasHojeQtd} hoje
           </p>
         </div>
-        <div className="grid grid-cols-2 gap-4 items-center">
-          <div className="text-center">
-            <p className={`text-3xl font-bold font-mono tabular-nums ${metaConsolidadaCor}`}>{consolidado.percentualMeta}%</p>
-            <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Meta do grupo</p>
-          </div>
+        <div className="flex items-center justify-center">
           <div className="text-center">
             <p className="text-3xl font-bold font-mono tabular-nums text-red-400">{formatarMoeda(consolidado.inadimplenciaTotal)}</p>
             <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Inadimplência total</p>
