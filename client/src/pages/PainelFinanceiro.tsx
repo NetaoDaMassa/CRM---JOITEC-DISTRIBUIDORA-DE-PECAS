@@ -171,9 +171,8 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
       )}
       {card.origemExterna !== 'aton' && <div className="mb-4" />}
 
-      <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Faturamento do mês</p>
-      <p className="text-3xl font-bold text-dark-50 font-mono tabular-nums mt-1">{formatarMoeda(card.vendasMes.valor)}</p>
-      <p className="text-xs text-dark-500 mt-1">Ticket médio {formatarMoeda(card.ticketMedioMes)}</p>
+      <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">% da meta batida</p>
+      <p className={`text-3xl font-bold font-mono tabular-nums mt-1 ${metaCor}`}>{meta}%</p>
 
       <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-dark-700">
         <div>
@@ -187,10 +186,6 @@ function EmpresaCard({ card, editavel }: { card: Card; editavel: boolean }) {
       </div>
 
       <div className="mt-4 pt-4 border-t border-dark-700">
-        <div className="flex items-baseline justify-between mb-1.5">
-          <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">% da meta batida</p>
-          <p className={`text-sm font-bold font-mono tabular-nums ${metaCor}`}>{meta}%</p>
-        </div>
         <div className="h-2 bg-dark-700 rounded-full overflow-hidden">
           <div className={`h-full rounded-full ${barraCor}`} style={{ width: `${Math.min(100, meta)}%` }} />
         </div>
