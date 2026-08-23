@@ -35,12 +35,6 @@ const STATUS_VALUES = [
 
 const OCORRENCIA_VALUES = ['envio_errado', 'falta_materiais', 'produto_defeito', 'outro'] as const
 
-// Só a Odin Compressores usa esses dois status (fluxo pós-análise) — pra
-// qualquer outra empresa, tentar mandar pra eles é erro de uso, não uma
-// opção válida do Kanban.
-const STATUS_SOMENTE_ODIN_COMPRESSORES = new Set(['preparacao_envio', 'rastreio_transportadora'])
-const EMPRESA_ID_ODIN_COMPRESSORES = 4
-
 // Remove os campos sigilosos da análise (quem errou / impacto na comissão)
 // quando quem está pedindo não tem a feature 'devolucoes_ver_comissao' — a
 // mesma regra do sistema original (nunca manda esses campos na resposta,
@@ -242,10 +236,6 @@ export const devolucoesRouter = router({
     .input(z.object({ id: z.number(), status: z.enum(STATUS_VALUES), nota: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const chamado = await assertChamadoNaEmpresa(input.id, ctx.empresaId)
-
-      if (STATUS_SOMENTE_ODIN_COMPRESSORES.has(input.status) && chamado.empresaId !== EMPRESA_ID_ODIN_COMPRESSORES) {
-        throw new Error('Essa etapa só existe no fluxo da Odin Compressores')
-      }
 
       await db
         .update(devolucaoChamados)

@@ -19,11 +19,15 @@ const STATUS_LABEL: Record<string, string> = {
   finalizado: 'Finalizado',
 }
 
-const STATUS_COLUNAS_PADRAO = ['novo', 'em_andamento', 'analise', 'nota_fiscal_devolucao', 'chegada_materiais', 'finalizado']
-const STATUS_COLUNAS_ODIN_COMPRESSORES = [
+// Todas as empresas veem as 8 colunas — "preparação e envio"/"rastreio
+// transportadora" nasceram do fluxo da Odin Compressores, mas qualquer
+// chamado pode passar por elas (não é uma restrição de negócio real).
+const STATUS_COLUNAS = [
   'novo',
   'em_andamento',
   'analise',
+  'nota_fiscal_devolucao',
+  'chegada_materiais',
   'preparacao_envio',
   'rastreio_transportadora',
   'finalizado',
@@ -502,14 +506,11 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
 // diferença de escopo (vê tudo x só o próprio) já acontece no backend.
 export default function Devolucoes() {
   const { user } = useAuth()
-  const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const { data: chamados, isLoading } = trpc.devolucoes.listar.useQuery()
   const [modalNovo, setModalNovo] = useState(false)
   const [chamadoAberto, setChamadoAberto] = useState<number | null>(null)
 
   const souAdmin = user?.role === 'admin'
-  const slugEmpresaAtiva = empresas?.[0]?.slug
-  const colunas = slugEmpresaAtiva === 'odin-compressores' ? STATUS_COLUNAS_ODIN_COMPRESSORES : STATUS_COLUNAS_PADRAO
 
   return (
     <div className="p-6 space-y-6">
@@ -523,8 +524,8 @@ export default function Devolucoes() {
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
 
-      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${colunas.length}, minmax(240px, 1fr))` }}>
-        {colunas.map((status) => {
+      <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${STATUS_COLUNAS.length}, minmax(240px, 1fr))` }}>
+        {STATUS_COLUNAS.map((status) => {
           const cards = (chamados ?? []).filter((c) => c.status === status)
           return (
             <div key={status} className="bg-dark-900/40 border border-dark-700 rounded-2xl p-3 min-h-[200px]">
