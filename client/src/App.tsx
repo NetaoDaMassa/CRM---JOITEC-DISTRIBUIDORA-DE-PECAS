@@ -36,6 +36,9 @@ import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
+import Devolucoes from './pages/Devolucoes'
+import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
+import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -90,6 +93,10 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trocar-senha" element={<TrocarSenha />} />
+        {/* Formulário/rastreio público de Devolução — sem login, é o link
+            compartilhado com o cliente de fora. */}
+        <Route path="/devolucao/solicitacao" element={<DevolucaoSolicitar />} />
+        <Route path="/devolucao/acompanhar" element={<DevolucaoAcompanhar />} />
         <Route
           path="/painel-tv"
           element={
@@ -145,6 +152,7 @@ export default function App() {
           <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/pos-venda" element={<AdminGuard><FeatureGuard feature="pos_venda"><FilaPosVenda /></FeatureGuard></AdminGuard>} />
           <Route path="admin/permissoes" element={<AdminGuard><SuperAdminGuard><AdminPermissoes /></SuperAdminGuard></AdminGuard>} />
+          <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
@@ -160,6 +168,7 @@ export default function App() {
           <Route path="vendedor/faturamento-geral" element={<FaturamentoGeral />} />
           <Route path="vendedor/calendario" element={<VendorCalendario />} />
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
+          <Route path="vendedor/devolucoes" element={<Devolucoes />} />
 
           <Route
             index

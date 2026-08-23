@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -29,6 +29,11 @@ const SO_ODIN_COMPRESSORES = 'odin-compressores'
 // só) só existe pra Compretec Loja Física — é a única empresa com etapa
 // "Faturamento" no funil.
 const SO_COMPRETEC_LOJA_FISICA = 'compretec-loja-fisica'
+// Devolução (módulo portado do sistema separado) só atende essas 4 empresas
+// — as mesmas do sistema original (Joitec, Odin Tubos, Odin Compressores,
+// Compretec Loja Física). As demais (Joitec Automação, Compretec
+// E-commerce) nunca usaram esse fluxo.
+const EMPRESAS_DEVOLUCAO = ['joitec', 'odin-tubos', 'odin-compressores', 'compretec-loja-fisica']
 
 // `feature` é a chave usada em permissoesAdmin/FEATURES_ADMIN (server) —
 // controla quem vê cada item pra admins não-superAdmin.
@@ -52,6 +57,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
+  { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -79,6 +85,7 @@ export const VENDOR_LINKS = [
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
+  { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
 ]
 
 export default function Sidebar() {
@@ -117,6 +124,7 @@ export default function Sidebar() {
   const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
     (l) =>
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
+      (!('somenteEmpresas' in l) || !l.somenteEmpresas || l.somenteEmpresas.includes(empresaAtiva?.slug ?? '')) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
       (user?.superAdmin || !!minhasFeatures?.includes(l.feature))
   )
