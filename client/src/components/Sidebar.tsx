@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -58,6 +58,8 @@ export const ADMIN_LINKS = [
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
   { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
+  { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_mecanica' },
+  { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_demonstracao' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -86,6 +88,8 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
   { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
+  { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_mecanica' },
+  { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_demonstracao' },
 ]
 
 export default function Sidebar() {

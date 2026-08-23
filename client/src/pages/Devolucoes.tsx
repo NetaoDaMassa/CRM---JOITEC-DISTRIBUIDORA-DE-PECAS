@@ -58,6 +58,7 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
   const [numeroNotaFiscal, setNumeroNotaFiscal] = useState('')
   const [descricao, setDescricao] = useState('')
   const [ocorrencias, setOcorrencias] = useState<string[]>([])
+  const [materiais, setMateriais] = useState([{ codigoItem: '', descricaoItem: '', quantidade: 1 }])
 
   const criarMut = trpc.devolucoes.criar.useMutation({
     onSuccess(data) {
@@ -74,6 +75,10 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
     setOcorrencias((prev) => (prev.includes(tipo) ? prev.filter((t) => t !== tipo) : [...prev, tipo]))
   }
 
+  function atualizarMaterial(i: number, campo: string, valor: string | number) {
+    setMateriais((prev) => prev.map((m, idx) => (idx === i ? { ...m, [campo]: valor } : m)))
+  }
+
   function enviar() {
     if (!clienteNome.trim()) return toast.error('Informe o nome do cliente')
     if (!descricao.trim()) return toast.error('Descreva o que aconteceu')
@@ -84,6 +89,7 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
       numeroNotaFiscal: numeroNotaFiscal || undefined,
       descricao,
       ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
+      materiais: materiais.filter((m) => m.descricaoItem.trim()),
     })
   }
 
@@ -115,6 +121,27 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <Textarea label="O que aconteceu" rows={4} value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
+
+        <div>
+          <p className="text-sm text-dark-200 font-medium mb-2">Materiais (opcional)</p>
+          <div className="space-y-2">
+            {materiais.map((m, i) => (
+              <div key={i} className="grid grid-cols-[100px_1fr_70px] gap-2">
+                <Input placeholder="Código" value={m.codigoItem} onChange={(e) => atualizarMaterial(i, 'codigoItem', e.target.value)} />
+                <Input placeholder="Descrição" value={m.descricaoItem} onChange={(e) => atualizarMaterial(i, 'descricaoItem', e.target.value)} />
+                <Input type="number" min={1} value={m.quantidade} onChange={(e) => atualizarMaterial(i, 'quantidade', Number(e.target.value))} />
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="text-xs text-gold-400 underline mt-2"
+            onClick={() => setMateriais((prev) => [...prev, { codigoItem: '', descricaoItem: '', quantidade: 1 }])}
+          >
+            + Adicionar material
+          </button>
+        </div>
+
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>
             Cancelar
@@ -263,6 +290,15 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
     },
   })
 
+  const enviarMecanicaMut = trpc.devolucoes.enviarParaMecanica.useMutation({
+    onSuccess() {
+      toast.success('Enviado pra Mecânica')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -322,6 +358,40 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
           <p className="text-dark-500 text-xs uppercase tracking-wide mb-1">Descrição</p>
           <p className="text-dark-200 text-sm whitespace-pre-wrap">{chamado.descricao}</p>
         </div>
+
+        {!!(chamado as any).materiais?.length && (
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <p className="text-dark-500 text-xs uppercase tracking-wide">Materiais</p>
+              {souAdmin && (
+                <button
+                  className="text-xs text-gold-400 underline disabled:opacity-40"
+                  disabled={enviarMecanicaMut.isPending}
+                  onClick={() =>
+                    enviarMecanicaMut.mutate({
+                      chamadoId: id,
+                      itens: (chamado as any).materiais.map((m: any) => ({
+                        codigoItem: m.codigoItem,
+                        descricaoItem: m.descricaoItem,
+                        quantidade: m.quantidade,
+                      })),
+                    })
+                  }
+                >
+                  Enviar pra mecânica
+                </button>
+              )}
+            </div>
+            <div className="text-sm text-dark-200 space-y-0.5">
+              {(chamado as any).materiais.map((m: any) => (
+                <p key={m.id}>
+                  {m.codigoItem ? `${m.codigoItem} — ` : ''}
+                  {m.descricaoItem} × {m.quantidade}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
 
         {souAdmin && (
           <div className="bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
