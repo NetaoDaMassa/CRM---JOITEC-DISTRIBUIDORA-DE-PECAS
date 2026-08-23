@@ -841,7 +841,9 @@ export const devolucaoOcorrencias = sqliteTable(
 export const devolucaoMateriais = sqliteTable('devolucao_materiais', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
-  codigoItem: text('codigo_item').notNull(),
+  // Nem sempre o código do item é conhecido na hora de registrar a
+  // devolução (pode ser preenchido só a descrição) — nulo é normal aqui.
+  codigoItem: text('codigo_item'),
   descricaoItem: text('descricao_item').notNull(),
   quantidade: real('quantidade').notNull().default(1),
   numeroSerie: text('numero_serie'),
@@ -905,7 +907,7 @@ export const devolucaoMecanicaItens = sqliteTable('devolucao_mecanica_itens', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   chamadoId: integer('chamado_id').notNull().references(() => devolucaoChamados.id, { onDelete: 'cascade' }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
-  codigoItem: text('codigo_item').notNull(),
+  codigoItem: text('codigo_item'),
   descricaoItem: text('descricao_item').notNull(),
   quantidade: real('quantidade').notNull().default(1),
   status: text('status', {
