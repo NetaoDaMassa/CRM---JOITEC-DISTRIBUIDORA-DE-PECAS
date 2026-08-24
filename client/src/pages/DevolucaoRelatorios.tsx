@@ -53,11 +53,13 @@ function GraficoBarras({
   corBarra,
   altura,
   formatarValor,
+  larguraEixo,
 }: {
   dados: { rotulo: string; quantidade: number }[]
   corBarra: string
   altura?: number
   formatarValor?: (v: number) => string
+  larguraEixo?: number
 }) {
   if (!dados.length) return <p className="text-xs text-dark-500">Sem dados ainda.</p>
   return (
@@ -65,7 +67,7 @@ function GraficoBarras({
       <BarChart data={dados} layout="vertical" margin={{ top: 4, right: 28, bottom: 0, left: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
-        <YAxis dataKey="rotulo" type="category" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={130} />
+        <YAxis dataKey="rotulo" type="category" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={larguraEixo ?? 130} />
         <Tooltip content={<TooltipPadrao formatarValor={formatarValor} />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
         <Bar dataKey="quantidade" radius={[0, 4, 4, 0]} barSize={16}>
           {dados.map((d) => (
@@ -124,7 +126,10 @@ export default function DevolucaoRelatorios() {
   const porOcorrencia = data.porOcorrencia.map((o) => ({ rotulo: OCORRENCIA_LABEL[o.chave] ?? o.chave, quantidade: o.quantidade }))
   const porEmpresa = data.porEmpresa.map((e) => ({ rotulo: e.chave, quantidade: e.quantidade }))
   const quemErrou = data.quemErrou?.map((q) => ({ rotulo: QUEM_ERROU_LABEL[q.chave] ?? q.chave, quantidade: q.quantidade })) ?? null
-  const porProduto = data.porProduto.map((p) => ({ rotulo: p.chave, quantidade: p.quantidade }))
+  const porProduto = data.porProduto.map((p) => ({
+    rotulo: p.chave.length > 28 ? `${p.chave.slice(0, 28)}…` : p.chave,
+    quantidade: p.quantidade,
+  }))
   const comissaoPorVendedor = data.comissaoPorVendedor?.map((c) => ({ rotulo: c.chave, quantidade: c.valor })) ?? null
 
   return (
@@ -200,7 +205,7 @@ export default function DevolucaoRelatorios() {
         )}
         {!!porProduto.length && (
           <Secao titulo="Produtos mais devolvidos">
-            <GraficoBarras dados={porProduto} corBarra={COR_BARRA} />
+            <GraficoBarras dados={porProduto} corBarra={COR_BARRA} larguraEixo={190} />
           </Secao>
         )}
         {quemErrou && (
