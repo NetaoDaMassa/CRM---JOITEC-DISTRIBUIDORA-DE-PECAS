@@ -30,14 +30,28 @@ export interface ChamadaPabx {
   efetiva: boolean
 }
 
+// A PABXONE360 espera data/hora em horário de Brasília (BRT, UTC-3) nos
+// parâmetros da busca — mas o servidor roda em UTC (bug real, encontrado
+// 2026-08-24: usar data.getDate()/getHours() direto pegava o horário LOCAL
+// do processo, que é UTC no container, não BRT). Isso fazia a janela de
+// busca ficar sempre 3h adiantada em relação ao "agora" de verdade, então a
+// sincronização nunca encontrava as ligações mais recentes — parou de
+// registrar qualquer coisa a partir de 2026-08-21 21:20 (quando o container
+// passou a rodar em UTC) e ninguém percebeu porque a função não lança erro
+// nesse caso, só devolve uma lista vazia. Sempre calcula BRT explicitamente
+// por aritmética de offset, não importa o fuso do processo.
+const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
+
 function paraDataBr(data: Date): string {
+  const brt = new Date(data.getTime() - TZ_OFFSET_MS)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(data.getDate())}/${pad(data.getMonth() + 1)}/${data.getFullYear()}`
+  return `${pad(brt.getUTCDate())}/${pad(brt.getUTCMonth() + 1)}/${brt.getUTCFullYear()}`
 }
 
 function paraHoraBr(data: Date): string {
+  const brt = new Date(data.getTime() - TZ_OFFSET_MS)
   const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(data.getHours())}:${pad(data.getMinutes())}`
+  return `${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}`
 }
 
 // "00:01:06" -> 66. Formato sempre HH:MM:SS (sem casas decimais) no campo
@@ -149,7 +163,6 @@ function paraDataHoraSqlite(dataBr: string): string | null {
   // agoraSqlite(), que usa toISOString()); a tela é quem converte de volta
   // pra local na hora de mostrar. Sem somar as 3h aqui, o horário aparecia
   // 3h atrasado no histórico de contatos (bug real, reportado 2026-08-21).
-  const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
   const utcMs = Date.UTC(Number(ano), Number(mes) - 1, Number(dia), Number(hh), Number(mm), Number(ss)) + TZ_OFFSET_MS
   return new Date(utcMs).toISOString().replace('T', ' ').slice(0, 19)
 }
