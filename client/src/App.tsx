@@ -30,6 +30,7 @@ import AdminFuncoes from './pages/admin/Funcoes'
 import AdminVagas from './pages/admin/Vagas'
 import AdminCandidatos from './pages/admin/Candidatos'
 import AdminMensagensRh from './pages/admin/MensagensRh'
+import AdminAnalytics from './pages/admin/Analytics'
 
 import VendorDashboard from './pages/vendor/Dashboard'
 import VendorKanban from './pages/vendor/Kanban'
@@ -163,6 +164,7 @@ export default function App() {
           <Route path="admin/vagas" element={<AdminGuard><FeatureGuard feature="vagas"><AdminVagas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/candidatos" element={<AdminGuard><FeatureGuard feature="candidatos"><AdminCandidatos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/mensagens-rh" element={<AdminGuard><FeatureGuard feature="mensagens_rh"><AdminMensagensRh /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/analytics" element={<AdminGuard><FeatureGuard feature="marketing_analytics"><AdminAnalytics /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-mecanica" element={<AdminGuard><FeatureGuard feature="devolucoes_mecanica"><DevolucaoMecanica /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-demonstracao" element={<AdminGuard><FeatureGuard feature="devolucoes_demonstracao"><DevolucaoDemonstracao /></FeatureGuard></AdminGuard>} />

@@ -29,6 +29,7 @@ export const FEATURES_ADMIN = [
   'backup',
   'painel_financeiro',
   'painel_tv',
+  'marketing_analytics',
   // Devolução (Grupo Odin) — 'devolucoes' já libera o Kanban de chamados
   // pra admin (que sempre passa por ser admin); as demais são poderes extra
   // que um admin normal não tem por padrão, precisam ser concedidos:
