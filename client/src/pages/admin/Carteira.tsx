@@ -21,6 +21,8 @@ export default function AdminCarteira() {
   const [vendedorRegiao, setVendedorRegiao] = useState('')
   const [deVendedor, setDeVendedor] = useState('')
   const [paraVendedor, setParaVendedor] = useState('')
+  const [destinoRedistribuicao, setDestinoRedistribuicao] = useState<'vendedor' | 'banco'>('vendedor')
+  const [rotuloBanco, setRotuloBanco] = useState('')
 
   const [buscaCliente, setBuscaCliente] = useState('')
   const [clienteSelecionado, setClienteSelecionado] = useState<{ id: number; razaoSocial: string; vendedorAtual: { name: string } | null } | null>(null)
@@ -43,6 +45,18 @@ export default function AdminCarteira() {
   const redistribuirMut = trpc.carteira.redistribuirCompleta.useMutation({
     onSuccess(data) {
       toast.success(`${data.quantidade} cliente(s) redistribuído(s)`)
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const redistribuirParaBancoMut = trpc.carteira.redistribuirParaBanco.useMutation({
+    onSuccess(data) {
+      toast.success(`${data.quantidade} cliente(s) movido(s) para o Banco de Clientes`)
+      utils.clientes.list.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+      setRotuloBanco('')
     },
     onError(err) {
       toast.error(err.message)
@@ -174,17 +188,58 @@ export default function AdminCarteira() {
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          if (!deVendedor || !paraVendedor) return toast.error('Selecione origem e destino.')
-          if (deVendedor === paraVendedor) return toast.error('Origem e destino não podem ser o mesmo vendedor.')
-          redistribuirMut.mutate({ deVendedorId: Number(deVendedor), paraVendedorId: Number(paraVendedor) })
+          if (!deVendedor) return toast.error('Selecione o vendedor de origem.')
+          if (destinoRedistribuicao === 'vendedor') {
+            if (!paraVendedor) return toast.error('Selecione o vendedor de destino.')
+            if (deVendedor === paraVendedor) return toast.error('Origem e destino não podem ser o mesmo vendedor.')
+            redistribuirMut.mutate({ deVendedorId: Number(deVendedor), paraVendedorId: Number(paraVendedor) })
+          } else {
+            redistribuirParaBancoMut.mutate({ deVendedorId: Number(deVendedor), rotulo: rotuloBanco.trim() || undefined })
+          }
         }}
         className="space-y-3 bg-dark-800 border border-dark-600 rounded-2xl p-5"
       >
         <h2 className="text-sm font-semibold text-dark-100">Redistribuir carteira completa</h2>
         <Select label="De" value={deVendedor} onChange={(e) => setDeVendedor(e.target.value)} placeholder="Selecione..." options={vendorOptions} />
-        <Select label="Para" value={paraVendedor} onChange={(e) => setParaVendedor(e.target.value)} placeholder="Selecione..." options={vendorOptions} />
-        <Button type="submit" loading={redistribuirMut.isPending}>
-          Redistribuir
+
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setDestinoRedistribuicao('vendedor')}
+            className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+              destinoRedistribuicao === 'vendedor'
+                ? 'border-gold-400 bg-gold-900/20 text-gold-300'
+                : 'border-dark-600 text-dark-300 hover:bg-dark-700'
+            }`}
+          >
+            Para outro vendedor
+          </button>
+          <button
+            type="button"
+            onClick={() => setDestinoRedistribuicao('banco')}
+            className={`flex-1 text-xs font-medium px-3 py-2 rounded-lg border transition-colors ${
+              destinoRedistribuicao === 'banco'
+                ? 'border-gold-400 bg-gold-900/20 text-gold-300'
+                : 'border-dark-600 text-dark-300 hover:bg-dark-700'
+            }`}
+          >
+            Para o Banco de Clientes
+          </button>
+        </div>
+
+        {destinoRedistribuicao === 'vendedor' ? (
+          <Select label="Para" value={paraVendedor} onChange={(e) => setParaVendedor(e.target.value)} placeholder="Selecione..." options={vendorOptions} />
+        ) : (
+          <Input
+            label="Nome do banco (opcional)"
+            placeholder={vendorOptions.find((v) => v.value === Number(deVendedor))?.label ?? 'Deixe em branco pra usar o nome do vendedor'}
+            value={rotuloBanco}
+            onChange={(e) => setRotuloBanco(e.target.value)}
+          />
+        )}
+
+        <Button type="submit" loading={redistribuirMut.isPending || redistribuirParaBancoMut.isPending}>
+          {destinoRedistribuicao === 'vendedor' ? 'Redistribuir' : 'Mover para o Banco'}
         </Button>
       </form>
     </div>

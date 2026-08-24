@@ -114,6 +114,30 @@ export const carteiraRouter = router({
       return { quantidade: clientesDoVendedor.length }
     }),
 
+  // Mesma ideia do redistribuirCompleta, mas o destino é o Banco de Clientes
+  // em vez de outro vendedor — usado quando o vendedor sai da empresa ou fica
+  // temporariamente sem carteira. `rotulo` vira a origem exibida no Banco de
+  // Clientes (filtro por "banco"); sem rotulo, cai no nome do próprio
+  // vendedor de origem, igual o padrão do moverParaBanco individual.
+  redistribuirParaBanco: adminProcedure
+    .input(z.object({ deVendedorId: z.number(), rotulo: z.string().trim().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await validarVendedorDaEmpresa(input.deVendedorId, ctx.empresaId)
+      const vendedor = await db.query.users.findFirst({ where: eq(users.id, input.deVendedorId) })
+      const clientesDoVendedor = await db.query.clientes.findMany({
+        where: and(
+          eq(clientes.vendedorAtualId, input.deVendedorId),
+          isNull(clientes.deletedAt),
+          eq(clientes.empresaId, ctx.empresaId)
+        ),
+      })
+      const rotulo = input.rotulo || vendedor?.name
+      for (const cliente of clientesDoVendedor) {
+        await moverClienteParaBanco(cliente.id, rotulo, ctx.user.id)
+      }
+      return { quantidade: clientesDoVendedor.length }
+    }),
+
   transferirIndividual: adminProcedure
     .input(z.object({ clienteId: z.number(), vendedorId: z.number() }))
     .mutation(async ({ ctx, input }) => {
