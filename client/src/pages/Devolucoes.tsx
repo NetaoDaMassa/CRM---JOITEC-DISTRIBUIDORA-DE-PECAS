@@ -319,7 +319,19 @@ function ServicosForm({ chamadoId, onSalvo }: { chamadoId: number; onSalvo: () =
   )
 }
 
-function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: boolean; onClose: () => void }) {
+function DetalheChamadoModal({
+  id,
+  souAdmin,
+  possoExcluir,
+  onClose,
+  onExcluido,
+}: {
+  id: number
+  souAdmin: boolean
+  possoExcluir: boolean
+  onClose: () => void
+  onExcluido: () => void
+}) {
   const utils = trpc.useUtils()
   const { data: chamado, isLoading } = trpc.devolucoes.detalhe.useQuery({ id })
   const [mensagem, setMensagem] = useState('')
@@ -382,6 +394,16 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
     },
   })
 
+  const excluirMut = trpc.devolucoes.excluir.useMutation({
+    onSuccess() {
+      toast.success('Chamado excluído')
+      onExcluido()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -408,14 +430,30 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
   return (
     <Modal open onClose={onClose} title={`${chamado.protocolo} — ${chamado.clienteNome}`} size="xl">
       <div className="space-y-5 max-h-[75vh] overflow-y-auto pr-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Badge className="bg-gold-900/20 text-gold-400 border-gold-700/40">{STATUS_LABEL[chamado.status]}</Badge>
-          {(chamado as any).ocorrencias?.map((o: any) => (
-            <Badge key={o.id} className="bg-dark-800 text-dark-300 border-dark-600">
-              {OCORRENCIA_LABEL[o.tipo]}
-              {o.rotuloCustom ? `: ${o.rotuloCustom}` : ''}
-            </Badge>
-          ))}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge className="bg-gold-900/20 text-gold-400 border-gold-700/40">{STATUS_LABEL[chamado.status]}</Badge>
+            {(chamado as any).ocorrencias?.map((o: any) => (
+              <Badge key={o.id} className="bg-dark-800 text-dark-300 border-dark-600">
+                {OCORRENCIA_LABEL[o.tipo]}
+                {o.rotuloCustom ? `: ${o.rotuloCustom}` : ''}
+              </Badge>
+            ))}
+          </div>
+          {possoExcluir && (
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm(`Excluir o chamado ${chamado.protocolo}? Essa ação não pode ser desfeita.`)) {
+                  excluirMut.mutate({ id: chamado.id })
+                }
+              }}
+              disabled={excluirMut.isPending}
+              className="text-xs px-3 py-1.5 rounded-full border border-red-700/40 bg-red-900/20 text-red-400 hover:bg-red-900/30 disabled:opacity-50"
+            >
+              🗑 Excluir chamado
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4 text-sm">
@@ -661,14 +699,20 @@ export default function Devolucoes() {
   const [dataFim, setDataFim] = useState('')
 
   const souAdmin = user?.role === 'admin'
+  const utils = trpc.useUtils()
 
   // Filtro de empresa/período só faz sentido pra quem enxerga mais de uma
   // empresa de uma vez (visão global — hoje só a Amanda). Pra todo mundo
   // que só vê a própria empresa, a barra de filtro nem aparece.
+  // Também usada pro botão de excluir chamado: exclusão é um "poder
+  // especial" (equivalente à Amanda no sistema novo, Paola/Andreia no
+  // antigo) — nem todo admin tem, e superAdmin não ganha bypass automático
+  // aqui (mesma regra do backend).
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
-    enabled: !!user && user.role === 'admin' && !user.superAdmin,
+    enabled: souAdmin,
   })
   const temVisaoGlobal = !!user?.superAdmin || !!minhasFeatures?.includes('devolucoes_visao_global')
+  const possoExcluir = !!minhasFeatures?.includes('devolucoes_excluir_chamado')
   const { data: empresasDevolucao } = trpc.devolucoes.listarEmpresasPublico.useQuery(undefined, { enabled: temVisaoGlobal })
 
   const { data: chamados, isLoading } = trpc.devolucoes.listar.useQuery({
@@ -745,7 +789,18 @@ export default function Devolucoes() {
       </div>
 
       {modalNovo && <NovoChamadoModal onClose={() => setModalNovo(false)} />}
-      {chamadoAberto !== null && <DetalheChamadoModal id={chamadoAberto} souAdmin={souAdmin} onClose={() => setChamadoAberto(null)} />}
+      {chamadoAberto !== null && (
+        <DetalheChamadoModal
+          id={chamadoAberto}
+          souAdmin={souAdmin}
+          possoExcluir={possoExcluir}
+          onClose={() => setChamadoAberto(null)}
+          onExcluido={() => {
+            setChamadoAberto(null)
+            utils.devolucoes.listar.invalidate()
+          }}
+        />
+      )}
     </div>
   )
 }
