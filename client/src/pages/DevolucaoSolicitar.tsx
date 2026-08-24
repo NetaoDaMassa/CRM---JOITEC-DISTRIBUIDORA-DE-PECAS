@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { Input, Textarea } from '../components/ui/Input'
@@ -39,6 +39,15 @@ export default function DevolucaoSolicitar() {
   const [enviando, setEnviando] = useState(false)
 
   const criarMut = trpc.devolucoes.criarPublico.useMutation()
+
+  // Autopreenche o nome assim que o CNPJ tiver 14 dígitos — só se o campo
+  // de nome ainda estiver vazio, pra não sobrescrever o que a pessoa já
+  // digitou na mão.
+  const cnpjLimpo = clienteCnpj.replace(/\D/g, '')
+  const { data: cnpjInfo } = trpc.devolucoes.cnpjLookupPublico.useQuery({ cnpj: cnpjLimpo }, { enabled: cnpjLimpo.length === 14 })
+  useEffect(() => {
+    if (cnpjInfo?.razaoSocial && !clienteNome.trim()) setClienteNome(cnpjInfo.razaoSocial)
+  }, [cnpjInfo])
   const anexarMut = trpc.devolucoes.anexarArquivoPublico.useMutation()
 
   function toggleOcorrencia(tipo: string) {

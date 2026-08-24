@@ -7,6 +7,7 @@ import Button from '../components/ui/Button'
 import Select from '../components/ui/Select'
 import { Input, Textarea } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
+import { buildClientContactWaLink, buildClientFeedbackWaLink, buildVendorNotificationWaLink } from '../lib/devolucaoWhatsapp'
 
 const STATUS_LABEL: Record<string, string> = {
   novo: 'Novo',
@@ -252,12 +253,79 @@ function AnaliseForm({ chamadoId, onSalvo }: { chamadoId: number; onSalvo: () =>
   )
 }
 
+function ServicosForm({ chamadoId, onSalvo }: { chamadoId: number; onSalvo: () => void }) {
+  const [teveServico, setTeveServico] = useState(false)
+  const [valorCobrado, setValorCobrado] = useState('')
+  const [horasTrabalhadas, setHorasTrabalhadas] = useState('')
+  const [executadoPor, setExecutadoPor] = useState('')
+  const [statusPagamento, setStatusPagamento] = useState('')
+  const [valorFinal, setValorFinal] = useState('')
+
+  const mut = trpc.devolucoes.registrarServico.useMutation({
+    onSuccess() {
+      toast.success('Serviço registrado')
+      onSalvo()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function enviar() {
+    mut.mutate({
+      chamadoId,
+      teveServico,
+      valorCobrado: valorCobrado ? Number(valorCobrado) : undefined,
+      horasTrabalhadas: horasTrabalhadas ? Number(horasTrabalhadas) : undefined,
+      executadoPor: executadoPor || undefined,
+      statusPagamento: (statusPagamento || undefined) as any,
+      valorFinal: valorFinal ? Number(valorFinal) : undefined,
+    })
+  }
+
+  return (
+    <div className="bg-dark-900/40 border border-dark-700 rounded-2xl p-4 space-y-3">
+      <p className="text-sm font-semibold text-dark-100">Registrar serviço</p>
+      <label className="flex items-center gap-2 text-sm text-dark-200">
+        <input type="checkbox" checked={teveServico} onChange={(e) => setTeveServico(e.target.checked)} />
+        Teve serviço/mão de obra envolvida
+      </label>
+      {teveServico && (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Valor cobrado (R$)" type="number" step="0.01" value={valorCobrado} onChange={(e) => setValorCobrado(e.target.value)} />
+            <Input label="Horas trabalhadas" type="number" step="0.5" value={horasTrabalhadas} onChange={(e) => setHorasTrabalhadas(e.target.value)} />
+          </div>
+          <Input label="Executado por" value={executadoPor} onChange={(e) => setExecutadoPor(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <Select
+              label="Status do pagamento"
+              value={statusPagamento}
+              onChange={(e) => setStatusPagamento(e.target.value)}
+              placeholder="Não informado"
+              options={[
+                { value: 'credito', label: 'Em crédito' },
+                { value: 'pago', label: 'Pago' },
+              ]}
+            />
+            <Input label="Valor final (R$)" type="number" step="0.01" value={valorFinal} onChange={(e) => setValorFinal(e.target.value)} />
+          </div>
+        </>
+      )}
+      <Button size="sm" loading={mut.isPending} onClick={enviar}>
+        Salvar serviço
+      </Button>
+    </div>
+  )
+}
+
 function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: boolean; onClose: () => void }) {
   const utils = trpc.useUtils()
   const { data: chamado, isLoading } = trpc.devolucoes.detalhe.useQuery({ id })
   const [mensagem, setMensagem] = useState('')
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
   const [mostrarAnalise, setMostrarAnalise] = useState(false)
+  const [mostrarServicos, setMostrarServicos] = useState(false)
 
   function invalidar() {
     utils.devolucoes.detalhe.invalidate({ id })
@@ -362,6 +430,39 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
           </div>
         </div>
 
+        <div className="flex flex-wrap gap-2">
+          {(chamado as any).vendedor?.whatsapp && (
+            <a
+              href={buildVendorNotificationWaLink((chamado as any).vendedor.whatsapp, chamado.protocolo, chamado.status, chamado.clienteNome ?? '')}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-3 py-1.5 rounded-full border border-green-700/40 bg-green-900/20 text-green-400 hover:bg-green-900/30"
+            >
+              📲 Notificar vendedor
+            </a>
+          )}
+          {chamado.clienteWhatsapp && (
+            <a
+              href={buildClientContactWaLink(chamado.clienteWhatsapp, chamado.clienteNome ?? '', chamado.protocolo)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-3 py-1.5 rounded-full border border-dark-600 text-dark-300 hover:bg-dark-800"
+            >
+              📲 Falar com cliente
+            </a>
+          )}
+          {chamado.clienteWhatsapp && chamado.status === 'finalizado' && (
+            <a
+              href={buildClientFeedbackWaLink(chamado.clienteWhatsapp, chamado.clienteNome ?? '', chamado.protocolo)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs px-3 py-1.5 rounded-full border border-gold-700/40 bg-gold-900/20 text-gold-400 hover:bg-gold-900/30"
+            >
+              📲 Pedir feedback
+            </a>
+          )}
+        </div>
+
         <div>
           <p className="text-dark-500 text-xs uppercase tracking-wide mb-1">Descrição</p>
           <p className="text-dark-200 text-sm whitespace-pre-wrap">{chamado.descricao}</p>
@@ -459,6 +560,28 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
           )}
           {souAdmin && (mostrarAnalise || !(chamado as any).analise) && (
             <AnaliseForm chamadoId={id} onSalvo={() => { setMostrarAnalise(false); invalidar() }} />
+          )}
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs font-bold text-gold-400 uppercase tracking-wide">Serviços</p>
+            {souAdmin && (
+              <button className="text-xs text-gold-400 underline" onClick={() => setMostrarServicos((v) => !v)}>
+                {(chamado as any).servicos ? 'Editar' : 'Registrar'}
+              </button>
+            )}
+          </div>
+          {(chamado as any).servicos && !mostrarServicos && (
+            <div className="text-sm text-dark-200 space-y-1 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+              <p>Teve serviço: <span className="font-medium">{(chamado as any).servicos.teveServico ? 'Sim' : 'Não'}</span></p>
+              {(chamado as any).servicos.valorCobrado != null && <p>Valor cobrado: R$ {(chamado as any).servicos.valorCobrado}</p>}
+              {(chamado as any).servicos.executadoPor && <p>Executado por: {(chamado as any).servicos.executadoPor}</p>}
+              {(chamado as any).servicos.statusPagamento && <p>Pagamento: {(chamado as any).servicos.statusPagamento}</p>}
+            </div>
+          )}
+          {souAdmin && (mostrarServicos || !(chamado as any).servicos) && (
+            <ServicosForm chamadoId={id} onSalvo={() => { setMostrarServicos(false); invalidar() }} />
           )}
         </div>
 

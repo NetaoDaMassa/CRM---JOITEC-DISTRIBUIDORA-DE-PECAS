@@ -21,6 +21,8 @@ import {
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { EMPRESAS_DEVOLUCAO, gerarProtocoloDevolucao } from '../lib/devolucaoProtocolo.js'
+import { cnpjValido } from '../lib/cnpj.js'
+import { buscarCnpj } from '../lib/brasilApi.js'
 
 const STATUS_VALUES = [
   'novo',
@@ -76,6 +78,16 @@ export const devolucoesRouter = router({
       columns: { id: true, nome: true },
       orderBy: (e, { asc }) => [asc(e.nome)],
     })
+  }),
+
+  // Autopreenche o nome do cliente no formulário público a partir do CNPJ
+  // (mesma ideia do sistema original, só que consultado pelo servidor em
+  // vez do navegador — evita problema de CORS e não depende de nada extra
+  // no front). Dado público da Receita, sem exigir login.
+  cnpjLookupPublico: publicProcedure.input(z.object({ cnpj: z.string() })).query(async ({ input }) => {
+    if (!cnpjValido(input.cnpj)) return null
+    const dados = await buscarCnpj(input.cnpj)
+    return dados ? { razaoSocial: dados.razaoSocial } : null
   }),
 
   criarPublico: publicProcedure
@@ -194,7 +206,7 @@ export const devolucoesRouter = router({
       const chamado = await db.query.devolucaoChamados.findFirst({
         where: eq(devolucaoChamados.id, input.id),
         with: {
-          vendedor: { columns: { name: true } },
+          vendedor: { columns: { name: true, whatsapp: true } },
           empresa: { columns: { nome: true } },
           ocorrencias: true,
           materiais: true,
@@ -671,7 +683,8 @@ export const devolucoesRouter = router({
         vendedor: { columns: { name: true } },
         empresa: { columns: { nome: true } },
         ocorrencias: { columns: { tipo: true } },
-        analise: { columns: { resultado: true, quemErrou: true } },
+        materiais: { columns: { descricaoItem: true } },
+        analise: { columns: { resultado: true, quemErrou: true, impactaComissao: true, valorImpactoComissao: true } },
       },
     })
 
@@ -692,6 +705,24 @@ export const devolucoesRouter = router({
 
     const quemErrou = vejoComissao
       ? contar(analises.map((a) => a.quemErrou).filter((q): q is NonNullable<typeof q> => !!q))
+      : null
+
+    const porProduto = contar(chamados.flatMap((c) => c.materiais.map((m) => m.descricaoItem)))
+      .slice(0, 10)
+
+    const comissaoPorVendedor = vejoComissao
+      ? (() => {
+          const mapa = new Map<string, number>()
+          for (const c of chamados) {
+            if (c.analise?.impactaComissao && c.analise.valorImpactoComissao) {
+              const nome = c.vendedor?.name ?? 'Sem vendedor'
+              mapa.set(nome, (mapa.get(nome) ?? 0) + c.analise.valorImpactoComissao)
+            }
+          }
+          return [...mapa.entries()]
+            .map(([chave, valor]) => ({ chave, valor: Math.round(valor * 100) / 100 }))
+            .sort((a, b) => b.valor - a.valor)
+        })()
       : null
 
     const finalizados = chamados.filter((c) => c.status === 'finalizado' && c.fechadoEm)
@@ -716,7 +747,9 @@ export const devolucoesRouter = router({
       porVendedor,
       porEmpresa,
       porOcorrencia,
+      porProduto,
       quemErrou,
+      comissaoPorVendedor,
     }
   }),
 })

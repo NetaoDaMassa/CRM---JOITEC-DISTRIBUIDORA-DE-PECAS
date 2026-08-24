@@ -115,6 +115,7 @@ export const usersRouter = router({
         isActive: z.boolean().optional(),
         ocultoPainelTv: z.boolean().optional(),
         fotoUrl: z.string().optional(),
+        whatsapp: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

@@ -38,17 +38,27 @@ const QUEM_ERROU_LABEL: Record<string, string> = {
   defeito: 'Defeito de fábrica',
 }
 
-function TooltipPadrao({ active, payload, label }: { active?: boolean; payload?: { value: number }[]; label?: string }) {
+function TooltipPadrao({ active, payload, label, formatarValor }: { active?: boolean; payload?: { value: number }[]; label?: string; formatarValor?: (v: number) => string }) {
   if (!active || !payload?.length) return null
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
       <p className="text-dark-100 font-medium">{label}</p>
-      <p className="text-dark-300">{payload[0].value} chamado(s)</p>
+      <p className="text-dark-300">{formatarValor ? formatarValor(payload[0].value) : `${payload[0].value} chamado(s)`}</p>
     </div>
   )
 }
 
-function GraficoBarras({ dados, corBarra, altura }: { dados: { rotulo: string; quantidade: number }[]; corBarra: string; altura?: number }) {
+function GraficoBarras({
+  dados,
+  corBarra,
+  altura,
+  formatarValor,
+}: {
+  dados: { rotulo: string; quantidade: number }[]
+  corBarra: string
+  altura?: number
+  formatarValor?: (v: number) => string
+}) {
   if (!dados.length) return <p className="text-xs text-dark-500">Sem dados ainda.</p>
   return (
     <ResponsiveContainer width="100%" height={altura ?? Math.max(120, dados.length * 34)}>
@@ -56,12 +66,18 @@ function GraficoBarras({ dados, corBarra, altura }: { dados: { rotulo: string; q
         <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} horizontal={false} />
         <XAxis type="number" allowDecimals={false} tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
         <YAxis dataKey="rotulo" type="category" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={130} />
-        <Tooltip content={<TooltipPadrao />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+        <Tooltip content={<TooltipPadrao formatarValor={formatarValor} />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
         <Bar dataKey="quantidade" radius={[0, 4, 4, 0]} barSize={16}>
           {dados.map((d) => (
             <Cell key={d.rotulo} fill={corBarra} />
           ))}
-          <LabelList dataKey="quantidade" position="right" fill={COR_TICK} fontSize={10} />
+          <LabelList
+            dataKey="quantidade"
+            position="right"
+            fill={COR_TICK}
+            fontSize={10}
+            formatter={(v: unknown) => (formatarValor ? formatarValor(Number(v)) : String(v))}
+          />
         </Bar>
       </BarChart>
     </ResponsiveContainer>
@@ -108,6 +124,8 @@ export default function DevolucaoRelatorios() {
   const porOcorrencia = data.porOcorrencia.map((o) => ({ rotulo: OCORRENCIA_LABEL[o.chave] ?? o.chave, quantidade: o.quantidade }))
   const porEmpresa = data.porEmpresa.map((e) => ({ rotulo: e.chave, quantidade: e.quantidade }))
   const quemErrou = data.quemErrou?.map((q) => ({ rotulo: QUEM_ERROU_LABEL[q.chave] ?? q.chave, quantidade: q.quantidade })) ?? null
+  const porProduto = data.porProduto.map((p) => ({ rotulo: p.chave, quantidade: p.quantidade }))
+  const comissaoPorVendedor = data.comissaoPorVendedor?.map((c) => ({ rotulo: c.chave, quantidade: c.valor })) ?? null
 
   return (
     <div className="p-6 space-y-6">
@@ -180,9 +198,23 @@ export default function DevolucaoRelatorios() {
             <GraficoBarras dados={porEmpresa} corBarra={COR_BARRA} />
           </Secao>
         )}
+        {!!porProduto.length && (
+          <Secao titulo="Produtos mais devolvidos">
+            <GraficoBarras dados={porProduto} corBarra={COR_BARRA} />
+          </Secao>
+        )}
         {quemErrou && (
           <Secao titulo="Quem errou (análises)">
             <GraficoBarras dados={quemErrou} corBarra={COR_ALERTA} />
+          </Secao>
+        )}
+        {comissaoPorVendedor && !!comissaoPorVendedor.length && (
+          <Secao titulo="Impacto na comissão por vendedor">
+            <GraficoBarras
+              dados={comissaoPorVendedor}
+              corBarra={COR_ALERTA}
+              formatarValor={(v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+            />
           </Secao>
         )}
       </div>

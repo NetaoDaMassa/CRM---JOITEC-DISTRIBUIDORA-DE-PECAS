@@ -94,9 +94,10 @@ interface UserForm {
   username: string
   role: 'admin' | 'vendor'
   regiao: string
+  whatsapp: string
 }
 
-const DEFAULT_FORM: UserForm = { name: '', username: '', role: 'vendor', regiao: '' }
+const DEFAULT_FORM: UserForm = { name: '', username: '', role: 'vendor', regiao: '', whatsapp: '' }
 
 async function uploadFotoVendedor(file: File): Promise<string> {
   const token = localStorage.getItem('odin_token')
@@ -170,11 +171,13 @@ export default function AdminUsers() {
           username: form.username,
           role: form.role,
           regiao: (form.regiao || undefined) as any,
+          whatsapp: form.whatsapp || undefined,
         })
         userId = editUser.id
       } else {
         const data = await createMut.mutateAsync({ name: form.name, username: form.username, role: form.role, regiao: (form.regiao || undefined) as any })
         userId = data.id
+        if (form.whatsapp) await updateMut.mutateAsync({ id: userId, whatsapp: form.whatsapp })
       }
 
       if (fotoForm) {
@@ -237,7 +240,7 @@ export default function AdminUsers() {
 
   function openEdit(user: any) {
     setEditUser(user)
-    setForm({ name: user.name, username: user.username, role: user.role, regiao: user.regiao ?? '' })
+    setForm({ name: user.name, username: user.username, role: user.role, regiao: user.regiao ?? '', whatsapp: user.whatsapp ?? '' })
     setFotoForm(null)
   }
 
@@ -415,6 +418,12 @@ export default function AdminUsers() {
             onChange={(e) => setForm({ ...form, regiao: e.target.value })}
             placeholder="Sem região"
             options={REGIOES}
+          />
+          <Input
+            label="WhatsApp (opcional)"
+            value={form.whatsapp}
+            onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
+            placeholder="Ex: 5511999999999"
           />
           <Select
             label="Perfil"

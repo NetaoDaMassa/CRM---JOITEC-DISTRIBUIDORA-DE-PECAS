@@ -40,6 +40,10 @@ export const users = sqliteTable('users', {
     enum: ['norte', 'nordeste', 'centro_oeste', 'sudeste', 'sul'],
   }),
   fotoUrl: text('foto_url'),
+  // Usado pelos botões de WhatsApp do módulo de Devolução (notificar o
+  // vendedor quando o status do chamado muda) — opcional, nem todo mundo
+  // precisa preencher.
+  whatsapp: text('whatsapp'),
   temaPreferido: text('tema_preferido', { enum: ['claro', 'escuro'] }).notNull().default('claro'),
   senhaTrocarNoLogin: integer('senha_trocar_no_login', { mode: 'boolean' }).notNull().default(false),
   tentativasLoginFalhas: integer('tentativas_login_falhas').notNull().default(0),
