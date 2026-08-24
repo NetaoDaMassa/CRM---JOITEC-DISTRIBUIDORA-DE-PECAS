@@ -612,4 +612,73 @@ export const devolucoesRouter = router({
         .where(eq(devolucaoDemonstracoes.id, input.id))
       return { ok: true }
     }),
+
+  // ── Relatório ──────────────────────────────────────────────────────
+  // Um resumo só (não 9 endpoints separados como no sistema original) —
+  // volume de dado é pequeno, uma consulta com os relacionamentos já dá
+  // pra montar todos os gráficos. Respeita o mesmo escopo do resto do
+  // módulo: vendedor só vê os próprios chamados, admin vê a empresa
+  // (ou as 4, se tiver 'devolucoes_visao_global').
+  relatorio: adminOrFeatureProcedure('devolucoes').query(async ({ ctx }) => {
+    const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+    const vejoComissao = souAdmin || (await temFeature(ctx.user.id, 'devolucoes_ver_comissao'))
+
+    const chamados = await db.query.devolucaoChamados.findMany({
+      where: souAdmin
+        ? inArray(devolucaoChamados.empresaId, alcancaveis)
+        : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
+      columns: { id: true, status: true, empresaId: true, vendedorId: true, createdAt: true, fechadoEm: true },
+      with: {
+        vendedor: { columns: { name: true } },
+        empresa: { columns: { nome: true } },
+        ocorrencias: { columns: { tipo: true } },
+        analise: { columns: { resultado: true, quemErrou: true } },
+      },
+    })
+
+    function contar<T extends string>(itens: T[]): { chave: T; quantidade: number }[] {
+      const mapa = new Map<T, number>()
+      for (const item of itens) mapa.set(item, (mapa.get(item) ?? 0) + 1)
+      return [...mapa.entries()].map(([chave, quantidade]) => ({ chave, quantidade })).sort((a, b) => b.quantidade - a.quantidade)
+    }
+
+    const porStatus = contar(chamados.map((c) => c.status))
+    const porVendedor = contar(chamados.map((c) => c.vendedor?.name ?? 'Sem vendedor'))
+    const porEmpresa = contar(chamados.map((c) => c.empresa?.nome ?? '—'))
+    const porOcorrencia = contar(chamados.flatMap((c) => c.ocorrencias.map((o) => o.tipo)))
+
+    const analises = chamados.map((c) => c.analise).filter((a): a is NonNullable<typeof a> => !!a)
+    const positivos = analises.filter((a) => a.resultado === 'positivo').length
+    const taxaPositiva = analises.length ? Math.round((positivos / analises.length) * 1000) / 10 : null
+
+    const quemErrou = vejoComissao
+      ? contar(analises.map((a) => a.quemErrou).filter((q): q is NonNullable<typeof q> => !!q))
+      : null
+
+    const finalizados = chamados.filter((c) => c.status === 'finalizado' && c.fechadoEm)
+    const tempoMedioResolucaoDias = finalizados.length
+      ? Math.round(
+          (finalizados.reduce((soma, c) => {
+            const fim = new Date(`${c.fechadoEm!.replace(' ', 'T')}Z`).getTime()
+            const inicio = new Date(`${c.createdAt.replace(' ', 'T')}Z`).getTime()
+            return soma + (fim - inicio) / (1000 * 60 * 60 * 24)
+          }, 0) /
+            finalizados.length) *
+            10
+        ) / 10
+      : null
+
+    return {
+      totalChamados: chamados.length,
+      totalFinalizados: finalizados.length,
+      taxaPositiva,
+      tempoMedioResolucaoDias,
+      porStatus,
+      porVendedor,
+      porEmpresa,
+      porOcorrencia,
+      quemErrou,
+    }
+  }),
 })

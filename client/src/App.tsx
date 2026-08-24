@@ -41,6 +41,7 @@ import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
 import DevolucaoDemonstracao from './pages/DevolucaoDemonstracao'
+import DevolucaoRelatorios from './pages/DevolucaoRelatorios'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -157,6 +158,7 @@ export default function App() {
           <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-mecanica" element={<AdminGuard><FeatureGuard feature="devolucoes_mecanica"><DevolucaoMecanica /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-demonstracao" element={<AdminGuard><FeatureGuard feature="devolucoes_demonstracao"><DevolucaoDemonstracao /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/devolucoes-relatorios" element={<AdminGuard><FeatureGuard feature="devolucoes"><DevolucaoRelatorios /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
@@ -175,6 +177,7 @@ export default function App() {
           <Route path="vendedor/devolucoes" element={<Devolucoes />} />
           <Route path="vendedor/devolucoes-mecanica" element={<DevolucaoMecanica />} />
           <Route path="vendedor/devolucoes-demonstracao" element={<DevolucaoDemonstracao />} />
+          <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
 
           <Route
             index
