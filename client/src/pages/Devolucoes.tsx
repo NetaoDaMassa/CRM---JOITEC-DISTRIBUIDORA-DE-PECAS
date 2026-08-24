@@ -706,8 +706,8 @@ export default function Devolucoes() {
   // que só vê a própria empresa, a barra de filtro nem aparece.
   // Também usada pro botão de excluir chamado: exclusão é um "poder
   // especial" (equivalente à Amanda no sistema novo, Paola/Andreia no
-  // antigo) — nem todo admin tem, e superAdmin não ganha bypass automático
-  // aqui (mesma regra do backend).
+  // antigo) — nem todo admin tem, mas superAdmin sempre tem (minhasPermissoes
+  // já bypassa pra superAdmin, igual o backend faz agora).
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: souAdmin,
   })

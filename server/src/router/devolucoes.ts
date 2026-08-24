@@ -12,6 +12,7 @@ import {
   devolucaoAnaliseProdutos,
   devolucaoMecanicaItens,
   devolucaoMecanicaHistorico,
+  devolucaoFeedbacks,
   devolucaoAtualizacoes,
   devolucaoServicos,
   devolucaoDemonstracoes,
@@ -314,7 +315,8 @@ export const devolucoesRouter = router({
   // concedido (equivalente à exceção da Andreia no sistema original,
   // Odin Compressores). Continua exigindo ser admin por baixo.
   finalizarForaDeOrdem: adminProcedure.input(z.object({ id: z.number(), nota: z.string().optional() })).mutation(async ({ ctx, input }) => {
-    if (!(await temFeature(ctx.user.id, 'devolucoes_finalizar_fora_ordem'))) throw new Error('Sem permissão pra finalizar fora de ordem')
+    if (!ctx.user.superAdmin && !(await temFeature(ctx.user.id, 'devolucoes_finalizar_fora_ordem')))
+      throw new Error('Sem permissão pra finalizar fora de ordem')
     const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
     const chamado = await assertChamadoAlcancavel(input.id, alcancaveis)
 
@@ -345,11 +347,37 @@ export const devolucoesRouter = router({
     return { ok: true }
   }),
 
+  // SQLite aqui roda sem `PRAGMA foreign_keys = ON`, então os `onDelete:
+  // 'cascade'` do schema.ts não são aplicados de fato pelo banco — sem
+  // apagar as tabelas filhas na mão, o registro do chamado some mas deixa
+  // lixo órfão pra trás (ocorrências, materiais, análise, serviço etc).
   excluir: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-    if (!(await temFeature(ctx.user.id, 'devolucoes_excluir_chamado'))) throw new Error('Sem permissão pra excluir chamado')
+    if (!ctx.user.superAdmin && !(await temFeature(ctx.user.id, 'devolucoes_excluir_chamado')))
+      throw new Error('Sem permissão pra excluir chamado')
     const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
     await assertChamadoAlcancavel(input.id, alcancaveis)
+
+    const analise = await db.query.devolucaoAnalises.findFirst({ where: eq(devolucaoAnalises.chamadoId, input.id) })
+    if (analise) await db.delete(devolucaoAnaliseProdutos).where(eq(devolucaoAnaliseProdutos.analiseId, analise.id))
+
+    const itensMecanica = await db.query.devolucaoMecanicaItens.findMany({ where: eq(devolucaoMecanicaItens.chamadoId, input.id) })
+    for (const item of itensMecanica) {
+      await db.delete(devolucaoMecanicaHistorico).where(eq(devolucaoMecanicaHistorico.itemId, item.id))
+    }
+
+    await db.update(devolucaoDemonstracoes).set({ chamadoVinculadoId: null }).where(eq(devolucaoDemonstracoes.chamadoVinculadoId, input.id))
+
+    await db.delete(devolucaoOcorrencias).where(eq(devolucaoOcorrencias.chamadoId, input.id))
+    await db.delete(devolucaoMateriais).where(eq(devolucaoMateriais.chamadoId, input.id))
+    await db.delete(devolucaoAnexos).where(eq(devolucaoAnexos.chamadoId, input.id))
+    await db.delete(devolucaoHistoricoStatus).where(eq(devolucaoHistoricoStatus.chamadoId, input.id))
+    await db.delete(devolucaoAnalises).where(eq(devolucaoAnalises.chamadoId, input.id))
+    await db.delete(devolucaoMecanicaItens).where(eq(devolucaoMecanicaItens.chamadoId, input.id))
+    await db.delete(devolucaoFeedbacks).where(eq(devolucaoFeedbacks.chamadoId, input.id))
+    await db.delete(devolucaoAtualizacoes).where(eq(devolucaoAtualizacoes.chamadoId, input.id))
+    await db.delete(devolucaoServicos).where(eq(devolucaoServicos.chamadoId, input.id))
     await db.delete(devolucaoChamados).where(eq(devolucaoChamados.id, input.id))
+
     await registrarAuditoria({ tabela: 'devolucao_chamados', registroId: input.id, acao: 'excluir', alteradoPor: ctx.user.id })
     return { ok: true }
   }),
