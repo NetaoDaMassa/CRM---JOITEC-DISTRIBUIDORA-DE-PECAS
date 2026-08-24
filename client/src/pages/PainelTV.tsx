@@ -17,6 +17,7 @@ import { trpc } from '../lib/trpc'
 import { formatElapsed, formatarPercentual } from '../lib/utils'
 import AvatarMeta from '../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../lib/useCelebrarMeta'
+import { useAutoScroll } from '../lib/useAutoScroll'
 import CelebracaoPopup from '../components/ui/CelebracaoPopup'
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
@@ -691,6 +692,8 @@ export default function PainelTV() {
     const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), segundos * 1000)
     return () => clearInterval(id)
   }, [slides.length, segundosPorSlide])
+
+  useAutoScroll(slideAtual, (segundosPorSlide ?? SEGUNDOS_POR_SLIDE) * 1000)
 
   const Slide = slides[slideAtual].render
 

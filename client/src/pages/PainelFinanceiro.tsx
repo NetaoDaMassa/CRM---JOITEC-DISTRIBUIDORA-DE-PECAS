@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
+import { useAutoScroll } from '../lib/useAutoScroll'
 import { Input } from '../components/ui/Input'
 import Button from '../components/ui/Button'
 
@@ -372,11 +373,14 @@ export default function PainelFinanceiro() {
     { titulo: 'Importações', render: () => <SlideImportacoes invoices={invoices} /> },
   ]
   const [slideAtual, setSlideAtual] = useState(0)
+  const DURACAO_SLIDE_MS = 20000
 
   useEffect(() => {
-    const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), 20000)
+    const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), DURACAO_SLIDE_MS)
     return () => clearInterval(id)
   }, [slides.length])
+
+  useAutoScroll(slideAtual, DURACAO_SLIDE_MS)
 
   const Slide = slides[slideAtual].render
 
