@@ -371,6 +371,17 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
     },
   })
 
+  const { data: vendedoresDisponiveis } = trpc.users.vendors.useQuery(undefined, { enabled: souAdmin })
+  const atribuirVendedorMut = trpc.devolucoes.atribuirVendedor.useMutation({
+    onSuccess() {
+      toast.success('Vendedor atribuído')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -422,7 +433,17 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
           </div>
           <div>
             <p className="text-dark-500 text-xs uppercase tracking-wide">Vendedor</p>
-            <p className="text-dark-100">{(chamado as any).vendedor?.name ?? '—'}</p>
+            {souAdmin ? (
+              <Select
+                value={String((chamado as any).vendedorId ?? '')}
+                onChange={(e) => atribuirVendedorMut.mutate({ id: chamado.id, vendedorId: e.target.value ? Number(e.target.value) : null })}
+                placeholder="Sem vendedor"
+                options={(vendedoresDisponiveis ?? []).map((v: any) => ({ value: String(v.id), label: v.name }))}
+                className="mt-0.5"
+              />
+            ) : (
+              <p className="text-dark-100">{(chamado as any).vendedor?.name ?? '—'}</p>
+            )}
           </div>
           <div>
             <p className="text-dark-500 text-xs uppercase tracking-wide">Empresa</p>
