@@ -29,6 +29,7 @@ import { activityRouter } from './activity.js'
 import { caixaRouter } from './caixa.js'
 import { comprasRouter } from './compras.js'
 import { permissoesRouter } from './permissoes.js'
+import { funcaoTemplatesRouter } from './funcaoTemplates.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
 import { integracoesRouter } from './integracoes.js'
 import { pabxRouter } from './pabx.js'
@@ -69,6 +70,7 @@ export const appRouter = router({
   caixa: caixaRouter,
   compras: comprasRouter,
   permissoes: permissoesRouter,
+  funcaoTemplates: funcaoTemplatesRouter,
   contasVinculadas: contasVinculadasRouter,
   integracoes: integracoesRouter,
   pabx: pabxRouter,

@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -235,6 +235,21 @@ export default function Sidebar() {
             >
               <ShieldCheck size={17} />
               <span className="flex-1">Permissões</span>
+            </NavLink>
+          )}
+          {user?.superAdmin && (
+            <NavLink
+              to="/admin/funcoes"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
+                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
+                }`
+              }
+            >
+              <Briefcase size={17} />
+              <span className="flex-1">Funções</span>
             </NavLink>
           )}
           {user?.role === 'admin' && (user.superAdmin || minhasFeatures?.includes('painel_financeiro')) && (

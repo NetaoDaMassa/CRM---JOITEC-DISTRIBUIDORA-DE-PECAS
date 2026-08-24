@@ -24,6 +24,44 @@ export const configuracoes = sqliteTable('configuracoes', {
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Modelos de função pra criação de usuário (Vendedor/Admin/Compras/RH/
+// Financeiro/Marketing e o que mais o superAdmin quiser criar em Funções) —
+// cada um decide o `role` (só quem marca 'vendor' vira vendedor de verdade,
+// com carteira/Kanban/meta; o resto é admin com acesso restrito) e a lista
+// de telas que um usuário criado com ele já nasce enxergando (ver
+// funcaoTemplateFeatures). Por empresa — cada empresa do grupo pode ter seu
+// próprio conjunto de funções.
+export const funcaoTemplates = sqliteTable('funcao_templates', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  nome: text('nome').notNull(),
+  role: text('role', { enum: ['admin', 'vendor'] }).notNull().default('admin'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Telas liberadas por template — presença de (templateId, feature) = essa
+// função nasce com aquela tela marcada. Mesma ideia normalizada de
+// permissoesAdmin, só que por template em vez de por usuário.
+export const funcaoTemplateFeatures = sqliteTable(
+  'funcao_template_features',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    templateId: integer('template_id').notNull().references(() => funcaoTemplates.id, { onDelete: 'cascade' }),
+    feature: text('feature').notNull(),
+  },
+  (t) => ({
+    templateFeature: unique().on(t.templateId, t.feature),
+  })
+)
+
+export const funcaoTemplatesRelations = relations(funcaoTemplates, ({ many }) => ({
+  features: many(funcaoTemplateFeatures),
+}))
+
+export const funcaoTemplateFeaturesRelations = relations(funcaoTemplateFeatures, ({ one }) => ({
+  template: one(funcaoTemplates, { fields: [funcaoTemplateFeatures.templateId], references: [funcaoTemplates.id] }),
+}))
+
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
@@ -33,6 +71,15 @@ export const users = sqliteTable('users', {
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
   role: text('role', { enum: ['admin', 'vendor'] }).notNull().default('vendor'),
+  // Função escolhida na criação (aponta pra um modelo em funcaoTemplates,
+  // que o próprio superAdmin cria/edita em Funções) — só rótulo + atalho pra
+  // semear as permissões certas na hora de criar o usuário. Quem decide o
+  // que a pessoa realmente enxerga continua sendo `role` + a tabela
+  // permissoesAdmin; editar o template depois NÃO reaplica nada em quem já
+  // foi criado com ele (evita apagar ajuste manual que o superAdmin já fez
+  // pra alguém específico em Permissões). `set null` no delete do template
+  // pra não travar a exclusão nem apagar o usuário — só perde o rótulo.
+  funcaoTemplateId: integer('funcao_template_id').references(() => funcaoTemplates.id, { onDelete: 'set null' }),
   // Só verdadeiro pra conta(s) que podem trocar de empresa ativa sem logar de
   // novo (o dono/gestor geral) — ver createContext.
   superAdmin: integer('super_admin', { mode: 'boolean' }).notNull().default(false),
@@ -1001,7 +1048,7 @@ export const devolucaoDemonstracaoItens = sqliteTable('devolucao_demonstracao_it
 })
 
 // Relations
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ one, many }) => ({
   clientesCarteira: many(clientes),
   carteiraHistorico: many(carteiraHistorico),
   funis: many(funilMensal),
@@ -1010,6 +1057,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   metas: many(metasMensais),
   logsAcesso: many(logAcessoUsuario),
   atividadesDiarias: many(atividadeDiariaUsuario),
+  funcaoTemplate: one(funcaoTemplates, { fields: [users.funcaoTemplateId], references: [funcaoTemplates.id] }),
 }))
 
 export const clientesRelations = relations(clientes, ({ one, many }) => ({

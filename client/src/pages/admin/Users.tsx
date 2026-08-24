@@ -127,12 +127,12 @@ const REGIOES = [
 interface UserForm {
   name: string
   username: string
-  role: 'admin' | 'vendor'
+  funcaoTemplateId: number | ''
   regiao: string
   whatsapp: string
 }
 
-const DEFAULT_FORM: UserForm = { name: '', username: '', role: 'vendor', regiao: '', whatsapp: '' }
+const DEFAULT_FORM: UserForm = { name: '', username: '', funcaoTemplateId: '', regiao: '', whatsapp: '' }
 
 async function uploadFotoVendedor(file: File): Promise<string> {
   const token = localStorage.getItem('odin_token')
@@ -159,6 +159,7 @@ export default function AdminUsers() {
 
   const utils = trpc.useUtils()
   const { data: users, isLoading } = trpc.users.list.useQuery()
+  const { data: funcaoTemplates } = trpc.funcaoTemplates.listar.useQuery()
   const { data: accessLog } = trpc.users.accessLog.useQuery()
   const accessByUser = new Map((accessLog?.users ?? []).map((u) => [u.id, u]))
 
@@ -197,6 +198,7 @@ export default function AdminUsers() {
 
   async function handleSalvarUsuario(e: React.FormEvent) {
     e.preventDefault()
+    if (!form.funcaoTemplateId) return toast.error('Selecione a função do usuário.')
     try {
       let userId: number
       if (editUser) {
@@ -204,13 +206,18 @@ export default function AdminUsers() {
           id: editUser.id,
           name: form.name,
           username: form.username,
-          role: form.role,
+          funcaoTemplateId: Number(form.funcaoTemplateId),
           regiao: (form.regiao || undefined) as any,
           whatsapp: form.whatsapp || undefined,
         })
         userId = editUser.id
       } else {
-        const data = await createMut.mutateAsync({ name: form.name, username: form.username, role: form.role, regiao: (form.regiao || undefined) as any })
+        const data = await createMut.mutateAsync({
+          name: form.name,
+          username: form.username,
+          funcaoTemplateId: Number(form.funcaoTemplateId),
+          regiao: (form.regiao || undefined) as any,
+        })
         userId = data.id
         if (form.whatsapp) await updateMut.mutateAsync({ id: userId, whatsapp: form.whatsapp })
       }
@@ -275,7 +282,15 @@ export default function AdminUsers() {
 
   function openEdit(user: any) {
     setEditUser(user)
-    setForm({ name: user.name, username: user.username, role: user.role, regiao: user.regiao ?? '', whatsapp: user.whatsapp ?? '' })
+    setForm({
+      name: user.name,
+      username: user.username,
+      // Usuários criados antes dessa coluna existir não têm função salva —
+      // abre sem nada selecionado, a pessoa escolhe uma função pra salvar.
+      funcaoTemplateId: user.funcaoTemplateId ?? '',
+      regiao: user.regiao ?? '',
+      whatsapp: user.whatsapp ?? '',
+    })
     setFotoForm(null)
   }
 
@@ -308,7 +323,7 @@ export default function AdminUsers() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-dark-600 bg-dark-700/50">
-              {['Foto', 'Nome', 'Usuário', 'Região', 'Perfil', 'Status', 'Acesso', 'Dias trabalhados no mês', 'Cadastrado', 'Ações'].map((h) => (
+              {['Foto', 'Nome', 'Usuário', 'Região', 'Função', 'Status', 'Acesso', 'Dias trabalhados no mês', 'Cadastrado', 'Ações'].map((h) => (
                 <th key={h} className="text-left text-dark-400 font-medium px-4 py-3">
                   {h}
                 </th>
@@ -351,7 +366,7 @@ export default function AdminUsers() {
                           user.role === 'admin' ? 'bg-gold-600/20 text-gold-400' : 'bg-blue-500/20 text-blue-300'
                         }`}
                       >
-                        {user.role === 'admin' ? 'Administrador' : 'Vendedor'}
+                        {user.funcaoNome ?? (user.role === 'admin' ? 'Administrador' : 'Vendedor')}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -459,12 +474,18 @@ export default function AdminUsers() {
             placeholder="Ex: 5511999999999"
           />
           <Select
-            label="Perfil"
-            value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'vendor' })}
-            options={[{ value: 'vendor', label: 'Vendedor' }, { value: 'admin', label: 'Administrador' }]}
+            label="Função"
+            value={form.funcaoTemplateId === '' ? '' : String(form.funcaoTemplateId)}
+            onChange={(e) => setForm({ ...form, funcaoTemplateId: e.target.value ? Number(e.target.value) : '' })}
+            placeholder="Selecione..."
+            options={(funcaoTemplates ?? []).map((t) => ({ value: t.id, label: t.nome }))}
           />
-          {form.role === 'vendor' && (
+          {!editUser && !!form.funcaoTemplateId && (
+            <p className="text-xs text-dark-500 -mt-2">
+              Já nasce com acesso só ao que essa função costuma usar — dá pra ajustar (ou criar novas funções) em Funções.
+            </p>
+          )}
+          {funcaoTemplates?.find((t) => t.id === form.funcaoTemplateId)?.role === 'vendor' && (
             <div className="flex items-center gap-3">
               <AvatarMeta nome={form.name || '?'} fotoUrl={fotoForm ? URL.createObjectURL(fotoForm) : editUser?.fotoUrl} size="md" />
               <div className="flex-1">

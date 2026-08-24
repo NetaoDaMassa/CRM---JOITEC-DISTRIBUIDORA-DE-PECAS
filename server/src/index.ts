@@ -14,6 +14,7 @@ import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
+import { seedFuncaoTemplatesPadrao } from './lib/funcaoTemplatesSeed.js'
 
 config()
 
@@ -200,6 +201,7 @@ async function start() {
     await backfillPermissoesRelatorios()
     await backfillPermissaoPainelTv()
     await backfillPermissoesVendedor()
+    await seedFuncaoTemplatesPadrao()
   } catch (err) {
     console.error('[db] falha ao aplicar migrações:', err)
     process.exit(1)

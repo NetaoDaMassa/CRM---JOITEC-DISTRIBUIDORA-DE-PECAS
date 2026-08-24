@@ -102,6 +102,7 @@ export const permissoesRouter = router({
     const admins = await db.query.users.findMany({
       where: eq(users.role, 'admin'),
       columns: { id: true, name: true, username: true, empresaId: true, superAdmin: true, isActive: true },
+      with: { funcaoTemplate: { columns: { nome: true } } },
       orderBy: (u, { asc }) => [asc(u.name)],
     })
     const todasPermissoes = await db.query.permissoesAdmin.findMany()
@@ -111,7 +112,7 @@ export const permissoesRouter = router({
       lista.push(p.feature)
       porUsuario.set(p.userId, lista)
     }
-    return admins.map((a) => ({ ...a, features: porUsuario.get(a.id) ?? [] }))
+    return admins.map((a) => ({ ...a, funcaoNome: a.funcaoTemplate?.nome ?? null, features: porUsuario.get(a.id) ?? [] }))
   }),
 
   // Mesma ideia de listarAdmins, mas pra vendedores — itens da Sidebar dele

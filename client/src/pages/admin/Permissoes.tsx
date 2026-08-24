@@ -86,6 +86,7 @@ export default function Permissoes() {
                 <p className="font-medium truncate">{a.name}</p>
                 <p className="text-xs text-dark-500 truncate">
                   {a.superAdmin ? 'Admin principal · acesso total' : `@${a.username}`}
+                  {!a.superAdmin && a.funcaoNome ? ` · ${a.funcaoNome}` : ''}
                   {!a.isActive ? ' · inativo' : ''}
                 </p>
               </button>

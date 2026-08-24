@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { and, eq, isNull, inArray } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, clientes, metasMensais, logAcessoUsuario, atividadeDiariaUsuario } from '../db/schema.js'
+import { users, clientes, metasMensais, permissoesAdmin, funcaoTemplates, logAcessoUsuario, atividadeDiariaUsuario } from '../db/schema.js'
 import { mesReferenciaAtual } from '../lib/dataBr.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
 import { toUtcISO, toLocalDateKey, toLocalTimeKey } from '../lib/businessHours.js'
@@ -48,11 +48,13 @@ function gerarSenhaTemporaria(): string {
 
 export const usersRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
-    return db.query.users.findMany({
+    const lista = await db.query.users.findMany({
       where: eq(users.empresaId, ctx.empresaId),
       columns: { passwordHash: false },
+      with: { funcaoTemplate: { columns: { nome: true } } },
       orderBy: (u, { asc }) => [asc(u.name)],
     })
+    return lista.map((u) => ({ ...u, funcaoNome: u.funcaoTemplate?.nome ?? null }))
   }),
 
   // "Vendors" aqui não é só quem tem role='vendor' — um admin de uma
@@ -73,7 +75,7 @@ export const usersRouter = router({
       z.object({
         name: z.string().min(2),
         username: z.string().min(3),
-        role: z.enum(['admin', 'vendor']).default('vendor'),
+        funcaoTemplateId: z.number(),
         regiao: z.enum(REGIAO_VALUES).optional(),
       })
     )
@@ -83,6 +85,12 @@ export const usersRouter = router({
       const existing = await db.query.users.findFirst({ where: eq(users.username, input.username) })
       if (existing) throw new Error('Nome de usuário já existe')
 
+      const template = await db.query.funcaoTemplates.findFirst({
+        where: and(eq(funcaoTemplates.id, input.funcaoTemplateId), eq(funcaoTemplates.empresaId, ctx.empresaId)),
+        with: { features: true },
+      })
+      if (!template) throw new Error('Função inválida')
+
       const senhaTemporaria = gerarSenhaTemporaria()
       const hash = await bcrypt.hash(senhaTemporaria, 12)
       const result = await db.insert(users).values({
@@ -90,15 +98,22 @@ export const usersRouter = router({
         name: input.name,
         username: input.username,
         passwordHash: hash,
-        role: input.role,
+        role: template.role,
+        funcaoTemplateId: template.id,
         regiao: input.regiao,
         senhaTrocarNoLogin: true,
       })
       const id = Number(result.lastInsertRowid)
 
+      // Já nasce com as telas do template escolhido, em vez de nascer cego
+      // até o superAdmin configurar manualmente em Permissões.
+      if (template.features.length > 0) {
+        await db.insert(permissoesAdmin).values(template.features.map((f) => ({ userId: id, feature: f.feature })))
+      }
+
       // Vendedor novo já nasce com meta do mês corrente (padrão configurável
       // em Configurações) — evita aparecer sem meta no dashboard/TV.
-      if (input.role === 'vendor') {
+      if (template.role === 'vendor') {
         const metaFaturamento = await getConfigNumero('meta_faturamento_padrao', 100000)
         const metaLigacoesDia = await getConfigNumero('meta_ligacoes_dia_padrao', 25)
         await db.insert(metasMensais).values({
@@ -120,6 +135,7 @@ export const usersRouter = router({
         username: z.string().min(3).optional(),
         regiao: z.enum(REGIAO_VALUES).optional(),
         role: z.enum(['admin', 'vendor']).optional(),
+        funcaoTemplateId: z.number().optional(),
         isActive: z.boolean().optional(),
         ocultoPainelTv: z.boolean().optional(),
         fotoUrl: z.string().optional(),
@@ -127,7 +143,7 @@ export const usersRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...updates } = input
+      const { id, funcaoTemplateId, ...updates } = input
       const target = await db.query.users.findFirst({ where: and(eq(users.id, id), eq(users.empresaId, ctx.empresaId)) })
       if (!target) throw new Error('Usuário não encontrado')
 
@@ -138,7 +154,19 @@ export const usersRouter = router({
         if (existing) throw new Error('Nome de usuário já existe')
       }
 
-      await db.update(users).set(updates).where(eq(users.id, id))
+      let finalUpdates: typeof updates & { funcaoTemplateId?: number; role?: 'admin' | 'vendor' } = updates
+      if (funcaoTemplateId !== undefined) {
+        const template = await db.query.funcaoTemplates.findFirst({
+          where: and(eq(funcaoTemplates.id, funcaoTemplateId), eq(funcaoTemplates.empresaId, ctx.empresaId)),
+        })
+        if (!template) throw new Error('Função inválida')
+        // Trocar de função aqui só atualiza o rótulo + role — de propósito
+        // NÃO reseta permissoesAdmin (a pessoa pode já ter permissões
+        // ajustadas à mão em Permissões; reaplicar do zero apagaria isso).
+        finalUpdates = { ...updates, funcaoTemplateId: template.id, role: template.role }
+      }
+
+      await db.update(users).set(finalUpdates).where(eq(users.id, id))
       return { success: true }
     }),
 
