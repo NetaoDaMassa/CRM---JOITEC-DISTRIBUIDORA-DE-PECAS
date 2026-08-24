@@ -14,7 +14,12 @@ export interface CnpjLookupResult {
 export async function buscarCnpj(cnpj: string): Promise<CnpjLookupResult | null> {
   const limpo = limparCnpj(cnpj)
   const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${limpo}`, {
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      // Sem User-Agent de navegador, o WAF da BrasilAPI bloqueia com 403
+      // (bloqueio de bot/datacenter) — reproduzido rodando direto na VPS.
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    },
   })
   if (!res.ok) return null
   const data = (await res.json()) as {
