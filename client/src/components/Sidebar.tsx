@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -61,6 +61,10 @@ export const ADMIN_LINKS = [
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_mecanica' },
   { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_demonstracao' },
   { to: '/admin/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
+  // RH — vagas/candidatos/mensagens, portado do CRM-GRUPO-ODIN.
+  { to: '/admin/vagas', label: 'Vagas', icon: Briefcase, feature: 'vagas' },
+  { to: '/admin/candidatos', label: 'Candidatos', icon: Contact, feature: 'candidatos' },
+  { to: '/admin/mensagens-rh', label: 'Mensagens (RH)', icon: MessageCircle, feature: 'mensagens_rh' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -248,7 +252,7 @@ export default function Sidebar() {
                 }`
               }
             >
-              <Briefcase size={17} />
+              <UserCog size={17} />
               <span className="flex-1">Funções</span>
             </NavLink>
           )}

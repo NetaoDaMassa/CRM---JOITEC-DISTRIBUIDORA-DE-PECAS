@@ -47,6 +47,12 @@ export const FEATURES_ADMIN = [
   'devolucoes_excluir_chamado',
   'devolucoes_finalizar_fora_ordem',
   'devolucoes_visao_global',
+  // Módulo de RH (vagas/candidatos), portado do CRM-GRUPO-ODIN — nome
+  // 'mensagens_rh' de propósito diferente de 'mensagens' (templates de
+  // venda), pra não colidir.
+  'vagas',
+  'candidatos',
+  'mensagens_rh',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito

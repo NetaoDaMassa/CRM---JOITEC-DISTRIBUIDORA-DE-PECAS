@@ -781,6 +781,72 @@ export const comprasNacionais = sqliteTable('compras_nacionais', {
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Módulo de RH — vagas publicadas pros sites do grupo (Trabalhe Conosco) e os
+// candidatos que se aplicam. Portado do sistema separado CRM-GRUPO-ODIN
+// (crm-odin.duckdns.org) pra dentro do CRM principal.
+export const jobPostings = sqliteTable('job_postings', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  benefits: text('benefits'),
+  requirements: text('requirements'),
+  city: text('city'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const candidates = sqliteTable(
+  'candidates',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    jobPostingId: integer('job_posting_id').notNull().references(() => jobPostings.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    phone: text('phone').notNull(),
+    email: text('email'),
+    message: text('message'),
+    resumeFilename: text('resume_filename'),
+    resumeOriginalName: text('resume_original_name'),
+    status: text('status', {
+      enum: ['novo', 'em_analise', 'entrevista', 'aprovado', 'reprovado'],
+    })
+      .notNull()
+      .default('novo'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    jobIdx: index('idx_candidates_job').on(t.jobPostingId),
+  })
+)
+
+// Mensagens automáticas de WhatsApp usadas pelo RH ao abordar candidatos —
+// nome diferente de messageTemplates (que é do time de vendas) de propósito.
+export const candidateMessageTemplates = sqliteTable('candidate_message_templates', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  label: text('label').notNull(),
+  whatsappText: text('whatsapp_text').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const jobPostingsRelations = relations(jobPostings, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [jobPostings.empresaId], references: [empresas.id] }),
+  candidates: many(candidates),
+}))
+
+export const candidatesRelations = relations(candidates, ({ one }) => ({
+  empresa: one(empresas, { fields: [candidates.empresaId], references: [empresas.id] }),
+  jobPosting: one(jobPostings, { fields: [candidates.jobPostingId], references: [jobPostings.id] }),
+}))
+
+export const candidateMessageTemplatesRelations = relations(candidateMessageTemplates, ({ one }) => ({
+  empresa: one(empresas, { fields: [candidateMessageTemplates.empresaId], references: [empresas.id] }),
+}))
+
 // Permissões por item de menu, por admin — presença de uma linha
 // (userId, feature) = acesso liberado. superAdmin nunca precisa de linhas
 // aqui (sempre vê tudo, ver `superAdmin` na tabela users). `feature` é uma

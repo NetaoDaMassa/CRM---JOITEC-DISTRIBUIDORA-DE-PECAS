@@ -14,7 +14,8 @@ import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
-import { seedFuncaoTemplatesPadrao } from './lib/funcaoTemplatesSeed.js'
+import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
+import { careersRouter } from './routes/careers.js'
 
 config()
 
@@ -27,6 +28,11 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173', credentials: true }))
 app.use(express.json())
 app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))
+
+// API pública de vagas (Trabalhe Conosco dos sites do grupo) — cross-origin
+// de propósito (`origin: true`, não o CLIENT_URL restrito de cima), já que
+// quem chama são os sites (domínios diferentes do CRM), não o próprio front.
+app.use('/api/careers', cors({ origin: true }), careersRouter)
 
 // Resolve qual empresa vale pra esta requisição: normalmente é a empresa do
 // próprio usuário, mas um `superAdmin` pode mandar o header `x-empresa-id`
@@ -202,6 +208,7 @@ async function start() {
     await backfillPermissaoPainelTv()
     await backfillPermissoesVendedor()
     await seedFuncaoTemplatesPadrao()
+    await backfillFuncaoRh()
   } catch (err) {
     console.error('[db] falha ao aplicar migrações:', err)
     process.exit(1)

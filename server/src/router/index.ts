@@ -30,6 +30,9 @@ import { caixaRouter } from './caixa.js'
 import { comprasRouter } from './compras.js'
 import { permissoesRouter } from './permissoes.js'
 import { funcaoTemplatesRouter } from './funcaoTemplates.js'
+import { vagasRouter } from './vagas.js'
+import { candidatosRouter } from './candidatos.js'
+import { mensagensRhRouter } from './mensagensRh.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
 import { integracoesRouter } from './integracoes.js'
 import { pabxRouter } from './pabx.js'
@@ -71,6 +74,9 @@ export const appRouter = router({
   compras: comprasRouter,
   permissoes: permissoesRouter,
   funcaoTemplates: funcaoTemplatesRouter,
+  vagas: vagasRouter,
+  candidatos: candidatosRouter,
+  mensagensRh: mensagensRhRouter,
   contasVinculadas: contasVinculadasRouter,
   integracoes: integracoesRouter,
   pabx: pabxRouter,
