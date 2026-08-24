@@ -25,14 +25,21 @@ const UPLOADS_DIR = process.env.UPLOADS_DIR ?? './uploads'
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 
-app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173', credentials: true }))
 app.use(express.json())
-app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))
 
 // API pública de vagas (Trabalhe Conosco dos sites do grupo) — cross-origin
-// de propósito (`origin: true`, não o CLIENT_URL restrito de cima), já que
+// de propósito (`origin: true`, não o CLIENT_URL restrito de baixo), já que
 // quem chama são os sites (domínios diferentes do CRM), não o próprio front.
+// Registrada ANTES do CORS global de propósito: o pacote `cors` intercepta e
+// responde sozinho o preflight OPTIONS (não dá next()), então se o CORS
+// global rodasse primeiro pra essa rota, o preflight nunca chegaria no CORS
+// permissivo daqui — o navegador bloqueava o POST de candidatura com
+// "Failed to fetch" mesmo o GET de listar vaga funcionando (GET não precisa
+// de preflight, POST com JSON precisa).
 app.use('/api/careers', cors({ origin: true }), careersRouter)
+
+app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173', credentials: true }))
+app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))
 
 // Resolve qual empresa vale pra esta requisição: normalmente é a empresa do
 // próprio usuário, mas um `superAdmin` pode mandar o header `x-empresa-id`
