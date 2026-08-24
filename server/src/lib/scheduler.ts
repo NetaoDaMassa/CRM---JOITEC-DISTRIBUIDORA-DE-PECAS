@@ -23,9 +23,12 @@ export async function runChecks() {
 }
 
 // Integração de teste PABXONE360 (só Odin Tubos e Conexões, ver
-// pabxone360.ts) — busca as ligações dos últimos 30 minutos a cada 10
-// minutos (sobreposição de 20min de propósito, contra queda momentânea do
-// servidor; a tabela pabx_ligacoes_processadas evita duplicar). Só roda de
+// pabxone360.ts) — a API dela não tem webhook (só REST + polling), então a
+// velocidade do registro automático depende só de quão frequente rodamos
+// essa busca. Busca as ligações dos últimos 5 minutos a cada 1 minuto
+// (sobreposição de 4min de propósito, contra queda momentânea do servidor;
+// a tabela pabx_ligacoes_processadas evita duplicar mesmo com a sobreposição
+// e com rodadas concorrentes, se uma demorar mais que 1min). Só roda de
 // verdade quando as credenciais estão configuradas — sem elas, sai calado,
 // não é erro (empresa nenhuma além da Odin Tubos configura isso).
 async function sincronizarPabxone360() {
@@ -34,7 +37,7 @@ async function sincronizarPabxone360() {
 
   const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 15)
   const fim = new Date()
-  const inicio = new Date(fim.getTime() - 30 * 60 * 1000)
+  const inicio = new Date(fim.getTime() - 5 * 60 * 1000)
   const resultados = await registrarLigacoesAutomaticasPabxone360(usuario, token, inicio, fim, duracaoMinima)
   const registradas = resultados.filter((r) => r.registroContatoId).length
   if (registradas > 0) console.log(`[pabxone360] ${registradas} ligação(ões) registrada(s) automaticamente`)
@@ -51,7 +54,7 @@ export function startScheduler() {
   runChecks().catch((err) => console.error('[scheduler] erro ao processar checagens iniciais:', err))
   console.log('[scheduler] reset mensal + notificações rodando a cada hora')
 
-  cron.schedule('*/10 * * * *', () => {
+  cron.schedule('* * * * *', () => {
     sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações:', err))
   })
   sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
