@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, EyeOff, Download } from 'lucide-react'
+import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, Eye, EyeOff, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
@@ -81,6 +81,41 @@ function AccessHeatmap({
   )
 }
 
+// Resumo rápido "X/14 dias" ao lado do heatmap — bate o olho sem precisar
+// contar os pontinhos. Verde = entrou todos os dias, amarelo = faltou pouco,
+// vermelho = faltou muito (limites arbitrários, só pra guiar o olho).
+function AccessStreak({ accessed }: { accessed: boolean[] }) {
+  const total = accessed.length
+  const acessados = accessed.filter(Boolean).length
+  const pct = total > 0 ? acessados / total : 0
+  const cor = pct === 1 ? 'text-green-400' : pct >= 0.7 ? 'text-yellow-400' : 'text-red-400'
+  return (
+    <span className={`text-xs font-medium ${cor}`} title={`Acessou em ${acessados} dos ${total} dias úteis do mês (até hoje)`}>
+      {acessados}/{total} dias
+    </span>
+  )
+}
+
+// Status "visível" explícito (ativo + aparecendo no Painel de TV) — antes só
+// avisava quando estava oculto, agora sempre mostra um dos dois estados.
+function VisibilityBadge({ isActive, ocultoPainelTv }: { isActive: boolean; ocultoPainelTv: boolean }) {
+  if (!isActive) return null
+  if (ocultoPainelTv) {
+    return (
+      <span className="flex items-center gap-1 text-xs text-amber-400 mt-0.5">
+        <EyeOff size={12} />
+        Oculto do Painel de TV
+      </span>
+    )
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-green-400 mt-0.5">
+      <Eye size={12} />
+      Visível
+    </span>
+  )
+}
+
 const REGIOES = [
   { value: 'norte', label: 'Norte' },
   { value: 'nordeste', label: 'Nordeste' },
@@ -124,7 +159,7 @@ export default function AdminUsers() {
 
   const utils = trpc.useUtils()
   const { data: users, isLoading } = trpc.users.list.useQuery()
-  const { data: accessLog } = trpc.users.accessLog.useQuery({ days: 14 })
+  const { data: accessLog } = trpc.users.accessLog.useQuery()
   const accessByUser = new Map((accessLog?.users ?? []).map((u) => [u.id, u]))
 
   const exportMut = trpc.users.exportAccessLog.useMutation({
@@ -252,9 +287,9 @@ export default function AdminUsers() {
           <p className="text-dark-400 text-sm">{users?.length ?? 0} usuários cadastrados</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" loading={exportMut.isPending} onClick={() => exportMut.mutate({ days: 14 })}>
+          <Button variant="secondary" loading={exportMut.isPending} onClick={() => exportMut.mutate()}>
             <Download size={16} />
-            Exportar acessos (14 dias)
+            Exportar acessos (mês)
           </Button>
           <Button
             onClick={() => {
@@ -273,7 +308,7 @@ export default function AdminUsers() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-dark-600 bg-dark-700/50">
-              {['Foto', 'Nome', 'Usuário', 'Região', 'Perfil', 'Status', 'Acesso', 'Últimos 14 dias', 'Cadastrado', 'Ações'].map((h) => (
+              {['Foto', 'Nome', 'Usuário', 'Região', 'Perfil', 'Status', 'Acesso', 'Dias trabalhados no mês', 'Cadastrado', 'Ações'].map((h) => (
                 <th key={h} className="text-left text-dark-400 font-medium px-4 py-3">
                   {h}
                 </th>
@@ -324,12 +359,7 @@ export default function AdminUsers() {
                         {user.isActive ? <UserCheck size={13} /> : <UserX size={13} />}
                         {user.isActive ? 'Ativo' : 'Inativo'}
                       </span>
-                      {user.ocultoPainelTv && (
-                        <span className="flex items-center gap-1 text-xs text-dark-500 mt-0.5">
-                          <EyeOff size={12} />
-                          Fora do Painel de TV
-                        </span>
-                      )}
+                      <VisibilityBadge isActive={user.isActive} ocultoPainelTv={user.ocultoPainelTv} />
                     </td>
                     <td className="px-4 py-3">
                       <AccessBadge
@@ -342,12 +372,15 @@ export default function AdminUsers() {
                     </td>
                     <td className="px-4 py-3">
                       {accessLog && (
-                        <AccessHeatmap
-                          days={accessLog.days}
-                          accessed={accessByUser.get(user.id)?.days ?? accessLog.days.map(() => false)}
-                          dayTimes={accessByUser.get(user.id)?.dayTimes ?? accessLog.days.map(() => [])}
-                          dayOnlineSeconds={accessByUser.get(user.id)?.dayOnlineSeconds ?? accessLog.days.map(() => 0)}
-                        />
+                        <div className="flex flex-col gap-1">
+                          <AccessStreak accessed={accessByUser.get(user.id)?.days ?? accessLog.days.map(() => false)} />
+                          <AccessHeatmap
+                            days={accessLog.days}
+                            accessed={accessByUser.get(user.id)?.days ?? accessLog.days.map(() => false)}
+                            dayTimes={accessByUser.get(user.id)?.dayTimes ?? accessLog.days.map(() => [])}
+                            dayOnlineSeconds={accessByUser.get(user.id)?.dayOnlineSeconds ?? accessLog.days.map(() => 0)}
+                          />
+                        </div>
                       )}
                     </td>
                     <td className="px-4 py-3 text-dark-500">{formatDate(user.createdAt)}</td>

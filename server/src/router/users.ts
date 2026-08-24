@@ -20,13 +20,21 @@ function fmtMinutos(segundos: number): string {
   return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, '0')}min`
 }
 
-function listaDiasUtc(dias: number): string[] {
+// Dias úteis (seg-sex) do mês corrente, do dia 1 até hoje — em vez de uma
+// janela fixa de X dias corridos, pontua "quantos dias trabalhados do mês a
+// pessoa já acessou", que é o que realmente importa pra cobrança de presença
+// (fim de semana não conta como falta).
+function diasUteisMesAtual(): string[] {
   const TZ_OFFSET_MS = 3 * 60 * 60 * 1000
   const hojeLocal = new Date(Date.now() - TZ_OFFSET_MS)
+  const ano = hojeLocal.getUTCFullYear()
+  const mes = hojeLocal.getUTCMonth()
+  const ultimoDia = hojeLocal.getUTCDate()
   const lista: string[] = []
-  for (let i = dias - 1; i >= 0; i--) {
-    const d = new Date(hojeLocal)
-    d.setUTCDate(d.getUTCDate() - i)
+  for (let dia = 1; dia <= ultimoDia; dia++) {
+    const d = new Date(Date.UTC(ano, mes, dia))
+    const diaSemana = d.getUTCDay()
+    if (diaSemana === 0 || diaSemana === 6) continue
     lista.push(d.toISOString().slice(0, 10))
   }
   return lista
@@ -163,10 +171,7 @@ export const usersRouter = router({
   // Registro de acesso diário — pra admin ver quais vendedores estão (ou
   // não) entrando no CRM, dia a dia, quanto tempo ficaram online, e não só
   // "quando foi o último login".
-  accessLog: adminProcedure
-    .input(z.object({ days: z.number().min(1).max(60).default(14) }).optional())
-    .query(async ({ ctx, input }) => {
-      const dias = input?.days ?? 14
+  accessLog: adminProcedure.query(async ({ ctx }) => {
       const empresaUsers = await db.query.users.findMany({
         where: eq(users.empresaId, ctx.empresaId),
         columns: { passwordHash: false },
@@ -174,7 +179,7 @@ export const usersRouter = router({
       })
       const userIds = empresaUsers.map((u) => u.id)
 
-      const dayList = listaDiasUtc(dias)
+      const dayList = diasUteisMesAtual()
       const hoje = dayList[dayList.length - 1]
 
       const [logs, atividade] = userIds.length
@@ -234,17 +239,14 @@ export const usersRouter = router({
 
   // Exporta o registro de acesso (mesmos dados do accessLog) em Excel, um
   // vendedor+dia por linha.
-  exportAccessLog: adminProcedure
-    .input(z.object({ days: z.number().min(1).max(60).default(14) }).optional())
-    .mutation(async ({ ctx, input }) => {
-      const dias = input?.days ?? 14
+  exportAccessLog: adminProcedure.mutation(async ({ ctx }) => {
       const empresaUsers = await db.query.users.findMany({
         where: eq(users.empresaId, ctx.empresaId),
         columns: { passwordHash: false },
         orderBy: (u, { asc }) => [asc(u.name)],
       })
       const userIds = empresaUsers.map((u) => u.id)
-      const dayList = listaDiasUtc(dias)
+      const dayList = diasUteisMesAtual()
 
       const [logs, atividade] = userIds.length
         ? await Promise.all([
