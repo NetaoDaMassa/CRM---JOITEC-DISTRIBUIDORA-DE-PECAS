@@ -510,11 +510,28 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
 // diferença de escopo (vê tudo x só o próprio) já acontece no backend.
 export default function Devolucoes() {
   const { user } = useAuth()
-  const { data: chamados, isLoading } = trpc.devolucoes.listar.useQuery()
   const [modalNovo, setModalNovo] = useState(false)
   const [chamadoAberto, setChamadoAberto] = useState<number | null>(null)
+  const [empresaFiltro, setEmpresaFiltro] = useState('')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
 
   const souAdmin = user?.role === 'admin'
+
+  // Filtro de empresa/período só faz sentido pra quem enxerga mais de uma
+  // empresa de uma vez (visão global — hoje só a Amanda). Pra todo mundo
+  // que só vê a própria empresa, a barra de filtro nem aparece.
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && user.role === 'admin' && !user.superAdmin,
+  })
+  const temVisaoGlobal = !!user?.superAdmin || !!minhasFeatures?.includes('devolucoes_visao_global')
+  const { data: empresasDevolucao } = trpc.devolucoes.listarEmpresasPublico.useQuery(undefined, { enabled: temVisaoGlobal })
+
+  const { data: chamados, isLoading } = trpc.devolucoes.listar.useQuery({
+    empresaId: empresaFiltro ? Number(empresaFiltro) : undefined,
+    dataInicio: dataInicio || undefined,
+    dataFim: dataFim || undefined,
+  })
 
   return (
     <div className="p-6 space-y-6">
@@ -525,6 +542,34 @@ export default function Devolucoes() {
         </div>
         <Button onClick={() => setModalNovo(true)}>+ Abrir chamado</Button>
       </div>
+
+      {temVisaoGlobal && (
+        <div className="flex flex-wrap items-end gap-3 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+          <Select
+            label="Empresa"
+            value={empresaFiltro}
+            onChange={(e) => setEmpresaFiltro(e.target.value)}
+            placeholder="Todas as empresas"
+            options={(empresasDevolucao ?? []).map((e) => ({ value: e.id, label: e.nome }))}
+            className="w-56"
+          />
+          <Input label="De" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+          <Input label="Até" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+          {(empresaFiltro || dataInicio || dataFim) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setEmpresaFiltro('')
+                setDataInicio('')
+                setDataFim('')
+              }}
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      )}
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
 

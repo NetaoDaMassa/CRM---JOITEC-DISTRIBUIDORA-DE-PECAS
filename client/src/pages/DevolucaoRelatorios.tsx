@@ -1,5 +1,10 @@
+import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { trpc } from '../lib/trpc'
+import { useAuth } from '../contexts/AuthContext'
+import Select from '../components/ui/Select'
+import { Input } from '../components/ui/Input'
+import Button from '../components/ui/Button'
 
 const COR_BARRA = '#3987e5'
 const COR_POSITIVO = '#0ca30c'
@@ -73,7 +78,22 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 }
 
 export default function DevolucaoRelatorios() {
-  const { data, isLoading } = trpc.devolucoes.relatorio.useQuery()
+  const { user } = useAuth()
+  const [empresaFiltro, setEmpresaFiltro] = useState('')
+  const [dataInicio, setDataInicio] = useState('')
+  const [dataFim, setDataFim] = useState('')
+
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && user.role === 'admin' && !user.superAdmin,
+  })
+  const temVisaoGlobal = !!user?.superAdmin || !!minhasFeatures?.includes('devolucoes_visao_global')
+  const { data: empresasDevolucao } = trpc.devolucoes.listarEmpresasPublico.useQuery(undefined, { enabled: temVisaoGlobal })
+
+  const { data, isLoading } = trpc.devolucoes.relatorio.useQuery({
+    empresaId: empresaFiltro ? Number(empresaFiltro) : undefined,
+    dataInicio: dataInicio || undefined,
+    dataFim: dataFim || undefined,
+  })
 
   if (isLoading || !data) {
     return (
@@ -95,6 +115,34 @@ export default function DevolucaoRelatorios() {
         <h1 className="font-heading text-2xl text-gold-400 font-bold">Relatórios — Devolução</h1>
         <p className="text-dark-400 text-sm">Visão geral dos chamados no seu alcance.</p>
       </div>
+
+      {temVisaoGlobal && (
+        <div className="flex flex-wrap items-end gap-3 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+          <Select
+            label="Empresa"
+            value={empresaFiltro}
+            onChange={(e) => setEmpresaFiltro(e.target.value)}
+            placeholder="Todas as empresas"
+            options={(empresasDevolucao ?? []).map((e) => ({ value: e.id, label: e.nome }))}
+            className="w-56"
+          />
+          <Input label="De" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+          <Input label="Até" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+          {(empresaFiltro || dataInicio || dataFim) && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setEmpresaFiltro('')
+                setDataInicio('')
+                setDataFim('')
+              }}
+            >
+              Limpar filtros
+            </Button>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">

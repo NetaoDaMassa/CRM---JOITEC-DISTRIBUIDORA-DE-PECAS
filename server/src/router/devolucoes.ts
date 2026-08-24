@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
 import { router, protectedProcedure, publicProcedure, adminProcedure, adminOrFeatureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import {
@@ -153,17 +153,38 @@ export const devolucoesRouter = router({
   }),
 
   // ── Chamados (uso interno) ────────────────────────────────────────────
-  listar: adminOrFeatureProcedure('devolucoes').query(async ({ ctx }) => {
-    const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
-    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
-    return db.query.devolucaoChamados.findMany({
-      where: souAdmin
-        ? inArray(devolucaoChamados.empresaId, alcancaveis)
-        : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
-      with: { vendedor: { columns: { name: true } }, ocorrencias: true, empresa: { columns: { nome: true } } },
-      orderBy: (c, { desc }) => [desc(c.createdAt)],
-    })
-  }),
+  // Filtro de empresa/data só faz diferença real pra quem tem visão
+  // global (hoje só a Amanda) — pra empresa única o filtro de empresa é
+  // um no-op (já só existe uma), mas o de data vale pra qualquer um.
+  listar: adminOrFeatureProcedure('devolucoes')
+    .input(
+      z
+        .object({
+          empresaId: z.number().optional(),
+          dataInicio: z.string().optional(),
+          dataFim: z.string().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
+      const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const empresasFiltradas = souAdmin && input?.empresaId && alcancaveis.includes(input.empresaId) ? [input.empresaId] : alcancaveis
+
+      const condicoes = [
+        souAdmin
+          ? inArray(devolucaoChamados.empresaId, empresasFiltradas)
+          : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
+      ]
+      if (input?.dataInicio) condicoes.push(gte(devolucaoChamados.createdAt, `${input.dataInicio} 00:00:00`))
+      if (input?.dataFim) condicoes.push(lte(devolucaoChamados.createdAt, `${input.dataFim} 23:59:59`))
+
+      return db.query.devolucaoChamados.findMany({
+        where: and(...condicoes),
+        with: { vendedor: { columns: { name: true } }, ocorrencias: true, empresa: { columns: { nome: true } } },
+        orderBy: (c, { desc }) => [desc(c.createdAt)],
+      })
+    }),
 
   detalhe: adminOrFeatureProcedure('devolucoes')
     .input(z.object({ id: z.number() }))
@@ -619,15 +640,32 @@ export const devolucoesRouter = router({
   // pra montar todos os gráficos. Respeita o mesmo escopo do resto do
   // módulo: vendedor só vê os próprios chamados, admin vê a empresa
   // (ou as 4, se tiver 'devolucoes_visao_global').
-  relatorio: adminOrFeatureProcedure('devolucoes').query(async ({ ctx }) => {
+  relatorio: adminOrFeatureProcedure('devolucoes')
+    .input(
+      z
+        .object({
+          empresaId: z.number().optional(),
+          dataInicio: z.string().optional(),
+          dataFim: z.string().optional(),
+        })
+        .optional()
+    )
+    .query(async ({ ctx, input }) => {
     const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
     const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
     const vejoComissao = souAdmin || (await temFeature(ctx.user.id, 'devolucoes_ver_comissao'))
+    const empresasFiltradas = souAdmin && input?.empresaId && alcancaveis.includes(input.empresaId) ? [input.empresaId] : alcancaveis
+
+    const condicoesRelatorio = [
+      souAdmin
+        ? inArray(devolucaoChamados.empresaId, empresasFiltradas)
+        : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
+    ]
+    if (input?.dataInicio) condicoesRelatorio.push(gte(devolucaoChamados.createdAt, `${input.dataInicio} 00:00:00`))
+    if (input?.dataFim) condicoesRelatorio.push(lte(devolucaoChamados.createdAt, `${input.dataFim} 23:59:59`))
 
     const chamados = await db.query.devolucaoChamados.findMany({
-      where: souAdmin
-        ? inArray(devolucaoChamados.empresaId, alcancaveis)
-        : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
+      where: and(...condicoesRelatorio),
       columns: { id: true, status: true, empresaId: true, vendedorId: true, createdAt: true, fechadoEm: true },
       with: {
         vendedor: { columns: { name: true } },
