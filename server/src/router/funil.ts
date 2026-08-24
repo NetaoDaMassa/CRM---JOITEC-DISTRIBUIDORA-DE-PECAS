@@ -3,7 +3,7 @@ import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes } from '../db/schema.js'
-import { mesReferenciaAtual, diasDesde, agoraSqlite } from '../lib/dataBr.js'
+import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
 import { validarClienteFaturamento } from './vinculos.js'
@@ -378,6 +378,11 @@ export const funilRouter = router({
       // pode apagar o que já tinha sido salvo antes.
       if (input.pdfPropostaPath) updates.pdfPropostaPath = input.pdfPropostaPath
 
+      // Buscada uma vez só, fora do `if` de "fechado" específico, porque é
+      // usada em dois pontos: validar número do pedido obrigatório logo
+      // abaixo, e decidir se lança automaticamente no Caixa mais adiante.
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+
       if (input.etapa === 'fechado') {
         // `moverEtapa` só cobre a *primeira* venda (é o que efetivamente
         // muda a etapa) — reenviar "fechado" com o cliente já fechado
@@ -391,7 +396,6 @@ export const funilRouter = router({
 
         // Compretec Loja Física exige número do pedido em qualquer venda, não
         // só na venda rápida — inclusive pra cliente padrão/negociado normal.
-        const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
         if (empresa?.slug === SLUG_VENDA_RAPIDA && !input.numeroPedido) {
           throw new Error('Informe o número do pedido.')
         }
@@ -462,6 +466,22 @@ export const funilRouter = router({
           pdfPedidoPath: input.pdfPedidoPath,
         })
         const vendaId = Number(vendaResult.lastInsertRowid)
+
+        // Mesma regra da venda rápida (ver `vendas.registrarVendaRapida`):
+        // fechamento normal do Kanban em Dinheiro também soma no Caixa da
+        // Compretec Loja Física — pedido do João, antes só balcão contava.
+        if (empresa?.slug === SLUG_VENDA_RAPIDA && input.condicaoPagamento === 'Dinheiro') {
+          const clienteFaturamento = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteFaturamentoId) })
+          await db.insert(caixaMovimentacoes).values({
+            empresaId: ctx.empresaId,
+            tipo: 'entrada',
+            valor: input.valorFechado!,
+            data: hojeBrString(),
+            descricao: `Venda fechada — ${clienteFaturamento?.razaoSocial ?? clienteFaturamentoId}`,
+            origemVendaId: vendaId,
+            criadoPor: ctx.user.id,
+          })
+        }
 
         // Itens são opcionais (o vendedor pode fechar só com o valor total e o
         // PDF, sem detalhar item a item) — mas quando informados, alimentam o

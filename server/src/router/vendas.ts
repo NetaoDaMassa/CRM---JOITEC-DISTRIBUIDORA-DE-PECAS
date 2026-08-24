@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas, users, caixaMovimentacoes } from '../db/schema.js'
-import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
+import { agoraSqlite, mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
 
@@ -176,6 +176,22 @@ export const vendasRouter = router({
         pdfPedidoPath: input.pdfPedidoPath,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
+
+      // Mesma regra do fechamento normal (`funil.moverEtapa`) e da venda
+      // rápida: venda adicional em Dinheiro também soma no Caixa da
+      // Compretec Loja Física.
+      if (empresa?.slug === SLUG_VENDA_RAPIDA && input.condicaoPagamento === 'Dinheiro') {
+        const clienteFaturamento = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteFaturamentoId) })
+        await db.insert(caixaMovimentacoes).values({
+          empresaId: ctx.empresaId,
+          tipo: 'entrada',
+          valor: input.valorFechado,
+          data: hojeBrString(),
+          descricao: `Venda fechada — ${clienteFaturamento?.razaoSocial ?? clienteFaturamentoId}`,
+          origemVendaId: vendaId,
+          criadoPor: ctx.user.id,
+        })
+      }
 
       if (input.itens?.length) {
         await db.insert(itensPedido).values(
