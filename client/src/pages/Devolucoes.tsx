@@ -356,6 +356,10 @@ function DetalheChamadoModal({ id, souAdmin, onClose }: { id: number; souAdmin: 
             <p className="text-dark-500 text-xs uppercase tracking-wide">Vendedor</p>
             <p className="text-dark-100">{(chamado as any).vendedor?.name ?? '—'}</p>
           </div>
+          <div>
+            <p className="text-dark-500 text-xs uppercase tracking-wide">Empresa</p>
+            <p className="text-dark-100">{(chamado as any).empresa?.nome ?? '—'}</p>
+          </div>
         </div>
 
         <div>
@@ -542,6 +546,7 @@ export default function Devolucoes() {
                     <p className="text-sm font-medium text-dark-100">{c.protocolo}</p>
                     <p className="text-xs text-dark-400 truncate">{c.clienteNome}</p>
                     {(c as any).vendedor?.name && <p className="text-[10px] text-dark-500 mt-1">{(c as any).vendedor.name}</p>}
+                    {(c as any).empresa?.nome && <p className="text-[10px] text-gold-500/70 mt-0.5">{(c as any).empresa.nome}</p>}
                   </button>
                 ))}
               </div>

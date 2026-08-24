@@ -129,6 +129,7 @@ export default function DevolucaoMecanica() {
                     <p className="text-sm font-medium text-dark-100 truncate">{i.descricaoItem}</p>
                     <p className="text-xs text-dark-400">{(i as any).chamado?.protocolo}</p>
                     <p className="text-[10px] text-dark-500 mt-1">{(i as any).chamado?.clienteNome}</p>
+                    {(i as any).empresa?.nome && <p className="text-[10px] text-gold-500/70 mt-0.5">{(i as any).empresa.nome}</p>}
                   </button>
                 ))}
               </div>

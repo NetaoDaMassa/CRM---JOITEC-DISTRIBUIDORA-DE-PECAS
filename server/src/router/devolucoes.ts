@@ -52,9 +52,19 @@ async function sanitizarAnalise<T extends Record<string, unknown> | null>(
   return resto as T
 }
 
-async function assertChamadoNaEmpresa(chamadoId: number, empresaId: number) {
+// Normalmente um admin só alcança a própria empresa (ctx.empresaId). Quem
+// tem 'devolucoes_visao_global' (hoje só a Amanda, cujo trabalho é tratar
+// devolução das 4 empresas do grupo, não uma só) alcança as 4 empresas do
+// módulo de uma vez — sem precisar trocar de empresa/logar de novo pra
+// cada uma.
+async function empresasAlcancaveis(userId: number, empresaId: number, superAdmin: boolean): Promise<number[]> {
+  if (superAdmin || (await temFeature(userId, 'devolucoes_visao_global'))) return EMPRESAS_DEVOLUCAO
+  return [empresaId]
+}
+
+async function assertChamadoAlcancavel(chamadoId: number, empresaIds: number[]) {
   const chamado = await db.query.devolucaoChamados.findFirst({ where: eq(devolucaoChamados.id, chamadoId) })
-  if (!chamado || chamado.empresaId !== empresaId) throw new Error('Chamado não encontrado')
+  if (!chamado || !empresaIds.includes(chamado.empresaId)) throw new Error('Chamado não encontrado')
   return chamado
 }
 
@@ -145,9 +155,12 @@ export const devolucoesRouter = router({
   // ── Chamados (uso interno) ────────────────────────────────────────────
   listar: adminOrFeatureProcedure('devolucoes').query(async ({ ctx }) => {
     const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
     return db.query.devolucaoChamados.findMany({
-      where: souAdmin ? eq(devolucaoChamados.empresaId, ctx.empresaId) : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
-      with: { vendedor: { columns: { name: true } }, ocorrencias: true },
+      where: souAdmin
+        ? inArray(devolucaoChamados.empresaId, alcancaveis)
+        : and(eq(devolucaoChamados.empresaId, ctx.empresaId), eq(devolucaoChamados.vendedorId, ctx.user.id)),
+      with: { vendedor: { columns: { name: true } }, ocorrencias: true, empresa: { columns: { nome: true } } },
       orderBy: (c, { desc }) => [desc(c.createdAt)],
     })
   }),
@@ -156,10 +169,12 @@ export const devolucoesRouter = router({
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
       const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
       const chamado = await db.query.devolucaoChamados.findFirst({
         where: eq(devolucaoChamados.id, input.id),
         with: {
           vendedor: { columns: { name: true } },
+          empresa: { columns: { nome: true } },
           ocorrencias: true,
           materiais: true,
           anexos: true,
@@ -169,7 +184,7 @@ export const devolucoesRouter = router({
           servicos: true,
         },
       })
-      if (!chamado || chamado.empresaId !== ctx.empresaId) throw new Error('Chamado não encontrado')
+      if (!chamado || !alcancaveis.includes(chamado.empresaId)) throw new Error('Chamado não encontrado')
       if (!souAdmin && chamado.vendedorId !== ctx.user.id) throw new Error('Chamado não encontrado')
 
       return { ...chamado, analise: await sanitizarAnalise(chamado.analise, ctx.user.id, ctx.user.role, ctx.user.superAdmin) }
@@ -235,7 +250,8 @@ export const devolucoesRouter = router({
   atualizarStatus: adminProcedure
     .input(z.object({ id: z.number(), status: z.enum(STATUS_VALUES), nota: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const chamado = await assertChamadoNaEmpresa(input.id, ctx.empresaId)
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const chamado = await assertChamadoAlcancavel(input.id, alcancaveis)
 
       await db
         .update(devolucaoChamados)
@@ -266,7 +282,8 @@ export const devolucoesRouter = router({
   // Odin Compressores). Continua exigindo ser admin por baixo.
   finalizarForaDeOrdem: adminProcedure.input(z.object({ id: z.number(), nota: z.string().optional() })).mutation(async ({ ctx, input }) => {
     if (!(await temFeature(ctx.user.id, 'devolucoes_finalizar_fora_ordem'))) throw new Error('Sem permissão pra finalizar fora de ordem')
-    const chamado = await assertChamadoNaEmpresa(input.id, ctx.empresaId)
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+    const chamado = await assertChamadoAlcancavel(input.id, alcancaveis)
 
     await db.update(devolucaoChamados).set({ status: 'finalizado', fechadoEm: agoraSqlite() }).where(eq(devolucaoChamados.id, input.id))
     await db.insert(devolucaoHistoricoStatus).values({
@@ -289,14 +306,16 @@ export const devolucoesRouter = router({
   }),
 
   atribuirVendedor: adminProcedure.input(z.object({ id: z.number(), vendedorId: z.number().nullable() })).mutation(async ({ ctx, input }) => {
-    await assertChamadoNaEmpresa(input.id, ctx.empresaId)
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+    await assertChamadoAlcancavel(input.id, alcancaveis)
     await db.update(devolucaoChamados).set({ vendedorId: input.vendedorId }).where(eq(devolucaoChamados.id, input.id))
     return { ok: true }
   }),
 
   excluir: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     if (!(await temFeature(ctx.user.id, 'devolucoes_excluir_chamado'))) throw new Error('Sem permissão pra excluir chamado')
-    await assertChamadoNaEmpresa(input.id, ctx.empresaId)
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+    await assertChamadoAlcancavel(input.id, alcancaveis)
     await db.delete(devolucaoChamados).where(eq(devolucaoChamados.id, input.id))
     await registrarAuditoria({ tabela: 'devolucao_chamados', registroId: input.id, acao: 'excluir', alteradoPor: ctx.user.id })
     return { ok: true }
@@ -317,7 +336,8 @@ export const devolucoesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertChamadoNaEmpresa(input.chamadoId, ctx.empresaId)
+      const alcancaveisAnalise = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      await assertChamadoAlcancavel(input.chamadoId, alcancaveisAnalise)
       if (input.resultado === 'negativo' && !input.motivoNegativa) throw new Error('Motivo da negativa é obrigatório')
       if (input.impactaComissao && input.valorImpactoComissao === undefined) throw new Error('Valor do impacto na comissão é obrigatório')
 
@@ -374,7 +394,8 @@ export const devolucoesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      await assertChamadoNaEmpresa(input.chamadoId, ctx.empresaId)
+      const alcancaveisServico = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      await assertChamadoAlcancavel(input.chamadoId, alcancaveisServico)
       const existente = await db.query.devolucaoServicos.findFirst({ where: eq(devolucaoServicos.chamadoId, input.chamadoId) })
       const valores = {
         teveServico: input.teveServico,
@@ -398,7 +419,8 @@ export const devolucoesRouter = router({
     .input(z.object({ chamadoId: z.number(), mensagem: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
-      const chamado = await assertChamadoNaEmpresa(input.chamadoId, ctx.empresaId)
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const chamado = await assertChamadoAlcancavel(input.chamadoId, alcancaveis)
       if (!souAdmin && chamado.vendedorId !== ctx.user.id) throw new Error('Chamado não encontrado')
       await db.insert(devolucaoAtualizacoes).values({ chamadoId: input.chamadoId, autorUserId: ctx.user.id, mensagem: input.mensagem })
       return { ok: true }
@@ -416,7 +438,8 @@ export const devolucoesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
-      const chamado = await assertChamadoNaEmpresa(input.chamadoId, ctx.empresaId)
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const chamado = await assertChamadoAlcancavel(input.chamadoId, alcancaveis)
       if (!souAdmin && chamado.vendedorId !== ctx.user.id) throw new Error('Chamado não encontrado')
       await db.insert(devolucaoAnexos).values({
         chamadoId: input.chamadoId,
@@ -438,7 +461,8 @@ export const devolucoesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const chamado = await assertChamadoNaEmpresa(input.chamadoId, ctx.empresaId)
+      const alcancaveisMec = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const chamado = await assertChamadoAlcancavel(input.chamadoId, alcancaveisMec)
       for (const item of input.itens) {
         const result = await db.insert(devolucaoMecanicaItens).values({
           chamadoId: input.chamadoId,
@@ -459,9 +483,10 @@ export const devolucoesRouter = router({
     }),
 
   listarMecanica: adminOrFeatureProcedure('devolucoes_mecanica').query(async ({ ctx }) => {
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
     return db.query.devolucaoMecanicaItens.findMany({
-      where: eq(devolucaoMecanicaItens.empresaId, ctx.empresaId),
-      with: { chamado: { columns: { protocolo: true, clienteNome: true } } },
+      where: inArray(devolucaoMecanicaItens.empresaId, alcancaveis),
+      with: { chamado: { columns: { protocolo: true, clienteNome: true } }, empresa: { columns: { nome: true } } },
       orderBy: (i, { desc }) => [desc(i.createdAt)],
     })
   }),
@@ -478,8 +503,9 @@ export const devolucoesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const alcancaveisItem = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
       const item = await db.query.devolucaoMecanicaItens.findFirst({ where: eq(devolucaoMecanicaItens.id, input.id) })
-      if (!item || item.empresaId !== ctx.empresaId) throw new Error('Item não encontrado')
+      if (!item || !alcancaveisItem.includes(item.empresaId)) throw new Error('Item não encontrado')
       if (input.status === 'descarte' && !input.motivoDescarte) throw new Error('Motivo do descarte é obrigatório')
       if (item.status === 'retornado' && input.status === 'testado' && !input.condicaoRetorno) {
         throw new Error('Condição do retorno (novo/usado) é obrigatória')
@@ -518,11 +544,12 @@ export const devolucoesRouter = router({
   // ── Demonstração ───────────────────────────────────────────────────
   listarDemonstracoes: adminOrFeatureProcedure('devolucoes_demonstracao').query(async ({ ctx }) => {
     const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+    const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
     return db.query.devolucaoDemonstracoes.findMany({
       where: souAdmin
-        ? eq(devolucaoDemonstracoes.empresaId, ctx.empresaId)
+        ? inArray(devolucaoDemonstracoes.empresaId, alcancaveis)
         : and(eq(devolucaoDemonstracoes.empresaId, ctx.empresaId), eq(devolucaoDemonstracoes.vendedorId, ctx.user.id)),
-      with: { vendedor: { columns: { name: true } }, itens: true },
+      with: { vendedor: { columns: { name: true } }, itens: true, empresa: { columns: { nome: true } } },
       orderBy: (d, { desc }) => [desc(d.createdAt)],
     })
   }),
@@ -566,8 +593,9 @@ export const devolucoesRouter = router({
   atualizarStatusDemonstracao: adminOrFeatureProcedure('devolucoes_demonstracao')
     .input(z.object({ id: z.number(), status: z.enum(['ativa', 'retornada', 'convertida_venda', 'devolucao_aberta']) }))
     .mutation(async ({ ctx, input }) => {
+      const alcancaveisDemo = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
       const demo = await db.query.devolucaoDemonstracoes.findFirst({ where: eq(devolucaoDemonstracoes.id, input.id) })
-      if (!demo || demo.empresaId !== ctx.empresaId) throw new Error('Demonstração não encontrada')
+      if (!demo || !alcancaveisDemo.includes(demo.empresaId)) throw new Error('Demonstração não encontrada')
       await db.update(devolucaoDemonstracoes).set({ status: input.status, updatedAt: agoraSqlite() }).where(eq(devolucaoDemonstracoes.id, input.id))
       return { ok: true }
     }),
@@ -575,8 +603,9 @@ export const devolucoesRouter = router({
   renovarDemonstracao: adminOrFeatureProcedure('devolucoes_demonstracao')
     .input(z.object({ id: z.number(), novoRetornoPrevistoEm: z.string() }))
     .mutation(async ({ ctx, input }) => {
+      const alcancaveisRenovar = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
       const demo = await db.query.devolucaoDemonstracoes.findFirst({ where: eq(devolucaoDemonstracoes.id, input.id) })
-      if (!demo || demo.empresaId !== ctx.empresaId) throw new Error('Demonstração não encontrada')
+      if (!demo || !alcancaveisRenovar.includes(demo.empresaId)) throw new Error('Demonstração não encontrada')
       await db
         .update(devolucaoDemonstracoes)
         .set({ retornoPrevistoEm: input.novoRetornoPrevistoEm, contagemRenovacao: demo.contagemRenovacao + 1, updatedAt: agoraSqlite() })

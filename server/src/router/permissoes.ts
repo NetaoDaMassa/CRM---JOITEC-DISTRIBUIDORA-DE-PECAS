@@ -37,13 +37,16 @@ export const FEATURES_ADMIN = [
   // "quem errou"/impacto na comissão — sigiloso, nunca on por padrão),
   // 'devolucoes_excluir_chamado' e 'devolucoes_finalizar_fora_ordem' (os 2
   // poderes que no sistema original eram fixos por e-mail — Paola/Andreia —
-  // agora concedidos por aqui, a quem for).
+  // agora concedidos por aqui, a quem for). 'devolucoes_visao_global' é pra
+  // quem trata devolução das 4 empresas do grupo (hoje só a Amanda) — em vez
+  // de logar em cada empresa separada, essa feature junta as 4 numa tela só.
   'devolucoes',
   'devolucoes_mecanica',
   'devolucoes_demonstracao',
   'devolucoes_ver_comissao',
   'devolucoes_excluir_chamado',
   'devolucoes_finalizar_fora_ordem',
+  'devolucoes_visao_global',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito

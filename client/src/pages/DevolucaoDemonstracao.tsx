@@ -137,6 +137,7 @@ function DemonstracaoCard({ demo }: { demo: any }) {
     <div className="bg-dark-800 border border-dark-600 rounded-xl p-3 space-y-2">
       <p className="text-sm font-medium text-dark-100">{demo.clienteNome}</p>
       <p className="text-xs text-dark-400">{(demo as any).vendedor?.name}</p>
+      {(demo as any).empresa?.nome && <p className="text-[10px] text-gold-500/70">{(demo as any).empresa.nome}</p>}
       <div className="text-[11px] text-dark-500 space-y-0.5">
         {(demo as any).itens?.map((it: any) => (
           <p key={it.id}>
