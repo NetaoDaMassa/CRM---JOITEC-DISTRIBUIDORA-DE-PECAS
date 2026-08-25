@@ -430,6 +430,108 @@ export const reportsRouter = router({
     }
   }),
 
+  // Mesmo escopo de `vendas`, mas agrupado por dia + vendedor — o front
+  // decide se soma tudo (visão "Geral da empresa") ou mantém separado
+  // (visão "Por vendedor"), mesmo padrão de orcamentosPorPeriodo derivando
+  // de orcamentosPorVendedor.
+  vendasPorDia: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, funilMensal.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtros.push(filtroReg)
+
+    const linhas = await db
+      .select({
+        data: sql<string>`date(${vendasTable.dataFechamento})`,
+        vendedorId: funilMensal.vendedorId,
+        nome: users.name,
+        valorFechado: vendasTable.valorFechado,
+      })
+      .from(vendasTable)
+      .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
+      .innerJoin(users, eq(users.id, funilMensal.vendedorId))
+      .where(and(...filtros))
+
+    const mapa = new Map<string, { data: string; vendedorId: number; nome: string; quantidade: number; valorTotal: number }>()
+    for (const l of linhas) {
+      const chave = `${l.data}|${l.vendedorId}`
+      const atual = mapa.get(chave) ?? { data: l.data, vendedorId: l.vendedorId, nome: l.nome, quantidade: 0, valorTotal: 0 }
+      atual.quantidade += 1
+      atual.valorTotal += l.valorFechado
+      mapa.set(chave, atual)
+    }
+    return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.nome.localeCompare(b.nome)))
+  }),
+
+  // Contatos por dia, separados por tipo (ligação/whatsapp/email/visita) —
+  // mesmo filtro de `contatosPorCliente`, só que agrupado por data em vez
+  // de cliente.
+  contatosPorDia: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [between(registroContato.dataHora, inicio, fim), isNull(registroContato.deletedAt), eq(clientes.empresaId, ctx.empresaId)]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, registroContato.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtros.push(filtroReg)
+
+    const linhas = await db
+      .select({ data: sql<string>`date(${registroContato.dataHora})`, tipo: registroContato.tipo })
+      .from(registroContato)
+      .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+      .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+      .where(and(...filtros))
+
+    const mapa = new Map<string, { data: string; ligacao: number; whatsapp: number; email: number; visita: number; total: number }>()
+    for (const l of linhas) {
+      const atual = mapa.get(l.data) ?? { data: l.data, ligacao: 0, whatsapp: 0, email: 0, visita: 0, total: 0 }
+      atual[l.tipo as 'ligacao' | 'whatsapp' | 'email' | 'visita'] += 1
+      atual.total += 1
+      mapa.set(l.data, atual)
+    }
+    return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : 1))
+  }),
+
+  // Ligações com todos os detalhes (uma linha por ligação, não agrupado) —
+  // alimenta tanto o gráfico "por dia" (o front agrupa por data.slice(0,10))
+  // quanto a exportação completa em Excel/CSV, mesmo filtro de
+  // `ligacoesPorCliente`.
+  ligacoesDetalhado: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [
+      eq(registroContato.tipo, 'ligacao' as const),
+      between(registroContato.dataHora, inicio, fim),
+      isNull(registroContato.deletedAt),
+      eq(clientes.empresaId, ctx.empresaId),
+    ]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, registroContato.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtros.push(filtroReg)
+
+    return db
+      .select({
+        id: registroContato.id,
+        dataHora: registroContato.dataHora,
+        vendedorNome: users.name,
+        clienteId: funilMensal.clienteId,
+        razaoSocial: clientes.razaoSocial,
+        duracaoSegundos: registroContato.duracaoSegundos,
+        resultado: registroContato.resultado,
+        efetiva: registroContato.efetiva,
+        origem: registroContato.origem,
+        observacao: registroContato.observacao,
+      })
+      .from(registroContato)
+      .innerJoin(users, eq(users.id, registroContato.vendedorId))
+      .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+      .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+      .where(and(...filtros))
+      .orderBy(desc(registroContato.dataHora))
+  }),
+
   // Total de vendas somando as 3 empresas do Grupo Odin de uma vez —
   // separado do `vendas` normal (que é sempre escopado pra ctx.empresaId)
   // porque aqui não tem uma empresa ativa única, é uma visão consolidada.

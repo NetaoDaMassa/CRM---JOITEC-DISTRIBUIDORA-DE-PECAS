@@ -32,6 +32,20 @@ function formatarMoeda(v: number | null | undefined): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+const RESULTADO_LABEL: Record<string, string> = {
+  respondeu: 'Respondeu',
+  nao_respondeu: 'Não respondeu',
+  numero_errado: 'Número errado',
+  caixa_postal: 'Caixa postal',
+  confirmado: 'Confirmado',
+}
+
+const ORIGEM_LABEL: Record<string, string> = {
+  manual: 'Manual',
+  whatsapp_automatico: 'WhatsApp automático',
+  ligacao_automatica: 'Ligação automática (PABX)',
+}
+
 const CATEGORIA_LABEL: Record<string, string> = {
   estoque: 'Estoque',
   financeiro: 'Financeiro',
@@ -149,6 +163,10 @@ export default function AdminReports() {
   const { data: mixProdutosPorVendedor } = trpc.reports.mixProdutosPorVendedor.useQuery(periodo)
   const { data: vendas } = trpc.reports.vendas.useQuery(periodo)
   const { data: vendasMarketing } = trpc.reports.vendas.useQuery({ ...periodo, apenasMarketing: true })
+  const { data: vendasPorDia } = trpc.reports.vendasPorDia.useQuery(periodo)
+  const { data: contatosPorDia } = trpc.reports.contatosPorDia.useQuery(periodo)
+  const { data: ligacoesDetalhado } = trpc.reports.ligacoesDetalhado.useQuery(periodo)
+  const [vendasVisao, setVendasVisao] = useState<'geral' | 'vendedor'>('geral')
   const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery(filtroAtual)
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery(filtroAtual)
   const { data: clientesSemOrcamentoEContato } = trpc.reports.clientesSemOrcamentoEContato.useQuery(filtroAtual)
@@ -225,6 +243,47 @@ export default function AdminReports() {
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
       .map(([periodo, quantidade]) => ({ periodo, quantidade }))
   }, [orcamentosPorVendedor])
+
+  const vendasPorDiaGeral = useMemo(() => {
+    const mapa = new Map<string, { data: string; quantidade: number; valorTotal: number }>()
+    for (const l of vendasPorDia ?? []) {
+      const atual = mapa.get(l.data) ?? { data: l.data, quantidade: 0, valorTotal: 0 }
+      atual.quantidade += l.quantidade
+      atual.valorTotal += l.valorTotal
+      mapa.set(l.data, atual)
+    }
+    return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : 1))
+  }, [vendasPorDia])
+
+  // Pivota (data, vendedorId) em 1 linha por dia com uma coluna por
+  // vendedor — formato que o recharts precisa pra desenhar 1 <Bar> por
+  // vendedor no mesmo gráfico.
+  const { vendasPorDiaPivotado, nomesVendedoresVendas } = useMemo(() => {
+    const nomes = new Set<string>()
+    const porData = new Map<string, Record<string, any>>()
+    for (const l of vendasPorDia ?? []) {
+      nomes.add(l.nome)
+      const linha = porData.get(l.data) ?? { data: l.data }
+      linha[l.nome] = (linha[l.nome] ?? 0) + l.valorTotal
+      porData.set(l.data, linha)
+    }
+    return {
+      vendasPorDiaPivotado: [...porData.values()].sort((a, b) => (a.data < b.data ? -1 : 1)),
+      nomesVendedoresVendas: [...nomes],
+    }
+  }, [vendasPorDia])
+
+  const ligacoesPorDiaGrafico = useMemo(() => {
+    const mapa = new Map<string, { data: string; tentativas: number; efetivas: number }>()
+    for (const l of ligacoesDetalhado ?? []) {
+      const data = l.dataHora.slice(0, 10)
+      const atual = mapa.get(data) ?? { data, tentativas: 0, efetivas: 0 }
+      atual.tentativas += 1
+      if (l.efetiva) atual.efetivas += 1
+      mapa.set(data, atual)
+    }
+    return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : 1))
+  }, [ligacoesDetalhado])
 
   const motivosCategoriaGrafico = useMemo(() => {
     const cores: Record<string, string> = { estoque: COR_SERIE_2, financeiro: '#e34948', compras: COR_SERIE_1 }
@@ -648,6 +707,124 @@ export default function AdminReports() {
               {!ligacoesFiltradas.length && <p className="text-sm text-dark-500 py-2">Nenhuma ligação registrada no período.</p>}
             </div>
           </section>
+
+          <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-dark-100">Contatos por dia</h2>
+              <BotaoExportar
+                onClick={() =>
+                  baixarCsv(
+                    'contatos-por-dia.csv',
+                    paraCsv(
+                      [
+                        { chave: 'data', rotulo: 'Data' },
+                        { chave: 'ligacao', rotulo: 'Ligações' },
+                        { chave: 'whatsapp', rotulo: 'WhatsApp' },
+                        { chave: 'email', rotulo: 'E-mail' },
+                        { chave: 'visita', rotulo: 'Visitas' },
+                        { chave: 'total', rotulo: 'Total' },
+                      ],
+                      contatosPorDia ?? []
+                    )
+                  )
+                }
+              />
+            </div>
+            {(contatosPorDia?.length ?? 0) > 0 ? (
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={contatosPorDia} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} vertical={false} />
+                  <XAxis dataKey="data" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip content={<TooltipPadrao />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <Legend formatter={(value) => <span className="text-dark-300 text-xs">{value}</span>} />
+                  <Bar dataKey="ligacao" name="Ligações" stackId="c" fill={COR_SERIE_1} />
+                  <Bar dataKey="whatsapp" name="WhatsApp" stackId="c" fill={COR_SERIE_3} />
+                  <Bar dataKey="email" name="E-mail" stackId="c" fill={COR_SERIE_2} />
+                  <Bar dataKey="visita" name="Visitas" stackId="c" fill={COR_CLASSE_B} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-dark-500 py-2">Nenhum contato registrado no período.</p>
+            )}
+          </section>
+
+          <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-semibold text-dark-100">Ligações por dia — detalhado</h2>
+              <BotaoExportar
+                onClick={() =>
+                  baixarCsv(
+                    'ligacoes-detalhado.csv',
+                    paraCsv(
+                      [
+                        { chave: 'dataHora', rotulo: 'Data/Hora' },
+                        { chave: 'vendedorNome', rotulo: 'Vendedor' },
+                        { chave: 'razaoSocial', rotulo: 'Cliente' },
+                        { chave: 'duracaoSegundos', rotulo: 'Duração (s)' },
+                        { chave: 'resultadoLabel', rotulo: 'Resultado' },
+                        { chave: 'efetivaLabel', rotulo: 'Efetiva' },
+                        { chave: 'origemLabel', rotulo: 'Origem' },
+                        { chave: 'observacao', rotulo: 'Observação' },
+                      ],
+                      (ligacoesDetalhado ?? []).map((l) => ({
+                        ...l,
+                        resultadoLabel: l.resultado ? RESULTADO_LABEL[l.resultado] ?? l.resultado : 'Pendente',
+                        efetivaLabel: l.efetiva ? 'Sim' : 'Não',
+                        origemLabel: ORIGEM_LABEL[l.origem] ?? l.origem,
+                      }))
+                    )
+                  )
+                }
+              />
+            </div>
+            {(ligacoesPorDiaGrafico.length ?? 0) > 0 && (
+              <ResponsiveContainer width="100%" height={220}>
+                <BarChart data={ligacoesPorDiaGrafico} margin={{ top: 4, right: 8, bottom: 0, left: -16 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} vertical={false} />
+                  <XAxis dataKey="data" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                  <Tooltip content={<TooltipPadrao />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <Legend formatter={(value) => <span className="text-dark-300 text-xs">{value}</span>} />
+                  <Bar dataKey="tentativas" name="Tentativas" fill={COR_SERIE_1} radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="efetivas" name="Efetivas" fill={COR_SERIE_3} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            <div className="mt-3 max-h-80 overflow-y-auto pr-1">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-dark-800">
+                  <tr className="text-left text-dark-500 uppercase tracking-wide">
+                    <th className="font-semibold pb-2 pr-2">Data/Hora</th>
+                    <th className="font-semibold pb-2 pr-2">Vendedor</th>
+                    <th className="font-semibold pb-2 pr-2">Cliente</th>
+                    <th className="font-semibold pb-2 pr-2">Duração</th>
+                    <th className="font-semibold pb-2">Resultado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-700">
+                  {(ligacoesDetalhado ?? []).map((l) => (
+                    <tr key={l.id}>
+                      <td className="py-1.5 pr-2 text-dark-300 whitespace-nowrap">{new Date(l.dataHora.replace(' ', 'T') + 'Z').toLocaleString('pt-BR')}</td>
+                      <td className="py-1.5 pr-2 text-dark-200">{l.vendedorNome}</td>
+                      <td className="py-1.5 pr-2 text-dark-200 truncate max-w-[160px]">{l.razaoSocial}</td>
+                      <td className="py-1.5 pr-2 text-dark-400">{l.duracaoSegundos != null ? `${l.duracaoSegundos}s` : '—'}</td>
+                      <td className={`py-1.5 ${l.efetiva ? 'text-green-400' : l.resultado ? 'text-red-400' : 'text-amber-400'}`}>
+                        {l.resultado ? RESULTADO_LABEL[l.resultado] ?? l.resultado : 'Pendente'}
+                      </td>
+                    </tr>
+                  ))}
+                  {!ligacoesDetalhado?.length && (
+                    <tr>
+                      <td colSpan={5} className="py-3 text-dark-500 text-center">
+                        Nenhuma ligação registrada no período.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
         </div>
       )}
 
@@ -750,6 +927,81 @@ export default function AdminReports() {
               ))}
               {!orcamentosPorVendedor?.length && <p className="text-sm text-dark-500 py-2">Nenhum orçamento feito no período.</p>}
             </div>
+          </section>
+
+          <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+              <h2 className="text-sm font-semibold text-dark-100">Vendas por dia</h2>
+              <div className="flex items-center gap-2">
+                <div className="flex rounded-lg border border-dark-600 overflow-hidden text-xs">
+                  <button
+                    onClick={() => setVendasVisao('geral')}
+                    className={`px-3 py-1.5 ${vendasVisao === 'geral' ? 'bg-gold-600/20 text-gold-300' : 'text-dark-400 hover:bg-dark-700'}`}
+                  >
+                    Geral da empresa
+                  </button>
+                  <button
+                    onClick={() => setVendasVisao('vendedor')}
+                    className={`px-3 py-1.5 ${vendasVisao === 'vendedor' ? 'bg-gold-600/20 text-gold-300' : 'text-dark-400 hover:bg-dark-700'}`}
+                  >
+                    Por vendedor
+                  </button>
+                </div>
+                <BotaoExportar
+                  onClick={() =>
+                    baixarCsv(
+                      'vendas-por-dia.csv',
+                      paraCsv(
+                        [
+                          { chave: 'data', rotulo: 'Data' },
+                          { chave: 'nome', rotulo: 'Vendedor' },
+                          { chave: 'quantidade', rotulo: 'Qtd. vendas' },
+                          { chave: 'valorTotal', rotulo: 'Valor total' },
+                        ],
+                        vendasPorDia ?? []
+                      )
+                    )
+                  }
+                />
+              </div>
+            </div>
+            {vendasVisao === 'geral' ? (
+              vendasPorDiaGeral.length > 0 ? (
+                <ResponsiveContainer width="100%" height={240}>
+                  <BarChart data={vendasPorDiaGeral} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} vertical={false} />
+                    <XAxis dataKey="data" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
+                    <Tooltip content={<TooltipPadrao />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                    <Bar dataKey="valorTotal" name="Valor vendido" fill={COR_SERIE_1} radius={[4, 4, 0, 0]} barSize={20} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-sm text-dark-500 py-2">Nenhuma venda no período.</p>
+              )
+            ) : vendasPorDiaPivotado.length > 0 ? (
+              <ResponsiveContainer width="100%" height={240}>
+                <BarChart data={vendasPorDiaPivotado} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} vertical={false} />
+                  <XAxis dataKey="data" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
+                  <YAxis tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
+                  <Tooltip content={<TooltipPadrao />} cursor={{ fill: 'rgba(255,255,255,0.05)' }} />
+                  <Legend formatter={(value) => <span className="text-dark-300 text-xs">{value}</span>} />
+                  {nomesVendedoresVendas.map((nome, i) => (
+                    <Bar
+                      key={nome}
+                      dataKey={nome}
+                      name={nome}
+                      stackId="v"
+                      fill={[COR_SERIE_1, COR_SERIE_2, COR_SERIE_3, COR_CLASSE_A, COR_CLASSE_B][i % 5]}
+                      radius={i === nomesVendedoresVendas.length - 1 ? [4, 4, 0, 0] : undefined}
+                    />
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-dark-500 py-2">Nenhuma venda no período.</p>
+            )}
           </section>
 
           <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
