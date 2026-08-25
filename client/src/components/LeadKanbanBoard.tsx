@@ -14,6 +14,8 @@ import {
   LEAD_NEGOTIATION_TAG_CARD_CLASSES,
   isLeadStatusAllowedForEmpresa,
   getLeadContactUrgency,
+  leadTelefoneCompleto,
+  leadTelefoneFormatado,
 } from '../lib/leadsShared'
 
 type LeadCard = {
@@ -153,13 +155,11 @@ export default function LeadKanbanBoard({
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5 text-xs text-dark-400">
                           <Phone size={11} />
-                          <span>
-                            ({lead.ddd}) {lead.phone}
-                          </span>
+                          <span>{leadTelefoneFormatado(lead.ddd, lead.phone)}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          <WhatsappButton telefone={lead.phone} size="sm" />
+                          <WhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} size="sm" />
                         </div>
                       </div>
 

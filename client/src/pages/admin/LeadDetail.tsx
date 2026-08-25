@@ -32,6 +32,8 @@ import {
   isLeadTerminalStatus,
   isLeadStatusAllowedForEmpresa,
   getLeadContactUrgency,
+  leadTelefoneCompleto,
+  leadTelefoneFormatado,
 } from '../../lib/leadsShared'
 
 const HISTORY_ACTION_LABELS: Record<string, string> = {
@@ -265,8 +267,10 @@ export default function LeadDetail() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {lead.status === 'abordagem' && <MessageTemplateMenu phone={lead.phone} email={lead.email} />}
-            <ContatoButtons telefone={lead.phone} email={lead.email} size="md" />
+            {lead.status === 'abordagem' && (
+              <MessageTemplateMenu phone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} />
+            )}
+            <ContatoButtons telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} size="md" />
           </div>
         </div>
 
@@ -318,7 +322,7 @@ export default function LeadDetail() {
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-5 pt-4 border-t border-dark-700 text-sm">
           <InfoRow icon={Phone} label="Telefone">
-            ({lead.ddd}) {lead.phone}
+            {leadTelefoneFormatado(lead.ddd, lead.phone)}
           </InfoRow>
           {lead.email && <InfoRow icon={Mail} label="E-mail">{lead.email}</InfoRow>}
           {lead.company && <InfoRow icon={Building2} label="Empresa">{lead.company}</InfoRow>}

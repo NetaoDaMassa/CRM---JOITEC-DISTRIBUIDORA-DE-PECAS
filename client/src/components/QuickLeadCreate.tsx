@@ -11,7 +11,7 @@ import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS } from '../lib/leadsShared'
 // Tira DDD+telefone de qualquer formato colado ("(11) 98888-7777",
 // "11988887777", "+55 11 98888-7777"...). Retorna null se não achar um
 // número BR plausível (10 ou 11 dígitos depois do DDI/zero).
-function extrairTelefone(texto: string): { ddd: number; phone: string } | null {
+function extrairTelefone(texto: string): { ddd: number; phone: string; completo: string } | null {
   const digitosMatch = texto.match(/\d[\d\s().-]{8,}\d/)
   if (!digitosMatch) return null
   let digitos = digitosMatch[0].replace(/\D/g, '')
@@ -19,7 +19,12 @@ function extrairTelefone(texto: string): { ddd: number; phone: string } | null {
   if ((digitos.length === 11 || digitos.length === 12) && digitos.startsWith('0')) digitos = digitos.slice(1)
   if (digitos.length !== 10 && digitos.length !== 11) return null
   const ddd = Number(digitos.slice(0, 2))
-  return { ddd, phone: digitos }
+  // `phone` guarda só o número local (sem o DDD, que já vai separado no
+  // campo `ddd`) — mesma convenção do resto do sistema. Deixar o DDD junto
+  // aqui duplicava ele na tela do lead e quebrava o link do WhatsApp.
+  // `completo` (com DDD) fica só pra reconhecer a linha do telefone no texto
+  // colado e não confundi-la com o nome, em extrairNome.
+  return { ddd, phone: digitos.slice(2), completo: digitos }
 }
 
 // Primeira linha não vazia que não é o próprio telefone/email vira o nome.
@@ -77,7 +82,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
       setDdd(String(tel.ddd))
       setPhone(tel.phone)
     }
-    const nome = extrairNome(texto, tel?.phone ?? null)
+    const nome = extrairNome(texto, tel?.completo ?? null)
     if (nome) setName(nome)
     const mail = extrairEmail(texto)
     if (mail) setEmail(mail)
@@ -136,7 +141,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
         <Input label="Nome *" value={name} onChange={(e) => setName(e.target.value)} />
         <div className="grid grid-cols-[100px_1fr] gap-2">
           <Input label="DDD *" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />
-          <Input label="Telefone *" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input label="Telefone *" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} />
         </div>
         <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <div className="grid grid-cols-2 gap-2">

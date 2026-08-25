@@ -11,15 +11,21 @@ interface FindOrCreateLeadFromTrackingInput {
   source: string
 }
 
-// Extrai o DDD dos 2 primeiros dígitos do telefone (removendo o 55 do Brasil,
-// se presente) — leads.ddd é NOT NULL, sem DDD válido não dá pra criar o lead.
-// Mesma lógica do sistema de origem (odin-tubos-crm--master/server/src/lib/trackingLeadService.ts).
-function extractDDD(phone: string): number | null {
-  const digits = phone.replace(/\D/g, '')
+// Separa DDD (2 primeiros dígitos, removendo o 55 do Brasil se presente) do
+// número local — leads.ddd é NOT NULL, sem DDD válido não dá pra criar o
+// lead. Mesma lógica do sistema de origem
+// (odin-tubos-crm--master/server/src/lib/trackingLeadService.ts), mas
+// agora também devolve o número local pra `leads.phone` nunca guardar o DDD
+// embutido — o formulário do site manda o telefone cru, do jeito que a
+// pessoa digitou (DDD junto, às vezes com parênteses/traço), e guardar isso
+// direto duplicava o DDD na ficha do lead e quebrava o link do WhatsApp.
+function parseTelefone(phoneRaw: string): { ddd: number; phone: string } | null {
+  const digits = phoneRaw.replace(/\D/g, '')
   const local = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits
   if (local.length < 10) return null
   const ddd = parseInt(local.slice(0, 2), 10)
-  return ddd >= 11 && ddd <= 99 ? ddd : null
+  if (ddd < 11 || ddd > 99) return null
+  return { ddd, phone: local.slice(2) }
 }
 
 // Chamada a partir de POST /api/tracking/events (rota pública, sem sessão de
@@ -29,15 +35,16 @@ function extractDDD(phone: string): number | null {
 export async function findOrCreateLeadFromTracking(
   input: FindOrCreateLeadFromTrackingInput
 ): Promise<number | null> {
-  const { empresaId, phone, email, name, source } = input
+  const { empresaId, email, name, source } = input
+
+  const parsed = parseTelefone(input.phone)
+  if (!parsed) return null
+  const { ddd, phone } = parsed
 
   const existing = await db.query.leads.findFirst({
     where: and(eq(leads.empresaId, empresaId), eq(leads.phone, phone), isNull(leads.deletedAt)),
   })
   if (existing) return existing.id
-
-  const ddd = extractDDD(phone)
-  if (!ddd) return null
 
   const vendorId = await getVendorByDDD(ddd, empresaId)
   const regionId = await getRegionIdByDDD(ddd, empresaId)

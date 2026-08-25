@@ -14,7 +14,15 @@ import EmailButton from '../../components/ui/EmailButton'
 import { timeAgo, formatElapsed } from '../../lib/utils'
 import QuickLeadCreate from '../../components/QuickLeadCreate'
 import LeadNegotiationTagPicker from '../../components/LeadNegotiationTagPicker'
-import { LEAD_STATUS_VALUES, LEAD_STATUS_LABELS, LEAD_STATUS_COLORS, isLeadStatusAllowedForEmpresa, getLeadContactUrgency } from '../../lib/leadsShared'
+import {
+  LEAD_STATUS_VALUES,
+  LEAD_STATUS_LABELS,
+  LEAD_STATUS_COLORS,
+  isLeadStatusAllowedForEmpresa,
+  getLeadContactUrgency,
+  leadTelefoneCompleto,
+  leadTelefoneFormatado,
+} from '../../lib/leadsShared'
 
 // Tela núcleo do módulo de Leads (site) — lista com filtros. Mesma página
 // serve admin (`/admin/leads`) e vendedor (`/vendedor/leads`, ver rota em
@@ -180,7 +188,7 @@ export default function Leads() {
                       <td className="px-5 py-3">
                         <p className="font-medium text-dark-100">{lead.name}</p>
                         <p className="text-xs text-dark-500">
-                          {lead.phone} {lead.company ? `· ${lead.company}` : ''}
+                          {leadTelefoneFormatado(lead.ddd, lead.phone)} {lead.company ? `· ${lead.company}` : ''}
                         </p>
                         {lead.fromSite && (
                           <div className="mt-1">
@@ -204,7 +212,7 @@ export default function Leads() {
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          <WhatsappButton telefone={lead.phone} size="sm" />
+                          <WhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} size="sm" />
                         </div>
                       </td>
                       {isAdmin && (
