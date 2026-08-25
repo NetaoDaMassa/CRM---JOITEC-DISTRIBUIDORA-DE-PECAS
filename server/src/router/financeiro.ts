@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, between, count, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
-import { router, superAdminProcedure } from './_base.js'
+import { router, superAdminProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { users, funilMensal, vendas, inadimplenciaEmpresas } from '../db/schema.js'
 import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
@@ -55,7 +55,11 @@ function chaveDescontoAton(cardKey: string): string {
 }
 
 export const financeiroRouter = router({
-  painelResumo: superAdminProcedure.query(async () => {
+  // Leitura liberada pra admin com a feature 'painel_financeiro' (ex: conta
+  // dedicada "PainelTv" numa TV da loja) — mutations abaixo (editar
+  // inadimplência, tokens Aton, credenciais OdinCrm) continuam exclusivas
+  // de superAdmin de verdade, é só a visualização que abre.
+  painelResumo: featureProcedure('painel_financeiro').query(async () => {
     const hoje = hojeBrString()
     const inicioHoje = `${hoje} 00:00:00`
     const fimHoje = `${hoje} 23:59:59`
