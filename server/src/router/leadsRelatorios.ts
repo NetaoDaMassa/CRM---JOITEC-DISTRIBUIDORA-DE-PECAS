@@ -1,10 +1,11 @@
 import { z } from 'zod'
 import { and, eq, inArray, isNull, gte, lte } from 'drizzle-orm'
-import { router, featureProcedure } from './_base.js'
+import { router, featureProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { leads, leadHistory, leadContactAttempts, users } from '../db/schema.js'
+import { leads, leadHistory, leadContactAttempts, users, metasMarketing } from '../db/schema.js'
 import { businessHoursElapsedMs } from '../lib/businessHours.js'
 import { STATUS_VALUES, STATUS_LABELS } from '../lib/leadsStatus.js'
+import { agoraSqlite } from '../lib/dataBr.js'
 
 // Relatórios de marketing do módulo de Leads (bloco E do plano em
 // /Users/weslley/.claude/plans/stateful-soaring-moore.md). `slaOverview` e
@@ -193,5 +194,40 @@ export const leadsRelatoriosRouter = router({
         totalVendas,
         funnel,
       }
+    }),
+
+  // Meta de marketing do mês — por empresa (não por vendedor, diferente de
+  // metasMensais), pra comparar com os números que reportGeral já calcula:
+  // taxaConversaoPct, tempoMedioPrimeiroContatoHoras ("atendimento rápido")
+  // e totalLeads ("clientes abertos").
+  metaGeral: featureProcedure('leads')
+    .input(z.object({ mesReferencia: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const meta = await db.query.metasMarketing.findFirst({
+        where: and(eq(metasMarketing.empresaId, ctx.empresaId), eq(metasMarketing.mesReferencia, input.mesReferencia)),
+      })
+      return meta ?? null
+    }),
+
+  definirMetaGeral: adminProcedure
+    .input(
+      z.object({
+        mesReferencia: z.string(),
+        metaTaxaConversaoPct: z.number().optional(),
+        metaAtendimentoRapidoHoras: z.number().optional(),
+        metaClientesAbertos: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { mesReferencia, ...campos } = input
+      const existente = await db.query.metasMarketing.findFirst({
+        where: and(eq(metasMarketing.empresaId, ctx.empresaId), eq(metasMarketing.mesReferencia, mesReferencia)),
+      })
+      if (existente) {
+        await db.update(metasMarketing).set({ ...campos, updatedAt: agoraSqlite() }).where(eq(metasMarketing.id, existente.id))
+      } else {
+        await db.insert(metasMarketing).values({ empresaId: ctx.empresaId, mesReferencia, ...campos })
+      }
+      return { ok: true }
     }),
 })

@@ -553,6 +553,25 @@ export const metasMensais = sqliteTable('metas_mensais', {
   vendedorMes: unique().on(t.vendedorId, t.mesReferencia),
 }))
 
+// Metas do módulo de Leads/marketing — diferente de metasMensais (que é por
+// vendedor, faturamento de venda): aqui é por empresa inteira, um alvo só
+// pro mês, comparado com os números já calculados em leadsRelatorios.reportGeral.
+export const metasMarketing = sqliteTable('metas_marketing', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  mesReferencia: text('mes_referencia').notNull(),
+  metaTaxaConversaoPct: real('meta_taxa_conversao_pct'),
+  // "Atendimento rápido" — meta de horas úteis até o 1º contato (quanto
+  // menor, melhor), comparado com tempoMedioPrimeiroContatoHoras.
+  metaAtendimentoRapidoHoras: real('meta_atendimento_rapido_horas'),
+  // "Clientes abertos" — quantidade de leads recebidos no mês (totalLeads).
+  metaClientesAbertos: integer('meta_clientes_abertos'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({
+  empresaMes: unique().on(t.empresaId, t.mesReferencia),
+}))
+
 export const logAuditoria = sqliteTable('log_auditoria', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   tabela: text('tabela').notNull(),

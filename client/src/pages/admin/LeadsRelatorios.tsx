@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
+import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
+import Button from '../../components/ui/Button'
+import Modal from '../../components/ui/Modal'
 
 type Aba = 'sla' | 'transferencias' | 'geral'
 
@@ -285,15 +288,120 @@ function FunilConversao({ funnel, total }: { funnel: { status: string; label: st
   )
 }
 
+function MetaTile({
+  label,
+  atual,
+  meta,
+  formatarValor,
+  maiorMelhor,
+}: {
+  label: string
+  atual: number
+  meta: number | null | undefined
+  formatarValor: (v: number) => string
+  maiorMelhor: boolean
+}) {
+  const bateu = meta == null ? null : maiorMelhor ? atual >= meta : atual <= meta
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
+      <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">{label}</p>
+      <p className="text-2xl font-bold font-mono tabular-nums text-dark-50 mt-1">{formatarValor(atual)}</p>
+      {meta == null ? (
+        <p className="text-xs text-dark-500 mt-0.5">Meta não definida</p>
+      ) : (
+        <p className={`text-xs mt-0.5 ${bateu ? 'text-green-400' : 'text-red-400'}`}>
+          {bateu ? '✅' : '⚠️'} Meta: {formatarValor(meta)}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function EditarMetaModal({
+  open,
+  onClose,
+  mesReferencia,
+  metaAtual,
+}: {
+  open: boolean
+  onClose: () => void
+  mesReferencia: string
+  metaAtual: { metaTaxaConversaoPct: number | null; metaAtendimentoRapidoHoras: number | null; metaClientesAbertos: number | null } | null
+}) {
+  const utils = trpc.useUtils()
+  const [taxaConversao, setTaxaConversao] = useState(metaAtual?.metaTaxaConversaoPct?.toString() ?? '')
+  const [atendimentoRapido, setAtendimentoRapido] = useState(metaAtual?.metaAtendimentoRapidoHoras?.toString() ?? '')
+  const [clientesAbertos, setClientesAbertos] = useState(metaAtual?.metaClientesAbertos?.toString() ?? '')
+
+  const mut = trpc.leadsRelatorios.definirMetaGeral.useMutation({
+    onSuccess() {
+      toast.success('Meta salva')
+      utils.leadsRelatorios.metaGeral.invalidate()
+      onClose()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title="Metas de marketing do mês" size="sm">
+      <div className="space-y-4">
+        <Input
+          label="Taxa de conversão (%)"
+          type="number"
+          step="0.1"
+          value={taxaConversao}
+          onChange={(e) => setTaxaConversao(e.target.value)}
+        />
+        <Input
+          label="Atendimento rápido — até quantas horas úteis"
+          type="number"
+          step="0.5"
+          value={atendimentoRapido}
+          onChange={(e) => setAtendimentoRapido(e.target.value)}
+        />
+        <Input
+          label="Clientes abertos no mês"
+          type="number"
+          step="1"
+          value={clientesAbertos}
+          onChange={(e) => setClientesAbertos(e.target.value)}
+        />
+        <Button
+          className="w-full"
+          loading={mut.isPending}
+          onClick={() =>
+            mut.mutate({
+              mesReferencia,
+              metaTaxaConversaoPct: taxaConversao ? Number(taxaConversao) : undefined,
+              metaAtendimentoRapidoHoras: atendimentoRapido ? Number(atendimentoRapido) : undefined,
+              metaClientesAbertos: clientesAbertos ? Number(clientesAbertos) : undefined,
+            })
+          }
+        >
+          Salvar metas
+        </Button>
+      </div>
+    </Modal>
+  )
+}
+
 function GeralTab() {
   // Sem data escolhida, a tela ficava somando o histórico inteiro e o Funil
   // de Conversão perdia o sentido — padrão agora é o mês corrente.
   const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
   const [dataFim, setDataFim] = useState(hojeString())
+  const [editarMetaAberto, setEditarMetaAberto] = useState(false)
   const { data, isLoading } = trpc.leadsRelatorios.reportGeral.useQuery({
     dataInicio: dataInicio || undefined,
     dataFim: dataFim || undefined,
   })
+  // Meta é sempre mensal — usa o mês da data inicial escolhida como
+  // referência, mesmo que o período filtrado seja mais curto que o mês
+  // inteiro.
+  const mesReferenciaMeta = `${dataInicio.slice(0, 7)}-01`
+  const { data: meta } = trpc.leadsRelatorios.metaGeral.useQuery({ mesReferencia: mesReferenciaMeta })
 
   return (
     <div className="space-y-5">
@@ -318,14 +426,50 @@ function GeralTab() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
             <StatTile label="Tempo médio até 1º contato" value={formatarHoras(data.tempoMedioPrimeiroContatoHoras)} sub="horas úteis" />
             <StatTile label="Ticket médio" value={formatarMoeda(data.ticketMedio)} sub={`${data.totalGanhos} leads ganhos`} />
-            <div className="bg-dark-800 border border-dark-600 border-dashed rounded-2xl p-5">
-              <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">Meta</p>
-              <p className="text-2xl font-bold text-dark-500 mt-1">— definir</p>
-              <p className="text-xs text-dark-500 mt-0.5">Configure a meta de Leads quando quiser</p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-heading text-gold-400 font-semibold">Metas do mês</h3>
+              <button className="text-xs text-gold-400 underline" onClick={() => setEditarMetaAberto(true)}>
+                {meta ? 'Editar metas' : 'Definir metas'}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <MetaTile
+                label="Taxa de conversão"
+                atual={data.taxaConversaoPct}
+                meta={meta?.metaTaxaConversaoPct}
+                formatarValor={(v) => `${v.toFixed(1)}%`}
+                maiorMelhor
+              />
+              <MetaTile
+                label="Atendimento rápido"
+                atual={data.tempoMedioPrimeiroContatoHoras}
+                meta={meta?.metaAtendimentoRapidoHoras}
+                formatarValor={formatarHoras}
+                maiorMelhor={false}
+              />
+              <MetaTile
+                label="Clientes abertos"
+                atual={data.totalLeads}
+                meta={meta?.metaClientesAbertos}
+                formatarValor={(v) => String(Math.round(v))}
+                maiorMelhor
+              />
             </div>
           </div>
 
           <FunilConversao funnel={data.funnel} total={data.totalLeads} />
+
+          {editarMetaAberto && (
+            <EditarMetaModal
+              open
+              onClose={() => setEditarMetaAberto(false)}
+              mesReferencia={mesReferenciaMeta}
+              metaAtual={meta ?? null}
+            />
+          )}
         </>
       )}
     </div>

@@ -407,6 +407,13 @@
       "when": 1787681639173,
       "tag": "0057_secret_venom",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1787691572843,
+      "tag": "0058_chubby_spot",
+      "breakpoints": true
     }
   ]
 }
