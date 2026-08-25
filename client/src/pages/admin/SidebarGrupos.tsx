@@ -1,11 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import { ADMIN_LINKS, VENDOR_LINKS, NOMES_ICONES_GRUPO } from '../../components/Sidebar'
+
+function moverNaLista<T>(lista: T[], indice: number, direcao: -1 | 1): T[] {
+  const novoIndice = indice + direcao
+  if (novoIndice < 0 || novoIndice >= lista.length) return lista
+  const copia = [...lista]
+  ;[copia[indice], copia[novoIndice]] = [copia[novoIndice], copia[indice]]
+  return copia
+}
 
 // Mesma lista de itens agrupáveis validada no backend (server/src/router/sidebarGrupos.ts)
 // — rotulados (admin)/(vendedor) porque um grupo pode conter a versão de
@@ -22,6 +30,7 @@ const ITENS_EXTRAS = [
   { to: '/painel-financeiro', label: 'Painel Financeiro' },
 ]
 const TODOS_ITENS = [...ITENS_ADMIN, ...ITENS_VENDEDOR, ...ITENS_EXTRAS]
+const LABEL_POR_ITEM = new Map(TODOS_ITENS.map((i) => [i.to, i.label]))
 
 interface GrupoForm {
   nome: string
@@ -87,11 +96,34 @@ export default function SidebarGrupos() {
     },
   })
 
+  const reordenarMut = trpc.sidebarGrupos.reordenarGrupos.useMutation({
+    onSuccess() {
+      utils.sidebarGrupos.listar.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+      utils.sidebarGrupos.listar.invalidate()
+    },
+  })
+
+  function moverGrupo(id: number, direcao: -1 | 1) {
+    if (!grupos) return
+    const indice = grupos.findIndex((g) => g.id === id)
+    if (indice === -1) return
+    const nova = moverNaLista(grupos, indice, direcao)
+    if (nova === grupos) return
+    reordenarMut.mutate({ ids: nova.map((g) => g.id) })
+  }
+
   function toggleItem(to: string) {
     setForm((prev) => ({
       ...prev,
       itens: prev.itens.includes(to) ? prev.itens.filter((i) => i !== to) : [...prev.itens, to],
     }))
+  }
+
+  function moverItem(indice: number, direcao: -1 | 1) {
+    setForm((prev) => ({ ...prev, itens: moverNaLista(prev.itens, indice, direcao) }))
   }
 
   function salvar() {
@@ -124,19 +156,40 @@ export default function SidebarGrupos() {
               Novo grupo
             </Button>
             <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden">
-              {grupos?.map((g) => (
-                <button
+              {grupos?.map((g, idx) => (
+                <div
                   key={g.id}
-                  onClick={() => setSelecionadoId(g.id)}
-                  className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                  className={`w-full flex items-center gap-1 px-2 py-1.5 text-sm transition-colors ${
                     selecionadoId === g.id ? 'bg-gold-600/20 text-gold-400' : 'text-dark-200 hover:bg-dark-700'
                   }`}
                 >
-                  <p className="font-medium truncate">{g.nome}</p>
-                  <p className="text-xs text-dark-500">
-                    {g.itens.length} ite{g.itens.length !== 1 ? 'ns' : 'm'}
-                  </p>
-                </button>
+                  <div className="flex flex-col shrink-0">
+                    <button
+                      type="button"
+                      disabled={idx === 0 || reordenarMut.isPending}
+                      onClick={() => moverGrupo(g.id, -1)}
+                      className="p-0.5 text-dark-500 hover:text-gold-400 disabled:opacity-20 disabled:hover:text-dark-500"
+                      title="Subir"
+                    >
+                      <ChevronUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={idx === grupos.length - 1 || reordenarMut.isPending}
+                      onClick={() => moverGrupo(g.id, 1)}
+                      className="p-0.5 text-dark-500 hover:text-gold-400 disabled:opacity-20 disabled:hover:text-dark-500"
+                      title="Descer"
+                    >
+                      <ChevronDown size={13} />
+                    </button>
+                  </div>
+                  <button onClick={() => setSelecionadoId(g.id)} className="flex-1 text-left px-2 py-1.5 min-w-0">
+                    <p className="font-medium truncate">{g.nome}</p>
+                    <p className="text-xs text-dark-500">
+                      {g.itens.length} ite{g.itens.length !== 1 ? 'ns' : 'm'}
+                    </p>
+                  </button>
+                </div>
               ))}
               {!grupos?.length && <p className="px-4 py-3 text-sm text-dark-500">Nenhum grupo ainda.</p>}
             </div>
@@ -168,6 +221,39 @@ export default function SidebarGrupos() {
                     ))}
                   </div>
                 </div>
+
+                {form.itens.length > 0 && (
+                  <div>
+                    <p className="text-xs text-dark-500 mb-2">Ordem de exibição dentro do grupo</p>
+                    <div className="bg-dark-900/40 border border-dark-700 rounded-xl divide-y divide-dark-700 overflow-hidden">
+                      {form.itens.map((to, idx) => (
+                        <div key={to} className="flex items-center gap-2 px-3 py-1.5 text-sm text-dark-200">
+                          <div className="flex flex-col shrink-0">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => moverItem(idx, -1)}
+                              className="p-0.5 text-dark-500 hover:text-gold-400 disabled:opacity-20 disabled:hover:text-dark-500"
+                              title="Subir"
+                            >
+                              <ChevronUp size={13} />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === form.itens.length - 1}
+                              onClick={() => moverItem(idx, 1)}
+                              className="p-0.5 text-dark-500 hover:text-gold-400 disabled:opacity-20 disabled:hover:text-dark-500"
+                              title="Descer"
+                            >
+                              <ChevronDown size={13} />
+                            </button>
+                          </div>
+                          <span className="truncate">{LABEL_POR_ITEM.get(to) ?? to}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex gap-3 pt-2">
                   <Button loading={criarMut.isPending || atualizarMut.isPending} onClick={salvar}>

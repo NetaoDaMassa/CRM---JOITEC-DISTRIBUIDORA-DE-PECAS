@@ -53,12 +53,30 @@ export const sidebarGruposRouter = router({
       })
     )
     .mutation(async ({ input }) => {
-      const result = await db.insert(sidebarGroups).values({ nome: input.nome, icone: input.icone })
+      // Novo grupo entra no fim da lista, não empatado em ordem=0 com todo
+      // mundo — senão a ordem exibida vira "o que o SQLite devolver" em vez
+      // do que o superAdmin de fato organizou.
+      const existentes = await db.query.sidebarGroups.findMany({ columns: { ordem: true } })
+      const proximaOrdem = existentes.length ? Math.max(...existentes.map((g) => g.ordem)) + 1 : 0
+
+      const result = await db.insert(sidebarGroups).values({ nome: input.nome, icone: input.icone, ordem: proximaOrdem })
       const id = Number(result.lastInsertRowid)
       if (input.itens.length > 0) {
         await db.insert(sidebarGroupItems).values(input.itens.map((linkTo, idx) => ({ groupId: id, linkTo, ordem: idx })))
       }
       return { id }
+    }),
+
+  // Recebe os ids de todos os grupos na ordem final desejada (arrastar não
+  // existe aqui — a tela usa botões de subir/descer, que já mandam a lista
+  // inteira reordenada) e regrava `ordem` = posição no array.
+  reordenarGrupos: superAdminProcedure
+    .input(z.object({ ids: z.array(z.number()) }))
+    .mutation(async ({ input }) => {
+      for (let i = 0; i < input.ids.length; i++) {
+        await db.update(sidebarGroups).set({ ordem: i }).where(eq(sidebarGroups.id, input.ids[i]))
+      }
+      return { success: true }
     }),
 
   atualizar: superAdminProcedure
