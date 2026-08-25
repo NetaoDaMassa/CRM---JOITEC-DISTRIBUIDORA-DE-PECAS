@@ -490,7 +490,13 @@ function DetalheChamadoModal({
     },
   })
 
-  const { data: vendedoresDisponiveis } = trpc.users.vendors.useQuery(undefined, { enabled: souAdmin })
+  // Vendedores da empresa DO CHAMADO, não da empresa ativa na sessão — quem
+  // tem visão global (Amanda) pode estar com outra empresa selecionada no
+  // topo e abrir um chamado de empresa diferente.
+  const { data: vendedoresDisponiveis } = trpc.devolucoes.vendedoresDaEmpresa.useQuery(
+    { empresaId: chamado?.empresaId ?? 0 },
+    { enabled: souAdmin && !!chamado }
+  )
   const atribuirVendedorMut = trpc.devolucoes.atribuirVendedor.useMutation({
     onSuccess() {
       toast.success('Vendedor atribuído')

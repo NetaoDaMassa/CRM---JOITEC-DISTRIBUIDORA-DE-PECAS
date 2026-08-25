@@ -18,6 +18,7 @@ import {
   devolucaoDemonstracoes,
   devolucaoDemonstracaoItens,
   empresas,
+  users,
 } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
@@ -344,9 +345,31 @@ export const devolucoesRouter = router({
     return { ok: true }
   }),
 
+  // Lista de vendedores da EMPRESA DO CHAMADO, não da empresa ativa na sessão
+  // de quem está olhando — quem tem 'devolucoes_visao_global' (ex: Amanda)
+  // pode estar com uma empresa diferente selecionada no topo e abrir um
+  // chamado de outra; antes disso, o dropdown "atribuir vendedor" usava
+  // `users.vendors` (sempre a empresa ativa da sessão), então nem sempre
+  // mostrava os vendedores certos pro chamado que estava na tela.
+  vendedoresDaEmpresa: adminOrFeatureProcedure('devolucoes')
+    .input(z.object({ empresaId: z.number() }))
+    .query(async ({ ctx, input }) => {
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      if (!alcancaveis.includes(input.empresaId)) throw new Error('Empresa inválida')
+      return db.query.users.findMany({
+        where: and(eq(users.empresaId, input.empresaId), eq(users.isActive, true), eq(users.superAdmin, false)),
+        columns: { id: true, name: true },
+        orderBy: (u, { asc }) => [asc(u.name)],
+      })
+    }),
+
   atribuirVendedor: adminProcedure.input(z.object({ id: z.number(), vendedorId: z.number().nullable() })).mutation(async ({ ctx, input }) => {
     const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
-    await assertChamadoAlcancavel(input.id, alcancaveis)
+    const chamado = await assertChamadoAlcancavel(input.id, alcancaveis)
+    if (input.vendedorId) {
+      const vendedor = await db.query.users.findFirst({ where: eq(users.id, input.vendedorId) })
+      if (!vendedor || vendedor.empresaId !== chamado.empresaId) throw new Error('Vendedor não pertence à empresa deste chamado')
+    }
     await db.update(devolucaoChamados).set({ vendedorId: input.vendedorId }).where(eq(devolucaoChamados.id, input.id))
     return { ok: true }
   }),
