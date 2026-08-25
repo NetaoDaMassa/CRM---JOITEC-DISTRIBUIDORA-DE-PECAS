@@ -40,59 +40,7 @@ export const clientesRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      // Prospects (cadastrados via aba de Prospecção, ainda sem funil aberto)
-      // ficam fora da lista normal de clientes até serem enviados pra carteira.
-      const filtros = [isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false)]
-
-      if (ctx.user.role === 'admin') {
-        if (input.vendedorId) filtros.push(eq(clientes.vendedorAtualId, input.vendedorId))
-      } else {
-        filtros.push(eq(clientes.vendedorAtualId, ctx.user.id))
-      }
-
-      const termo = input.q?.trim()
-      if (termo) {
-        const like_ = `%${termo}%`
-        const condicoes = [
-          like(clientes.razaoSocial, like_),
-          like(clientes.codigo, like_),
-          like(clientes.estado, like_),
-          like(clientes.cidade, like_),
-          like(clientes.email, like_),
-          like(clientes.inscricaoEstadual, like_),
-          like(clientes.nomeContato, like_),
-          sql`exists (select 1 from cliente_emails where cliente_emails.cliente_id = clientes.id and cliente_emails.email like ${like_})`,
-        ]
-
-        // Telefone salvo tem de tudo (hífen, espaço, parênteses — "2669-9663"),
-        // mas o vendedor digita só números. Comparando dígito-a-dígito dos dois
-        // lados (removendo pontuação da coluna na hora da query) o telefone bate
-        // independente de como foi salvo — antes, batia só se a formatação
-        // digitada fosse idêntica à salva, então quase nunca achava nada.
-        const termoDigitos = termo.replace(/\D/g, '')
-        // Só entra nesse ramo (CNPJ/CPF/telefone por dígito) se o termo for só
-        // números/pontuação de telefone — um código como "C000001" tem letra e
-        // fica de fora, senão os dígitos batiam em qualquer CNPJ que contivesse
-        // aquela sequência em algum lugar, poluindo a busca por código.
-        const pareceNumeroOuCnpj = /^[\d.\-/() ]+$/.test(termo)
-        if (pareceNumeroOuCnpj && termoDigitos) {
-          const digitosLike = `%${termoDigitos}%`
-          condicoes.push(
-            sql`replace(replace(replace(replace(${clientes.telefoneWhatsapp},'-',''),' ',''),'(',''),')','') like ${digitosLike}`
-          )
-          condicoes.push(
-            sql`exists (select 1 from cliente_telefones where cliente_telefones.cliente_id = clientes.id and replace(replace(replace(replace(cliente_telefones.numero,'-',''),' ',''),'(',''),')','') like ${digitosLike})`
-          )
-          condicoes.push(like(clientes.cnpj, digitosLike))
-          // CPF (cliente pessoa física, ex: Compretec Loja Física) ficou de
-          // fora quando o campo foi criado — sem isso a busca nunca achava
-          // ninguém cadastrado só com CPF, mesmo digitando o número certo.
-          condicoes.push(like(clientes.cpf, digitosLike))
-        }
-        filtros.push(or(...condicoes)!)
-      }
-
-      const where = and(...filtros)
+      const where = and(...listFiltros(ctx, input))
       const [{ total }] = await db.select({ total: count() }).from(clientes).where(where)
 
       const items = await db.query.clientes.findMany({
@@ -108,6 +56,38 @@ export const clientesRouter = router({
       })
 
       return { items, total, totalPaginas: Math.max(1, Math.ceil(total / PAGE_SIZE)) }
+    }),
+
+  // Mesmos filtros de `list`, sem paginação — alimenta o botão "Exportar
+  // planilha" da tela de Clientes (a lista lá é paginada de 20 em 20, não
+  // dá pra exportar reaproveitando ela).
+  exportar: protectedProcedure
+    .input(
+      z.object({
+        q: z.string().optional(),
+        vendedorId: z.number().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const where = and(...listFiltros(ctx, input))
+      const items = await db.query.clientes.findMany({
+        where,
+        orderBy: [asc(clientes.razaoSocial)],
+        with: { vendedorAtual: { columns: { name: true } } },
+      })
+      return items.map((c) => ({
+        codigo: c.codigo,
+        razaoSocial: c.razaoSocial,
+        cnpj: c.cnpj,
+        cpf: c.cpf,
+        cidade: c.cidade,
+        estado: c.estado,
+        regiao: c.regiao,
+        telefoneWhatsapp: c.telefoneWhatsapp,
+        email: c.email,
+        nomeContato: c.nomeContato,
+        vendedor: c.vendedorAtual?.name ?? '',
+      }))
     }),
 
   get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
@@ -532,6 +512,64 @@ export const clientesRouter = router({
     return { success: true }
   }),
 })
+
+function listFiltros(
+  ctx: { empresaId: number; user: { role: string; id: number } },
+  input: { q?: string; vendedorId?: number }
+) {
+  // Prospects (cadastrados via aba de Prospecção, ainda sem funil aberto)
+  // ficam fora da lista normal de clientes até serem enviados pra carteira.
+  const filtros = [isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false)]
+
+  if (ctx.user.role === 'admin') {
+    if (input.vendedorId) filtros.push(eq(clientes.vendedorAtualId, input.vendedorId))
+  } else {
+    filtros.push(eq(clientes.vendedorAtualId, ctx.user.id))
+  }
+
+  const termo = input.q?.trim()
+  if (termo) {
+    const like_ = `%${termo}%`
+    const condicoes = [
+      like(clientes.razaoSocial, like_),
+      like(clientes.codigo, like_),
+      like(clientes.estado, like_),
+      like(clientes.cidade, like_),
+      like(clientes.email, like_),
+      like(clientes.inscricaoEstadual, like_),
+      like(clientes.nomeContato, like_),
+      sql`exists (select 1 from cliente_emails where cliente_emails.cliente_id = clientes.id and cliente_emails.email like ${like_})`,
+    ]
+
+    // Telefone salvo tem de tudo (hífen, espaço, parênteses — "2669-9663"),
+    // mas o vendedor digita só números. Comparando dígito-a-dígito dos dois
+    // lados (removendo pontuação da coluna na hora da query) o telefone bate
+    // independente de como foi salvo — antes, batia só se a formatação
+    // digitada fosse idêntica à salva, então quase nunca achava nada.
+    const termoDigitos = termo.replace(/\D/g, '')
+    // Só entra nesse ramo (CNPJ/CPF/telefone por dígito) se o termo for só
+    // números/pontuação de telefone — um código como "C000001" tem letra e
+    // fica de fora, senão os dígitos batiam em qualquer CNPJ que contivesse
+    // aquela sequência em algum lugar, poluindo a busca por código.
+    const pareceNumeroOuCnpj = /^[\d.\-/() ]+$/.test(termo)
+    if (pareceNumeroOuCnpj && termoDigitos) {
+      const digitosLike = `%${termoDigitos}%`
+      condicoes.push(
+        sql`replace(replace(replace(replace(${clientes.telefoneWhatsapp},'-',''),' ',''),'(',''),')','') like ${digitosLike}`
+      )
+      condicoes.push(
+        sql`exists (select 1 from cliente_telefones where cliente_telefones.cliente_id = clientes.id and replace(replace(replace(replace(cliente_telefones.numero,'-',''),' ',''),'(',''),')','') like ${digitosLike})`
+      )
+      condicoes.push(like(clientes.cnpj, digitosLike))
+      // CPF (cliente pessoa física, ex: Compretec Loja Física) ficou de
+      // fora quando o campo foi criado — sem isso a busca nunca achava
+      // ninguém cadastrado só com CPF, mesmo digitando o número certo.
+      condicoes.push(like(clientes.cpf, digitosLike))
+    }
+    filtros.push(or(...condicoes)!)
+  }
+  return filtros
+}
 
 function bancoFiltros(
   empresaId: number,
