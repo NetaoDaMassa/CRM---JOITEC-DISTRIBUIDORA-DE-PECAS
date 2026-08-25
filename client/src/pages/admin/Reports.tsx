@@ -177,6 +177,10 @@ export default function AdminReports() {
     { dataInicio: dataInicioTodas, dataFim: dataFimTodas },
     { enabled: aba === 'todas_empresas' && !!user?.superAdmin }
   )
+  const { data: contatoCoberturaTodasEmpresas } = trpc.reports.contatoCoberturaTodasEmpresas.useQuery(
+    { dataInicio: dataInicioTodas, dataFim: dataFimTodas },
+    { enabled: aba === 'todas_empresas' && !!user?.superAdmin }
+  )
 
   function aplicarPresetTodas(preset: 'hoje' | 'semana' | 'mes') {
     const hoje = new Date()
@@ -1313,6 +1317,51 @@ export default function AdminReports() {
                 </div>
               ))}
               {!vendasTodasEmpresas?.porEmpresa.length && <p className="text-sm text-dark-500 py-2">Nenhuma venda no período.</p>}
+            </div>
+          </section>
+
+          <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+            <div className="mb-4">
+              <h2 className="text-sm font-semibold text-dark-100">Contato em relação à carteira de clientes</h2>
+              <p className="text-xs text-dark-500 mt-0.5">
+                Quantos clientes da carteira (todas as empresas) ainda faltam receber ligação ou WhatsApp no período — não conta e-mail nem
+                visita.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-dark-900/50 border border-amber-700/40 rounded-xl p-4">
+                <p className="text-xs text-dark-500">Ainda faltam ser chamados</p>
+                <p className="text-lg font-semibold text-amber-400">{contatoCoberturaTodasEmpresas?.semContatoGeral ?? 0}</p>
+              </div>
+              <div className="bg-dark-900/50 border border-dark-700 rounded-xl p-4">
+                <p className="text-xs text-dark-500">Já contatados</p>
+                <p className="text-lg font-semibold text-dark-50">{contatoCoberturaTodasEmpresas?.contatadosGeral ?? 0}</p>
+              </div>
+              <div className="bg-dark-900/50 border border-dark-700 rounded-xl p-4">
+                <p className="text-xs text-dark-500">% de cobertura</p>
+                <p className="text-lg font-semibold text-dark-50">{(contatoCoberturaTodasEmpresas?.percentualGeral ?? 0).toFixed(1)}%</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-dark-500 mb-2">Por empresa</p>
+            <div className="divide-y divide-dark-700">
+              {contatoCoberturaTodasEmpresas?.porEmpresa.map((e) => (
+                <div key={e.empresaId} className="flex items-center justify-between py-2.5 text-sm">
+                  <span className="text-dark-200">{e.nome}</span>
+                  <div className="text-right">
+                    <p className={`font-medium ${e.semContato > 0 ? 'text-amber-400' : 'text-green-400'}`}>
+                      {e.semContato} falta{e.semContato === 1 ? '' : 'm'}
+                    </p>
+                    <p className="text-xs text-dark-500">
+                      {e.contatados} de {e.totalCarteira} · {e.percentual.toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              ))}
+              {!contatoCoberturaTodasEmpresas?.porEmpresa.length && (
+                <p className="text-sm text-dark-500 py-2">Nenhum cliente com vendedor atribuído.</p>
+              )}
             </div>
           </section>
         </div>

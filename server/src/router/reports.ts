@@ -576,6 +576,62 @@ export const reportsRouter = router({
       }
     }),
 
+  // "Quantos clientes da carteira ainda faltam ser chamados" — mesma
+  // definição de contato de `contatosCoberturaPorVendedor` (ligação ou
+  // WhatsApp, não conta e-mail/visita), só que somando as empresas todas de
+  // uma vez em vez de por vendedor de uma empresa só — pro João bater o
+  // olho no card "Todas as Empresas" sem entrar empresa por empresa.
+  contatoCoberturaTodasEmpresas: superAdminProcedure
+    .input(z.object({ dataInicio: z.string(), dataFim: z.string() }))
+    .query(async ({ input }) => {
+      const { inicio, fim } = limitesDia(input)
+      const todasEmpresas = await db.query.empresas.findMany({ columns: { id: true, nome: true } })
+
+      const porEmpresa = await Promise.all(
+        todasEmpresas.map(async (e) => {
+          const [{ totalCarteira }] = await db
+            .select({ totalCarteira: count() })
+            .from(clientes)
+            .where(and(eq(clientes.empresaId, e.id), isNull(clientes.deletedAt), isNotNull(clientes.vendedorAtualId)))
+
+          const [{ contatados }] = await db
+            .select({ contatados: sql<number>`count(distinct ${funilMensal.clienteId})`.mapWith(Number) })
+            .from(registroContato)
+            .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+            .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+            .where(
+              and(
+                eq(clientes.empresaId, e.id),
+                sql`${registroContato.tipo} in ('whatsapp', 'ligacao')`,
+                between(registroContato.dataHora, inicio, fim),
+                isNull(registroContato.deletedAt)
+              )
+            )
+
+          return {
+            empresaId: e.id,
+            nome: e.nome,
+            totalCarteira,
+            contatados,
+            semContato: totalCarteira - contatados,
+            percentual: totalCarteira > 0 ? Math.round((contatados / totalCarteira) * 1000) / 10 : 0,
+          }
+        })
+      )
+
+      const comCarteira = porEmpresa.filter((e) => e.totalCarteira > 0).sort((a, b) => b.semContato - a.semContato)
+      const totalCarteiraGeral = porEmpresa.reduce((soma, e) => soma + e.totalCarteira, 0)
+      const contatadosGeral = porEmpresa.reduce((soma, e) => soma + e.contatados, 0)
+
+      return {
+        porEmpresa: comCarteira,
+        totalCarteiraGeral,
+        contatadosGeral,
+        semContatoGeral: totalCarteiraGeral - contatadosGeral,
+        percentualGeral: totalCarteiraGeral > 0 ? Math.round((contatadosGeral / totalCarteiraGeral) * 1000) / 10 : 0,
+      }
+    }),
+
   diasSemContato: protectedProcedure
     .input(filtroAtualInput)
     .query(async ({ ctx, input }) => {
