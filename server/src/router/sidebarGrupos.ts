@@ -23,6 +23,7 @@ const LINK_TO_VALIDOS = [
   '/vendedor/relatorios', '/vendedor/solicitar-design', '/vendedor/devolucoes', '/vendedor/devolucoes-mecanica',
   '/vendedor/devolucoes-demonstracao', '/vendedor/devolucoes-relatorios', '/vendedor/leads', '/vendedor/leads/kanban',
   '/painel-tv', '/admin/permissoes', '/admin/funcoes', '/admin/leads-regioes', '/painel-financeiro',
+  '/admin/sidebar-grupos',
 ] as const
 
 const linkToSchema = z.enum(LINK_TO_VALIDOS)
