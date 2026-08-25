@@ -36,6 +36,11 @@ export const vendasRouter = router({
         // omitido, ou se quem chama não é admin, o crédito vai sempre pro
         // próprio usuário logado.
         vendedorId: z.number().optional(),
+        // Marca o cliente criado como vindo de uma ação de Marketing — mesmo
+        // campo `clientes.origemMarketing` usado no "Completar cadastro",
+        // pra essas vendas de balcão entrarem no filtro "Vendas — Clientes
+        // de Marketing" dos Relatórios sem precisar editar o cliente depois.
+        origemMarketing: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -67,6 +72,7 @@ export const vendasRouter = router({
         cadastradoPor: ctx.user.id,
         vendedorAtualId: vendedorAlvoId,
         dataUltimaCompra: agoraSqlite(),
+        origemMarketing: input.origemMarketing ?? false,
       })
       const clienteId = Number(clienteResult.lastInsertRowid)
 

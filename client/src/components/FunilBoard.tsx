@@ -240,6 +240,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   const [dataPedido, setDataPedido] = useState(() => new Date().toISOString().slice(0, 10))
   const [pdfArquivo, setPdfArquivo] = useState<File | null>(null)
   const [enviandoPdf, setEnviandoPdf] = useState(false)
+  const [origemMarketing, setOrigemMarketing] = useState(false)
   // Só admin escolhe — vendedor sempre registra em nome de si mesmo (backend
   // resolve por ctx.user.id quando isso fica undefined). Começa com o que
   // veio do seletor da página (admin/Kanban.tsx), mas dá pra trocar aqui
@@ -263,6 +264,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
       setTipoComprovante('')
       setDataPedido(new Date().toISOString().slice(0, 10))
       setPdfArquivo(null)
+      setOrigemMarketing(false)
       onClose()
     },
     onError(err) {
@@ -304,6 +306,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
         dataPedido,
         pdfPedidoPath,
         vendedorId: user?.role === 'admin' ? vendedorIdSelecionado : undefined,
+        origemMarketing,
       })
     } catch (err: any) {
       toast.error(err.message ?? 'Falha ao enviar o PDF.')
@@ -346,6 +349,15 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
         <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
         <Input label="Nº da nota fiscal (opcional)" value={notaFiscal} onChange={(e) => setNotaFiscal(e.target.value)} />
         <AnexoPdfInput label="PDF do pedido" nomeArquivo={pdfArquivo?.name} onSelecionar={setPdfArquivo} />
+        <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
+          <input
+            type="checkbox"
+            checked={origemMarketing}
+            onChange={(e) => setOrigemMarketing(e.target.checked)}
+            className="accent-gold-500"
+          />
+          Cliente de Marketing
+        </label>
         <Button className="w-full" loading={mut.isPending || enviandoPdf} onClick={registrar}>
           Registrar venda
         </Button>
