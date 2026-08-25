@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -73,6 +73,8 @@ export const ADMIN_LINKS = [
   // .claude/plans/stateful-soaring-moore.md.
   { to: '/admin/leads', label: 'Leads', icon: UserPlus, feature: 'leads' },
   { to: '/admin/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
+  { to: '/admin/leads-desqualificados', label: 'Revisão de Leads', icon: ShieldCheck, feature: 'leads' },
+  { to: '/admin/leads-relatorios', label: 'Relatórios de Leads', icon: BarChart3, feature: 'leads' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -264,6 +266,21 @@ export default function Sidebar() {
             >
               <UserCog size={17} />
               <span className="flex-1">Funções</span>
+            </NavLink>
+          )}
+          {user?.superAdmin && (
+            <NavLink
+              to="/admin/leads-regioes"
+              className={({ isActive }) =>
+                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive
+                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
+                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
+                }`
+              }
+            >
+              <MapPin size={17} />
+              <span className="flex-1">Regiões de Leads</span>
             </NavLink>
           )}
           {user?.role === 'admin' && (user.superAdmin || minhasFeatures?.includes('painel_financeiro')) && (

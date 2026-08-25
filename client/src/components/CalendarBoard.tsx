@@ -1,7 +1,9 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { trpc } from '../lib/trpc'
+import { useAuth } from '../contexts/AuthContext'
 import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
@@ -31,6 +33,17 @@ function chaveData(d: Date): string {
 
 function horaLocal(dataHora: string): string {
   return new Date(dataHora.replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+}
+
+// `leads.nextContactAt` não segue a mesma convenção de `compromissos.dataHora`
+// ("YYYY-MM-DD HH:MM:SS" sem sufixo, sempre UTC) — vem em formatos mistos
+// (ISO com "Z", ISO sem segundos/timezone de um <input type="datetime-local">,
+// etc, dependendo de onde foi gravado). `horaLocal` quebraria em vários
+// desses casos, então esta função tenta o parse direto e nunca lança.
+function horaLocalLead(dataHora: string): string {
+  const d = new Date(dataHora)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
 }
 
 // Troca só a parte de data de um "YYYY-MM-DD HH:MM:SS", mantendo o horário
@@ -166,6 +179,12 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
 
   const { data: compromissos } = trpc.compromissos.listar.useQuery({ dataInicio, dataFim, vendedorId })
   const { data: historico } = trpc.compromissos.historico.useQuery({ dataInicio, dataFim, vendedorId })
+  // Lembretes de Leads (nextContactAt) — fonte independente de `compromissos`,
+  // mesclada só aqui no client (ver plano fase 2 bloco D: não vira linha em
+  // `compromissos`, o schema de agendamento não muda).
+  const { data: leadReminders } = trpc.leads.listReminders.useQuery({ dataInicio, dataFim, vendedorId })
+  const { user } = useAuth()
+  const leadsBasePath = user?.role === 'admin' ? '/admin/leads' : '/vendedor/leads'
 
   const vendasPorDia = useMemo(() => new Map((historico?.vendasPorDia ?? []).map((v) => [v.dia, v.quantidade])), [historico])
   const contatosPorDia = useMemo(() => new Map((historico?.contatosPorDia ?? []).map((v) => [v.dia, v.quantidade])), [historico])
@@ -179,6 +198,17 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
     }
     return mapa
   }, [compromissos])
+  const leadsPorDia = useMemo(() => {
+    const mapa = new Map<string, NonNullable<typeof leadReminders>>()
+    for (const l of leadReminders ?? []) {
+      if (!l.nextContactAt) continue
+      const dia = l.nextContactAt.slice(0, 10)
+      const lista = mapa.get(dia) ?? []
+      lista.push(l)
+      mapa.set(dia, lista)
+    }
+    return mapa
+  }, [leadReminders])
 
   function invalidarTudo() {
     utils.compromissos.listar.invalidate()
@@ -303,6 +333,7 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
               const compromissosDia = compromissosPorDia.get(chave) ?? []
               const vendas = vendasPorDia.get(chave) ?? 0
               const contatos = contatosPorDia.get(chave) ?? 0
+              const leadsDia = leadsPorDia.get(chave) ?? []
               const selecionado = chave === diaSelecionado
 
               return (
@@ -326,6 +357,9 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
                     )}
                     {vendas > 0 && <span className="text-[10px] bg-green-600/30 text-green-300 rounded px-1 truncate">💰 {vendas}</span>}
                     {contatos > 0 && <span className="text-[10px] bg-dark-700 text-dark-300 rounded px-1 truncate">📞 {contatos}</span>}
+                    {leadsDia.length > 0 && (
+                      <span className="text-[10px] bg-cyan-600/30 text-cyan-300 rounded px-1 truncate">🧲 {leadsDia.length}</span>
+                    )}
                   </div>
                 </button>
               )
@@ -360,6 +394,19 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
                   onExcluir={(escopo) => excluirMut.mutate({ id: c.id, escopo })}
                   onDragStart={(e) => e.dataTransfer.setData('text/plain', String(c.id))}
                 />
+              ))}
+              {(leadsPorDia.get(diaSelecionado) ?? []).map((l) => (
+                <Link
+                  key={`lead-${l.id}`}
+                  to={`${leadsBasePath}/${l.id}`}
+                  className="block rounded-lg border border-cyan-700/40 bg-cyan-950/20 p-2 text-sm hover:border-cyan-500/60"
+                >
+                  <p className="text-cyan-200 font-medium truncate">🧲 {horaLocalLead(l.nextContactAt!)} · {l.name}</p>
+                  <p className="text-xs text-dark-400 truncate">
+                    Lead · {l.phone}
+                    {vendedorId === undefined && l.vendor && ` · ${l.vendor.name}`}
+                  </p>
+                </Link>
               ))}
             </div>
             <p className="text-[10px] text-dark-600 mt-2">Arraste um compromisso pra outro dia no calendário pra reagendar.</p>
@@ -402,6 +449,15 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
                     onDragStart={(e) => e.dataTransfer.setData('text/plain', String(c.id))}
                   />
                 ))}
+                {(leadsPorDia.get(chave) ?? []).map((l) => (
+                  <Link
+                    key={`lead-${l.id}`}
+                    to={`${leadsBasePath}/${l.id}`}
+                    className="block rounded-lg border border-cyan-700/40 bg-cyan-950/20 p-2 text-sm hover:border-cyan-500/60"
+                  >
+                    <p className="text-cyan-200 font-medium truncate">🧲 {l.name}</p>
+                  </Link>
+                ))}
               </div>
             )
           })}
@@ -438,6 +494,19 @@ export default function CalendarBoard({ vendedorId }: { vendedorId?: number }) {
                 onDragStart={(e) => e.dataTransfer.setData('text/plain', String(c.id))}
               />
             ))}
+          {(leadsPorDia.get(dataInicio) ?? []).map((l) => (
+            <Link
+              key={`lead-${l.id}`}
+              to={`${leadsBasePath}/${l.id}`}
+              className="block rounded-lg border border-cyan-700/40 bg-cyan-950/20 p-2 text-sm hover:border-cyan-500/60"
+            >
+              <p className="text-cyan-200 font-medium truncate">🧲 {horaLocalLead(l.nextContactAt!)} · {l.name}</p>
+              <p className="text-xs text-dark-400 truncate">
+                Lead · {l.phone}
+                {vendedorId === undefined && l.vendor && ` · ${l.vendor.name}`}
+              </p>
+            </Link>
+          ))}
         </div>
       )}
 

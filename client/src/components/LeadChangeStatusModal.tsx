@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import Modal from './ui/Modal'
@@ -22,18 +22,27 @@ import {
 export default function LeadChangeStatusModal({
   leadId,
   currentStatus,
+  initialStatus,
   empresaSlug,
   open,
   onClose,
 }: {
   leadId: number
   currentStatus: string
+  // Etapa pré-selecionada ao abrir (ex: clicou direto num pill da lista de
+  // etapas na Ficha do Lead) — sem isso, abre sempre na etapa atual.
+  initialStatus?: string
   empresaSlug: string | undefined
   open: boolean
   onClose: () => void
 }) {
   const utils = trpc.useUtils()
-  const [status, setStatus] = useState<LeadStatus>(currentStatus as LeadStatus)
+  const [status, setStatus] = useState<LeadStatus>((initialStatus ?? currentStatus) as LeadStatus)
+
+  useEffect(() => {
+    if (open) setStatus((initialStatus ?? currentStatus) as LeadStatus)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialStatus, currentStatus])
   const [nextContactAt, setNextContactAt] = useState('')
   const [codSap, setCodSap] = useState('')
   const [orderValue, setOrderValue] = useState('')

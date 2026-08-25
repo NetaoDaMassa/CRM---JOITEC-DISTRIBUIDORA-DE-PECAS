@@ -34,6 +34,7 @@ function TooltipHistorico({ active, payload, label }: { active?: boolean; payloa
 export default function AdminDashboard() {
   const { user } = useAuth()
   const { data } = trpc.painel.resumo.useQuery(undefined, { refetchInterval: 30000, refetchIntervalInBackground: true })
+  const { data: leadsStats } = trpc.leads.stats.useQuery(undefined, { refetchInterval: 30000 })
 
   const resetMut = trpc.funil.rodarResetMensal.useMutation({
     onSuccess(data) {
@@ -136,6 +137,33 @@ export default function AdminDashboard() {
           <p className="text-xs text-dark-400">Orçamentos em aberto</p>
           <p className="text-2xl font-bold text-dark-50">{data?.orcamentosAbertos.quantidade ?? 0}</p>
           <p className="text-sm text-amber-400">{formatarMoeda(data?.orcamentosAbertos.valor ?? 0)}</p>
+        </div>
+      </div>
+
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">🧲 Leads (site)</h2>
+          <Link to="/admin/leads" className="text-xs text-gold-400 underline">
+            Ver Leads →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs text-dark-400">Total</p>
+            <p className="text-2xl font-bold text-dark-50">{leadsStats?.total ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Novos</p>
+            <p className="text-2xl font-bold text-dark-50">{leadsStats?.byStatus?.novo ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Em negociação</p>
+            <p className="text-2xl font-bold text-dark-50">{leadsStats?.byStatus?.em_negociacao ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Conversão</p>
+            <p className="text-2xl font-bold text-gold-400">{leadsStats?.conversion ?? 0}%</p>
+          </div>
         </div>
       </div>
 

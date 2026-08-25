@@ -89,3 +89,41 @@ export function leadNegotiationTagLabel(tag: string | null): string | null {
   if (tag === 'amarelo') return '🟡 Atenção'
   return null
 }
+
+// Cor de fundo do card no Kanban quando o lead tem uma tag de negociação —
+// prioridade mais alta que "atrasado"/"anexo pendente" na borda do card.
+export const LEAD_NEGOTIATION_TAG_CARD_CLASSES: Record<string, string> = {
+  vermelho: 'border-red-500/60',
+  amarelo: 'border-yellow-500/60',
+}
+
+// Urgência do próximo contato — mesma lógica visual do sistema de origem
+// (KanbanBoard.tsx: getContactUrgency), reaproveitada no Kanban, na Lista e
+// na Ficha do Lead. `null` pra etapa terminal (não faz sentido cobrar
+// próximo contato de um lead já fechado).
+export function getLeadContactUrgency(nextContactAt: string, status: string) {
+  if (isLeadTerminalStatus(status)) return null
+  const d = new Date(nextContactAt)
+  d.setHours(0, 0, 0, 0)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const diffDias = Math.ceil((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+
+  if (diffDias < 0) {
+    return { label: 'ATRASADO', classes: 'bg-red-500/15 text-red-400 border border-red-500/30', dot: 'bg-red-500', atrasado: true }
+  }
+  if (diffDias === 0) {
+    return { label: 'HOJE', classes: 'bg-orange-500/15 text-orange-400 border border-orange-500/30', dot: 'bg-orange-500', atrasado: false }
+  }
+  if (diffDias === 1) {
+    return { label: 'AMANHÃ', classes: 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30', dot: 'bg-yellow-500', atrasado: false }
+  }
+  return { label: null, classes: 'bg-gold-500/10 text-gold-500 border border-gold-500/20', dot: 'bg-gold-500', atrasado: false }
+}
+
+export const LEAD_CLOSING_LABELS: Record<string, string> = {
+  ganho: 'Ganho em',
+  perdido: 'Perdido em',
+  desqualificado: 'Desqualificado em',
+  consumidor_final: 'Repassado em',
+}

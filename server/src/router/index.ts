@@ -36,6 +36,8 @@ import { mensagensRhRouter } from './mensagensRh.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
 import { integracoesRouter } from './integracoes.js'
 import { leadsRouter } from './leads.js'
+import { leadsRelatoriosRouter } from './leadsRelatorios.js'
+import { leadsRegioesRouter } from './leadsRegioes.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { router } from './_base.js'
@@ -81,6 +83,8 @@ export const appRouter = router({
   contasVinculadas: contasVinculadasRouter,
   integracoes: integracoesRouter,
   leads: leadsRouter,
+  leadsRelatorios: leadsRelatoriosRouter,
+  leadsRegioes: leadsRegioesRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
 })

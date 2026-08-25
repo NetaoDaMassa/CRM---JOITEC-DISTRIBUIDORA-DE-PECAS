@@ -55,6 +55,32 @@ const EMPRESA_SLUG_MAP = {
 const src = createClient({ url: `file:${SOURCE_PATH}` })
 const dst = createClient({ url: `file:${TARGET_PATH}` })
 
+// O destino é o banco AO VIVO da aplicação (gente usando o sistema
+// enquanto isso roda) — SQLITE_BUSY é esperado de vez em quando por causa
+// de trava momentânea entre esta conexão e as da aplicação. busy_timeout
+// manda o SQLite esperar e tentar de novo sozinho por até 30s antes de
+// desistir, em vez de falhar na hora. Reforçado com um retry manual no
+// helper `insert()` abaixo pra qualquer SQLITE_BUSY que escape disso.
+await dst.execute('PRAGMA busy_timeout = 30000')
+
+async function comRetry(fn, tentativas = 5) {
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn()
+    } catch (err) {
+      const ehBusy = err?.code === 'SQLITE_BUSY' || /database is locked/i.test(String(err?.message))
+      if (!ehBusy || i === tentativas - 1) throw err
+      const espera = 500 * (i + 1)
+      console.log(`  ⏳ banco ocupado, tentando de novo em ${espera}ms (tentativa ${i + 1}/${tentativas})...`)
+      await new Promise((r) => setTimeout(r, espera))
+    }
+  }
+}
+
+async function dstExec(query) {
+  return comRetry(() => dst.execute(query))
+}
+
 const relatorio = {
   empresasSemMapa: [],
   vendedoresSemCorrespondencia: new Map(), // username -> {name, empresaAntigaId}
@@ -75,7 +101,7 @@ async function insert(table, columns, values) {
   if (!APPLY) return proximoIdFalso--
   const placeholders = columns.map(() => '?').join(', ')
   const sql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`
-  const r = await dst.execute({ sql, args: values })
+  const r = await dstExec({ sql, args: values })
   return Number(r.lastInsertRowid)
 }
 
@@ -84,7 +110,7 @@ async function main() {
 
   // ── 1) Empresas ────────────────────────────────────────────────────────
   const empresasSrc = (await src.execute('SELECT id, name, slug FROM companies')).rows
-  const empresasDst = (await dst.execute('SELECT id, nome, slug FROM empresas')).rows
+  const empresasDst = (await dstExec('SELECT id, nome, slug FROM empresas')).rows
   const empresaIdMap = new Map() // old company.id -> new empresas.id
   for (const e of empresasSrc) {
     const novoSlug = EMPRESA_SLUG_MAP[e.slug]
@@ -102,7 +128,7 @@ async function main() {
 
   // ── 2) Vendedores (users) — casados por username, escopados pela empresa mapeada ──
   const usersSrc = (await src.execute('SELECT id, company_id, username, name FROM users')).rows
-  const usersDstRows = (await dst.execute('SELECT id, empresa_id, username FROM users')).rows
+  const usersDstRows = (await dstExec('SELECT id, empresa_id, username FROM users')).rows
   const usersDstByKey = new Map()
   for (const u of usersDstRows) usersDstByKey.set(`${u.empresa_id}:${u.username}`, u.id)
   const vendorIdMap = new Map() // old users.id -> new users.id
@@ -115,7 +141,7 @@ async function main() {
   }
   // Admin de cada empresa nova (pra fallback de autor de nota/tentativa/anexo
   // quando o vendedor original não tem correspondência) — prioriza superAdmin.
-  const adminsDst = (await dst.execute("SELECT id, empresa_id, super_admin FROM users WHERE role = 'admin'")).rows
+  const adminsDst = (await dstExec("SELECT id, empresa_id, super_admin FROM users WHERE role = 'admin'")).rows
   const adminPorEmpresa = new Map()
   for (const a of adminsDst) {
     const atual = adminPorEmpresa.get(a.empresa_id)
@@ -138,7 +164,7 @@ async function main() {
     const novaEmpresaId = empresaIdMap.get(r.company_id)
     if (!novaEmpresaId) continue
     const existente = (
-      await dst.execute({
+      await dstExec({
         sql: 'SELECT id FROM lead_regions WHERE empresa_id = ? AND name = ?',
         args: [novaEmpresaId, r.name],
       })
@@ -160,7 +186,7 @@ async function main() {
     const novaRegiaoId = regionIdMap.get(d.region_id)
     if (!novaEmpresaId || !novaRegiaoId) { conta('lead_ddds', 'pulados'); continue }
     const existente = (
-      await dst.execute({ sql: 'SELECT id FROM lead_ddds WHERE empresa_id = ? AND ddd = ?', args: [novaEmpresaId, d.ddd] })
+      await dstExec({ sql: 'SELECT id FROM lead_ddds WHERE empresa_id = ? AND ddd = ?', args: [novaEmpresaId, d.ddd] })
     ).rows[0]
     if (existente) {
       conta('lead_ddds', 'pulados')
@@ -177,7 +203,7 @@ async function main() {
     const novoVendorId = vendorIdMap.get(rv.vendor_id)
     if (!novaRegiaoId || !novoVendorId) { conta('lead_region_vendedores', 'pulados'); continue }
     const existente = (
-      await dst.execute({
+      await dstExec({
         sql: 'SELECT id FROM lead_region_vendedores WHERE region_id = ? AND vendor_id = ?',
         args: [novaRegiaoId, novoVendorId],
       })
@@ -196,7 +222,7 @@ async function main() {
     const novaRegiaoId = regionIdMap.get(rr.region_id)
     if (!novaRegiaoId) { conta('lead_round_robin_state', 'pulados'); continue }
     const existente = (
-      await dst.execute({ sql: 'SELECT id FROM lead_round_robin_state WHERE region_id = ?', args: [novaRegiaoId] })
+      await dstExec({ sql: 'SELECT id FROM lead_round_robin_state WHERE region_id = ?', args: [novaRegiaoId] })
     ).rows[0]
     if (existente) {
       conta('lead_round_robin_state', 'pulados')
@@ -213,7 +239,7 @@ async function main() {
     const novaEmpresaId = empresaIdMap.get(c.company_id)
     if (!novaEmpresaId) continue
     const existente = (
-      await dst.execute({ sql: 'SELECT id FROM lead_campaigns WHERE empresa_id = ? AND name = ?', args: [novaEmpresaId, c.name] })
+      await dstExec({ sql: 'SELECT id FROM lead_campaigns WHERE empresa_id = ? AND name = ?', args: [novaEmpresaId, c.name] })
     ).rows[0]
     if (existente) {
       campaignIdMap.set(c.id, existente.id)
@@ -242,18 +268,24 @@ async function main() {
     )
   ).rows
 
-  // Leads já migrados anteriormente (idempotência) — por empresa nova.
-  const jaMigrados = new Set() // `${novaEmpresaId}:${origemLeadId}`
+  // Leads já migrados anteriormente (idempotência) — por empresa nova. Guarda
+  // o id novo pra popular leadIdMap MESMO pra quem já existe — importante
+  // pra permitir "completar" um lead cujos filhos (notas/anexos/
+  // histórico/tentativas) ficaram faltando de uma rodada anterior que caiu
+  // no meio (ver checagem por tabela mais abaixo, passos 9-12).
+  const jaMigrados = new Map() // `${novaEmpresaId}:${origemLeadId}` -> id novo
   const existentesRows = (
-    await dst.execute('SELECT empresa_id, origem_lead_id FROM leads WHERE origem_lead_id IS NOT NULL')
+    await dstExec('SELECT id, empresa_id, origem_lead_id FROM leads WHERE origem_lead_id IS NOT NULL')
   ).rows
-  for (const e of existentesRows) jaMigrados.add(`${e.empresa_id}:${e.origem_lead_id}`)
+  for (const e of existentesRows) jaMigrados.set(`${e.empresa_id}:${e.origem_lead_id}`, e.id)
 
   const leadIdMap = new Map() // old leads.id -> new leads.id
   for (const l of leadsSrc) {
     const novaEmpresaId = empresaIdMap.get(l.company_id)
     if (!novaEmpresaId) continue
-    if (jaMigrados.has(`${novaEmpresaId}:${l.id}`)) {
+    const existenteId = jaMigrados.get(`${novaEmpresaId}:${l.id}`)
+    if (existenteId) {
+      leadIdMap.set(l.id, existenteId)
       conta('leads', 'pulados')
       continue
     }
@@ -295,12 +327,27 @@ async function main() {
     if (novaEmpresaId && leadIdMap.has(l.id)) empresaPorOldLeadId.set(l.id, novaEmpresaId)
   }
 
+  // Pra cada tabela filha, marca quais leads (id novo) já têm pelo menos 1
+  // linha migrada — cobre o caso de uma rodada anterior ter caído no meio
+  // (ex: banco ocupado) depois de inserir o lead mas antes de terminar os
+  // filhos dele: aqui a gente completa só o que faltou, sem duplicar o que
+  // já tinha entrado.
+  async function leadsComFilhosEm(tabela) {
+    const r = await dstExec(`SELECT DISTINCT lead_id FROM ${tabela}`)
+    return new Set(r.rows.map((row) => row.lead_id))
+  }
+  const leadsComNotas = await leadsComFilhosEm('lead_notes')
+  const leadsComAnexos = await leadsComFilhosEm('lead_attachments')
+  const leadsComHistorico = await leadsComFilhosEm('lead_history')
+  const leadsComTentativas = await leadsComFilhosEm('lead_contact_attempts')
+
   // ── 9) Notas ────────────────────────────────────────────────────────────
   const notesSrc = (await src.execute('SELECT id, lead_id, user_id, type, content, next_contact_at, created_at FROM lead_notes')).rows
   for (const n of notesSrc) {
     const novoLeadId = leadIdMap.get(n.lead_id)
     const novaEmpresaId = empresaPorOldLeadId.get(n.lead_id)
     if (!novoLeadId || !novaEmpresaId) continue
+    if (leadsComNotas.has(novoLeadId)) { conta('lead_notes', 'pulados'); continue }
     const autorId = autorFallback(novaEmpresaId, n.user_id)
     if (!autorId) { conta('lead_notes', 'pulados'); continue }
     await insert(
@@ -319,6 +366,7 @@ async function main() {
     const novoLeadId = leadIdMap.get(a.lead_id)
     const novaEmpresaId = empresaPorOldLeadId.get(a.lead_id)
     if (!novoLeadId || !novaEmpresaId) continue
+    if (leadsComAnexos.has(novoLeadId)) { conta('lead_attachments', 'pulados'); continue }
     const autorId = autorFallback(novaEmpresaId, a.user_id)
     if (!autorId) { conta('lead_attachments', 'pulados'); continue }
     await insert(
@@ -339,6 +387,7 @@ async function main() {
     const novoLeadId = leadIdMap.get(h.lead_id)
     const novaEmpresaId = empresaPorOldLeadId.get(h.lead_id)
     if (!novoLeadId || !novaEmpresaId) continue
+    if (leadsComHistorico.has(novoLeadId)) { conta('lead_history', 'pulados'); continue }
     const novoUserId = h.user_id ? vendorIdMap.get(h.user_id) ?? null : null
     const novoFromVendor = h.from_vendor_id ? vendorIdMap.get(h.from_vendor_id) ?? null : null
     const novoToVendor = h.to_vendor_id ? vendorIdMap.get(h.to_vendor_id) ?? null : null
@@ -358,6 +407,7 @@ async function main() {
     const novoLeadId = leadIdMap.get(c.lead_id)
     const novaEmpresaId = empresaPorOldLeadId.get(c.lead_id)
     if (!novoLeadId || !novaEmpresaId) continue
+    if (leadsComTentativas.has(novoLeadId)) { conta('lead_contact_attempts', 'pulados'); continue }
     const autorId = autorFallback(novaEmpresaId, c.user_id)
     if (!autorId) { conta('lead_contact_attempts', 'pulados'); continue }
     await insert(
@@ -386,7 +436,7 @@ async function main() {
     if (!novaEmpresaId) continue
     const novoLeadId = v.lead_id ? leadIdMap.get(v.lead_id) ?? null : null
     const existente = (
-      await dst.execute({
+      await dstExec({
         sql: 'SELECT id FROM lead_tracking_visitors WHERE empresa_id = ? AND visitor_uid = ?',
         args: [novaEmpresaId, v.visitor_uid],
       })

@@ -66,6 +66,7 @@ export default function VendorDashboard() {
   const { data } = trpc.painel.meuResumo.useQuery()
   const hoje = hojeBrString()
   const { data: compromissosHoje } = trpc.compromissos.listar.useQuery({ dataInicio: hoje, dataFim: hoje })
+  const { data: leadsStats } = trpc.leads.stats.useQuery()
 
   // "Faltam N vendas" traduz o % da meta pra algo acionável — em vez de só
   // "62%", dá pra saber exatamente quantas vendas do tamanho médio de vocês
@@ -249,6 +250,33 @@ export default function VendorDashboard() {
                 <span className="text-xs text-red-400">{c.dias} dia(s)</span>
               </Link>
             ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-dark-100">🧲 Meus leads (site)</h2>
+          <Link to="/vendedor/leads" className="text-xs text-gold-400 underline">
+            Ver Leads →
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div>
+            <p className="text-xs text-dark-400">Total</p>
+            <p className="text-2xl font-bold text-dark-50">{leadsStats?.total ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Novos</p>
+            <p className="text-2xl font-bold text-dark-50">{leadsStats?.byStatus?.novo ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Em negociação</p>
+            <p className="text-2xl font-bold text-dark-50">{leadsStats?.byStatus?.em_negociacao ?? 0}</p>
+          </div>
+          <div>
+            <p className="text-xs text-dark-400">Conversão</p>
+            <p className="text-2xl font-bold text-gold-400">{leadsStats?.conversion ?? 0}%</p>
           </div>
         </div>
       </div>

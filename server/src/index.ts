@@ -16,6 +16,7 @@ import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
+import { trackingRouter, TRACKER_JS } from './routes/tracking.js'
 
 config()
 
@@ -37,6 +38,17 @@ app.use(express.json())
 // "Failed to fetch" mesmo o GET de listar vaga funcionando (GET não precisa
 // de preflight, POST com JSON precisa).
 app.use('/api/careers', cors({ origin: true }), careersRouter)
+
+// Rastreamento de leads dos sites (fase 2 da migração do CRM de marketing) —
+// mesma razão do CORS aberto/ordem antes do global explicada acima pro
+// /api/careers. `tracker.js` também precisa ficar fora do CORS travado (é
+// um <script src> cross-origin, embutido nos sites via <script>, não uma
+// chamada fetch — mas serve-lo aqui, antes do CORS global, mantém tudo
+// junto e não depende de nenhuma pasta estática extra no Dockerfile).
+app.use('/api/tracking', cors({ origin: true }), trackingRouter)
+app.get('/tracker.js', cors({ origin: true }), (req, res) => {
+  res.type('application/javascript').send(TRACKER_JS)
+})
 
 app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173', credentials: true }))
 app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))

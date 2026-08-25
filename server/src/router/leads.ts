@@ -914,4 +914,38 @@ export const leadsRouter = router({
 
       return { total, byStatus, byVendor, conversion }
     }),
+
+  // Leads com próximo contato agendado num intervalo de datas — alimenta a
+  // Agenda (CalendarBoard.tsx), mesclado ali junto com `compromissos.listar`
+  // como uma fonte de dado a mais (não vira linha em `compromissos`, ver
+  // plano fase 2 bloco D). Mesmo formato de input de `compromissos.listar`.
+  listReminders: protectedProcedure
+    .input(z.object({ dataInicio: z.string(), dataFim: z.string(), vendedorId: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const rows = await db.query.leads.findMany({
+        where: and(eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt), isNotNull(leads.nextContactAt)),
+        with: { vendor: { columns: { id: true, name: true } } },
+      })
+
+      const inicio = new Date(`${input.dataInicio}T00:00:00`)
+      const fim = new Date(`${input.dataFim}T23:59:59`)
+
+      const filtrados = rows.filter((l) => {
+        if (!l.nextContactAt) return false
+        const data = new Date(l.nextContactAt.replace(' ', 'T'))
+        if (data < inicio || data > fim) return false
+        if (ctx.user.role === 'vendor') return l.vendorId === ctx.user.id
+        if (input.vendedorId) return l.vendorId === input.vendedorId
+        return true
+      })
+
+      return filtrados.map((l) => ({
+        id: l.id,
+        name: l.name,
+        phone: l.phone,
+        status: l.status,
+        nextContactAt: l.nextContactAt,
+        vendor: l.vendor,
+      }))
+    }),
 })
