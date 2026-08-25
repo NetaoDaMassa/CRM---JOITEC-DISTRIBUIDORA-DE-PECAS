@@ -22,7 +22,12 @@ export default function VendorKanban() {
           className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5"
         />
       </div>
-      <FunilBoard cards={cards ?? []} permitirVendaRapida={ehCompretecLojaFisica} mostrarFaturamento={ehCompretecLojaFisica} />
+      <FunilBoard
+        cards={cards ?? []}
+        permitirVendaRapida={ehCompretecLojaFisica}
+        mostrarFaturamento={ehCompretecLojaFisica}
+        mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
+      />
     </div>
   )
 }

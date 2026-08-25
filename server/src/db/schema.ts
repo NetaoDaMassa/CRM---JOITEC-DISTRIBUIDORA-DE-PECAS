@@ -331,7 +331,24 @@ export const funilMensal = sqliteTable('funil_mensal', {
     // 'faturamento' só existe pra Compretec Loja Física (ver
     // ETAPAS_FATURAMENTO no FunilBoard.tsx) — vem sempre depois de
     // 'fechado', pro card já vendido acompanhar se saiu cupom/nota fiscal.
-    enum: ['novo', 'abordagem', 'interessado', 'negociacao', 'fechado', 'faturamento', 'perdido', 'sem_contato', 'consumidor_final'],
+    // 'consumidor_final' é diferente de 'consumidor_final_loja': a primeira
+    // exige escolher pra qual empresa o cliente foi repassado (uso das
+    // empresas que NÃO vendem no varejo, tipo Tubos e Odin Compressores); a
+    // segunda é só uma etapa simples, exclusiva da Compretec Loja Física
+    // (que JÁ é a loja de varejo), sem exigir nada — Daniela só joga o card
+    // pra lá depois de visualizar/processar a venda pro consumidor final.
+    enum: [
+      'novo',
+      'abordagem',
+      'interessado',
+      'negociacao',
+      'fechado',
+      'faturamento',
+      'perdido',
+      'sem_contato',
+      'consumidor_final',
+      'consumidor_final_loja',
+    ],
   }).notNull().default('novo'),
   dataEntradaEtapa: text('data_entrada_etapa').notNull().default(sql`(datetime('now'))`),
   qtdTentativasContato: integer('qtd_tentativas_contato').notNull().default(0),

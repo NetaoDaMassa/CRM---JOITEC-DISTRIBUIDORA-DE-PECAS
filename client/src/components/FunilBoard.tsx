@@ -30,6 +30,12 @@ const ETAPAS = [
   { value: 'perdido', label: 'Perdido' },
   { value: 'sem_contato', label: 'Sem contato' },
   { value: 'consumidor_final', label: 'Consumidor Final / Repassado' },
+  // Etapa simples, só pra Compretec Loja Física — filtrada via
+  // `mostrarConsumidorFinalLoja`, nunca aparece nos boards de outra
+  // empresa. Diferente de 'consumidor_final' acima (que exige empresa de
+  // repasse): aqui é só "visualizei/processei esse consumidor final",
+  // sem pedir nada.
+  { value: 'consumidor_final_loja', label: 'Consumidor Final' },
 ] as const
 
 const ETAPA_LABEL: Record<string, string> = Object.fromEntries(ETAPAS.map((e) => [e.value, e.label]))
@@ -356,6 +362,7 @@ export default function FunilBoard({
   permitirVendaRapida,
   vendedorIdVendaRapida,
   mostrarFaturamento,
+  mostrarConsumidorFinalLoja,
   apenasEtapas,
 }: {
   cards: Card[]
@@ -366,16 +373,18 @@ export default function FunilBoard({
   vendedorIdVendaRapida?: number
   // Etapa "Faturamento" — só Compretec Loja Física passa isso como true.
   mostrarFaturamento?: boolean
+  // Etapa "Consumidor Final" (simples) — idem, só Compretec Loja Física.
+  mostrarConsumidorFinalLoja?: boolean
   // Restringe o board a só essas etapas (ex: ['fechado', 'faturamento'] na
   // visão "Faturamento Geral" da Daniela) — sem isso, mostra tudo (ou tudo
-  // exceto Faturamento, conforme `mostrarFaturamento`).
+  // exceto Faturamento/Consumidor Final, conforme as flags acima).
   apenasEtapas?: string[]
 }) {
   const etapasVisiveis = apenasEtapas
     ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
-    : mostrarFaturamento
-    ? ETAPAS
-    : ETAPAS.filter((e) => e.value !== 'faturamento')
+    : ETAPAS.filter((e) => (e.value === 'faturamento' ? mostrarFaturamento : true)).filter((e) =>
+        e.value === 'consumidor_final_loja' ? mostrarConsumidorFinalLoja : true
+      )
   const utils = trpc.useUtils()
   const [vendaRapidaAberta, setVendaRapidaAberta] = useState(false)
   // Guarda só o id, não o objeto — assim, quando uma mutação invalida a
@@ -672,6 +681,7 @@ export default function FunilBoard({
           key={cardAberto.funilMensalId}
           card={cardAberto}
           mostrarFaturamento={mostrarFaturamento}
+          mostrarConsumidorFinalLoja={mostrarConsumidorFinalLoja}
           apenasEtapas={apenasEtapas}
           onClose={() => setCardAbertoId(null)}
           onChanged={() => {
@@ -854,19 +864,21 @@ function CardModal({
   onClose,
   onChanged,
   mostrarFaturamento,
+  mostrarConsumidorFinalLoja,
   apenasEtapas,
 }: {
   card: Card
   onClose: () => void
   onChanged: () => void
   mostrarFaturamento?: boolean
+  mostrarConsumidorFinalLoja?: boolean
   apenasEtapas?: string[]
 }) {
   const etapasVisiveis = apenasEtapas
     ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
-    : mostrarFaturamento
-    ? ETAPAS
-    : ETAPAS.filter((e) => e.value !== 'faturamento')
+    : ETAPAS.filter((e) => (e.value === 'faturamento' ? mostrarFaturamento : true)).filter((e) =>
+        e.value === 'consumidor_final_loja' ? mostrarConsumidorFinalLoja : true
+      )
   const { user } = useAuth()
   const [confirmarExclusaoCard, setConfirmarExclusaoCard] = useState(false)
   const excluirCardMut = trpc.funil.excluirCard.useMutation({

@@ -52,6 +52,7 @@ export default function AdminKanban() {
           permitirVendaRapida={ehCompretecLojaFisica}
           vendedorIdVendaRapida={vendedorId}
           mostrarFaturamento={ehCompretecLojaFisica}
+          mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
         />
       )}
     </div>

@@ -19,6 +19,10 @@ const ETAPA_VALUES = [
   'perdido',
   'sem_contato',
   'consumidor_final',
+  // Etapa simples, exclusiva da Compretec Loja Física — diferente de
+  // 'consumidor_final' (que exige empresaRepasse), essa não pede nenhum
+  // campo extra pra mover o card pra cá.
+  'consumidor_final_loja',
 ] as const
 
 // Compartilhado entre `meuFunil` (vendedor vendo o próprio funil),
