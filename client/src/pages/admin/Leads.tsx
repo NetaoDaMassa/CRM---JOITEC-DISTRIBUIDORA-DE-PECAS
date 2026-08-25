@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -49,6 +49,14 @@ export default function Leads() {
   const [transferLead, setTransferLead] = useState<{ id: number; name: string } | null>(null)
   const [deleteLead, setDeleteLead] = useState<{ id: number; name: string } | null>(null)
   const [limpezaOpen, setLimpezaOpen] = useState(false)
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
+  const [transferMuitosOpen, setTransferMuitosOpen] = useState(false)
+
+  // Muda filtro/página = a seleção de outra tela de resultados não faz mais
+  // sentido visível — limpa pra não confundir com "X selecionados" fantasma.
+  useEffect(() => {
+    setSelecionados(new Set())
+  }, [status, vendorId, search, dateFrom, dateTo, soDoSite, page])
 
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
 
@@ -73,6 +81,21 @@ export default function Leads() {
       toast.error(err.message)
     },
   })
+
+  function toggleSelecionado(id: number) {
+    setSelecionados((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const idsNaPagina = data?.data.map((l: any) => l.id) ?? []
+  const todosSelecionadosNaPagina = idsNaPagina.length > 0 && idsNaPagina.every((id: number) => selecionados.has(id))
+  function toggleSelecionarTodos() {
+    setSelecionados((prev) => (todosSelecionadosNaPagina ? new Set() : new Set([...prev, ...idsNaPagina])))
+  }
 
   return (
     <div className="p-6 space-y-4">
@@ -157,6 +180,21 @@ export default function Leads() {
         </label>
       </div>
 
+      {isAdmin && selecionados.size > 0 && (
+        <div className="bg-gold-900/15 border border-gold-700/40 rounded-2xl p-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-sm text-gold-300">{selecionados.size} lead(s) selecionado(s)</p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setSelecionados(new Set())}>
+              Limpar seleção
+            </Button>
+            <Button size="sm" onClick={() => setTransferMuitosOpen(true)}>
+              <ArrowRightLeft size={14} />
+              Transferir selecionados
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
         {isLoading ? (
           <div className="p-4 space-y-2">
@@ -171,6 +209,17 @@ export default function Leads() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-dark-600 bg-dark-900/40">
+                  {isAdmin && (
+                    <th className="px-3 py-3 w-8">
+                      <input
+                        type="checkbox"
+                        checked={todosSelecionadosNaPagina}
+                        onChange={toggleSelecionarTodos}
+                        className="accent-gold-500"
+                        title="Selecionar todos nesta página"
+                      />
+                    </th>
+                  )}
                   <th className="text-left text-dark-400 font-medium px-5 py-3">Lead</th>
                   <th className="text-left text-dark-400 font-medium px-5 py-3">Etapa</th>
                   {isAdmin && <th className="text-left text-dark-400 font-medium px-5 py-3">Vendedor</th>}
@@ -185,6 +234,16 @@ export default function Leads() {
                   const urgency = lead.nextContactAt ? getLeadContactUrgency(lead.nextContactAt, lead.status) : null
                   return (
                     <tr key={lead.id} className="hover:bg-dark-700/30 transition-colors cursor-pointer" onClick={() => navigate(`${basePath}/${lead.id}`)}>
+                      {isAdmin && (
+                        <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selecionados.has(lead.id)}
+                            onChange={() => toggleSelecionado(lead.id)}
+                            className="accent-gold-500"
+                          />
+                        </td>
+                      )}
                       <td className="px-5 py-3">
                         <p className="font-medium text-dark-100">{lead.name}</p>
                         <p className="text-xs text-dark-500">
@@ -274,6 +333,18 @@ export default function Leads() {
 
       <TransferModal lead={transferLead} onClose={() => setTransferLead(null)} vendedores={vendedores ?? []} />
 
+      <TransferMuitosModal
+        open={transferMuitosOpen}
+        total={selecionados.size}
+        leadIds={[...selecionados]}
+        vendedores={vendedores ?? []}
+        onClose={() => setTransferMuitosOpen(false)}
+        onTransferido={() => {
+          setTransferMuitosOpen(false)
+          setSelecionados(new Set())
+        }}
+      />
+
       <Modal open={!!deleteLead} onClose={() => setDeleteLead(null)} title="Excluir lead" size="sm">
         <p className="text-dark-300 text-sm mb-5">Tem certeza que quer excluir "{deleteLead?.name}"?</p>
         <div className="flex gap-3">
@@ -339,6 +410,64 @@ function TransferModal({
             loading={mut.isPending}
             disabled={!newVendorId}
             onClick={() => lead && mut.mutate({ leadId: lead.id, newVendorId: Number(newVendorId) })}
+          >
+            Transferir
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function TransferMuitosModal({
+  open,
+  total,
+  leadIds,
+  vendedores,
+  onClose,
+  onTransferido,
+}: {
+  open: boolean
+  total: number
+  leadIds: number[]
+  vendedores: { id: number; name: string }[]
+  onClose: () => void
+  onTransferido: () => void
+}) {
+  const utils = trpc.useUtils()
+  const [newVendorId, setNewVendorId] = useState('')
+
+  const mut = trpc.leads.transferMuitos.useMutation({
+    onSuccess(data) {
+      toast.success(`${data.total} lead(s) transferido(s)`)
+      utils.leads.list.invalidate()
+      setNewVendorId('')
+      onTransferido()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Transferir ${total} lead(s)`} size="sm">
+      <div className="space-y-4">
+        <Select
+          label="Novo vendedor"
+          value={newVendorId}
+          onChange={(e) => setNewVendorId(e.target.value)}
+          placeholder="Selecione..."
+          options={vendedores.map((v) => ({ value: v.id, label: v.name }))}
+        />
+        <div className="flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            className="flex-1"
+            loading={mut.isPending}
+            disabled={!newVendorId || leadIds.length === 0}
+            onClick={() => mut.mutate({ leadIds, newVendorId: Number(newVendorId) })}
           >
             Transferir
           </Button>

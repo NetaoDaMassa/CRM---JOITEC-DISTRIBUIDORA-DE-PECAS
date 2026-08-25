@@ -813,6 +813,57 @@ export const leadsRouter = router({
       return { success: true }
     }),
 
+  // Transferência em massa — mesma lógica do `transfer` de 1 lead só (reseta
+  // relógio de rodízio, grava histórico por lead), rodada em loop pra cada
+  // id marcado na tela de Leads. 1 notificação só no final (em vez de 1 por
+  // lead) pra não inundar o vendedor de destino.
+  transferMuitos: adminProcedure
+    .input(z.object({ leadIds: z.array(z.number()).min(1), newVendorId: z.number(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const newVendor = await db.query.users.findFirst({ where: eq(users.id, input.newVendorId) })
+      if (!newVendor || newVendor.empresaId !== ctx.empresaId) throw new Error('Vendedor de destino inválido')
+
+      const leadsAlvo = await db.query.leads.findMany({
+        where: and(inArray(leads.id, input.leadIds), eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
+      })
+      if (!leadsAlvo.length) throw new Error('Nenhum lead válido selecionado')
+
+      for (const lead of leadsAlvo) {
+        const previousVendor = lead.vendorId
+        await db
+          .update(leads)
+          .set({
+            vendorId: input.newVendorId,
+            assignedAt: new Date().toISOString(),
+            updatedAt: sql`(datetime('now'))`,
+            idleAlertSentAt: null,
+            autoReassignedAt: null,
+          })
+          .where(eq(leads.id, lead.id))
+
+        await db.insert(leadHistory).values({
+          empresaId: ctx.empresaId,
+          leadId: lead.id,
+          userId: ctx.user.id,
+          action: 'transferido',
+          fromStatus: lead.status,
+          toStatus: lead.status,
+          fromVendorId: previousVendor,
+          toVendorId: input.newVendorId,
+          details: `Transferido em massa do vendedor #${previousVendor} para #${input.newVendorId}. ${input.reason ?? ''}`,
+        })
+      }
+
+      await db.insert(notifications).values({
+        vendedorId: input.newVendorId,
+        type: 'lead_assigned',
+        title: 'Leads transferidos para você',
+        message: `${leadsAlvo.length} lead(s) foram transferidos para você agora.`,
+      })
+
+      return { success: true, total: leadsAlvo.length }
+    }),
+
   delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const existing = await db.query.leads.findFirst({
       where: and(eq(leads.id, input.id), eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
