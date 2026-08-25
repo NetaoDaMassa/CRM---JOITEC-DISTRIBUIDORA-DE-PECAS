@@ -35,11 +35,6 @@ const SO_ODIN_COMPRESSORES = 'odin-compressores'
 // só) só existe pra Compretec Loja Física — é a única empresa com etapa
 // "Faturamento" no funil.
 const SO_COMPRETEC_LOJA_FISICA = 'compretec-loja-fisica'
-// Devolução (módulo portado do sistema separado) só atende essas 4 empresas
-// — as mesmas do sistema original (Joitec, Odin Tubos, Odin Compressores,
-// Compretec Loja Física). As demais (Joitec Automação, Compretec
-// E-commerce) nunca usaram esse fluxo.
-const EMPRESAS_DEVOLUCAO = ['joitec', 'odin-tubos', 'odin-compressores', 'compretec-loja-fisica']
 // Mesma lista de SLUGS_COM_ANALYTICS_MARKETING em server/src/router/integracoes.ts
 // — só essas 3 empresas têm o tracker do CRM de marketing instalado no site.
 const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores']
@@ -66,10 +61,10 @@ export const ADMIN_LINKS = [
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
-  { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
-  { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_mecanica' },
-  { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_demonstracao' },
-  { to: '/admin/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
+  { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
+  { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
+  { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
+  { to: '/admin/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, feature: 'devolucoes' },
   // RH — vagas/candidatos/mensagens, portado do CRM-GRUPO-ODIN.
   { to: '/admin/vagas', label: 'Vagas', icon: Briefcase, feature: 'vagas' },
   { to: '/admin/candidatos', label: 'Candidatos', icon: Contact, feature: 'candidatos' },
@@ -108,10 +103,10 @@ export const VENDOR_LINKS = [
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
-  { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
-  { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_mecanica' },
-  { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_demonstracao' },
-  { to: '/vendedor/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
+  { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
+  { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
+  { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
+  { to: '/vendedor/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, feature: 'devolucoes' },
   { to: '/vendedor/leads', label: 'Leads', icon: UserPlus, feature: 'leads' },
   { to: '/vendedor/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
 ]
@@ -177,13 +172,15 @@ export default function Sidebar() {
   // Mesma regra pros dois papéis agora: superAdmin sempre vê tudo; qualquer
   // outro (admin ou vendedor) precisa ter a `feature` do item liberada em
   // Permissões.
-  const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter(
-    (l) =>
+  const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter((l) => {
+    const somenteEmpresas: string[] | undefined = 'somenteEmpresas' in l ? (l as { somenteEmpresas?: string[] }).somenteEmpresas : undefined
+    return (
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
-      (!('somenteEmpresas' in l) || !l.somenteEmpresas || l.somenteEmpresas.includes(empresaAtiva?.slug ?? '')) &&
+      (!somenteEmpresas || somenteEmpresas.includes(empresaAtiva?.slug ?? '')) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
       (user?.superAdmin || !!minhasFeatures?.includes(l.feature))
-  )
+    )
+  })
 
   // Os 5 itens que sempre ficaram soltos, fora de ADMIN_LINKS/VENDOR_LINKS
   // (regra de visibilidade própria de cada um, não é `feature` normal) —

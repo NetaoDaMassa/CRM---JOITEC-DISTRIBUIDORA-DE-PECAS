@@ -5,11 +5,16 @@ import { hojeBr } from './dataBr.js'
 
 // Prefixo por empresa, igual ao sistema original (JOI/ODTC/ODC/CPT) — só
 // muda o id de referência (lá era slug fixo, aqui é o empresaId real do
-// CRM). Mantém as 4 empresas que o módulo de Devolução atende.
+// CRM). Liberado pra todas as empresas a pedido do João — as 3 últimas
+// (Joitec Automação, Comprefer, Compretec E-commerce) nunca tinham usado
+// esse fluxo antes.
 const PREFIXO_POR_EMPRESA: Record<number, string> = {
   1: 'JOI', // Joitec Distribuidora de Peças
   2: 'ODTC', // Odin Tubos e Conexões
+  3: 'JTA', // Joitec Automação
   4: 'ODC', // Odin Compressores
+  5: 'CPR', // Comprefer
+  6: 'CPE', // Compretec E-commerce
   7: 'CPT', // Compretec Loja Física
 }
 
