@@ -227,35 +227,106 @@ function formatarMoeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
 }
 
+function formatarDias(n: number): string {
+  return n > 0 ? `${n.toFixed(1)} dias` : '—'
+}
+
+function primeiroDiaMesString(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`
+}
+
+function hojeString(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+const FUNNEL_COLORS: Record<string, string> = {
+  novo: '#3b82f6',
+  abordagem: '#eab308',
+  qualificado: '#a855f7',
+  em_negociacao: '#f97316',
+  ganho: '#22c55e',
+  perdido: '#ef4444',
+  desqualificado: '#71717a',
+  consumidor_final: '#0d9de0',
+}
+
+function FunilConversao({ funnel, total }: { funnel: { status: string; label: string; count: number; conversionRate: number }[]; total: number }) {
+  const base = total || 1
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
+      <h3 className="font-heading text-gold-400 font-semibold mb-4">Funil de Conversão</h3>
+      <div className="space-y-2">
+        {funnel.map((stage) => {
+          const pct = Math.round((stage.count / base) * 100)
+          return (
+            <div key={stage.status} className="flex items-center gap-3">
+              <div className="w-28 shrink-0 text-right">
+                <span className="text-xs font-medium" style={{ color: FUNNEL_COLORS[stage.status] }}>{stage.label}</span>
+              </div>
+              <div className="flex-1 relative h-8 bg-dark-700 rounded-lg overflow-hidden">
+                <div
+                  className="h-full rounded-lg transition-all duration-700"
+                  style={{ width: `${Math.max(pct, stage.count > 0 ? 4 : 0)}%`, background: FUNNEL_COLORS[stage.status] }}
+                />
+                <div className="absolute inset-0 flex items-center px-3">
+                  <span className="text-xs font-bold text-white drop-shadow">{stage.count}</span>
+                </div>
+              </div>
+              <div className="w-16 shrink-0 text-right">
+                <span className="text-xs text-dark-400">{stage.conversionRate.toFixed(1)}%</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 function GeralTab() {
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim] = useState('')
+  // Sem data escolhida, a tela ficava somando o histórico inteiro e o Funil
+  // de Conversão perdia o sentido — padrão agora é o mês corrente.
+  const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
+  const [dataFim, setDataFim] = useState(hojeString())
   const { data, isLoading } = trpc.leadsRelatorios.reportGeral.useQuery({
     dataInicio: dataInicio || undefined,
     dataFim: dataFim || undefined,
   })
 
   return (
-    <div>
-      <div className="flex items-end gap-3 mb-5">
-        <Input label="De" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
-        <Input label="Até" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+    <div className="space-y-5">
+      <div className="flex items-end gap-3">
+        <Input label="Data inicial" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+        <Input label="Data final" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
       </div>
 
       {isLoading || !data ? (
         <p className="text-dark-500">Carregando...</p>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <StatTile label="Tempo médio até 1º contato" value={formatarHoras(data.tempoMedioPrimeiroContatoHoras)} sub="horas úteis" />
-          <StatTile label="Ticket médio" value={formatarMoeda(data.ticketMedio)} sub={`${data.totalGanhos} leads ganhos`} />
-          <StatTile label="Taxa de conversão" value={`${data.taxaConversaoPct.toFixed(1)}%`} sub={`de ${data.totalLeads} leads`} />
-          <StatTile label="Valor em negociação" value={formatarMoeda(data.valorEmNegociacao)} />
-          <div className="bg-dark-800 border border-dark-600 border-dashed rounded-2xl p-5">
-            <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">Meta</p>
-            <p className="text-2xl font-bold text-dark-500 mt-1">— definir</p>
-            <p className="text-xs text-dark-500 mt-0.5">Configure a meta de Leads quando quiser</p>
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <StatTile label="Total de Leads" value={String(data.totalLeads)} />
+            <StatTile label="Taxa de Conversão" value={`${data.taxaConversaoPct.toFixed(1)}%`} sub={`${data.totalGanhos} ganhos`} />
+            <StatTile label="Taxa de Perda" value={`${data.taxaPerda.toFixed(1)}%`} sub={`${data.totalPerdidosDesqualificados} perdidos/desqualificados`} />
+            <StatTile label="Tempo Médio de Fechamento" value={formatarDias(data.tempoMedioFechamentoDias)} sub="da atribuição até o fechamento" />
+            <StatTile label="Total de Vendas" value={formatarMoeda(data.totalVendas)} sub="soma dos pedidos ganhos" />
+            <StatTile label="Valor em Negociação" value={formatarMoeda(data.valorEmNegociacao)} sub="soma dos pedidos em negociação" />
           </div>
-        </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <StatTile label="Tempo médio até 1º contato" value={formatarHoras(data.tempoMedioPrimeiroContatoHoras)} sub="horas úteis" />
+            <StatTile label="Ticket médio" value={formatarMoeda(data.ticketMedio)} sub={`${data.totalGanhos} leads ganhos`} />
+            <div className="bg-dark-800 border border-dark-600 border-dashed rounded-2xl p-5">
+              <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">Meta</p>
+              <p className="text-2xl font-bold text-dark-500 mt-1">— definir</p>
+              <p className="text-xs text-dark-500 mt-0.5">Configure a meta de Leads quando quiser</p>
+            </div>
+          </div>
+
+          <FunilConversao funnel={data.funnel} total={data.totalLeads} />
+        </>
       )}
     </div>
   )

@@ -4,6 +4,7 @@ import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadHistory, leadContactAttempts, users } from '../db/schema.js'
 import { businessHoursElapsedMs } from '../lib/businessHours.js'
+import { STATUS_VALUES, STATUS_LABELS } from '../lib/leadsStatus.js'
 
 // Relatórios de marketing do módulo de Leads (bloco E do plano em
 // /Users/weslley/.claude/plans/stateful-soaring-moore.md). `slaOverview` e
@@ -147,21 +148,50 @@ export const leadsRelatoriosRouter = router({
       const avg = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0)
 
       const ganhos = todosLeads.filter((l) => l.status === 'ganho')
+      const perdidos = todosLeads.filter((l) => l.status === 'perdido')
+      const desqualificados = todosLeads.filter((l) => l.status === 'desqualificado')
       const ticketMedio = avg(ganhos.map((l) => l.finalOrderValue ?? 0).filter((v) => v > 0))
 
       const naoNovos = todosLeads.filter((l) => l.status !== 'novo')
       const taxaConversao = naoNovos.length ? (ganhos.length / naoNovos.length) * 100 : 0
 
+      const total = todosLeads.length
+      const taxaPerda = total > 0 ? ((perdidos.length + desqualificados.length) / total) * 100 : 0
+
+      // "Fechamento" = da atribuição ao vendedor até a etapa terminal
+      // (ganho/perdido/desqualificado) — mesmo critério do CRM antigo de
+      // marketing (reports.ts de lá), adaptado pro schema daqui.
+      const diasEntre = (de: string, ate: string) => (new Date(ate).getTime() - new Date(de).getTime()) / (1000 * 60 * 60 * 24)
+      const encerrados = [...ganhos, ...perdidos, ...desqualificados]
+      const tempoMedioFechamentoDias = avg(
+        encerrados.map((l) => diasEntre(l.assignedAt ?? l.createdAt, l.statusChangedAt ?? l.updatedAt))
+      )
+
       const emNegociacao = todosLeads.filter((l) => l.status === 'em_negociacao')
       const valorEmNegociacao = emNegociacao.reduce((sum, l) => sum + (l.orderValue ?? 0), 0)
+      const totalVendas = ganhos.reduce((sum, l) => sum + (l.finalOrderValue ?? 0), 0)
+
+      // % de cada etapa em relação ao total de leads do período (não da etapa
+      // anterior) — contagens são uma fotografia do status atual, não
+      // acumulativas, então "etapa atual / etapa anterior" pode passar de
+      // 100% ou zerar sempre que a etapa anterior estiver vazia.
+      const funnel = STATUS_VALUES.map((status) => {
+        const count = todosLeads.filter((l) => l.status === status).length
+        return { status, label: STATUS_LABELS[status], count, conversionRate: total > 0 ? (count / total) * 100 : 0 }
+      })
 
       return {
         tempoMedioPrimeiroContatoHoras: avg(temposPrimeiroContato),
         ticketMedio,
         taxaConversaoPct: taxaConversao,
         valorEmNegociacao,
-        totalLeads: todosLeads.length,
+        totalLeads: total,
         totalGanhos: ganhos.length,
+        taxaPerda,
+        totalPerdidosDesqualificados: perdidos.length + desqualificados.length,
+        tempoMedioFechamentoDias,
+        totalVendas,
+        funnel,
       }
     }),
 })
