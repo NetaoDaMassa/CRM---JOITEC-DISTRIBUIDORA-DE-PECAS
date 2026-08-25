@@ -394,7 +394,7 @@ export default function PainelFinanceiro() {
     return () => clearInterval(id)
   }, [slides.length, duracaoSlideMs, autoplay])
 
-  useAutoScroll(slideAtual, duracaoSlideMs)
+  useAutoScroll(slideAtual, duracaoSlideMs, autoplay)
 
   const Slide = slides[slideAtual].render
 

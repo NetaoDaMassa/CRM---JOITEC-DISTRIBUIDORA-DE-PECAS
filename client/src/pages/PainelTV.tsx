@@ -705,7 +705,7 @@ export default function PainelTV() {
     return () => clearInterval(id)
   }, [slides.length, segundos, autoplay])
 
-  useAutoScroll(slideAtual, segundos * 1000)
+  useAutoScroll(slideAtual, segundos * 1000, autoplay)
 
   const Slide = slides[slideAtual].render
 

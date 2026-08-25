@@ -19,11 +19,6 @@ export const ICONES_GRUPO: Record<string, LucideIcon> = {
 }
 export const NOMES_ICONES_GRUPO = Object.keys(ICONES_GRUPO)
 
-// CRM de marketing do Grupo Odin (sistema à parte, fora deste projeto) — o
-// vendedor usa pra atender os leads que chegam por marketing. Link externo
-// mesmo, sem nada embutido aqui.
-const MARKETING_URL = 'https://crm-odin.duckdns.org/login'
-
 // Joitec Automação é uma divisão da mesma marca Joitec — reaproveita a logo
 // padrão, sem arte própria (confirmado com o João).
 const LOGO_POR_EMPRESA: Record<string, string> = {
@@ -245,6 +240,16 @@ export default function Sidebar() {
     navigate('/login')
   }
 
+  // Busca rápida — com a sidebar cheia de grupos, é mais fácil digitar um
+  // pedaço do nome do que ficar abrindo grupo por grupo procurando. Enquanto
+  // tem texto digitado, ignora a estrutura de grupos e mostra tudo que bateu
+  // numa lista só (achar rápido é mais importante que manter a organização).
+  const [busca, setBusca] = useState('')
+  const buscaNormalizada = busca.trim().toLowerCase()
+  const itensBuscados = buscaNormalizada
+    ? todosItensVisiveis.filter((item) => item.label.toLowerCase().includes(buscaNormalizada))
+    : null
+
   return (
     <aside className="w-64 shrink-0 bg-dark-900 border-r border-dark-700 flex flex-col h-screen sticky top-0">
       <div className="px-4 py-4 border-b border-dark-700">
@@ -301,47 +306,60 @@ export default function Sidebar() {
         </div>
       )}
 
+      <div className="px-3 pt-3">
+        <div className="relative">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-dark-500" />
+          <input
+            type="text"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar no menu..."
+            className="w-full bg-dark-800 border border-dark-700 rounded-lg text-sm text-dark-100 placeholder-dark-500 pl-8 pr-2 py-1.5 focus:outline-none focus:border-gold-600"
+          />
+        </div>
+      </div>
+
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         <div className="space-y-1">
-          {grupos?.map((grupo) => {
-            const itensDoGrupo = grupo.itens.map((to) => itemPorTo.get(to)).filter((i): i is NonNullable<typeof i> => !!i)
-            if (itensDoGrupo.length === 0) return null
-            const GrupoIcon = ICONES_GRUPO[grupo.icone] ?? Folder
-            const aberto = grupoEstaAberto(grupo.id)
-            return (
-              <div key={grupo.id}>
-                <button
-                  onClick={() => alternarGrupo(grupo.id)}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full text-dark-300 hover:text-dark-100 hover:bg-dark-800"
-                >
-                  <GrupoIcon size={17} />
-                  <span className="flex-1 text-left">{grupo.nome}</span>
-                  {aberto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
-                </button>
-                {aberto && (
-                  <div className="pl-4 space-y-1 mt-1">
-                    {itensDoGrupo.map((item) => (
-                      <SidebarItemLink key={item.to} {...item} />
-                    ))}
-                  </div>
-                )}
-              </div>
+          {itensBuscados ? (
+            itensBuscados.length > 0 ? (
+              itensBuscados.map((item) => <SidebarItemLink key={item.to} {...item} />)
+            ) : (
+              <p className="text-xs text-dark-500 text-center py-4">Nada encontrado pra "{busca.trim()}"</p>
             )
-          })}
+          ) : (
+            <>
+              {grupos?.map((grupo) => {
+                const itensDoGrupo = grupo.itens.map((to) => itemPorTo.get(to)).filter((i): i is NonNullable<typeof i> => !!i)
+                if (itensDoGrupo.length === 0) return null
+                const GrupoIcon = ICONES_GRUPO[grupo.icone] ?? Folder
+                const aberto = grupoEstaAberto(grupo.id)
+                return (
+                  <div key={grupo.id}>
+                    <button
+                      onClick={() => alternarGrupo(grupo.id)}
+                      className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full text-dark-300 hover:text-dark-100 hover:bg-dark-800"
+                    >
+                      <GrupoIcon size={17} />
+                      <span className="flex-1 text-left">{grupo.nome}</span>
+                      {aberto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                    </button>
+                    {aberto && (
+                      <div className="pl-4 space-y-1 mt-1">
+                        {itensDoGrupo.map((item) => (
+                          <SidebarItemLink key={item.to} {...item} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
-          {itensSoltos.map((item) => (
-            <SidebarItemLink key={item.to} {...item} />
-          ))}
-
-          <a
-            href={MARKETING_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
-          >
-            <Megaphone size={17} />
-            <span className="flex-1">Marketing</span>
-          </a>
+              {itensSoltos.map((item) => (
+                <SidebarItemLink key={item.to} {...item} />
+              ))}
+            </>
+          )}
         </div>
       </nav>
 

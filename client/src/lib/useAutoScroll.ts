@@ -5,8 +5,11 @@ import { useEffect } from 'react'
 // Rola a página inteira até o fim (com uma pausa lendo o topo e outra lendo
 // o final) e volta ao topo quando o slide troca. `duracaoMs` é o tempo que
 // o slide fica na tela — a rolagem sempre termina antes da troca, com folga.
-export function useAutoScroll(chave: unknown, duracaoMs: number) {
+// `ativo=false` desliga completamente (nem força voltar pro topo) — é o que
+// dá pro usuário rolar com o mouse manualmente quando pausou o carrossel.
+export function useAutoScroll(chave: unknown, duracaoMs: number, ativo = true) {
   useEffect(() => {
+    if (!ativo) return
     window.scrollTo(0, 0)
 
     const pausaMs = Math.min(3000, duracaoMs * 0.15)
@@ -37,5 +40,5 @@ export function useAutoScroll(chave: unknown, duracaoMs: number) {
       clearTimeout(idInicio)
       if (frameId !== null) cancelAnimationFrame(frameId)
     }
-  }, [chave, duracaoMs])
+  }, [chave, duracaoMs, ativo])
 }
