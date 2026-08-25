@@ -56,14 +56,23 @@ async function uploadAnexo(file: File): Promise<{ path: string; nome: string; ti
   return { path: data.path, nome: data.nome, tipo: data.tipo }
 }
 
-function NovoChamadoModal({ onClose }: { onClose: () => void }) {
+function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin: boolean }) {
   const utils = trpc.useUtils()
   const [clienteNome, setClienteNome] = useState('')
   const [clienteCnpj, setClienteCnpj] = useState('')
+  const [clienteWhatsapp, setClienteWhatsapp] = useState('')
+  const [clienteEmail, setClienteEmail] = useState('')
+  const [clienteCodigo, setClienteCodigo] = useState('')
   const [numeroNotaFiscal, setNumeroNotaFiscal] = useState('')
+  const [numeroNotaFiscalVenda, setNumeroNotaFiscalVenda] = useState('')
+  const [numeroPedidoVenda, setNumeroPedidoVenda] = useState('')
   const [descricao, setDescricao] = useState('')
+  const [observacao, setObservacao] = useState('')
+  const [vendedorId, setVendedorId] = useState('')
   const [ocorrencias, setOcorrencias] = useState<string[]>([])
   const [materiais, setMateriais] = useState([{ codigoItem: '', descricaoItem: '', quantidade: 1 }])
+
+  const { data: vendedoresDisponiveis } = trpc.users.vendors.useQuery(undefined, { enabled: souAdmin })
 
   const criarMut = trpc.devolucoes.criar.useMutation({
     onSuccess(data) {
@@ -91,8 +100,15 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
     criarMut.mutate({
       clienteNome,
       clienteCnpj: clienteCnpj || undefined,
+      clienteWhatsapp: clienteWhatsapp || undefined,
+      clienteEmail: clienteEmail || undefined,
+      clienteCodigo: clienteCodigo || undefined,
       numeroNotaFiscal: numeroNotaFiscal || undefined,
+      numeroNotaFiscalVenda: numeroNotaFiscalVenda || undefined,
+      numeroPedidoVenda: numeroPedidoVenda || undefined,
       descricao,
+      observacao: observacao || undefined,
+      vendedorId: souAdmin && vendedorId ? Number(vendedorId) : undefined,
       ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
       materiais: materiais.filter((m) => m.descricaoItem.trim()),
     })
@@ -104,8 +120,26 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
         <Input label="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} required />
         <div className="grid grid-cols-2 gap-4">
           <Input label="CNPJ (se tiver)" value={clienteCnpj} onChange={(e) => setClienteCnpj(e.target.value)} />
-          <Input label="Número da nota fiscal" value={numeroNotaFiscal} onChange={(e) => setNumeroNotaFiscal(e.target.value)} />
+          <Input label="Código do cliente" value={clienteCodigo} onChange={(e) => setClienteCodigo(e.target.value)} />
         </div>
+        <div className="grid grid-cols-2 gap-4">
+          <Input label="WhatsApp" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
+          <Input label="E-mail" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-3 gap-4">
+          <Input label="Nota fiscal (devolução)" value={numeroNotaFiscal} onChange={(e) => setNumeroNotaFiscal(e.target.value)} />
+          <Input label="Nota fiscal de venda" value={numeroNotaFiscalVenda} onChange={(e) => setNumeroNotaFiscalVenda(e.target.value)} />
+          <Input label="Pedido de venda" value={numeroPedidoVenda} onChange={(e) => setNumeroPedidoVenda(e.target.value)} />
+        </div>
+        {souAdmin && (
+          <Select
+            label="Vendedor responsável"
+            value={vendedorId}
+            onChange={(e) => setVendedorId(e.target.value)}
+            placeholder="Sem vendedor definido"
+            options={(vendedoresDisponiveis ?? []).map((v: any) => ({ value: String(v.id), label: v.name }))}
+          />
+        )}
         <div>
           <p className="text-sm text-dark-200 font-medium mb-1.5">Tipo de ocorrência</p>
           <div className="flex flex-wrap gap-2">
@@ -126,6 +160,7 @@ function NovoChamadoModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
         <Textarea label="O que aconteceu" rows={4} value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
+        <Textarea label="Observação (opcional)" rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
 
         <div>
           <p className="text-sm text-dark-200 font-medium mb-2">Materiais (opcional)</p>
@@ -319,6 +354,77 @@ function ServicosForm({ chamadoId, onSalvo }: { chamadoId: number; onSalvo: () =
   )
 }
 
+function formatarMoeda(v: number | null | undefined): string {
+  if (v == null) return '—'
+  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+}
+
+function LogisticaForm({
+  chamadoId,
+  atual,
+  onSalvo,
+}: {
+  chamadoId: number
+  atual: {
+    transportadoraNome: string | null
+    dataChegadaPrevista: string | null
+    freteChegadaValor: number | null
+    dataSaidaPrevista: string | null
+    freteEnvioValor: number | null
+  }
+  onSalvo: () => void
+}) {
+  const [transportadoraNome, setTransportadoraNome] = useState(atual.transportadoraNome ?? '')
+  const [dataChegadaPrevista, setDataChegadaPrevista] = useState(atual.dataChegadaPrevista?.slice(0, 10) ?? '')
+  const [freteChegadaValor, setFreteChegadaValor] = useState(atual.freteChegadaValor != null ? String(atual.freteChegadaValor) : '')
+  const [dataSaidaPrevista, setDataSaidaPrevista] = useState(atual.dataSaidaPrevista?.slice(0, 10) ?? '')
+  const [freteEnvioValor, setFreteEnvioValor] = useState(atual.freteEnvioValor != null ? String(atual.freteEnvioValor) : '')
+
+  const mut = trpc.devolucoes.atualizarLogistica.useMutation({
+    onSuccess() {
+      toast.success('Logística salva')
+      onSalvo()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function enviar() {
+    mut.mutate({
+      id: chamadoId,
+      transportadoraNome: transportadoraNome || undefined,
+      dataChegadaPrevista: dataChegadaPrevista || undefined,
+      freteChegadaValor: freteChegadaValor ? Number(freteChegadaValor) : undefined,
+      dataSaidaPrevista: dataSaidaPrevista || undefined,
+      freteEnvioValor: freteEnvioValor ? Number(freteEnvioValor) : undefined,
+    })
+  }
+
+  return (
+    <div className="bg-dark-900/40 border border-dark-700 rounded-2xl p-4 space-y-4">
+      <div>
+        <p className="text-sm font-semibold text-dark-100 mb-2">Chegada dos materiais</p>
+        <div className="grid grid-cols-3 gap-3">
+          <Input label="Transportadora" value={transportadoraNome} onChange={(e) => setTransportadoraNome(e.target.value)} />
+          <Input label="Previsão de chegada" type="date" value={dataChegadaPrevista} onChange={(e) => setDataChegadaPrevista(e.target.value)} />
+          <Input label="Frete de chegada (R$)" type="number" step="0.01" value={freteChegadaValor} onChange={(e) => setFreteChegadaValor(e.target.value)} />
+        </div>
+      </div>
+      <div>
+        <p className="text-sm font-semibold text-dark-100 mb-2">Preparação e envio</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Previsão de saída" type="date" value={dataSaidaPrevista} onChange={(e) => setDataSaidaPrevista(e.target.value)} />
+          <Input label="Frete de envio (R$)" type="number" step="0.01" value={freteEnvioValor} onChange={(e) => setFreteEnvioValor(e.target.value)} />
+        </div>
+      </div>
+      <Button size="sm" loading={mut.isPending} onClick={enviar}>
+        Salvar logística
+      </Button>
+    </div>
+  )
+}
+
 function DetalheChamadoModal({
   id,
   souAdmin,
@@ -338,6 +444,7 @@ function DetalheChamadoModal({
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
   const [mostrarAnalise, setMostrarAnalise] = useState(false)
   const [mostrarServicos, setMostrarServicos] = useState(false)
+  const [mostrarLogistica, setMostrarLogistica] = useState(false)
 
   function invalidar() {
     utils.devolucoes.detalhe.invalidate({ id })
@@ -584,6 +691,39 @@ function DetalheChamadoModal({
           </div>
         )}
 
+        {souAdmin && (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gold-400 uppercase tracking-wide">Chegada dos materiais / Preparação e envio</p>
+              <button className="text-xs text-gold-400 underline" onClick={() => setMostrarLogistica((v) => !v)}>
+                {mostrarLogistica ? 'Fechar' : 'Editar'}
+              </button>
+            </div>
+            {!mostrarLogistica && (
+              <div className="text-sm text-dark-200 space-y-1 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+                <p>Transportadora: {(chamado as any).transportadoraNome ?? '—'}</p>
+                <p>Previsão de chegada: {formatarData((chamado as any).dataChegadaPrevista)}</p>
+                <p>Frete de chegada: {formatarMoeda((chamado as any).freteChegadaValor)}</p>
+                <p>Previsão de saída: {formatarData((chamado as any).dataSaidaPrevista)}</p>
+                <p>Frete de envio: {formatarMoeda((chamado as any).freteEnvioValor)}</p>
+              </div>
+            )}
+            {mostrarLogistica && (
+              <LogisticaForm
+                chamadoId={id}
+                atual={{
+                  transportadoraNome: (chamado as any).transportadoraNome ?? null,
+                  dataChegadaPrevista: (chamado as any).dataChegadaPrevista ?? null,
+                  freteChegadaValor: (chamado as any).freteChegadaValor ?? null,
+                  dataSaidaPrevista: (chamado as any).dataSaidaPrevista ?? null,
+                  freteEnvioValor: (chamado as any).freteEnvioValor ?? null,
+                }}
+                onSalvo={() => { setMostrarLogistica(false); invalidar() }}
+              />
+            )}
+          </div>
+        )}
+
         <div>
           <p className="text-xs font-bold text-gold-400 uppercase tracking-wide mb-2">Histórico</p>
           <div className="space-y-1">
@@ -788,7 +928,7 @@ export default function Devolucoes() {
         })}
       </div>
 
-      {modalNovo && <NovoChamadoModal onClose={() => setModalNovo(false)} />}
+      {modalNovo && <NovoChamadoModal onClose={() => setModalNovo(false)} souAdmin={souAdmin} />}
       {chamadoAberto !== null && (
         <DetalheChamadoModal
           id={chamadoAberto}

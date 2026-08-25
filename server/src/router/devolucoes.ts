@@ -96,18 +96,21 @@ export const devolucoesRouter = router({
       z.object({
         empresaId: z.number(),
         clienteNome: z.string().min(2),
-        clienteCnpj: z.string().optional(),
-        clienteWhatsapp: z.string().optional(),
+        clienteCnpj: z.string().min(11, 'CNPJ/CPF é obrigatório'),
+        clienteWhatsapp: z.string().min(8, 'WhatsApp é obrigatório'),
         clienteEmail: z.string().optional(),
         clienteCodigo: z.string().optional(),
-        numeroNotaFiscal: z.string().optional(),
+        numeroNotaFiscal: z.string().min(1, 'Número da nota fiscal é obrigatório'),
         descricao: z.string().min(1),
+        observacao: z.string().optional(),
         ocorrencias: z.array(z.object({ tipo: z.enum(OCORRENCIA_VALUES), rotuloCustom: z.string().optional() })).min(1),
         materiais: z.array(z.object({ codigoItem: z.string(), descricaoItem: z.string(), quantidade: z.number().default(1) })).optional(),
       })
     )
     .mutation(async ({ input }) => {
       if (!EMPRESAS_DEVOLUCAO.includes(input.empresaId)) throw new Error('Empresa inválida')
+      if (input.ocorrencias.some((o) => o.tipo === 'outro' && !o.rotuloCustom?.trim()))
+        throw new Error('Descreva o tipo de ocorrência em "Outro"')
       const protocolo = await gerarProtocoloDevolucao(input.empresaId)
 
       const result = await db.insert(devolucaoChamados).values({
@@ -121,6 +124,7 @@ export const devolucoesRouter = router({
         clienteCodigo: input.clienteCodigo,
         numeroNotaFiscal: input.numeroNotaFiscal,
         descricao: input.descricao,
+        observacao: input.observacao,
       })
       const chamadoId = Number(result.lastInsertRowid)
 
@@ -473,6 +477,32 @@ export const devolucoesRouter = router({
       } else {
         await db.insert(devolucaoServicos).values({ chamadoId: input.chamadoId, ...valores })
       }
+      return { ok: true }
+    }),
+
+  // Dados de logística do chamado — transportadora/previsão de chegada e o
+  // frete pontuado nos 2 momentos que o João pediu: o de trazer o material
+  // devolvido (chegada) e o de mandar a troca/reparo de volta (envio), que
+  // são fretes e valores diferentes. Campos existiam no schema (portados do
+  // sistema original) mas nunca tinham tela — cabe tudo aqui, sem precisar
+  // de tabela própria.
+  atualizarLogistica: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        transportadoraNome: z.string().optional(),
+        dataChegadaPrevista: z.string().optional(),
+        freteChegadaValor: z.number().optional(),
+        dataSaidaPrevista: z.string().optional(),
+        freteEnvioValor: z.number().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      await assertChamadoAlcancavel(input.id, alcancaveis)
+      const { id, ...campos } = input
+      await db.update(devolucaoChamados).set(campos).where(eq(devolucaoChamados.id, id))
+      await registrarAuditoria({ tabela: 'devolucao_chamados', registroId: id, acao: 'editar', campo: 'logistica', alteradoPor: ctx.user.id })
       return { ok: true }
     }),
 

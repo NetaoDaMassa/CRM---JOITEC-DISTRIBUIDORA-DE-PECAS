@@ -1281,7 +1281,13 @@ export const devolucaoChamados = sqliteTable('devolucao_chamados', {
   observacao: text('observacao'),
   transportadoraNome: text('transportadora_nome'),
   dataChegadaPrevista: text('data_chegada_prevista'),
+  // Custo do frete pontuado em 2 momentos separados — o de trazer o
+  // material devolvido de volta (chegada) costuma ser pago por quem
+  // devolveu ou pela transportadora combinada, já o de mandar a troca/
+  // reparo de volta pro cliente (envio) é outro frete, outro valor.
+  freteChegadaValor: real('frete_chegada_valor'),
   dataSaidaPrevista: text('data_saida_prevista'),
+  freteEnvioValor: real('frete_envio_valor'),
   dataInicioTratamento: text('data_inicio_tratamento'),
   pularNotaFiscalDevolucao: integer('pular_nota_fiscal_devolucao', { mode: 'boolean' }).notNull().default(false),
   origemDemonstracaoId: integer('origem_demonstracao_id').references((): any => devolucaoDemonstracoes.id, { onDelete: 'set null' }),

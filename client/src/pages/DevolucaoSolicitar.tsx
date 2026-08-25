@@ -21,6 +21,8 @@ async function uploadAnexoPublico(file: File): Promise<{ path: string; nome: str
   return { path: data.path, nome: data.nome, tipo: data.tipo }
 }
 
+type Material = { codigoItem: string; descricaoItem: string; quantidade: number }
+
 // Formulário público (sem login) pro cliente abrir um chamado de devolução
 // — link a ser compartilhado direto com o cliente. Reaproveita a mesma
 // visão sóbria do /login (sem Sidebar/Layout, é uma página de fora).
@@ -33,8 +35,11 @@ export default function DevolucaoSolicitar() {
   const [clienteEmail, setClienteEmail] = useState('')
   const [numeroNotaFiscal, setNumeroNotaFiscal] = useState('')
   const [descricao, setDescricao] = useState('')
+  const [observacao, setObservacao] = useState('')
   const [ocorrencias, setOcorrencias] = useState<string[]>([])
-  const [arquivo, setArquivo] = useState<File | null>(null)
+  const [rotuloOutro, setRotuloOutro] = useState('')
+  const [materiais, setMateriais] = useState<Material[]>([{ codigoItem: '', descricaoItem: '', quantidade: 1 }])
+  const [arquivos, setArquivos] = useState<File[]>([])
   const [protocoloGerado, setProtocoloGerado] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
@@ -54,25 +59,35 @@ export default function DevolucaoSolicitar() {
     setOcorrencias((prev) => (prev.includes(tipo) ? prev.filter((t) => t !== tipo) : [...prev, tipo]))
   }
 
+  function atualizarMaterial(i: number, campo: keyof Material, valor: string | number) {
+    setMateriais((prev) => prev.map((m, idx) => (idx === i ? { ...m, [campo]: valor } : m)))
+  }
+
   async function enviar() {
     if (!empresaId) return toast.error('Selecione a empresa')
     if (!clienteNome.trim()) return toast.error('Informe o nome do cliente/empresa')
+    if (clienteCnpj.replace(/\D/g, '').length < 11) return toast.error('Informe o CNPJ ou CPF')
+    if (!clienteWhatsapp.trim()) return toast.error('Informe o WhatsApp para contato')
+    if (!numeroNotaFiscal.trim()) return toast.error('Informe o número da nota fiscal')
     if (!descricao.trim()) return toast.error('Descreva o que aconteceu')
     if (!ocorrencias.length) return toast.error('Marque ao menos um tipo de ocorrência')
+    if (ocorrencias.includes('outro') && !rotuloOutro.trim()) return toast.error('Descreva o tipo de ocorrência em "Outro"')
 
     setEnviando(true)
     try {
       const result = await criarMut.mutateAsync({
         empresaId: Number(empresaId),
         clienteNome,
-        clienteCnpj: clienteCnpj || undefined,
-        clienteWhatsapp: clienteWhatsapp || undefined,
+        clienteCnpj,
+        clienteWhatsapp,
         clienteEmail: clienteEmail || undefined,
-        numeroNotaFiscal: numeroNotaFiscal || undefined,
+        numeroNotaFiscal,
         descricao,
-        ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
+        observacao: observacao || undefined,
+        ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any, rotuloCustom: tipo === 'outro' ? rotuloOutro : undefined })),
+        materiais: materiais.filter((m) => m.descricaoItem.trim()),
       })
-      if (arquivo) {
+      for (const arquivo of arquivos) {
         const up = await uploadAnexoPublico(arquivo)
         await anexarMut.mutateAsync({ protocolo: result.protocolo, urlArquivo: up.path, nomeArquivo: up.nome, tipoArquivo: up.tipo })
       }
@@ -117,12 +132,12 @@ export default function DevolucaoSolicitar() {
         />
         <Input label="Nome do cliente/empresa" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} required />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="CNPJ (se tiver)" value={clienteCnpj} onChange={(e) => setClienteCnpj(e.target.value)} />
-          <Input label="Número da nota fiscal" value={numeroNotaFiscal} onChange={(e) => setNumeroNotaFiscal(e.target.value)} />
+          <Input label="CNPJ ou CPF" value={clienteCnpj} onChange={(e) => setClienteCnpj(e.target.value)} required />
+          <Input label="Número da nota fiscal" value={numeroNotaFiscal} onChange={(e) => setNumeroNotaFiscal(e.target.value)} required />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Input label="WhatsApp" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
-          <Input label="E-mail" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
+          <Input label="WhatsApp" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} required />
+          <Input label="E-mail (opcional)" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
         </div>
 
         <div>
@@ -143,17 +158,49 @@ export default function DevolucaoSolicitar() {
               </button>
             ))}
           </div>
+          {ocorrencias.includes('outro') && (
+            <Input
+              label="Descreva a ocorrência"
+              value={rotuloOutro}
+              onChange={(e) => setRotuloOutro(e.target.value)}
+              className="mt-2"
+              required
+            />
+          )}
         </div>
 
         <Textarea label="O que aconteceu" rows={4} value={descricao} onChange={(e) => setDescricao(e.target.value)} required />
+        <Textarea label="Observação (opcional)" rows={2} value={observacao} onChange={(e) => setObservacao(e.target.value)} />
 
         <div>
-          <p className="text-sm text-dark-200 font-medium mb-1.5">Foto/documento (opcional)</p>
+          <p className="text-sm text-dark-200 font-medium mb-2">Materiais envolvidos (opcional)</p>
+          <div className="space-y-2">
+            {materiais.map((m, i) => (
+              <div key={i} className="grid grid-cols-[90px_1fr_60px] gap-2">
+                <Input placeholder="Código" value={m.codigoItem} onChange={(e) => atualizarMaterial(i, 'codigoItem', e.target.value)} />
+                <Input placeholder="Descrição" value={m.descricaoItem} onChange={(e) => atualizarMaterial(i, 'descricaoItem', e.target.value)} />
+                <Input type="number" min={1} value={m.quantidade} onChange={(e) => atualizarMaterial(i, 'quantidade', Number(e.target.value))} />
+              </div>
+            ))}
+          </div>
+          <button
+            type="button"
+            className="text-xs text-gold-400 underline mt-2"
+            onClick={() => setMateriais((prev) => [...prev, { codigoItem: '', descricaoItem: '', quantidade: 1 }])}
+          >
+            + Adicionar material
+          </button>
+        </div>
+
+        <div>
+          <p className="text-sm text-dark-200 font-medium mb-1.5">Fotos, vídeos ou documentos (opcional)</p>
           <input
             type="file"
-            onChange={(e) => setArquivo(e.target.files?.[0] ?? null)}
+            multiple
+            onChange={(e) => setArquivos(Array.from(e.target.files ?? []))}
             className="text-sm text-dark-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border file:border-dark-600 file:bg-dark-800 file:text-dark-200"
           />
+          {arquivos.length > 0 && <p className="text-xs text-dark-500 mt-1">{arquivos.length} arquivo(s) selecionado(s)</p>}
         </div>
 
         <Button className="w-full" loading={enviando} onClick={enviar}>
