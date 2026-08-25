@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Settings } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAutoScroll } from '../lib/useAutoScroll'
 import { Input } from '../components/ui/Input'
 import Button from '../components/ui/Button'
+import PainelConfigModal from '../components/PainelConfigModal'
 
 function formatarMoeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -373,14 +375,26 @@ export default function PainelFinanceiro() {
     { titulo: 'Importações', render: () => <SlideImportacoes invoices={invoices} /> },
   ]
   const [slideAtual, setSlideAtual] = useState(0)
-  const DURACAO_SLIDE_MS = 20000
+  const [configAberta, setConfigAberta] = useState(false)
+  const utils = trpc.useUtils()
+  const { data: config } = trpc.configuracoes.painelFinanceiroConfig.useQuery()
+  const segundos = config?.segundos ?? 20
+  const autoplay = config?.autoplay ?? true
+  const duracaoSlideMs = segundos * 1000
+  const salvarConfigMut = trpc.configuracoes.set.useMutation({
+    onSuccess() {
+      utils.configuracoes.painelFinanceiroConfig.invalidate()
+      setConfigAberta(false)
+    },
+  })
 
   useEffect(() => {
-    const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), DURACAO_SLIDE_MS)
+    if (!autoplay) return
+    const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), duracaoSlideMs)
     return () => clearInterval(id)
-  }, [slides.length])
+  }, [slides.length, duracaoSlideMs, autoplay])
 
-  useAutoScroll(slideAtual, DURACAO_SLIDE_MS)
+  useAutoScroll(slideAtual, duracaoSlideMs)
 
   const Slide = slides[slideAtual].render
 
@@ -393,13 +407,33 @@ export default function PainelFinanceiro() {
             {slideAtual === 0 ? 'Visão consolidada das empresas' : 'Importações em andamento'}
           </h1>
         </div>
-        <div className="text-right">
-          <p className="text-2xl font-mono tabular-nums">{relogio.toLocaleTimeString('pt-BR')}</p>
-          <p className="text-sm text-dark-400 capitalize">
-            {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
-          </p>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-2xl font-mono tabular-nums">{relogio.toLocaleTimeString('pt-BR')}</p>
+            <p className="text-sm text-dark-400 capitalize">
+              {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
+          <button
+            onClick={() => setConfigAberta(true)}
+            className="text-dark-600 hover:text-dark-300 transition-colors p-1.5 rounded-lg hover:bg-dark-800"
+            title="Configurar carrossel"
+          >
+            <Settings size={18} />
+          </button>
         </div>
       </div>
+
+      <PainelConfigModal
+        open={configAberta}
+        onClose={() => setConfigAberta(false)}
+        segundosAtual={segundos}
+        autoplayAtual={autoplay}
+        salvando={salvarConfigMut.isPending}
+        onSalvar={({ segundos: s, autoplay: a }) =>
+          salvarConfigMut.mutate({ painel_financeiro_segundos: s, painel_financeiro_autoplay: a ? 1 : 0 })
+        }
+      />
 
       <Slide />
 

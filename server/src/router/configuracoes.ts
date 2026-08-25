@@ -26,6 +26,13 @@ const CHAVES_NUMERICAS = {
   // pro próximo (carrossel automático) — pedido do João pra poder ajustar
   // sem precisar mexer em código.
   painel_tv_segundos_por_slide: 30,
+  // 1 = carrossel roda sozinho (padrão), 0 = fica parado no slide atual até
+  // navegação manual pelos pontinhos.
+  painel_tv_autoplay: 1,
+  // Mesma ideia do painel_tv_segundos_por_slide, só que pro Painel Financeiro
+  // (que antes tinha a duração fixa em código, 20s).
+  painel_financeiro_segundos: 20,
+  painel_financeiro_autoplay: 1,
 } as const
 
 export const configuracoesRouter = router({
@@ -63,6 +70,9 @@ export const configuracoesRouter = router({
         expediente_almoco_fim_hora: z.number().min(0).max(23).optional(),
         expediente_almoco_fim_minuto: z.number().min(0).max(59).optional(),
         painel_tv_segundos_por_slide: z.number().min(3).max(300).optional(),
+        painel_tv_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
+        painel_financeiro_segundos: z.number().min(3).max(300).optional(),
+        painel_financeiro_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -81,5 +91,24 @@ export const configuracoesRouter = router({
   // precisa ler o intervalo do carrossel sem exigir permissão de admin.
   painelTvSegundosPorSlide: protectedProcedure.query(async () => {
     return getConfigNumero('painel_tv_segundos_por_slide', CHAVES_NUMERICAS.painel_tv_segundos_por_slide)
+  }),
+
+  // Combina segundos + autoplay num só round-trip pro Painel de TV/Financeiro
+  // — mesma liberação de painelTvSegundosPorSlide acima (qualquer
+  // autenticado, não só admin).
+  painelTvConfig: protectedProcedure.query(async () => {
+    const [segundos, autoplay] = await Promise.all([
+      getConfigNumero('painel_tv_segundos_por_slide', CHAVES_NUMERICAS.painel_tv_segundos_por_slide),
+      getConfigNumero('painel_tv_autoplay', CHAVES_NUMERICAS.painel_tv_autoplay),
+    ])
+    return { segundos, autoplay: autoplay === 1 }
+  }),
+
+  painelFinanceiroConfig: protectedProcedure.query(async () => {
+    const [segundos, autoplay] = await Promise.all([
+      getConfigNumero('painel_financeiro_segundos', CHAVES_NUMERICAS.painel_financeiro_segundos),
+      getConfigNumero('painel_financeiro_autoplay', CHAVES_NUMERICAS.painel_financeiro_autoplay),
+    ])
+    return { segundos, autoplay: autoplay === 1 }
   }),
 })

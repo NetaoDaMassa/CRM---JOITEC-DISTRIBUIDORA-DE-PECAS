@@ -38,6 +38,7 @@ import { integracoesRouter } from './integracoes.js'
 import { leadsRouter } from './leads.js'
 import { leadsRelatoriosRouter } from './leadsRelatorios.js'
 import { leadsRegioesRouter } from './leadsRegioes.js'
+import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { router } from './_base.js'
@@ -85,6 +86,7 @@ export const appRouter = router({
   leads: leadsRouter,
   leadsRelatorios: leadsRelatoriosRouter,
   leadsRegioes: leadsRegioesRouter,
+  sidebarGrupos: sidebarGruposRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
 })

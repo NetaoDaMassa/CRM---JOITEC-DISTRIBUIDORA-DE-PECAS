@@ -62,6 +62,47 @@ export const funcaoTemplateFeaturesRelations = relations(funcaoTemplateFeatures,
   template: one(funcaoTemplates, { fields: [funcaoTemplateFeatures.templateId], references: [funcaoTemplates.id] }),
 }))
 
+// Grupos colapsáveis da sidebar (ex: "Marketing" contendo Leads/Kanban de
+// Leads/Solicitar Arte) — o superAdmin monta em Configurações > Grupos da
+// Sidebar. Globais (SEM empresaId): é organização do menu em si, não um
+// dado de negócio que varie por empresa — mesmas telas existem em todo
+// lugar, só a visibilidade de cada uma já é filtrada por feature/empresa
+// como sempre foi (ver Sidebar.tsx). Item que não está em nenhum grupo
+// continua aparecendo solto.
+export const sidebarGroups = sqliteTable('sidebar_groups', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nome: text('nome').notNull(),
+  icone: text('icone').notNull(),
+  ordem: integer('ordem').notNull().default(0),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Itens dentro de um grupo — `linkTo` é o `to`/`href` do item na sidebar
+// (ex: '/admin/leads'), validado contra uma lista fixa no router (não é FK,
+// não existe tabela de "links" — mesma ideia de `feature` em
+// funcaoTemplateFeatures, texto livre validado na borda).
+export const sidebarGroupItems = sqliteTable(
+  'sidebar_group_items',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    groupId: integer('group_id').notNull().references(() => sidebarGroups.id, { onDelete: 'cascade' }),
+    linkTo: text('link_to').notNull(),
+    ordem: integer('ordem').notNull().default(0),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    grupoLink: unique().on(t.groupId, t.linkTo),
+  })
+)
+
+export const sidebarGroupsRelations = relations(sidebarGroups, ({ many }) => ({
+  itens: many(sidebarGroupItems),
+}))
+
+export const sidebarGroupItemsRelations = relations(sidebarGroupItems, ({ one }) => ({
+  grupo: one(sidebarGroups, { fields: [sidebarGroupItems.groupId], references: [sidebarGroups.id] }),
+}))
+
 export const users = sqliteTable('users', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
@@ -1156,6 +1197,29 @@ export const permissoesAdmin = sqliteTable(
 
 export const permissoesAdminRelations = relations(permissoesAdmin, ({ one }) => ({
   user: one(users, { fields: [permissoesAdmin.userId], references: [users.id] }),
+}))
+
+// Empresas extras liberadas pra um admin comum acessar sem precisar de uma
+// conta separada em cada uma — presença de (userId, empresaId) = pode trocar
+// pra aquela empresa pelo mesmo seletor que o superAdmin já usa (ver
+// resolverEmpresaId em server/src/index.ts e o seletor em Sidebar.tsx).
+// superAdmin nunca precisa de linhas aqui (já acessa qualquer empresa).
+export const adminEmpresasExtras = sqliteTable(
+  'admin_empresas_extras',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    usuarioEmpresa: unique().on(t.userId, t.empresaId),
+  })
+)
+
+export const adminEmpresasExtrasRelations = relations(adminEmpresasExtras, ({ one }) => ({
+  user: one(users, { fields: [adminEmpresasExtras.userId], references: [users.id] }),
+  empresa: one(empresas, { fields: [adminEmpresasExtras.empresaId], references: [empresas.id] }),
 }))
 
 export const messageTemplates = sqliteTable('message_templates', {

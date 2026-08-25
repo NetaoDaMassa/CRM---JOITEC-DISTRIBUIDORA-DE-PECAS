@@ -143,6 +143,8 @@ export default function Permissoes() {
       <PermissoesVendedor />
 
       <VinculoContas />
+
+      <EmpresasExtras />
     </div>
   )
 }
@@ -369,6 +371,120 @@ function VinculoContas() {
               </>
             ) : (
               <p className="text-sm text-dark-400">Escolha uma pessoa na lista à esquerda.</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Deixa um admin comum acessar mais de uma empresa (troca pelo mesmo
+// seletor que o superAdmin já usa, sem precisar de login/senha separados) —
+// ver adminEmpresasExtras no schema e resolverEmpresaId no servidor.
+function EmpresasExtras() {
+  const [userIdSelecionado, setUserIdSelecionado] = useState<number | null>(null)
+  const [busca, setBusca] = useState('')
+  const [selecionadas, setSelecionadas] = useState<number[]>([])
+
+  const utils = trpc.useUtils()
+  const { data, isLoading } = trpc.empresas.listarComExtras.useQuery()
+  const admins = data?.admins
+  const empresas = data?.empresas
+
+  const adminAtual = admins?.find((a) => a.id === userIdSelecionado)
+
+  useEffect(() => {
+    if (adminAtual) setSelecionadas(adminAtual.empresasExtras)
+  }, [adminAtual?.id])
+
+  const atualizarMut = trpc.empresas.atualizarExtras.useMutation({
+    onSuccess() {
+      toast.success('Empresas extras salvas')
+      utils.empresas.listarComExtras.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function toggleEmpresa(id: number) {
+    setSelecionadas((prev) => (prev.includes(id) ? prev.filter((e) => e !== id) : [...prev, id]))
+  }
+
+  const adminsFiltrados = admins?.filter((a) => a.name.toLowerCase().includes(busca.toLowerCase()))
+  const empresasCandidatas = empresas?.filter((e) => e.id !== adminAtual?.empresaId)
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <h2 className="font-heading text-lg text-dark-50">Empresas extras (acesso multi-empresa)</h2>
+        <p className="text-sm text-dark-400">
+          Libera pra um admin comum trocar de empresa sem precisar de uma conta separada em cada uma — mesmo seletor
+          que aparece pro super admin, só que limitado às empresas marcadas aqui.
+        </p>
+      </div>
+
+      {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
+
+      {!!admins?.length && (
+        <div className="grid grid-cols-[280px_1fr] gap-4">
+          <div className="space-y-2">
+            <input
+              type="text"
+              placeholder="Buscar por nome..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              className="w-full bg-dark-900 border border-dark-700 rounded-lg text-sm text-dark-100 px-3 py-2"
+            />
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden max-h-96 overflow-y-auto">
+              {adminsFiltrados?.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setUserIdSelecionado(a.id)}
+                  className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                    userIdSelecionado === a.id ? 'bg-gold-600/20 text-gold-400' : 'text-dark-200 hover:bg-dark-700'
+                  }`}
+                >
+                  <p className="font-medium truncate">{a.name}</p>
+                  <p className="text-xs text-dark-500 truncate">
+                    @{a.username} · {a.empresaNome}
+                    {a.empresasExtras.length > 0 ? ` · +${a.empresasExtras.length} empresa(s)` : ''}
+                  </p>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-4 self-start">
+            {adminAtual ? (
+              <>
+                <p className="text-sm text-dark-300">
+                  Empresas extras que <strong className="text-dark-100">{adminAtual.name}</strong> ({adminAtual.empresaNome}
+                  , empresa própria) também pode acessar:
+                </p>
+                <div className="max-h-80 overflow-y-auto space-y-1">
+                  {empresasCandidatas?.map((e) => (
+                    <label key={e.id} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
+                      <input
+                        type="checkbox"
+                        className="accent-gold-500"
+                        checked={selecionadas.includes(e.id)}
+                        onChange={() => toggleEmpresa(e.id)}
+                      />
+                      {e.nome}
+                    </label>
+                  ))}
+                </div>
+                <Button
+                  loading={atualizarMut.isPending}
+                  onClick={() => atualizarMut.mutate({ userId: adminAtual.id, empresaIds: selecionadas })}
+                >
+                  Salvar empresas extras de {adminAtual.name}
+                </Button>
+              </>
+            ) : (
+              <p className="text-sm text-dark-400">Escolha um admin na lista à esquerda.</p>
             )}
           </div>
         </div>

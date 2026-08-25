@@ -1,4 +1,5 @@
 import { memo, useEffect, useState } from 'react'
+import { Settings } from 'lucide-react'
 import {
   Area,
   AreaChart,
@@ -19,6 +20,7 @@ import AvatarMeta from '../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../lib/useCelebrarMeta'
 import { useAutoScroll } from '../lib/useAutoScroll'
 import CelebracaoPopup from '../components/ui/CelebracaoPopup'
+import PainelConfigModal from '../components/PainelConfigModal'
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type PainelData = RouterOutputs['painel']['resumo']
@@ -685,15 +687,25 @@ export default function PainelTV() {
     ...(leadsNovoMarketing ? [{ titulo: 'Leads aguardando', render: () => <SlideLeadsNovo data={leadsNovoMarketing} /> }] : []),
   ]
   const [slideAtual, setSlideAtual] = useState(0)
-  const { data: segundosPorSlide } = trpc.configuracoes.painelTvSegundosPorSlide.useQuery()
+  const [configAberta, setConfigAberta] = useState(false)
+  const utils = trpc.useUtils()
+  const { data: config } = trpc.configuracoes.painelTvConfig.useQuery()
+  const segundos = config?.segundos ?? SEGUNDOS_POR_SLIDE
+  const autoplay = config?.autoplay ?? true
+  const salvarConfigMut = trpc.configuracoes.set.useMutation({
+    onSuccess() {
+      utils.configuracoes.painelTvConfig.invalidate()
+      setConfigAberta(false)
+    },
+  })
 
   useEffect(() => {
-    const segundos = segundosPorSlide ?? SEGUNDOS_POR_SLIDE
+    if (!autoplay) return
     const id = setInterval(() => setSlideAtual((s) => (s + 1) % slides.length), segundos * 1000)
     return () => clearInterval(id)
-  }, [slides.length, segundosPorSlide])
+  }, [slides.length, segundos, autoplay])
 
-  useAutoScroll(slideAtual, (segundosPorSlide ?? SEGUNDOS_POR_SLIDE) * 1000)
+  useAutoScroll(slideAtual, segundos * 1000)
 
   const Slide = slides[slideAtual].render
 
@@ -701,13 +713,33 @@ export default function PainelTV() {
     <div className="min-h-screen bg-dark-950 text-dark-50 p-8">
       <div className="flex items-center justify-between mb-8">
         <h1 className="font-heading text-3xl text-gold-400 font-bold">Joitec CRM · Painel</h1>
-        <div className="text-right">
-          <p className="text-2xl font-mono">{relogio.toLocaleTimeString('pt-BR')}</p>
-          <p className="text-sm text-dark-400">
-            {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-          </p>
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <p className="text-2xl font-mono">{relogio.toLocaleTimeString('pt-BR')}</p>
+            <p className="text-sm text-dark-400">
+              {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+            </p>
+          </div>
+          <button
+            onClick={() => setConfigAberta(true)}
+            className="text-dark-600 hover:text-dark-300 transition-colors p-1.5 rounded-lg hover:bg-dark-800"
+            title="Configurar carrossel"
+          >
+            <Settings size={18} />
+          </button>
         </div>
       </div>
+
+      <PainelConfigModal
+        open={configAberta}
+        onClose={() => setConfigAberta(false)}
+        segundosAtual={segundos}
+        autoplayAtual={autoplay}
+        salvando={salvarConfigMut.isPending}
+        onSalvar={({ segundos: s, autoplay: a }) =>
+          salvarConfigMut.mutate({ painel_tv_segundos_por_slide: s, painel_tv_autoplay: a ? 1 : 0 })
+        }
+      />
 
       {data ? <Slide data={data} /> : <p className="text-dark-500">Carregando...</p>}
 

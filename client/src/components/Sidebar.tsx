@@ -1,12 +1,23 @@
+import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
+  ChevronDown, ChevronRight, Folder, Layers,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { trpc } from '../lib/trpc'
+
+// Ícones disponíveis pra montar um grupo em "Grupos da Sidebar" — nome
+// salvo como texto no banco (sidebarGroups.icone), mapeado pro componente
+// aqui. `Folder` é o fallback se algum dia salvar um nome que saia da lista.
+export const ICONES_GRUPO: Record<string, LucideIcon> = {
+  Folder, Megaphone, Ship, Wrench, Banknote, Briefcase, RotateCcw, Users, Target, Palette, UserPlus, Landmark, Activity, Layers, Wallet,
+}
+export const NOMES_ICONES_GRUPO = Object.keys(ICONES_GRUPO)
 
 // CRM de marketing do Grupo Odin (sistema à parte, fora deste projeto) — o
 // vendedor usa pra atender os leads que chegam por marketing. Link externo
@@ -110,6 +121,34 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
 ]
 
+// Uma linha da sidebar (link normal ou externo em nova aba) — usado tanto
+// solto quanto dentro de um grupo aberto, mesmo visual dos dois jeitos.
+function SidebarItemLink({ to, label, icon: Icon, end, external }: { to: string; label: string; icon: LucideIcon; end?: boolean; external?: boolean }) {
+  const className = "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
+  if (external) {
+    return (
+      <a href={to} target="_blank" rel="noopener noreferrer" className={className}>
+        <Icon size={17} />
+        <span className="flex-1">{label}</span>
+      </a>
+    )
+  }
+  return (
+    <NavLink
+      to={to}
+      end={end}
+      className={({ isActive }) =>
+        `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+          isActive ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30' : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
+        }`
+      }
+    >
+      <Icon size={17} />
+      <span className="flex-1">{label}</span>
+    </NavLink>
+  )
+}
+
 export default function Sidebar() {
   const { user, logout, empresaAtivaId, trocarEmpresa, login } = useAuth()
   const { theme, toggleTheme } = useTheme()
@@ -151,6 +190,56 @@ export default function Sidebar() {
       (user?.superAdmin || !!minhasFeatures?.includes(l.feature))
   )
 
+  // Os 5 itens que sempre ficaram soltos, fora de ADMIN_LINKS/VENDOR_LINKS
+  // (regra de visibilidade própria de cada um, não é `feature` normal) —
+  // reunidos aqui numa forma comum (to/label/icon/external) pra poderem
+  // entrar em "Grupos da Sidebar" igual qualquer outro item. "Marketing"
+  // fica de fora de propósito (não tem `to` próprio, é sempre visível,
+  // continua solto no fim como sempre foi).
+  const extras: { to: string; label: string; icon: LucideIcon; external?: boolean; visivel: boolean }[] = [
+    { to: '/painel-tv', label: 'Painel de TV', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv')) },
+    { to: '/admin/permissoes', label: 'Permissões', icon: ShieldCheck, visivel: !!user?.superAdmin },
+    { to: '/admin/funcoes', label: 'Funções', icon: UserCog, visivel: !!user?.superAdmin },
+    { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
+    { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
+    { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
+  ]
+
+  // Lista combinada (links normais + extras visíveis) na forma comum que os
+  // grupos usam pra saber o que agrupar. Ordem original preservada — quem
+  // não entrar em nenhum grupo continua aparecendo solto nessa mesma ordem.
+  const todosItensVisiveis: { to: string; label: string; icon: LucideIcon; end?: boolean; external?: boolean }[] = [
+    ...links.map((l) => ({ to: l.to, label: l.label, icon: l.icon, end: 'end' in l ? l.end : undefined })),
+    ...extras.filter((e) => e.visivel).map((e) => ({ to: e.to, label: e.label, icon: e.icon, external: e.external })),
+  ]
+  const itemPorTo = new Map(todosItensVisiveis.map((item) => [item.to, item]))
+
+  // Grupos configurados em "Grupos da Sidebar" — globais, valem pra todo
+  // mundo (não só quem configurou). Um grupo só aparece se sobrar pelo
+  // menos 1 item visível pro usuário/empresa atual dentro dele.
+  const { data: grupos } = trpc.sidebarGrupos.listar.useQuery(undefined, { enabled: !!user })
+  const idsAgrupados = new Set(grupos?.flatMap((g) => g.itens) ?? [])
+  const itensSoltos = todosItensVisiveis.filter((item) => !idsAgrupados.has(item.to))
+
+  const [gruposAbertos, setGruposAbertos] = useState<Record<number, boolean>>({})
+  function grupoEstaAberto(groupId: number) {
+    if (groupId in gruposAbertos) return gruposAbertos[groupId]
+    try {
+      return localStorage.getItem(`sidebar_grupo_aberto_${groupId}`) === '1'
+    } catch {
+      return false
+    }
+  }
+  function alternarGrupo(groupId: number) {
+    const novoEstado = !grupoEstaAberto(groupId)
+    setGruposAbertos((prev) => ({ ...prev, [groupId]: novoEstado }))
+    try {
+      localStorage.setItem(`sidebar_grupo_aberto_${groupId}`, novoEstado ? '1' : '0')
+    } catch {
+      // localStorage indisponível (modo privado etc.) — só não persiste entre sessões.
+    }
+  }
+
   function handleLogout() {
     logout()
     navigate('/login')
@@ -169,7 +258,11 @@ export default function Sidebar() {
         <p className="text-xs text-dark-400 truncate mt-2 text-center">{empresaAtiva?.nome ?? '...'}</p>
       </div>
 
-      {user?.superAdmin && empresas && empresas.length > 1 && (
+      {/* superAdmin sempre vê o seletor (acessa qualquer empresa); admin
+          comum só vê se tiver empresas extras concedidas (ver Permissões >
+          Empresas extras) — nesse caso `empresas` já vem com mais de 1 linha
+          da própria query, sem precisar de nenhum flag adicional aqui. */}
+      {(user?.superAdmin || user?.role === 'admin') && empresas && empresas.length > 1 && (
         <div className="px-4 pt-3">
           <label className="text-xs text-dark-500 block mb-1">Empresa</label>
           <select
@@ -210,90 +303,36 @@ export default function Sidebar() {
 
       <nav className="flex-1 px-3 py-4 overflow-y-auto">
         <div className="space-y-1">
-          {links.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
-                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
-                }`
-              }
-            >
-              <Icon size={17} />
-              <span className="flex-1">{label}</span>
-            </NavLink>
+          {grupos?.map((grupo) => {
+            const itensDoGrupo = grupo.itens.map((to) => itemPorTo.get(to)).filter((i): i is NonNullable<typeof i> => !!i)
+            if (itensDoGrupo.length === 0) return null
+            const GrupoIcon = ICONES_GRUPO[grupo.icone] ?? Folder
+            const aberto = grupoEstaAberto(grupo.id)
+            return (
+              <div key={grupo.id}>
+                <button
+                  onClick={() => alternarGrupo(grupo.id)}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all w-full text-dark-300 hover:text-dark-100 hover:bg-dark-800"
+                >
+                  <GrupoIcon size={17} />
+                  <span className="flex-1 text-left">{grupo.nome}</span>
+                  {aberto ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+                </button>
+                {aberto && (
+                  <div className="pl-4 space-y-1 mt-1">
+                    {itensDoGrupo.map((item) => (
+                      <SidebarItemLink key={item.to} {...item} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {itensSoltos.map((item) => (
+            <SidebarItemLink key={item.to} {...item} />
           ))}
-          {user?.role === 'admin' && (user.superAdmin || minhasFeatures?.includes('painel_tv')) && (
-            <a
-              href="/painel-tv"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
-            >
-              <Tv size={17} />
-              <span className="flex-1">Painel de TV</span>
-            </a>
-          )}
-          {user?.superAdmin && (
-            <NavLink
-              to="/admin/permissoes"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
-                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
-                }`
-              }
-            >
-              <ShieldCheck size={17} />
-              <span className="flex-1">Permissões</span>
-            </NavLink>
-          )}
-          {user?.superAdmin && (
-            <NavLink
-              to="/admin/funcoes"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
-                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
-                }`
-              }
-            >
-              <UserCog size={17} />
-              <span className="flex-1">Funções</span>
-            </NavLink>
-          )}
-          {user?.superAdmin && (
-            <NavLink
-              to="/admin/leads-regioes"
-              className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  isActive
-                    ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30'
-                    : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
-                }`
-              }
-            >
-              <MapPin size={17} />
-              <span className="flex-1">Regiões de Leads</span>
-            </NavLink>
-          )}
-          {user?.role === 'admin' && (user.superAdmin || minhasFeatures?.includes('painel_financeiro')) && (
-            <a
-              href="/painel-financeiro"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
-            >
-              <Wallet size={17} />
-              <span className="flex-1">Painel Financeiro</span>
-            </a>
-          )}
+
           <a
             href={MARKETING_URL}
             target="_blank"

@@ -10,6 +10,8 @@ import { appRouter } from './router/index.js'
 import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
+import { and, eq } from 'drizzle-orm'
+import { adminEmpresasExtras } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
@@ -56,13 +58,24 @@ app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))
 // Resolve qual empresa vale pra esta requisição: normalmente é a empresa do
 // próprio usuário, mas um `superAdmin` pode mandar o header `x-empresa-id`
 // pra "entrar" em outra empresa sem logar de novo (ver Sidebar/AuthContext
-// no client). Usuário comum nunca consegue spoofar — o header é ignorado.
-function resolverEmpresaId(user: JwtPayload | null, headerEmpresaId: string | string[] | undefined): number | null {
+// no client). Um admin comum também consegue, mas só pra uma empresa que o
+// superAdmin liberou explicitamente pra ele (tabela adminEmpresasExtras,
+// gerida em Permissões — ver empresas.ts atualizarExtras). Usuário sem
+// nenhuma das duas coisas nunca consegue spoofar — o header é ignorado.
+async function resolverEmpresaId(
+  user: JwtPayload | null,
+  headerEmpresaId: string | string[] | undefined
+): Promise<number | null> {
   if (!user) return null
-  if (!user.superAdmin) return user.empresaId
   const valor = Array.isArray(headerEmpresaId) ? headerEmpresaId[0] : headerEmpresaId
-  const empresaId = valor ? Number(valor) : NaN
-  return Number.isInteger(empresaId) && empresaId > 0 ? empresaId : user.empresaId
+  const empresaIdPedida = valor ? Number(valor) : NaN
+  if (!Number.isInteger(empresaIdPedida) || empresaIdPedida <= 0) return user.empresaId
+  if (user.superAdmin) return empresaIdPedida
+  if (empresaIdPedida === user.empresaId) return empresaIdPedida
+  const concedida = await db.query.adminEmpresasExtras.findFirst({
+    where: and(eq(adminEmpresasExtras.userId, user.id), eq(adminEmpresasExtras.empresaId, empresaIdPedida)),
+  })
+  return concedida ? empresaIdPedida : user.empresaId
 }
 
 // tRPC
@@ -70,11 +83,11 @@ app.use(
   '/trpc',
   createExpressMiddleware({
     router: appRouter,
-    createContext: ({ req }) => {
+    createContext: async ({ req }) => {
       const auth = req.headers.authorization
       const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null
       const user = token ? verifyToken(token) : null
-      return { user, empresaId: resolverEmpresaId(user, req.headers['x-empresa-id']) }
+      return { user, empresaId: await resolverEmpresaId(user, req.headers['x-empresa-id']) }
     },
   })
 )
@@ -194,7 +207,7 @@ app.post('/upload/clientes-csv', uploadMemoria.array('files'), async (req, res) 
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (user.role !== 'admin') return res.status(403).json({ error: 'Acesso restrito ao administrador' })
-  const empresaId = resolverEmpresaId(user, req.headers['x-empresa-id'])
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
   if (!empresaId) return res.status(401).json({ error: 'Empresa não resolvida' })
 
   const files = req.files as Express.Multer.File[] | undefined
