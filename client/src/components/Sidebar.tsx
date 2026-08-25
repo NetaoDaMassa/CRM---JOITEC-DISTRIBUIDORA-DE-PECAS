@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus,
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
@@ -69,6 +69,10 @@ export const ADMIN_LINKS = [
   { to: '/admin/candidatos', label: 'Candidatos', icon: Contact, feature: 'candidatos' },
   { to: '/admin/mensagens-rh', label: 'Mensagens (RH)', icon: MessageCircle, feature: 'mensagens_rh' },
   { to: '/admin/analytics', label: 'Analytics', icon: Activity, somenteEmpresas: EMPRESAS_ANALYTICS_MARKETING, feature: 'marketing_analytics' },
+  // Módulo de Leads (site) — portado do CRM-GRUPO-ODIN, fase 1 do plano em
+  // .claude/plans/stateful-soaring-moore.md.
+  { to: '/admin/leads', label: 'Leads', icon: UserPlus, feature: 'leads' },
+  { to: '/admin/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -100,6 +104,8 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_mecanica' },
   { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes_demonstracao' },
   { to: '/vendedor/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, somenteEmpresas: EMPRESAS_DEVOLUCAO, feature: 'devolucoes' },
+  { to: '/vendedor/leads', label: 'Leads', icon: UserPlus, feature: 'leads' },
+  { to: '/vendedor/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
 ]
 
 export default function Sidebar() {

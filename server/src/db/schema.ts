@@ -847,6 +847,296 @@ export const candidateMessageTemplatesRelations = relations(candidateMessageTemp
   empresa: one(empresas, { fields: [candidateMessageTemplates.empresaId], references: [empresas.id] }),
 }))
 
+// Módulo de Leads — leads de venda captados nos sites do grupo (formulário,
+// download de ebook, etc.), com distribuição automática por rodízio
+// (região/DDD → vendedor). Portado do sistema separado CRM-GRUPO-ODIN
+// (crm-odin.duckdns.org/admin/leads) pra dentro do CRM principal — fase 1
+// (núcleo: lista/Kanban/ficha/etapas/notas/anexos/fila de desqualificado +
+// rodízio na criação; SLA/alertas automáticos/relatórios ficam pra depois,
+// ver server/src/lib/scheduler.ts do sistema antigo pro que falta portar).
+// Nomes de campo em inglês de propósito, espelhando o sistema de origem —
+// mesma escolha já feita no módulo de RH acima.
+export const leadRegions = sqliteTable('lead_regions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const leadDdds = sqliteTable(
+  'lead_ddds',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    ddd: integer('ddd').notNull(),
+    regionId: integer('region_id').notNull().references(() => leadRegions.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    empresaDdd: unique().on(t.empresaId, t.ddd),
+  })
+)
+
+// Quais vendedores atendem cada região — a lista que o rodízio percorre.
+export const leadRegionVendedores = sqliteTable('lead_region_vendedores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  regionId: integer('region_id').notNull().references(() => leadRegions.id, { onDelete: 'cascade' }),
+  vendorId: integer('vendor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Cursor do rodízio — 1 linha por região, `nextIndex` é um contador que só
+// cresce (o índice real na lista de vendedores ativos é `nextIndex %
+// quantidade`), ver server/src/lib/leadsRoundRobin.ts.
+export const leadRoundRobinState = sqliteTable('lead_round_robin_state', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  regionId: integer('region_id').notNull().unique().references(() => leadRegions.id, { onDelete: 'cascade' }),
+  nextIndex: integer('next_index').notNull().default(0),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const leadCampaigns = sqliteTable('lead_campaigns', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  channel: text('channel', {
+    enum: ['facebook', 'instagram', 'google', 'whatsapp', 'site', 'indicacao', 'outro'],
+  }).notNull().default('outro'),
+  description: text('description'),
+  isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const leads = sqliteTable(
+  'leads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    phone: text('phone').notNull(),
+    ddd: integer('ddd').notNull(),
+    email: text('email'),
+    company: text('company'),
+    city: text('city'),
+    segment: text('segment', {
+      enum: ['assistente_tecnico', 'instalador', 'revendedor_lojista', 'outros'],
+    }).default('outros'),
+    status: text('status', {
+      enum: ['novo', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final'],
+    }).notNull().default('novo'),
+    vendorId: integer('vendor_id').references(() => users.id, { onDelete: 'set null' }),
+    regionId: integer('region_id').references(() => leadRegions.id, { onDelete: 'set null' }),
+    campaignId: integer('campaign_id').references(() => leadCampaigns.id, { onDelete: 'set null' }),
+    source: text('source'),
+    observations: text('observations'),
+    nextContactAt: text('next_contact_at'),
+    followUpCount: integer('follow_up_count').notNull().default(0),
+    requiresAttachment: integer('requires_attachment', { mode: 'boolean' }).notNull().default(false),
+    statusChangedAt: text('status_changed_at'),
+    // Campos de SLA/automação — só escritos hoje pelas ações manuais do
+    // núcleo (changeStatus/addContactAttempt zeram/atualizam). O motor que os
+    // preenche sozinho (scheduler.ts do sistema antigo) ainda não foi
+    // portado — ver plano da migração — mantidos aqui pra já bater 1:1 com
+    // os dados históricos migrados e não exigir 2ª migração de schema depois.
+    idleAlertSentAt: text('idle_alert_sent_at'),
+    autoReassignedAt: text('auto_reassigned_at'),
+    lastContactAt: text('last_contact_at'),
+    attemptCount: integer('attempt_count'),
+    slaStatus: text('sla_status', { enum: ['em_risco', 'critico'] }),
+    abordagem4hAlertSentAt: text('abordagem_4h_alert_sent_at'),
+    lastContactStaleAlertSentAt: text('last_contact_stale_alert_sent_at'),
+    codSap: text('cod_sap'),
+    orderValue: real('order_value'),
+    finalOrderValue: real('final_order_value'),
+    paymentMethod: text('payment_method', { enum: ['avista', 'boleto', 'boleto_entrada', 'cartao_credito'] }),
+    lossReason: text('loss_reason'),
+    disqualifyReason: text('disqualify_reason'),
+    finalConsumerReason: text('final_consumer_reason'),
+    negotiationTag: text('negotiation_tag', { enum: ['vermelho', 'amarelo'] }),
+    // Id numérico do lead no sistema antigo — só pra rastreabilidade e pra
+    // permitir rodar o script de migração de novo sem duplicar (ver
+    // server/scripts/migrar-leads-crm-marketing.ts). Nulo pra lead criado
+    // direto aqui.
+    origemLeadId: integer('origem_lead_id'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+    assignedAt: text('assigned_at'),
+    deletedAt: text('deleted_at'),
+    deletedBy: integer('deleted_by').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    origemIdx: unique().on(t.empresaId, t.origemLeadId),
+  })
+)
+
+export const leadNotes = sqliteTable('lead_notes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  leadId: integer('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  type: text('type', { enum: ['nota', 'followup', 'lembrete'] }).notNull().default('nota'),
+  content: text('content').notNull(),
+  nextContactAt: text('next_contact_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Metadados do anexo — o arquivo em si fica em server/uploads/, igual ao
+// resto do CRM (`filename` é o nome em disco, `originalName` o nome que o
+// usuário enviou).
+export const leadAttachments = sqliteTable('lead_attachments', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  leadId: integer('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  filename: text('filename').notNull(),
+  originalName: text('original_name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  size: integer('size').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Trilha de auditoria do lead (mudança de etapa, transferência,
+// reatribuição automática, exclusão...). `action` é texto livre — valores
+// usados pelo router: criado, status_alterado, reaberto_desqualificado,
+// desqualificacao_aprovada, tentativa_contato, transferido, excluido,
+// reatribuicao_automatica.
+export const leadHistory = sqliteTable('lead_history', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  leadId: integer('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  fromStatus: text('from_status'),
+  toStatus: text('to_status'),
+  fromVendorId: integer('from_vendor_id').references(() => users.id, { onDelete: 'set null' }),
+  toVendorId: integer('to_vendor_id').references(() => users.id, { onDelete: 'set null' }),
+  details: text('details'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const leadContactAttempts = sqliteTable('lead_contact_attempts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  leadId: integer('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  channel: text('channel', { enum: ['ligacao', 'whatsapp', 'email'] }).notNull(),
+  result: text('result', {
+    enum: ['sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'],
+  }).notNull(),
+  nextActionAt: text('next_action_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Visitante do site (identificado por um uid gerado no navegador,
+// localStorage) — alimenta a timeline "veio do site" na ficha do lead. A
+// captação ao vivo (tracker.js nos sites) continua apontando pro sistema
+// antigo por enquanto (ver plano da migração) — estas tabelas guardam só o
+// histórico já migrado.
+export const leadTrackingVisitors = sqliteTable(
+  'lead_tracking_visitors',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    visitorUid: text('visitor_uid').notNull(),
+    firstSeenAt: text('first_seen_at').notNull().default(sql`(datetime('now'))`),
+    lastSeenAt: text('last_seen_at').notNull().default(sql`(datetime('now'))`),
+    leadId: integer('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    utmSource: text('utm_source'),
+    utmMedium: text('utm_medium'),
+    utmCampaign: text('utm_campaign'),
+  },
+  (t) => ({
+    empresaVisitorUid: unique().on(t.empresaId, t.visitorUid),
+    leadIdx: index('idx_lead_tracking_visitors_lead').on(t.leadId),
+  })
+)
+
+export const leadTrackingEvents = sqliteTable(
+  'lead_tracking_events',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    visitorId: integer('visitor_id').notNull().references(() => leadTrackingVisitors.id, { onDelete: 'cascade' }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    eventType: text('event_type', {
+      enum: ['page_view', 'click', 'form_submit', 'ebook_download', 'blog_signup'],
+    }).notNull(),
+    pageUrl: text('page_url'),
+    pageTitle: text('page_title'),
+    metadata: text('metadata'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    visitorIdx: index('idx_lead_tracking_events_visitor').on(t.visitorId),
+    empresaTypeIdx: index('idx_lead_tracking_events_empresa_type').on(t.empresaId, t.eventType),
+  })
+)
+
+export const leadRegionsRelations = relations(leadRegions, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [leadRegions.empresaId], references: [empresas.id] }),
+  ddds: many(leadDdds),
+  vendedores: many(leadRegionVendedores),
+}))
+
+export const leadDddsRelations = relations(leadDdds, ({ one }) => ({
+  empresa: one(empresas, { fields: [leadDdds.empresaId], references: [empresas.id] }),
+  region: one(leadRegions, { fields: [leadDdds.regionId], references: [leadRegions.id] }),
+}))
+
+export const leadRegionVendedoresRelations = relations(leadRegionVendedores, ({ one }) => ({
+  region: one(leadRegions, { fields: [leadRegionVendedores.regionId], references: [leadRegions.id] }),
+  vendor: one(users, { fields: [leadRegionVendedores.vendorId], references: [users.id] }),
+}))
+
+export const leadRoundRobinStateRelations = relations(leadRoundRobinState, ({ one }) => ({
+  region: one(leadRegions, { fields: [leadRoundRobinState.regionId], references: [leadRegions.id] }),
+}))
+
+export const leadCampaignsRelations = relations(leadCampaigns, ({ one }) => ({
+  empresa: one(empresas, { fields: [leadCampaigns.empresaId], references: [empresas.id] }),
+}))
+
+export const leadsRelations = relations(leads, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [leads.empresaId], references: [empresas.id] }),
+  vendor: one(users, { fields: [leads.vendorId], references: [users.id] }),
+  region: one(leadRegions, { fields: [leads.regionId], references: [leadRegions.id] }),
+  campaign: one(leadCampaigns, { fields: [leads.campaignId], references: [leadCampaigns.id] }),
+  notes: many(leadNotes),
+  attachments: many(leadAttachments),
+  history: many(leadHistory),
+  contactAttempts: many(leadContactAttempts),
+  trackingVisitors: many(leadTrackingVisitors),
+}))
+
+export const leadNotesRelations = relations(leadNotes, ({ one }) => ({
+  lead: one(leads, { fields: [leadNotes.leadId], references: [leads.id] }),
+  user: one(users, { fields: [leadNotes.userId], references: [users.id] }),
+}))
+
+export const leadAttachmentsRelations = relations(leadAttachments, ({ one }) => ({
+  lead: one(leads, { fields: [leadAttachments.leadId], references: [leads.id] }),
+  user: one(users, { fields: [leadAttachments.userId], references: [users.id] }),
+}))
+
+export const leadHistoryRelations = relations(leadHistory, ({ one }) => ({
+  empresa: one(empresas, { fields: [leadHistory.empresaId], references: [empresas.id] }),
+  lead: one(leads, { fields: [leadHistory.leadId], references: [leads.id] }),
+  user: one(users, { fields: [leadHistory.userId], references: [users.id] }),
+}))
+
+export const leadContactAttemptsRelations = relations(leadContactAttempts, ({ one }) => ({
+  lead: one(leads, { fields: [leadContactAttempts.leadId], references: [leads.id] }),
+  user: one(users, { fields: [leadContactAttempts.userId], references: [users.id] }),
+}))
+
+export const leadTrackingVisitorsRelations = relations(leadTrackingVisitors, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [leadTrackingVisitors.empresaId], references: [empresas.id] }),
+  lead: one(leads, { fields: [leadTrackingVisitors.leadId], references: [leads.id] }),
+  events: many(leadTrackingEvents),
+}))
+
+export const leadTrackingEventsRelations = relations(leadTrackingEvents, ({ one }) => ({
+  visitor: one(leadTrackingVisitors, { fields: [leadTrackingEvents.visitorId], references: [leadTrackingVisitors.id] }),
+  empresa: one(empresas, { fields: [leadTrackingEvents.empresaId], references: [empresas.id] }),
+}))
+
 // Permissões por item de menu, por admin — presença de uma linha
 // (userId, feature) = acesso liberado. superAdmin nunca precisa de linhas
 // aqui (sempre vê tudo, ver `superAdmin` na tabela users). `feature` é uma

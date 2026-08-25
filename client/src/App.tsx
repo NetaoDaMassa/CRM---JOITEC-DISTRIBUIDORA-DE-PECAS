@@ -31,6 +31,10 @@ import AdminVagas from './pages/admin/Vagas'
 import AdminCandidatos from './pages/admin/Candidatos'
 import AdminMensagensRh from './pages/admin/MensagensRh'
 import AdminAnalytics from './pages/admin/Analytics'
+import Leads from './pages/admin/Leads'
+import LeadDetail from './pages/admin/LeadDetail'
+import LeadsKanban from './pages/admin/LeadsKanban'
+import LeadsDesqualificados from './pages/admin/LeadsDesqualificados'
 
 import VendorDashboard from './pages/vendor/Dashboard'
 import VendorKanban from './pages/vendor/Kanban'
@@ -165,6 +169,10 @@ export default function App() {
           <Route path="admin/candidatos" element={<AdminGuard><FeatureGuard feature="candidatos"><AdminCandidatos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/mensagens-rh" element={<AdminGuard><FeatureGuard feature="mensagens_rh"><AdminMensagensRh /></FeatureGuard></AdminGuard>} />
           <Route path="admin/analytics" element={<AdminGuard><FeatureGuard feature="marketing_analytics"><AdminAnalytics /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/leads" element={<AdminGuard><FeatureGuard feature="leads"><Leads /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/leads/kanban" element={<AdminGuard><FeatureGuard feature="leads"><LeadsKanban /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/leads/:id" element={<AdminGuard><FeatureGuard feature="leads"><LeadDetail /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/leads-desqualificados" element={<AdminGuard><FeatureGuard feature="leads"><LeadsDesqualificados /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-mecanica" element={<AdminGuard><FeatureGuard feature="devolucoes_mecanica"><DevolucaoMecanica /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-demonstracao" element={<AdminGuard><FeatureGuard feature="devolucoes_demonstracao"><DevolucaoDemonstracao /></FeatureGuard></AdminGuard>} />
@@ -188,6 +196,9 @@ export default function App() {
           <Route path="vendedor/devolucoes-mecanica" element={<DevolucaoMecanica />} />
           <Route path="vendedor/devolucoes-demonstracao" element={<DevolucaoDemonstracao />} />
           <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
+          <Route path="vendedor/leads" element={<Leads />} />
+          <Route path="vendedor/leads/kanban" element={<LeadsKanban />} />
+          <Route path="vendedor/leads/:id" element={<LeadDetail />} />
 
           <Route
             index

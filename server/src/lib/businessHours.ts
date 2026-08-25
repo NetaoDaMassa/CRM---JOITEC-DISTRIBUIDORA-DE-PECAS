@@ -41,6 +41,43 @@ export function businessHoursElapsedMs(fromISO: string, toISO: string = new Date
   return total
 }
 
+export function isWeekend(iso: string): boolean {
+  const weekday = new Date(toShiftedMs(iso)).getUTCDay()
+  return weekday === 0 || weekday === 6
+}
+
+// Avança `days` dias ÚTEIS (pula sáb/dom) a partir de `fromISO`, preservando
+// o horário do dia — usado pelo módulo de Leads pra limitar o agendamento
+// de próximo contato na etapa "Abordagem".
+export function addBusinessDays(fromISO: string, days: number): string {
+  let ms = toShiftedMs(fromISO)
+  let added = 0
+  while (added < days) {
+    ms += DAY_MS
+    const weekday = new Date(ms).getUTCDay()
+    if (weekday !== 0 && weekday !== 6) added++
+  }
+  return new Date(ms + TZ_OFFSET_MS).toISOString()
+}
+
+// Valida o agendamento de próximo contato na etapa "Abordagem" de um lead:
+// não pode cair em sábado/domingo nem passar de `maxBusinessDays` dias úteis
+// de antecedência (ver server/src/router/leads.ts).
+export function validateNextContactLimit(
+  nextContactISO: string,
+  maxBusinessDays: number,
+  fromISO: string = new Date().toISOString()
+): string | null {
+  if (isWeekend(nextContactISO)) {
+    return 'Não é possível agendar o próximo contato para sábado ou domingo'
+  }
+  const limit = addBusinessDays(fromISO, maxBusinessDays)
+  if (toShiftedMs(nextContactISO) > toShiftedMs(limit)) {
+    return `O próximo contato não pode ser agendado com mais de ${maxBusinessDays} dias úteis de antecedência`
+  }
+  return null
+}
+
 export function toLocalDateKey(iso: string): string {
   const shifted = new Date(toShiftedMs(iso))
   const year = shifted.getUTCFullYear()

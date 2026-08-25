@@ -92,6 +92,21 @@ app.post('/upload/pedido', upload.single('file'), async (req, res) => {
   res.json({ path: req.file.filename })
 })
 
+// Anexo de lead (módulo de Leads) — qualquer tipo de arquivo (print de
+// conversa, proposta em PDF, foto...), igual ao sistema de origem.
+app.post('/upload/lead-attachment', upload.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+
+  res.json({
+    path: req.file.filename,
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    size: req.file.size,
+  })
+})
+
 // Foto de perfil do vendedor (usada no Dashboard e no Painel de TV)
 app.post('/upload/foto-vendedor', upload.single('file'), async (req, res) => {
   const user = authenticate(req)

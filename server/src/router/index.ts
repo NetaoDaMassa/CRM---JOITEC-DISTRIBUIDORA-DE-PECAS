@@ -35,6 +35,7 @@ import { candidatosRouter } from './candidatos.js'
 import { mensagensRhRouter } from './mensagensRh.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
 import { integracoesRouter } from './integracoes.js'
+import { leadsRouter } from './leads.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { router } from './_base.js'
@@ -79,6 +80,7 @@ export const appRouter = router({
   mensagensRh: mensagensRhRouter,
   contasVinculadas: contasVinculadasRouter,
   integracoes: integracoesRouter,
+  leads: leadsRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
 })

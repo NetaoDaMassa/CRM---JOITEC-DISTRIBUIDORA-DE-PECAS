@@ -54,6 +54,10 @@ export const FEATURES_ADMIN = [
   'vagas',
   'candidatos',
   'mensagens_rh',
+  // Leads de venda (site) — módulo novo, portado do sistema CRM-GRUPO-ODIN.
+  // Diferente do RH, também existe em FEATURES_VENDEDOR (é tela de uso
+  // diário do vendedor, não só do admin).
+  'leads',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
@@ -86,6 +90,8 @@ export const FEATURES_VENDEDOR = [
   'devolucoes_ver_comissao',
   'devolucoes_excluir_chamado',
   'devolucoes_finalizar_fora_ordem',
+  // Leads de venda (site) — mesma chave de FEATURES_ADMIN acima.
+  'leads',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima
