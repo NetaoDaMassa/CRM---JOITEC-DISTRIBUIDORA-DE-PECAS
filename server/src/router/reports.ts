@@ -1,8 +1,18 @@
 import { z } from 'zod'
-import { and, between, count, desc, eq, inArray, isNotNull, isNull, sql, sum } from 'drizzle-orm'
+import { and, between, count, desc, eq, inArray, isNotNull, isNull, or, sql, sum } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, funilMensal, registroContato, itensPedido, users, vendas as vendasTable, logAuditoria } from '../db/schema.js'
+import {
+  clientes,
+  clienteVinculos,
+  empresas,
+  funilMensal,
+  registroContato,
+  itensPedido,
+  users,
+  vendas as vendasTable,
+  logAuditoria,
+} from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 
 // Vendedores que o usuário logado tem permissão de ver neste relatório —
@@ -18,6 +28,58 @@ async function vendedoresPermitidos(ctx: { user: { role: 'admin' | 'vendor'; id:
   })
   if (ctx.user.role !== 'admin') return vendedores.filter((v) => v.id === ctx.user.id)
   return vendedorId ? vendedores.filter((v) => v.id === vendedorId) : vendedores
+}
+
+// Positivação de carteira contava cada CNPJ vinculado (`cliente_vinculos` —
+// matriz/filial, mesmo cliente com CNPJ diferente) como um cliente à parte,
+// distorcendo "de quantos clientes ele vendeu" (pedido do João 2026-08-25:
+// vendedores já vinculam esses cadastros, mas o relatório não olhava pra
+// isso). Agrupa por componente conexo (union-find) dentro do conjunto já
+// filtrado — um vínculo pra um cliente fora do filtro (outro vendedor, outra
+// região) não junta grupo nenhum, só é ignorado.
+async function agruparCarteiraVinculada(
+  clientesFiltrados: { id: number; dataUltimaCompra: string | null }[],
+  inicio: string,
+  fim: string
+): Promise<{ totalCarteira: number; ativados: number }> {
+  const ids = clientesFiltrados.map((c) => c.id)
+  if (ids.length === 0) return { totalCarteira: 0, ativados: 0 }
+
+  const idSet = new Set(ids)
+  const vinculosRows = await db.query.clienteVinculos.findMany({
+    where: or(inArray(clienteVinculos.clienteId, ids), inArray(clienteVinculos.clienteVinculadoId, ids)),
+  })
+
+  const pai = new Map<number, number>(ids.map((id) => [id, id]))
+  function encontrar(id: number): number {
+    let raiz = id
+    while (pai.get(raiz) !== raiz) raiz = pai.get(raiz)!
+    while (pai.get(id) !== raiz) {
+      const proximo = pai.get(id)!
+      pai.set(id, raiz)
+      id = proximo
+    }
+    return raiz
+  }
+  function unir(a: number, b: number) {
+    const ra = encontrar(a)
+    const rb = encontrar(b)
+    if (ra !== rb) pai.set(ra, rb)
+  }
+  for (const v of vinculosRows) {
+    if (idSet.has(v.clienteId) && idSet.has(v.clienteVinculadoId)) unir(v.clienteId, v.clienteVinculadoId)
+  }
+
+  // Mesma comparação textual usada no resto do arquivo (between em cima de
+  // "YYYY-MM-DD HH:MM:SS") — dataUltimaCompra segue o mesmo formato.
+  const grupoAtivado = new Map<number, boolean>()
+  for (const c of clientesFiltrados) {
+    const raiz = encontrar(c.id)
+    const comprouAgora = !!c.dataUltimaCompra && c.dataUltimaCompra >= inicio && c.dataUltimaCompra <= fim
+    grupoAtivado.set(raiz, (grupoAtivado.get(raiz) ?? false) || comprouAgora)
+  }
+
+  return { totalCarteira: grupoAtivado.size, ativados: [...grupoAtivado.values()].filter(Boolean).length }
 }
 
 const regiaoEnum = z.enum(['norte', 'nordeste', 'centro_oeste', 'sudeste', 'sul']).optional()
@@ -118,12 +180,11 @@ export const reportsRouter = router({
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtrosCarteira.push(filtroReg)
 
-    const [{ totalCarteira }] = await db.select({ totalCarteira: count() }).from(clientes).where(and(...filtrosCarteira))
-
-    const [{ ativados }] = await db
-      .select({ ativados: count() })
-      .from(clientes)
-      .where(and(...filtrosCarteira, between(clientes.dataUltimaCompra, inicio, fim)))
+    const clientesFiltrados = await db.query.clientes.findMany({
+      where: and(...filtrosCarteira),
+      columns: { id: true, dataUltimaCompra: true },
+    })
+    const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesFiltrados, inicio, fim)
 
     return {
       totalCarteira,
@@ -145,10 +206,11 @@ export const reportsRouter = router({
       vendedores.map(async (v) => {
         const filtrosCarteira = [eq(clientes.vendedorAtualId, v.id), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)]
         if (filtroReg) filtrosCarteira.push(filtroReg)
-        const [{ totalCarteira }] = await db.select({ totalCarteira: count() }).from(clientes).where(and(...filtrosCarteira))
-
-        const filtrosAtivados = [...filtrosCarteira, between(clientes.dataUltimaCompra, inicio, fim)]
-        const [{ ativados }] = await db.select({ ativados: count() }).from(clientes).where(and(...filtrosAtivados))
+        const clientesDoVendedor = await db.query.clientes.findMany({
+          where: and(...filtrosCarteira),
+          columns: { id: true, dataUltimaCompra: true },
+        })
+        const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesDoVendedor, inicio, fim)
 
         // Total de contatos feitos pelo vendedor no período, quebrado por
         // canal (ligação x WhatsApp) — pedido do João pra ver ao lado da
