@@ -371,6 +371,7 @@ function LogisticaForm({
     freteChegadaValor: number | null
     dataSaidaPrevista: string | null
     freteEnvioValor: number | null
+    numeroNotaFiscal: string | null
   }
   onSalvo: () => void
 }) {
@@ -379,6 +380,7 @@ function LogisticaForm({
   const [freteChegadaValor, setFreteChegadaValor] = useState(atual.freteChegadaValor != null ? String(atual.freteChegadaValor) : '')
   const [dataSaidaPrevista, setDataSaidaPrevista] = useState(atual.dataSaidaPrevista?.slice(0, 10) ?? '')
   const [freteEnvioValor, setFreteEnvioValor] = useState(atual.freteEnvioValor != null ? String(atual.freteEnvioValor) : '')
+  const [numeroNotaFiscal, setNumeroNotaFiscal] = useState(atual.numeroNotaFiscal ?? '')
 
   const mut = trpc.devolucoes.atualizarLogistica.useMutation({
     onSuccess() {
@@ -398,6 +400,7 @@ function LogisticaForm({
       freteChegadaValor: freteChegadaValor ? Number(freteChegadaValor) : undefined,
       dataSaidaPrevista: dataSaidaPrevista || undefined,
       freteEnvioValor: freteEnvioValor ? Number(freteEnvioValor) : undefined,
+      numeroNotaFiscal: numeroNotaFiscal || undefined,
     })
   }
 
@@ -405,6 +408,9 @@ function LogisticaForm({
     <div className="bg-dark-900/40 border border-dark-700 rounded-2xl p-4 space-y-4">
       <div>
         <p className="text-sm font-semibold text-dark-100 mb-2">Chegada dos materiais</p>
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <Input label="Nota de devolução/garantia" value={numeroNotaFiscal} onChange={(e) => setNumeroNotaFiscal(e.target.value)} />
+        </div>
         <div className="grid grid-cols-3 gap-3">
           <Input label="Transportadora" value={transportadoraNome} onChange={(e) => setTransportadoraNome(e.target.value)} />
           <Input label="Previsão de chegada" type="date" value={dataChegadaPrevista} onChange={(e) => setDataChegadaPrevista(e.target.value)} />
@@ -707,6 +713,7 @@ function DetalheChamadoModal({
             </div>
             {!mostrarLogistica && (
               <div className="text-sm text-dark-200 space-y-1 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+                <p>Nota de devolução/garantia: {chamado.numeroNotaFiscal ?? '—'}</p>
                 <p>Transportadora: {(chamado as any).transportadoraNome ?? '—'}</p>
                 <p>Previsão de chegada: {formatarData((chamado as any).dataChegadaPrevista)}</p>
                 <p>Frete de chegada: {formatarMoeda((chamado as any).freteChegadaValor)}</p>
@@ -723,6 +730,7 @@ function DetalheChamadoModal({
                   freteChegadaValor: (chamado as any).freteChegadaValor ?? null,
                   dataSaidaPrevista: (chamado as any).dataSaidaPrevista ?? null,
                   freteEnvioValor: (chamado as any).freteEnvioValor ?? null,
+                  numeroNotaFiscal: chamado.numeroNotaFiscal ?? null,
                 }}
                 onSalvo={() => { setMostrarLogistica(false); invalidar() }}
               />
@@ -833,6 +841,48 @@ function DetalheChamadoModal({
   )
 }
 
+// Resumo de decisões/valores direto na frente do card do Kanban — antes só
+// dava pra ver abrindo o chamado, e o João queria bater o olho na coluna
+// inteira sem clicar card por card. "Quem errou"/comissão já vêm sanitizados
+// pelo backend pra quem não pode ver (mesma regra do modal de detalhe).
+function CardResumoBadges({ chamado }: { chamado: any }) {
+  const analise = chamado.analise
+  const servicos = chamado.servicos
+  const freteTotal = (chamado.freteChegadaValor ?? 0) + (chamado.freteEnvioValor ?? 0)
+
+  const badges: { key: string; label: string; classes: string }[] = []
+  if (analise?.resultado === 'positivo') {
+    badges.push({ key: 'analise', label: '✅ Positivo', classes: 'text-green-400 bg-green-900/20 border-green-700/40' })
+  }
+  if (analise?.resultado === 'negativo') {
+    badges.push({ key: 'analise', label: '❌ Negativo', classes: 'text-red-400 bg-red-900/20 border-red-700/40' })
+  }
+  if (analise?.impactaComissao) {
+    badges.push({
+      key: 'comissao',
+      label: `💰 ${formatarMoeda(analise.valorImpactoComissao)}`,
+      classes: 'text-amber-400 bg-amber-900/20 border-amber-700/40',
+    })
+  }
+  if (freteTotal > 0) {
+    badges.push({ key: 'frete', label: `🚚 ${formatarMoeda(freteTotal)}`, classes: 'text-cyan-400 bg-cyan-900/20 border-cyan-700/40' })
+  }
+  if (servicos?.teveServico && servicos.valorCobrado) {
+    badges.push({ key: 'servico', label: `🔧 ${formatarMoeda(servicos.valorCobrado)}`, classes: 'text-purple-400 bg-purple-900/20 border-purple-700/40' })
+  }
+
+  if (!badges.length) return null
+  return (
+    <div className="flex flex-wrap gap-1 mt-1.5">
+      {badges.map((b) => (
+        <span key={b.key} className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-full border ${b.classes}`}>
+          {b.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // Kanban de chamados de Devolução — reaproveitado igual pra admin e
 // vendedor (mesma tela em /admin/devolucoes e /vendedor/devolucoes), a
 // diferença de escopo (vê tudo x só o próprio) já acontece no backend.
@@ -926,6 +976,7 @@ export default function Devolucoes() {
                     <p className="text-xs text-dark-400 truncate">{c.clienteNome}</p>
                     {(c as any).vendedor?.name && <p className="text-[10px] text-dark-500 mt-1">{(c as any).vendedor.name}</p>}
                     {(c as any).empresa?.nome && <p className="text-[10px] text-gold-500/70 mt-0.5">{(c as any).empresa.nome}</p>}
+                    <CardResumoBadges chamado={c} />
                   </button>
                 ))}
               </div>

@@ -197,11 +197,23 @@ export const devolucoesRouter = router({
       if (input?.dataInicio) condicoes.push(gte(devolucaoChamados.createdAt, `${input.dataInicio} 00:00:00`))
       if (input?.dataFim) condicoes.push(lte(devolucaoChamados.createdAt, `${input.dataFim} 23:59:59`))
 
-      return db.query.devolucaoChamados.findMany({
+      const rows = await db.query.devolucaoChamados.findMany({
         where: and(...condicoes),
-        with: { vendedor: { columns: { name: true } }, ocorrencias: true, empresa: { columns: { nome: true } } },
+        with: {
+          vendedor: { columns: { name: true } },
+          ocorrencias: true,
+          empresa: { columns: { nome: true } },
+          analise: { columns: { resultado: true, quemErrou: true, impactaComissao: true, valorImpactoComissao: true } },
+          servicos: { columns: { teveServico: true, valorCobrado: true } },
+        },
         orderBy: (c, { desc }) => [desc(c.createdAt)],
       })
+
+      // Mesma regra de sigilo de `detalhe`: "quem errou" e o valor de
+      // impacto na comissão só aparecem pra admin ou pra quem tem
+      // 'devolucoes_ver_comissao' — aqui pontuando nos cards do Kanban, não
+      // só no modal de detalhe.
+      return Promise.all(rows.map(async (c) => ({ ...c, analise: await sanitizarAnalise(c.analise, ctx.user.id, ctx.user.role, ctx.user.superAdmin) })))
     }),
 
   detalhe: adminOrFeatureProcedure('devolucoes')
@@ -518,6 +530,11 @@ export const devolucoesRouter = router({
         freteChegadaValor: z.number().optional(),
         dataSaidaPrevista: z.string().optional(),
         freteEnvioValor: z.number().optional(),
+        // Número da nota de devolução/garantia — antes só dava pra
+        // preencher na abertura do chamado; nem sempre é conhecido ainda
+        // nesse momento (chega junto com o material), então libera editar
+        // aqui também, junto da Chegada dos Materiais.
+        numeroNotaFiscal: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
