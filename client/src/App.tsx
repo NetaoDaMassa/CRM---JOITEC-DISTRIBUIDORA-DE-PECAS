@@ -45,6 +45,7 @@ import VendorCalendario from './pages/vendor/Calendario'
 import FilaHoje from './pages/vendor/FilaHoje'
 import SolicitarDesign from './pages/vendor/SolicitarDesign'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
+import ConsumidorFinalGeral from './pages/vendor/ConsumidorFinalGeral'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
@@ -196,6 +197,7 @@ export default function App() {
           <Route path="vendedor/relatorios" element={<AdminReports />} />
           <Route path="vendedor/banco-clientes" element={<AdminBancoClientes />} />
           <Route path="vendedor/faturamento-geral" element={<FaturamentoGeral />} />
+          <Route path="vendedor/consumidor-final-geral" element={<ConsumidorFinalGeral />} />
           <Route path="vendedor/calendario" element={<VendorCalendario />} />
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
           <Route path="vendedor/devolucoes" element={<Devolucoes />} />

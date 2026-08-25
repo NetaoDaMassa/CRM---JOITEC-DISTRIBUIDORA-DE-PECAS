@@ -80,6 +80,10 @@ export const FEATURES_VENDEDOR = [
   // Visão "Faturamento Geral" (Compretec Loja Física) — todos os cards
   // Fechado/Faturamento da empresa, de qualquer vendedor, num board só.
   'faturamento_geral',
+  // Mesma ideia, mas pra etapa "Consumidor Final" — pedido do João pra
+  // Daniela conseguir ver/mover os cards de consumidor final de qualquer
+  // vendedor da Compretec Loja Física num board só.
+  'consumidor_final_geral',
   // Devolução — mesmas chaves de FEATURES_ADMIN (ver comentário lá). Um
   // vendedor com 'devolucoes' + 'devolucoes_mecanica' concedidos, por
   // exemplo, cobre o antigo papel "gestor padrão" do sistema original, sem

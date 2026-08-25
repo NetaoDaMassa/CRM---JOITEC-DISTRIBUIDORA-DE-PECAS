@@ -104,6 +104,13 @@ export const VENDOR_LINKS = [
     somenteEmpresa: SO_COMPRETEC_LOJA_FISICA,
     feature: 'faturamento_geral',
   },
+  {
+    to: '/vendedor/consumidor-final-geral',
+    label: 'Consumidor Final',
+    icon: Receipt,
+    somenteEmpresa: SO_COMPRETEC_LOJA_FISICA,
+    feature: 'consumidor_final_geral',
+  },
   // Mesma chave 'relatorios' do admin (controla o link aparecer ou não) —
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },

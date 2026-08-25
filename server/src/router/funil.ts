@@ -273,6 +273,25 @@ async function buscarFaturamentoGeral(empresaId: number, ctxUserId: number, ctxI
   )
 }
 
+// Mesma ideia de buscarFaturamentoGeral, só que pra etapa "Consumidor
+// Final" — pedido do João pra Daniela (Compretec Loja Física) conseguir
+// ver/mover num board só os cards que ela já visualizou e marcou como
+// consumidor final, de qualquer vendedor, sem precisar trocar um por um.
+async function buscarConsumidorFinalGeral(empresaId: number, ctxUserId: number, ctxIsAdmin: boolean, mesReferencia?: string) {
+  const clientesDaEmpresa = await db.query.clientes.findMany({
+    where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt)),
+    columns: { id: true },
+  })
+  const clienteIds = clientesDaEmpresa.map((c) => c.id)
+  if (!clienteIds.length) return []
+  return buscarFunilComFiltro(
+    and(inArray(funilMensal.clienteId, clienteIds), eq(funilMensal.etapa, 'consumidor_final'))!,
+    ctxUserId,
+    ctxIsAdmin,
+    mesReferencia
+  )
+}
+
 const ETAPAS_ABERTAS_FILA = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 const TAMANHO_FILA_HOJE = 20
 
@@ -317,6 +336,12 @@ export const funilRouter = router({
     .input(z.object({ mesReferencia: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
       return buscarFaturamentoGeral(ctx.empresaId, ctx.user.id, ctx.user.role === 'admin', input?.mesReferencia)
+    }),
+
+  funilConsumidorFinalGeral: adminOrFeatureProcedure('consumidor_final_geral')
+    .input(z.object({ mesReferencia: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      return buscarConsumidorFinalGeral(ctx.empresaId, ctx.user.id, ctx.user.role === 'admin', input?.mesReferencia)
     }),
 
   moverEtapa: protectedProcedure
