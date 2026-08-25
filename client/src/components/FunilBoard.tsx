@@ -1317,7 +1317,10 @@ function CardModal({
 
         <SolicitarAcaoCarteira card={card} />
 
-        {(card.etapa === 'negociacao' || card.etapa === 'fechado' || card.etapa === 'faturamento') && (
+        {(card.etapa === 'negociacao' ||
+          card.etapa === 'fechado' ||
+          card.etapa === 'faturamento' ||
+          card.etapa === 'perdido') && (
           <button
             type="button"
             onClick={() => criarOrcamentoMut.mutate({ funilMensalId: card.funilMensalId })}

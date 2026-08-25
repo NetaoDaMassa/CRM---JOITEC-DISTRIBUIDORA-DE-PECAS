@@ -530,9 +530,10 @@ export const funilRouter = router({
   // Abre um segundo (ou terceiro...) orçamento pro mesmo cliente, sem mexer
   // no card original — o vendedor as vezes cotação mais de um pedido em
   // paralelo (ex: peça A e peça B, negociados em ritmos diferentes) e
-  // precisa fechar um e perder o outro sem que um afete o outro. Só pode
-  // abrir a partir de Negociação: o relacionamento com o cliente já existe,
-  // não faz sentido repetir Novo/Abordagem/Interessado pro card novo.
+  // precisa fechar um e perder o outro sem que um afete o outro. Também
+  // libera a partir de Perdido: o cliente pode voltar a negociar depois de
+  // ter perdido um pedido anterior, sem precisar recriar o relacionamento
+  // desde Novo/Abordagem/Interessado.
   criarOrcamento: protectedProcedure
     .input(z.object({ funilMensalId: z.number() }))
     .mutation(async ({ ctx, input }) => {
@@ -544,8 +545,13 @@ export const funilRouter = router({
         // segundo orçamento a partir de um card em Faturamento que não é dela.
         if (!(await temFeature(ctx.user.id, 'faturamento_geral'))) throw new Error('Acesso negado')
       }
-      if (origem.etapa !== 'negociacao' && origem.etapa !== 'fechado' && origem.etapa !== 'faturamento') {
-        throw new Error('Só é possível abrir um novo orçamento a partir de Negociação, Fechado ou Faturamento.')
+      if (
+        origem.etapa !== 'negociacao' &&
+        origem.etapa !== 'fechado' &&
+        origem.etapa !== 'faturamento' &&
+        origem.etapa !== 'perdido'
+      ) {
+        throw new Error('Só é possível abrir um novo orçamento a partir de Negociação, Fechado, Faturamento ou Perdido.')
       }
 
       const result = await db.insert(funilMensal).values({
