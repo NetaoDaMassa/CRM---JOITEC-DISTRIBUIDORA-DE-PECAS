@@ -6,6 +6,7 @@ import Button from '../../components/ui/Button'
 import { timeAgo } from '../../lib/utils'
 import LeadReopenDisqualifiedModal from '../../components/LeadReopenDisqualifiedModal'
 import { useAuth } from '../../contexts/AuthContext'
+import { leadTelefoneFormatado } from '../../lib/leadsShared'
 
 // Fila de revisão — leads que algum vendedor marcou como "Desqualificado"
 // e ainda não foram confirmados/reabertos pelo admin (server/src/router/leads.ts,
@@ -56,14 +57,16 @@ export default function LeadsDesqualificados() {
             <tbody className="divide-y divide-dark-700">
               {data.map((lead) => (
                 <tr key={lead.id} className="hover:bg-dark-700/30 transition-colors">
-                  <td className="px-5 py-3 cursor-pointer" onClick={() => navigate(`/admin/leads/${lead.id}`)}>
+                  <td className="px-5 py-3 cursor-pointer align-top" onClick={() => navigate(`/admin/leads/${lead.id}`)}>
                     <p className="font-medium text-dark-100">{lead.name}</p>
-                    <p className="text-xs text-dark-500">{lead.phone}</p>
+                    <p className="text-xs text-dark-500">
+                      {leadTelefoneFormatado(lead.ddd, lead.phone)} {lead.company ? `· ${lead.company}` : ''}
+                    </p>
                   </td>
-                  <td className="px-5 py-3 text-dark-300 max-w-xs truncate">{lead.disqualifyReason ?? '—'}</td>
-                  <td className="px-5 py-3 text-dark-400">{lead.disqualifiedBy}</td>
-                  <td className="px-5 py-3 text-dark-400">{timeAgo(lead.statusChangedAt)}</td>
-                  <td className="px-5 py-3">
+                  <td className="px-5 py-3 text-dark-300 max-w-sm whitespace-pre-wrap break-words align-top">{lead.disqualifyReason ?? '—'}</td>
+                  <td className="px-5 py-3 text-dark-400 align-top">{lead.disqualifiedBy}</td>
+                  <td className="px-5 py-3 text-dark-400 align-top">{timeAgo(lead.statusChangedAt)}</td>
+                  <td className="px-5 py-3 align-top">
                     <div className="flex items-center justify-end gap-2">
                       <Button size="sm" variant="secondary" onClick={() => setReopenId(lead.id)}>
                         Reabrir

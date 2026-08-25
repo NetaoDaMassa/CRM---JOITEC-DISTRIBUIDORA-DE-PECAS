@@ -553,6 +553,7 @@ export const leadsRouter = router({
         name: l.name,
         phone: l.phone,
         ddd: l.ddd,
+        company: l.company,
         disqualifyReason: l.disqualifyReason,
         statusChangedAt: l.statusChangedAt,
         disqualifiedBy: latestRelevantByLead.get(l.id)?.user?.name ?? 'Desconhecido',
