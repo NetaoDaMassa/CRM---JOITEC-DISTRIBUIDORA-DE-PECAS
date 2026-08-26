@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowLeft, ArrowRight, XCircle, RefreshCcw } from 'lucide-react'
+import { ArrowRight, XCircle, RefreshCcw, X } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
@@ -10,9 +10,17 @@ import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, type PropostaStage } from '../lib/propostasShared'
+import ProductSelector from '../components/ProductSelector'
 
 type TabKey = 'geral' | 'arquivos' | 'feedbacks' | 'alteracoes' | 'historico'
 const TAB_LABELS: Record<TabKey, string> = { geral: 'Visão Geral', arquivos: 'Arquivos', feedbacks: 'Feedbacks', alteracoes: 'Alterações', historico: 'Histórico' }
+
+function formatarDataHora(dt: string | null | undefined): string {
+  if (!dt) return '—'
+  const [data, hora] = dt.split(' ')
+  const [ano, mes, dia] = data.split('-')
+  return hora ? `${dia}/${mes}/${ano} ${hora.slice(0, 5)}` : `${dia}/${mes}/${ano}`
+}
 
 export default function PropostaDetail() {
   const { id } = useParams()
@@ -58,25 +66,27 @@ export default function PropostaDetail() {
   const podeAgir = isAdmin || proposta.vendedorId === user?.id
 
   return (
-    <div className="p-6">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-dark-400 hover:text-dark-200 text-sm mb-4">
-        <ArrowLeft size={14} /> Voltar
-      </button>
-
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
-        <div>
-          <h1 className="font-heading text-2xl text-dark-50 font-bold">
-            Proposta #{proposta.id} <span className="text-dark-500 text-base font-normal">— {proposta.clienteNome}</span>
-          </h1>
-          <div className="flex items-center gap-2 mt-1.5">
-            <Badge className="text-gold-400 bg-gold-900/20 border-gold-700/40">{PROPOSTA_STAGE_LABELS[stage]}</Badge>
-            {proposta.prioridade === 'urgente' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">🔴 Urgente</Badge>}
-            {proposta.vendedor && <span className="text-dark-500 text-sm">{proposta.vendedor.name}</span>}
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 md:p-8 bg-dark-950/80 backdrop-blur-sm">
+      <div className="w-full max-w-4xl bg-dark-800 border border-dark-600 rounded-2xl shadow-2xl shadow-black/50 my-4">
+        <div className="flex items-start justify-between gap-3 px-6 pt-5">
+          <div>
+            <h1 className="font-heading text-xl text-dark-50 font-bold">{proposta.clienteNome}</h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dark-400">
+              <span>Proposta #{proposta.id} · <span className="text-dark-200">{proposta.vendedor?.name ?? '—'}</span></span>
+              <span>Criada em <span className="text-dark-200">{formatarDataHora(proposta.createdAt)}</span></span>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <Badge className="text-gold-400 bg-gold-900/20 border-gold-700/40">{PROPOSTA_STAGE_LABELS[stage]}</Badge>
+              {proposta.prioridade === 'urgente' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">🔴 Urgente</Badge>}
+            </div>
           </div>
+          <button onClick={() => navigate(-1)} className="text-dark-400 hover:text-dark-100 transition-colors p-1.5 rounded-lg hover:bg-dark-700 shrink-0">
+            <X size={18} />
+          </button>
         </div>
 
         {podeAgir && stage !== 'convertido' && (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap px-6 mt-4">
             {proximaEtapa && (
               <Button size="sm" loading={moverMut.isPending} onClick={() => moverMut.mutate({ id: propostaId, novaEtapa: proximaEtapa })}>
                 <ArrowRight size={14} className="mr-1" /> Avançar pra "{PROPOSTA_STAGE_LABELS[proximaEtapa]}"
@@ -100,30 +110,32 @@ export default function PropostaDetail() {
           </div>
         )}
         {stage === 'convertido' && proposta.convertidoParaOrdemId && (
-          <Button size="sm" variant="secondary" onClick={() => navigate(isAdmin ? `/admin/ordens/${proposta.convertidoParaOrdemId}` : `/vendedor/ordens/${proposta.convertidoParaOrdemId}`)}>
-            Ver Pedido #{proposta.convertidoParaOrdemId}
-          </Button>
+          <div className="px-6 mt-4">
+            <Button size="sm" variant="secondary" onClick={() => navigate(isAdmin ? `/admin/ordens/${proposta.convertidoParaOrdemId}` : `/vendedor/ordens/${proposta.convertidoParaOrdemId}`)}>
+              Ver Pedido #{proposta.convertidoParaOrdemId}
+            </Button>
+          </div>
         )}
-      </div>
 
-      <div className="flex gap-1 border-b border-dark-700 mb-5 overflow-x-auto">
-        {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
+        <div className="flex gap-1 border-b border-dark-700 mt-4 mx-6 overflow-x-auto">
+          {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
+            >
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </div>
 
-      <div className="max-w-2xl">
-        {tab === 'geral' && <AbaGeral propostaId={propostaId} podeEditar={podeAgir} isAdmin={isAdmin} />}
-        {tab === 'arquivos' && <AbaArquivos propostaId={propostaId} podeEditar={podeAgir} />}
-        {tab === 'feedbacks' && <AbaFeedbacks propostaId={propostaId} />}
-        {tab === 'alteracoes' && <AbaAlteracoes propostaId={propostaId} />}
-        {tab === 'historico' && <AbaHistorico propostaId={propostaId} />}
+        <div className="p-6">
+          {tab === 'geral' && <AbaGeral propostaId={propostaId} podeEditar={podeAgir} isAdmin={isAdmin} />}
+          {tab === 'arquivos' && <AbaArquivos propostaId={propostaId} podeEditar={podeAgir} />}
+          {tab === 'feedbacks' && <AbaFeedbacks propostaId={propostaId} />}
+          {tab === 'alteracoes' && <AbaAlteracoes propostaId={propostaId} />}
+          {tab === 'historico' && <AbaHistorico propostaId={propostaId} />}
+        </div>
       </div>
 
       <Modal open={modalPerdaAberto} onClose={() => setModalPerdaAberto(false)} title="Marcar como perdida" size="sm">
@@ -270,7 +282,8 @@ function AbaGeralForm({
       </div>
       <Input label="WhatsApp do cliente" defaultValue={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} disabled={!podeEditar} />
       <div>
-        <Input label="Produtos/Serviços" defaultValue={produtosDescricao} onChange={(e) => setProdutosDescricao(e.target.value)} disabled={!podeEditar || produtosTravado} />
+        <label className="text-xs text-dark-400 mb-1.5 block">Produtos/Serviços</label>
+        <ProductSelector value={produtosDescricao} onChange={setProdutosDescricao} disabled={!podeEditar || produtosTravado} />
         {produtosTravado && <p className="text-xs text-yellow-500 mt-1">Travado após o envio — use a aba "Alterações" pra pedir mudança.</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">

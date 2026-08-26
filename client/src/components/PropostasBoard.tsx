@@ -1,15 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2 } from 'lucide-react'
+import { trpc } from '../lib/trpc'
+import { useAuth } from '../contexts/AuthContext'
 import { timeAgo } from '../lib/utils'
 import { Badge } from './ui/Badge'
-import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_COLORS, PROPOSTA_STAGE_DOT_COLORS, isOverdue, type PropostaStage } from '../lib/propostasShared'
+import Button from './ui/Button'
+import Modal from './ui/Modal'
+import { Input } from './ui/Input'
+import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_COLORS, PROPOSTA_STAGE_DOT_COLORS, PROPOSTA_STAGE_NEXT, isOverdue, type PropostaStage } from '../lib/propostasShared'
 
 type PropostaCard = {
   id: number
   clienteNome: string
   stage: string
   prioridade: string
+  vendedorId: number
   motivoUrgencia: string | null
   motivoPerda: string | null
   dataRetorno: string | null
@@ -25,10 +32,33 @@ type PropostaCard = {
 
 export default function PropostasBoard({ propostas, basePath, mostrarVendedor = true }: { propostas: PropostaCard[]; basePath: string; mostrarVendedor?: boolean }) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const utils = trpc.useUtils()
 
   const boardRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
   const [boardWidth, setBoardWidth] = useState(0)
+  const [chamarDepoisId, setChamarDepoisId] = useState<number | null>(null)
+  const [dataRetorno, setDataRetorno] = useState('')
+  const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
+
+  function invalidar() { utils.propostas.listar.invalidate() }
+  const moverMut = trpc.propostas.moverEtapa.useMutation({ onSuccess: () => { toast.success('Etapa alterada'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const atualizarMut = trpc.propostas.atualizar.useMutation()
+  const excluirMut = trpc.propostas.excluir.useMutation({ onSuccess: () => { toast.success('Excluída'); setExcluindo(null); invalidar() }, onError: (e) => toast.error(e.message) })
+
+  async function confirmarChamarDepois() {
+    if (!chamarDepoisId || !dataRetorno) return
+    try {
+      await atualizarMut.mutateAsync({ id: chamarDepoisId, dataRetorno })
+      await moverMut.mutateAsync({ id: chamarDepoisId, novaEtapa: 'chamar_depois' })
+      setChamarDepoisId(null)
+      setDataRetorno('')
+    } catch (e: any) {
+      toast.error(e.message)
+    }
+  }
 
   useEffect(() => {
     const board = boardRef.current
@@ -66,6 +96,8 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                   const temPdf = p.arquivos.some((a) => a.fileCategory === 'proposta_pdf' || a.tipoArquivo?.includes('pdf'))
                   const isUrgente = p.prioridade === 'urgente'
                   const temAlteracao = p.alteracoes.length > 0
+                  const podeAgir = isAdmin || p.vendedorId === user?.id
+                  const proximaEtapa = PROPOSTA_STAGE_NEXT[stage]
                   return (
                     <div
                       key={p.id}
@@ -87,7 +119,29 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                             </span>
                           )}
                         </div>
-                        <ChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors shrink-0" />
+                        <div className="flex items-center gap-1 shrink-0">
+                          {podeAgir && (
+                            <>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); navigate(`${basePath}/${p.id}`) }}
+                                className="p-1 rounded text-dark-500 hover:text-gold-400 hover:bg-dark-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Editar"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              {isAdmin && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); setExcluindo({ id: p.id, nome: p.clienteNome }) }}
+                                  className="p-1 rounded text-dark-500 hover:text-red-400 hover:bg-dark-700 opacity-0 group-hover:opacity-100 transition-opacity"
+                                  title="Excluir"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </>
+                          )}
+                          <ChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors shrink-0" />
+                        </div>
                       </div>
                       <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors mb-1">{p.clienteNome}</h4>
 
@@ -137,6 +191,27 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                           {!temPdf && stage === 'proposta' && <AlertCircle size={12} className="text-yellow-500" />}
                         </div>
                       </div>
+
+                      {podeAgir && stage !== 'convertido' && (proximaEtapa || stage !== 'chamar_depois') && (
+                        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-dark-700/60">
+                          {proximaEtapa && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); moverMut.mutate({ id: p.id, novaEtapa: proximaEtapa }) }}
+                              className="flex items-center gap-1 text-[11px] font-semibold text-gold-400 hover:text-gold-300 transition-colors"
+                            >
+                              <ArrowRight size={11} /> Avançar
+                            </button>
+                          )}
+                          {stage !== 'chamar_depois' && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setChamarDepoisId(p.id); setDataRetorno('') }}
+                              className="flex items-center gap-1 text-[11px] font-semibold text-dark-400 hover:text-dark-200 transition-colors"
+                            >
+                              <RefreshCcw size={11} /> Chamar Depois
+                            </button>
+                          )}
+                        </div>
+                      )}
                       <div className="text-[10px] text-dark-600 mt-1.5">atualizado {timeAgo(p.updatedAt)}</div>
                     </div>
                   )
@@ -152,6 +227,25 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
           )
         })}
       </div>
+
+      <Modal open={chamarDepoisId !== null} onClose={() => setChamarDepoisId(null)} title="Chamar depois" size="sm">
+        <div className="p-5 space-y-4">
+          <Input label="Data de retorno" type="date" value={dataRetorno} onChange={(e) => setDataRetorno(e.target.value)} />
+          <Button className="w-full" disabled={!dataRetorno} loading={atualizarMut.isPending || moverMut.isPending} onClick={confirmarChamarDepois}>
+            Confirmar
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={!!excluindo} onClose={() => setExcluindo(null)} title="Excluir proposta" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-dark-300">Excluir a proposta de "{excluindo?.nome}"?</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setExcluindo(null)}>Cancelar</Button>
+            <Button variant="danger" className="flex-1" loading={excluirMut.isPending} onClick={() => excluindo && excluirMut.mutate({ id: excluindo.id })}>Excluir</Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

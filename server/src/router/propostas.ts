@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, propostaAlteracoes, propostaHistorico, ordens, ordemLiberacaoFinanceira } from '../db/schema.js'
+import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, propostaAlteracoes, propostaHistorico, ordens, ordemLiberacaoFinanceira, estoqueCatalogoModelos } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { assertDonoOuGestor, mudarEtapaProposta, notificarGestores } from '../lib/propostasGates.js'
@@ -25,6 +25,20 @@ async function assertPropostaAlcancavel(propostaId: number, empresaId: number) {
 }
 
 export const propostasRouter = router({
+  // Catálogo de modelos (mesmo do Almoxarifado) — usado no seletor de
+  // Produtos/Serviços da proposta (ProductSelector.tsx), igual ao odincrm
+  // original (ProductSelector busca em inventoryApi.searchModelCatalog()).
+  // Leitura liberada pra quem tem acesso a Propostas, não só admin —
+  // vendedor precisa dela pra montar a proposta.
+  catalogoModelos: adminOrFeatureProcedure('propostas_odin').query(async ({ ctx }) => {
+    await assertEmpresaPropostas(ctx.empresaId)
+    return db.query.estoqueCatalogoModelos.findMany({
+      where: eq(estoqueCatalogoModelos.empresaId, ctx.empresaId),
+      columns: { id: true, categoria: true, linha: true, modelo: true, especificacoes: true },
+      orderBy: (c, { asc }) => [asc(c.categoria), asc(c.modelo)],
+    })
+  }),
+
   listar: adminOrFeatureProcedure('propostas_odin').input(z.object({ vendedorId: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
     await assertEmpresaPropostas(ctx.empresaId)
     const filtroVendedor = ctx.user.role === 'admin' ? input?.vendedorId : ctx.user.id
