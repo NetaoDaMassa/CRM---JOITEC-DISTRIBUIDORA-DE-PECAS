@@ -866,6 +866,105 @@ export const demandaComentariosRelations = relations(demandaComentarios, ({ one 
   user: one(users, { fields: [demandaComentarios.userId], references: [users.id] }),
 }))
 
+// Boletos em aberto (planilha do Financeiro) — sempre de um cliente já
+// cadastrado, sem empresaId próprio (isolamento vem do join em
+// clientes.empresaId, mesmo padrão do resto do schema). `valorAtual` some
+// do `valorOriginal` quando o admin renegocia (registra em boletoAlteracoes,
+// não sobrescreve sem rastro); `status` só muda por ação explícita —
+// "vencido" é calculado na hora (vencimento passado + não pago), nunca
+// gravado, pra não depender de um job rodando toda noite.
+export const boletos = sqliteTable('boletos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id),
+  numeroBoleto: text('numero_boleto'),
+  valorOriginal: real('valor_original').notNull(),
+  valorAtual: real('valor_atual').notNull(),
+  vencimento: text('vencimento').notNull(),
+  status: text('status', { enum: ['em_aberto', 'renegociado', 'pago'] }).notNull().default('em_aberto'),
+  observacoes: text('observacoes'),
+  criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Histórico de alteração de cada boleto (valor, vencimento, status) — pedido
+// explícito do João ("alteração de boletos/renegociação/alteração de
+// valor"), guarda de/para pra saber o que mudou, quando e quem mudou.
+export const boletoAlteracoes = sqliteTable('boleto_alteracoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  boletoId: integer('boleto_id').notNull().references(() => boletos.id, { onDelete: 'cascade' }),
+  tipo: text('tipo', { enum: ['criacao', 'valor', 'vencimento', 'status'] }).notNull(),
+  valorAnterior: text('valor_anterior'),
+  valorNovo: text('valor_novo'),
+  observacao: text('observacao'),
+  alteradoPorId: integer('alterado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Negociações/cobrança (Financeiro) — 3 planilhas separadas, pedido do
+// João: log do dia a dia (sem fase, é só histórico de contato), Cartório
+// (pra lembrar de cobrar de novo quando o cliente "voltar") e RC (clientes
+// mandados pra assessoria de cobrança terceirizada, até fechar acordo ou
+// não). Todas cliente-scoped sem empresaId próprio, mesmo padrão de boletos.
+export const cobrancasRegistro = sqliteTable('cobrancas_registro', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id),
+  canal: text('canal', { enum: ['whatsapp', 'ligacao', 'email'] }).notNull(),
+  retornoCliente: text('retorno_cliente').notNull(),
+  registradoPorId: integer('registrado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const clientesCartorio = sqliteTable('clientes_cartorio', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id),
+  valor: real('valor'),
+  enviadoEm: text('enviado_em').notNull(),
+  status: text('status', { enum: ['aguardando', 'voltou_cobrar', 'cobranca_feita'] }).notNull().default('aguardando'),
+  observacoes: text('observacoes'),
+  criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const clientesRc = sqliteTable('clientes_rc', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id),
+  valor: real('valor'),
+  enviadoEm: text('enviado_em').notNull(),
+  status: text('status', { enum: ['em_negociacao', 'acordo_fechado', 'nao_fechou'] }).notNull().default('em_negociacao'),
+  observacoes: text('observacoes'),
+  criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const boletosRelations = relations(boletos, ({ one, many }) => ({
+  cliente: one(clientes, { fields: [boletos.clienteId], references: [clientes.id] }),
+  criadoPor: one(users, { fields: [boletos.criadoPorId], references: [users.id] }),
+  alteracoes: many(boletoAlteracoes),
+}))
+
+export const boletoAlteracoesRelations = relations(boletoAlteracoes, ({ one }) => ({
+  boleto: one(boletos, { fields: [boletoAlteracoes.boletoId], references: [boletos.id] }),
+  alteradoPor: one(users, { fields: [boletoAlteracoes.alteradoPorId], references: [users.id] }),
+}))
+
+export const cobrancasRegistroRelations = relations(cobrancasRegistro, ({ one }) => ({
+  cliente: one(clientes, { fields: [cobrancasRegistro.clienteId], references: [clientes.id] }),
+  registradoPor: one(users, { fields: [cobrancasRegistro.registradoPorId], references: [users.id] }),
+}))
+
+export const clientesCartorioRelations = relations(clientesCartorio, ({ one }) => ({
+  cliente: one(clientes, { fields: [clientesCartorio.clienteId], references: [clientes.id] }),
+  criadoPor: one(users, { fields: [clientesCartorio.criadoPorId], references: [users.id] }),
+}))
+
+export const clientesRcRelations = relations(clientesRc, ({ one }) => ({
+  cliente: one(clientes, { fields: [clientesRc.clienteId], references: [clientes.id] }),
+  criadoPor: one(users, { fields: [clientesRc.criadoPorId], references: [users.id] }),
+}))
+
 // Caixa da empresa (entradas/saídas de dinheiro, registro manual do
 // admin) — pedido do João pra Compretec Loja Física acompanhar movimento
 // de caixa mês a mês, mas escopado por empresaId igual o resto do app

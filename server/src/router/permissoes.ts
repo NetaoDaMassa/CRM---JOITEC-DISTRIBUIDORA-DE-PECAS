@@ -32,6 +32,12 @@ export const FEATURES_ADMIN = [
   'backup',
   'painel_financeiro',
   'painel_tv',
+  // Financeiro/Cobrança (planilhas), pedido do João — admin-only de
+  // propósito, não existe em FEATURES_VENDEDOR. Concedido manualmente em
+  // Permissões pra quem cuida disso (não libera pra todo mundo por padrão,
+  // diferente de 'demandas').
+  'boletos',
+  'negociacoes',
   'marketing_analytics',
   // Devolução (Grupo Odin) — 'devolucoes' já libera o Kanban de chamados
   // pra admin (que sempre passa por ser admin); as demais são poderes extra

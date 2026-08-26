@@ -39,6 +39,8 @@ import LeadsRelatorios from './pages/admin/LeadsRelatorios'
 import LeadsRegioes from './pages/admin/LeadsRegioes'
 import SidebarGrupos from './pages/admin/SidebarGrupos'
 import Demandas from './pages/Demandas'
+import Boletos from './pages/admin/Boletos'
+import Negociacoes from './pages/admin/Negociacoes'
 
 import VendorDashboard from './pages/vendor/Dashboard'
 import VendorKanban from './pages/vendor/Kanban'
@@ -176,6 +178,8 @@ export default function App() {
           <Route path="admin/mensagens" element={<AdminGuard><FeatureGuard feature="mensagens"><AdminMessageTemplates /></FeatureGuard></AdminGuard>} />
           <Route path="admin/configuracoes" element={<AdminGuard><FeatureGuard feature="configuracoes"><AdminConfiguracoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/caixa" element={<AdminGuard><FeatureGuard feature="caixa"><AdminCaixa /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/boletos" element={<AdminGuard><FeatureGuard feature="boletos"><Boletos /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/negociacoes" element={<AdminGuard><FeatureGuard feature="negociacoes"><Negociacoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/compras" element={<AdminGuard><FeatureGuard feature="compras"><AdminCompras /></FeatureGuard></AdminGuard>} />
           <Route path="admin/backup" element={<AdminGuard><FeatureGuard feature="backup"><AdminBackup /></FeatureGuard></AdminGuard>} />
           <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />

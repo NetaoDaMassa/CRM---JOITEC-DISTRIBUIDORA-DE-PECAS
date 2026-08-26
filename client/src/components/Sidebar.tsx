@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -58,6 +58,8 @@ export const ADMIN_LINKS = [
   { to: '/admin/metas', label: 'Metas', icon: Target, feature: 'metas' },
   { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText, feature: 'mensagens' },
   { to: '/admin/caixa', label: 'Caixa', icon: Banknote, feature: 'caixa' },
+  { to: '/admin/boletos', label: 'Boletos', icon: FileSpreadsheet, feature: 'boletos' },
+  { to: '/admin/negociacoes', label: 'Negociações', icon: Handshake, feature: 'negociacoes' },
   { to: '/admin/compras', label: 'Compras', icon: Ship, feature: 'compras' },
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
