@@ -56,9 +56,9 @@ function chaveDescontoAton(cardKey: string): string {
 
 export const financeiroRouter = router({
   // Leitura liberada pra admin com a feature 'painel_financeiro' (ex: conta
-  // dedicada "PainelTv" numa TV da loja) — mutations abaixo (editar
-  // inadimplência, tokens Aton, credenciais OdinCrm) continuam exclusivas
-  // de superAdmin de verdade, é só a visualização que abre.
+  // dedicada "PainelTv" numa TV da loja) — cadastro de inadimplência
+  // (abaixo) segue a mesma regra agora; tokens Aton e credenciais OdinCrm
+  // continuam exclusivos de superAdmin de verdade.
   painelResumo: featureProcedure('painel_financeiro').query(async () => {
     const hoje = hojeBrString()
     const inicioHoje = `${hoje} 00:00:00`
@@ -196,7 +196,7 @@ export const financeiroRouter = router({
     }
   }),
 
-  atualizarInadimplencia: superAdminProcedure
+  atualizarInadimplencia: featureProcedure('painel_financeiro')
     .input(
       z.object({
         cardKey: z.string(),

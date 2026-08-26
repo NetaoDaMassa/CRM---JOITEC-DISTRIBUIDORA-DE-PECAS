@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, desc, eq, isNull, ne } from 'drizzle-orm'
-import { router, featureProcedure, superAdminProcedure } from './_base.js'
+import { router, featureProcedure } from './_base.js'
 
 const comprasProcedure = featureProcedure('compras')
 import { db } from '../db/client.js'
@@ -105,8 +105,10 @@ export const comprasRouter = router({
 
   // Segunda página do Painel Financeiro (TV) — só invoices ainda "em
   // andamento" (não chegou), pra sala de compras acompanhar sem precisar
-  // abrir o CRM. Mesmo gate de superAdmin do resto do Painel Financeiro.
-  painelImportacoes: superAdminProcedure.query(async () => {
+  // abrir o CRM. Mesmo gate de LEITURA do resto do Painel Financeiro:
+  // liberado pra quem tem a feature 'painel_financeiro' (ex: conta
+  // dedicada da TV), não só superAdmin — ver painelResumo em financeiro.ts.
+  painelImportacoes: featureProcedure('painel_financeiro').query(async () => {
     return db.query.comprasInvoices.findMany({
       where: and(isNull(comprasInvoices.deletedAt), ne(comprasInvoices.status, 'chegou')),
       orderBy: [desc(comprasInvoices.dataChegada)],
