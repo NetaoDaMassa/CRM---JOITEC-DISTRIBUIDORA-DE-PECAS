@@ -68,6 +68,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/admin/qualidade', label: 'Controle de Qualidade', icon: ShieldCheck, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'qualidade_odin' },
   { to: '/admin/configuracoes-odin', label: 'Config. Odin', icon: Settings2, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'configuracoes_odin' },
+  { to: '/admin/relatorios-odin', label: 'Relatórios Odin', icon: BarChart3, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'relatorios_odin' },
   { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },

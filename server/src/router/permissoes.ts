@@ -81,6 +81,9 @@ export const FEATURES_ADMIN = [
   // Configurações auxiliares (condições de pagamento, transportadoras,
   // modelos de e-mail) — só Odin Compressores, gestor-only.
   'configuracoes_odin',
+  // Relatórios (propostas/pipeline/pós-venda/faturamento/máquinas/visitas)
+  // — só Odin Compressores, gestor-only.
+  'relatorios_odin',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
