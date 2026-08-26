@@ -12,10 +12,12 @@ const STATUS_COLOR: Record<string, string> = { ativo: 'text-amber-400', concluid
 export default function ControleQualidade() {
   const [dataDe, setDataDe] = useState('')
   const [dataAte, setDataAte] = useState('')
+  const [vendedorId, setVendedorId] = useState('')
   const [busca, setBusca] = useState('')
   const [expandido, setExpandido] = useState<number | null>(null)
 
-  const { data: linhas, isLoading, refetch } = trpc.qualidade.resumo.useQuery({ dataDe: dataDe || undefined, dataAte: dataAte || undefined })
+  const { data: vendedores } = trpc.users.vendors.useQuery()
+  const { data: linhas, isLoading, refetch } = trpc.qualidade.resumo.useQuery({ dataDe: dataDe || undefined, dataAte: dataAte || undefined, vendedorId: vendedorId ? Number(vendedorId) : undefined })
 
   const filtradas = (linhas ?? []).filter((l) => {
     if (!busca.trim()) return true
@@ -34,7 +36,14 @@ export default function ControleQualidade() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
           <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
-          <div className="col-span-2 flex items-end">
+          <Select
+            label="Vendedor"
+            value={vendedorId}
+            onChange={(e) => setVendedorId(e.target.value)}
+            placeholder="Todos"
+            options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+          />
+          <div className="flex items-end">
             <Button className="w-full" onClick={() => refetch()}><Search size={14} className="mr-1" /> Buscar</Button>
           </div>
         </div>
