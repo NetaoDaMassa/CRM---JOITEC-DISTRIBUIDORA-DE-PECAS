@@ -1717,3 +1717,338 @@ export const devolucaoDemonstracaoItensRelations = relations(devolucaoDemonstrac
     references: [devolucaoDemonstracoes.id],
   }),
 }))
+
+// ── Ordens (pós-venda Odin Compressores, portado do odincrm.duckdns.org) ──
+// Kanban de acompanhamento do pedido depois de vendido: liberação
+// financeira, frete, preparação, faturamento, conferência, coleta, rastreio,
+// qualidade e pós-venda. Só a Odin Compressores usa isso (checado por slug
+// no router, ver SLUG_ORDENS em router/ordens/core.ts) — mundo totalmente
+// separado do funil de vendas (`vendas`/`funilMensal`), que é sobre fechar a
+// venda, não sobre entregar o que já foi vendido. Duas sequências de etapa
+// diferentes conforme `orderType` (ver server/src/lib/ordensStages.ts) —
+// `stage` aqui é texto livre validado em código, não enum do banco, porque
+// os dois tipos têm conjuntos de valores diferentes.
+export const ordens = sqliteTable(
+  'ordens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    clienteId: integer('cliente_id').references(() => clientes.id),
+    vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    orderType: text('order_type', { enum: ['maquina', 'peca'] }).notNull(),
+    stage: text('stage').notNull().default('cadastro'),
+    status: text('status', { enum: ['ativo', 'cancelado', 'concluido'] }).notNull().default('ativo'),
+    cancelMotivo: text('cancel_motivo'),
+    canceladoPor: integer('cancelado_por').references(() => users.id, { onDelete: 'set null' }),
+    canceladoEm: text('cancelado_em'),
+    pausadoMotivo: text('pausado_motivo'),
+    pausadoPor: integer('pausado_por').references(() => users.id, { onDelete: 'set null' }),
+    pausadoEm: text('pausado_em'),
+    enderecoEntregaCep: text('endereco_entrega_cep'),
+    enderecoEntregaLogradouro: text('endereco_entrega_logradouro'),
+    enderecoEntregaCidade: text('endereco_entrega_cidade'),
+    enderecoEntregaEstado: text('endereco_entrega_estado'),
+    // Gancho pra migração dos pedidos reais do odincrm.duckdns.org (fase
+    // futura) — evita duplicar se o script de importação rodar de novo.
+    legacyOrdemId: integer('legacy_ordem_id').unique(),
+    // Trava otimista, mesma ideia de funilMensal.versao — evita duas pessoas
+    // avançando etapa ao mesmo tempo e uma pisando na outra.
+    versao: integer('versao').notNull().default(1),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaStageIdx: index('ordens_empresa_stage_idx').on(t.empresaId, t.stage),
+    empresaStatusIdx: index('ordens_empresa_status_idx').on(t.empresaId, t.status),
+  })
+)
+
+export const ordemLiberacaoFinanceira = sqliteTable('ordem_liberacao_financeira', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  formaPagamento: text('forma_pagamento'),
+  condicaoPagamento: text('condicao_pagamento'),
+  dataPagamentoPrevista: text('data_pagamento_prevista'),
+  observacoes: text('observacoes'),
+  aprovado: integer('aprovado', { mode: 'boolean' }).notNull().default(false),
+  aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  aprovadoEm: text('aprovado_em'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemDetalhes = sqliteTable('ordem_detalhes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  numeroPedido: text('numero_pedido'),
+  observacoes: text('observacoes'),
+  prioridadeDespacho: text('prioridade_despacho', { enum: ['normal', 'urgente', 'lead', 'direto'] }),
+  comissaoRevenda: text('comissao_revenda'),
+  valorPedido: real('valor_pedido'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemCotacoesFrete = sqliteTable('ordem_cotacoes_frete', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().references(() => ordens.id, { onDelete: 'cascade' }),
+  numeroSequencial: integer('numero_sequencial').notNull(),
+  numeroCotacaoTransportadora: text('numero_cotacao_transportadora'),
+  transportadora: text('transportadora'),
+  valor: real('valor'),
+  peso: real('peso'),
+  volume: real('volume'),
+  prazo: text('prazo'),
+  tipoFrete: text('tipo_frete', { enum: ['CIF', 'FOB'] }),
+  observacoes: text('observacoes'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemAprovacaoFrete = sqliteTable('ordem_aprovacao_frete', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  cotacaoSelecionadaId: integer('cotacao_selecionada_id').references(() => ordemCotacoesFrete.id, { onDelete: 'set null' }),
+  retiradaLocal: integer('retirada_local', { mode: 'boolean' }).notNull().default(false),
+  retiradaEmpresa: text('retirada_empresa'),
+  retiradaData: text('retirada_data'),
+  semFrete: integer('sem_frete', { mode: 'boolean' }).notNull().default(false),
+  semFreteObservacoes: text('sem_frete_observacoes'),
+  aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  aprovadoEm: text('aprovado_em'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Não é etapa visível no Kanban de pedido "máquina" (é pré-requisito checado
+// antes de avançar de "cotação de frete" pra "frete finalizado", igual no
+// odincrm) — pra pedido "peça" já é uma etapa normal do funil.
+export const ordemPreparacao = sqliteTable('ordem_preparacao', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  dataEntradaEstoque: text('data_entrada_estoque'),
+  observacoes: text('observacoes'),
+  aprovadoGestor: integer('aprovado_gestor', { mode: 'boolean' }).notNull().default(false),
+  aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  aprovadoEm: text('aprovado_em'),
+  entradaEm: text('entrada_em').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Máquina física do pedido — usada pro checklist de conferência por máquina
+// e pra exigência de fotos por máquina na aprovação de preparação. Não é a
+// mesma coisa que `maquinasCliente` (aquela é pós-venda/manutenção de
+// máquina já instalada, ciclo de vida diferente).
+export const ordemMaquinas = sqliteTable('ordem_maquinas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().references(() => ordens.id, { onDelete: 'cascade' }),
+  modelo: text('modelo').notNull(),
+  numeroSerie: text('numero_serie'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemFreteFinalizado = sqliteTable('ordem_frete_finalizado', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  confirmado: integer('confirmado', { mode: 'boolean' }).notNull().default(false),
+  confirmadoPor: integer('confirmado_por').references(() => users.id, { onDelete: 'set null' }),
+  confirmadoEm: text('confirmado_em'),
+  observacoes: text('observacoes'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemFaturamento = sqliteTable('ordem_faturamento', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  pagamentoConfirmado: integer('pagamento_confirmado', { mode: 'boolean' }).notNull().default(false),
+  dataPagamento: text('data_pagamento'),
+  numeroNotaFiscal: text('numero_nota_fiscal'),
+  numeroPicking: text('numero_picking'),
+  dataFaturamento: text('data_faturamento'),
+  confirmadoPor: integer('confirmado_por').references(() => users.id, { onDelete: 'set null' }),
+  confirmadoEm: text('confirmado_em'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Só existe de verdade pra pedido tipo "máquina" (checklist de embalagem +
+// por máquina antes da coleta).
+export const ordemConferencia = sqliteTable('ordem_conferencia', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  placaOk: integer('placa_ok', { mode: 'boolean' }).notNull().default(false),
+  adesivoOk: integer('adesivo_ok', { mode: 'boolean' }).notNull().default(false),
+  fichaTecnicaOk: integer('ficha_tecnica_ok', { mode: 'boolean' }).notNull().default(false),
+  kitCompressor: integer('kit_compressor', { mode: 'boolean' }).notNull().default(false),
+  kitReservatorio: integer('kit_reservatorio', { mode: 'boolean' }).notNull().default(false),
+  kitSecador: integer('kit_secador', { mode: 'boolean' }).notNull().default(false),
+  // Tri-state de propósito (null = ainda não respondido).
+  inspecaoVisualAvaria: integer('inspecao_visual_avaria', { mode: 'boolean' }),
+  embalagemOk: integer('embalagem_ok', { mode: 'boolean' }).notNull().default(false),
+  embalagemConfirmadoPor: integer('embalagem_confirmado_por').references(() => users.id, { onDelete: 'set null' }),
+  embalagemConfirmadoEm: text('embalagem_confirmado_em'),
+  observacoes: text('observacoes'),
+  observacoesGerais: text('observacoes_gerais'),
+  confirmado: integer('confirmado', { mode: 'boolean' }).notNull().default(false),
+  confirmadoPor: integer('confirmado_por').references(() => users.id, { onDelete: 'set null' }),
+  confirmadoEm: text('confirmado_em'),
+  entradaEm: text('entrada_em').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemConferenciaItens = sqliteTable(
+  'ordem_conferencia_itens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    ordemId: integer('ordem_id').notNull().references(() => ordens.id, { onDelete: 'cascade' }),
+    maquinaId: integer('maquina_id').notNull().references(() => ordemMaquinas.id, { onDelete: 'cascade' }),
+    placaOk: integer('placa_ok', { mode: 'boolean' }).notNull().default(false),
+    adesivoOk: integer('adesivo_ok', { mode: 'boolean' }).notNull().default(false),
+    fichaTecnicaOk: integer('ficha_tecnica_ok', { mode: 'boolean' }).notNull().default(false),
+    voltagemOk: integer('voltagem_ok', { mode: 'boolean' }).notNull().default(false),
+    kitOk: integer('kit_ok', { mode: 'boolean' }).notNull().default(false),
+    inspecaoVisualAvaria: integer('inspecao_visual_avaria', { mode: 'boolean' }),
+    naoAplicavel: integer('nao_aplicavel', { mode: 'boolean' }).notNull().default(false),
+  },
+  (t) => ({
+    ordemMaquina: unique().on(t.ordemId, t.maquinaId),
+  })
+)
+
+export const ordemColeta = sqliteTable('ordem_coleta', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  dataColeta: text('data_coleta'),
+  horaColetaInicio: text('hora_coleta_inicio'),
+  horaColetaFim: text('hora_coleta_fim'),
+  transportadora: text('transportadora'),
+  observacoes: text('observacoes'),
+  confirmado: integer('confirmado', { mode: 'boolean' }).notNull().default(false),
+  confirmadoPor: integer('confirmado_por').references(() => users.id, { onDelete: 'set null' }),
+  confirmadoEm: text('confirmado_em'),
+  entradaEm: text('entrada_em').notNull().default(sql`(datetime('now'))`),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemRastreio = sqliteTable('ordem_rastreio', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  transportadora: text('transportadora'),
+  codigoRastreio: text('codigo_rastreio'),
+  linkRastreio: text('link_rastreio'),
+  observacoes: text('observacoes'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemQualidade = sqliteTable('ordem_qualidade', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  observacoes: text('observacoes'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordemPosVenda = sqliteTable('ordem_pos_venda', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  feedbackCliente: text('feedback_cliente'),
+  npsScore: integer('nps_score'),
+  dataLembrete: text('data_lembrete'),
+  notaLembrete: text('nota_lembrete'),
+  vendaPeca: integer('venda_peca', { mode: 'boolean' }).notNull().default(false),
+  primeiraPreventiva: text('primeira_preventiva'),
+  nomeRevenda: text('nome_revenda'),
+  dataRecebimentoMercadoria: text('data_recebimento_mercadoria'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Log genérico append-only (não é diff estruturado, exceto pra
+// action='stage_change', onde fieldName/oldValue/newValue vêm preenchidos) —
+// mesmo espírito de devolucaoHistoricoStatus, com os campos extras que o
+// odincrm original tinha.
+export const ordemHistorico = sqliteTable('ordem_historico', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().references(() => ordens.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  fieldName: text('field_name'),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  description: text('description').notNull(),
+  stage: text('stage'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Nome randomizado em disco (uuid + extensão), nome original só no banco —
+// mesmo motivo de devolucaoAnexos: evita link adivinhável/vazamento pelo
+// nome do arquivo em /uploads (servido sem login). `fileCategory` livre tem
+// a convenção `{categoria}__{maquinaId}` pra foto obrigatória por máquina
+// (ver server/src/lib/ordensGates.ts).
+export const ordemAnexos = sqliteTable('ordem_anexos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ordemId: integer('ordem_id').notNull().references(() => ordens.id, { onDelete: 'cascade' }),
+  stage: text('stage').notNull(),
+  fileCategory: text('file_category'),
+  nomeOriginal: text('nome_original').notNull(),
+  nomeArmazenado: text('nome_armazenado').notNull(),
+  tipoArquivo: text('tipo_arquivo'),
+  tamanhoBytes: integer('tamanho_bytes'),
+  enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const ordensRelations = relations(ordens, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [ordens.empresaId], references: [empresas.id] }),
+  cliente: one(clientes, { fields: [ordens.clienteId], references: [clientes.id] }),
+  vendedor: one(users, { fields: [ordens.vendedorId], references: [users.id] }),
+  liberacaoFinanceira: one(ordemLiberacaoFinanceira, { fields: [ordens.id], references: [ordemLiberacaoFinanceira.ordemId] }),
+  detalhes: one(ordemDetalhes, { fields: [ordens.id], references: [ordemDetalhes.ordemId] }),
+  cotacoesFrete: many(ordemCotacoesFrete),
+  aprovacaoFrete: one(ordemAprovacaoFrete, { fields: [ordens.id], references: [ordemAprovacaoFrete.ordemId] }),
+  preparacao: one(ordemPreparacao, { fields: [ordens.id], references: [ordemPreparacao.ordemId] }),
+  maquinas: many(ordemMaquinas),
+  freteFinalizado: one(ordemFreteFinalizado, { fields: [ordens.id], references: [ordemFreteFinalizado.ordemId] }),
+  faturamento: one(ordemFaturamento, { fields: [ordens.id], references: [ordemFaturamento.ordemId] }),
+  conferencia: one(ordemConferencia, { fields: [ordens.id], references: [ordemConferencia.ordemId] }),
+  coleta: one(ordemColeta, { fields: [ordens.id], references: [ordemColeta.ordemId] }),
+  rastreio: one(ordemRastreio, { fields: [ordens.id], references: [ordemRastreio.ordemId] }),
+  qualidade: one(ordemQualidade, { fields: [ordens.id], references: [ordemQualidade.ordemId] }),
+  posVenda: one(ordemPosVenda, { fields: [ordens.id], references: [ordemPosVenda.ordemId] }),
+  historico: many(ordemHistorico),
+  anexos: many(ordemAnexos),
+}))
+
+export const ordemAprovacaoFreteRelations = relations(ordemAprovacaoFrete, ({ one }) => ({
+  ordem: one(ordens, { fields: [ordemAprovacaoFrete.ordemId], references: [ordens.id] }),
+  cotacaoSelecionada: one(ordemCotacoesFrete, { fields: [ordemAprovacaoFrete.cotacaoSelecionadaId], references: [ordemCotacoesFrete.id] }),
+}))
+
+export const ordemMaquinasRelations = relations(ordemMaquinas, ({ one, many }) => ({
+  ordem: one(ordens, { fields: [ordemMaquinas.ordemId], references: [ordens.id] }),
+  conferenciaItens: many(ordemConferenciaItens),
+}))
+
+export const ordemConferenciaItensRelations = relations(ordemConferenciaItens, ({ one }) => ({
+  ordem: one(ordens, { fields: [ordemConferenciaItens.ordemId], references: [ordens.id] }),
+  maquina: one(ordemMaquinas, { fields: [ordemConferenciaItens.maquinaId], references: [ordemMaquinas.id] }),
+}))
+
+export const ordemCotacoesFreteRelations = relations(ordemCotacoesFrete, ({ one }) => ({
+  ordem: one(ordens, { fields: [ordemCotacoesFrete.ordemId], references: [ordens.id] }),
+}))
+
+export const ordemHistoricoRelations = relations(ordemHistorico, ({ one }) => ({
+  ordem: one(ordens, { fields: [ordemHistorico.ordemId], references: [ordens.id] }),
+  user: one(users, { fields: [ordemHistorico.userId], references: [users.id] }),
+}))
+
+export const ordemAnexosRelations = relations(ordemAnexos, ({ one }) => ({
+  ordem: one(ordens, { fields: [ordemAnexos.ordemId], references: [ordens.id] }),
+  enviadoPorUser: one(users, { fields: [ordemAnexos.enviadoPor], references: [users.id] }),
+}))

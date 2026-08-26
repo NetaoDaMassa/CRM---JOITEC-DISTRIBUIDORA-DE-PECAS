@@ -41,6 +41,7 @@ import { leadsRegioesRouter } from './leadsRegioes.js'
 import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
+import { ordensRouter } from './ordens/index.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -89,6 +90,7 @@ export const appRouter = router({
   sidebarGrupos: sidebarGruposRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
+  ordens: ordensRouter,
 })
 
 export type AppRouter = typeof appRouter

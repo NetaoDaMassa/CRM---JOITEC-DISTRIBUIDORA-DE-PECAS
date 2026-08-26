@@ -49,6 +49,8 @@ import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import Devolucoes from './pages/Devolucoes'
+import OrdensKanban from './pages/OrdensKanban'
+import OrdensDetail from './pages/OrdensDetail'
 import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
@@ -183,6 +185,8 @@ export default function App() {
           <Route path="admin/devolucoes-mecanica" element={<AdminGuard><FeatureGuard feature="devolucoes_mecanica"><DevolucaoMecanica /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-demonstracao" element={<AdminGuard><FeatureGuard feature="devolucoes_demonstracao"><DevolucaoDemonstracao /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-relatorios" element={<AdminGuard><FeatureGuard feature="devolucoes"><DevolucaoRelatorios /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/ordens" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/ordens/:id" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensDetail /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
@@ -202,6 +206,8 @@ export default function App() {
           <Route path="vendedor/devolucoes-mecanica" element={<DevolucaoMecanica />} />
           <Route path="vendedor/devolucoes-demonstracao" element={<DevolucaoDemonstracao />} />
           <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
+          <Route path="vendedor/ordens" element={<OrdensKanban />} />
+          <Route path="vendedor/ordens/:id" element={<OrdensDetail />} />
           <Route path="vendedor/leads" element={<Leads />} />
           <Route path="vendedor/leads/kanban" element={<LeadsKanban />} />
           <Route path="vendedor/leads/:id" element={<LeadDetail />} />

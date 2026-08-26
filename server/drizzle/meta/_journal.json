@@ -414,6 +414,13 @@
       "when": 1787691572843,
       "tag": "0058_chubby_spot",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1787704441201,
+      "tag": "0059_brave_next_avengers",
+      "breakpoints": true
     }
   ]
 }

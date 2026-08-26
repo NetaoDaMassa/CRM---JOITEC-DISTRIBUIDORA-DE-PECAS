@@ -58,6 +58,10 @@ export const FEATURES_ADMIN = [
   // Diferente do RH, também existe em FEATURES_VENDEDOR (é tela de uso
   // diário do vendedor, não só do admin).
   'leads',
+  // Kanban de Pedidos (pós-venda) — só Odin Compressores, portado do
+  // odincrm.duckdns.org. Também existe em FEATURES_VENDEDOR (é tela de uso
+  // diário do vendedor, que cria pedido e preenche dados de várias etapas).
+  'pedidos_odin',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
@@ -92,6 +96,8 @@ export const FEATURES_VENDEDOR = [
   'devolucoes_finalizar_fora_ordem',
   // Leads de venda (site) — mesma chave de FEATURES_ADMIN acima.
   'leads',
+  // Kanban de Pedidos (pós-venda) — mesma chave de FEATURES_ADMIN acima.
+  'pedidos_odin',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima
