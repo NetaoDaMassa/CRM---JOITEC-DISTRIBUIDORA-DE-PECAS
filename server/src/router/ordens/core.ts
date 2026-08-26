@@ -29,10 +29,12 @@ async function assertOrdemAlcancavel(ordemId: number, empresaId: number) {
 }
 
 export const ordensCoreRouter = router({
-  listarKanban: adminOrFeatureProcedure('pedidos_odin').input(z.object({ orderType: z.enum(ORDER_TYPE_VALUES) })).query(async ({ ctx, input }) => {
+  listarKanban: adminOrFeatureProcedure('pedidos_odin').input(z.object({ orderType: z.enum(ORDER_TYPE_VALUES), vendedorId: z.number().optional() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
+    const condicoes = [eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, input.orderType)]
+    if (input.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
     return db.query.ordens.findMany({
-      where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, input.orderType)),
+      where: and(...condicoes),
       with: {
         cliente: { columns: { id: true, razaoSocial: true } },
         vendedor: { columns: { id: true, name: true } },

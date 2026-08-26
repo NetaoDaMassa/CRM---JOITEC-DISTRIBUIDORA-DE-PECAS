@@ -25,10 +25,11 @@ async function assertPropostaAlcancavel(propostaId: number, empresaId: number) {
 }
 
 export const propostasRouter = router({
-  listar: adminOrFeatureProcedure('propostas_odin').query(async ({ ctx }) => {
+  listar: adminOrFeatureProcedure('propostas_odin').input(z.object({ vendedorId: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
     await assertEmpresaPropostas(ctx.empresaId)
+    const filtroVendedor = ctx.user.role === 'admin' ? input?.vendedorId : ctx.user.id
     return db.query.propostas.findMany({
-      where: ctx.user.role === 'admin' ? eq(propostas.empresaId, ctx.empresaId) : and(eq(propostas.empresaId, ctx.empresaId), eq(propostas.vendedorId, ctx.user.id)),
+      where: filtroVendedor ? and(eq(propostas.empresaId, ctx.empresaId), eq(propostas.vendedorId, filtroVendedor)) : eq(propostas.empresaId, ctx.empresaId),
       with: { vendedor: { columns: { id: true, name: true, whatsapp: true } }, arquivos: true, alteracoes: true },
       orderBy: (p, { desc }) => [desc(p.updatedAt)],
     })

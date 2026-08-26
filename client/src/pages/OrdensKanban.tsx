@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Download, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,7 +8,23 @@ import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import OrdensBoard from '../components/OrdensBoard'
-import { ORDER_TYPE_VALUES, ORDER_TYPE_LABELS, type OrderType } from '../lib/ordensShared'
+import { ORDER_TYPE_VALUES, ORDER_TYPE_LABELS, STAGE_LABELS, type OrderType, type Stage } from '../lib/ordensShared'
+
+function baixarCsvPedidos(ordens: { id: number; stage: string; status: string; updatedAt: string; cliente: { razaoSocial: string } | null; vendedor: { name: string } | null }[]) {
+  const linhas = ['ID,Cliente,Vendedor,Etapa,Status,Atualizado em']
+  for (const o of ordens) {
+    linhas.push([o.id, (o.cliente?.razaoSocial ?? '').replace(/,/g, ' '), o.vendedor?.name ?? '', STAGE_LABELS[o.stage as Stage] ?? o.stage, o.status, o.updatedAt].join(','))
+  }
+  const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `pedidos_${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
 
 export default function OrdensKanban() {
   const { user } = useAuth()
@@ -20,9 +36,11 @@ export default function OrdensKanban() {
   const [buscaCliente, setBuscaCliente] = useState('')
   const [clienteId, setClienteId] = useState('')
   const [novoOrderType, setNovoOrderType] = useState<OrderType>('maquina')
+  const [vendedorId, setVendedorId] = useState('')
 
   const utils = trpc.useUtils()
-  const { data: ordens, isLoading } = trpc.ordens.core.listarKanban.useQuery({ orderType })
+  const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
+  const { data: ordens, isLoading } = trpc.ordens.core.listarKanban.useQuery({ orderType, vendedorId: vendedorId ? Number(vendedorId) : undefined })
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
 
   const criarMut = trpc.ordens.core.criar.useMutation({
@@ -57,6 +75,35 @@ export default function OrdensKanban() {
           <Button size="sm" onClick={() => setModalAberto(true)}>
             <Plus size={14} className="mr-1" /> Novo Pedido
           </Button>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        {isAdmin ? (
+          <div className="w-56">
+            <Select
+              value={vendedorId}
+              onChange={(e) => setVendedorId(e.target.value)}
+              placeholder="Todos os vendedores"
+              options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+            />
+          </div>
+        ) : (
+          <span />
+        )}
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => baixarCsvPedidos(ordens ?? [])}
+            className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs font-medium text-dark-300 hover:bg-dark-800 transition-colors"
+          >
+            <Download size={13} /> Exportar CSV
+          </button>
+          <button
+            onClick={() => utils.ordens.core.listarKanban.invalidate()}
+            className="flex items-center gap-1.5 text-xs text-dark-400 hover:text-gold-400 transition-colors"
+          >
+            <RefreshCw size={13} /> Atualizar
+          </button>
         </div>
       </div>
 
