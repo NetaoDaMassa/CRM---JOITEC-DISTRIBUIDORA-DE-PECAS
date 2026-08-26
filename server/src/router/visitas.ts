@@ -225,4 +225,53 @@ export const visitasRouter = router({
     await db.delete(visitas).where(and(eq(visitas.id, input.id), eq(visitas.empresaId, ctx.empresaId)))
     return { ok: true }
   }),
+
+  // ── Resumo (cards do topo da tela) ──────────────────────────────────────
+  resumo: adminOrFeatureProcedure('visitas_odin').input(z.object({ vendedorId: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
+    await assertEmpresaVisitas(ctx.empresaId)
+    const filtroVendedor = ctx.user.role === 'admin' ? input?.vendedorId : ctx.user.id
+    const todas = await db.query.visitas.findMany({
+      where: filtroVendedor ? and(eq(visitas.empresaId, ctx.empresaId), eq(visitas.vendedorId, filtroVendedor)) : eq(visitas.empresaId, ctx.empresaId),
+      with: { propostaConvertida: { columns: { id: true, convertidoParaOrdemId: true } } },
+    })
+
+    const hojeStr = new Date().toISOString().slice(0, 10)
+    const inicioSemana = new Date()
+    inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay())
+    const inicioSemanaStr = inicioSemana.toISOString().slice(0, 10)
+    const inicioMesStr = hojeStr.slice(0, 8) + '01'
+
+    let hoje = 0
+    let semana = 0
+    let mes = 0
+    let pedidosMes = 0
+    for (const v of todas) {
+      const dia = (v.dataVisita || '').slice(0, 10)
+      if (dia === hojeStr) hoje++
+      if (dia >= inicioSemanaStr) semana++
+      if (dia >= inicioMesStr) {
+        mes++
+        if (v.propostaConvertida?.convertidoParaOrdemId) pedidosMes++
+      }
+    }
+    return { hoje, semana, mes, pedidosMes }
+  }),
+
+  // ── Por vendedor (aba Equipe) ────────────────────────────────────────────
+  porVendedor: adminProcedure.query(async ({ ctx }) => {
+    await assertEmpresaVisitas(ctx.empresaId)
+    const todas = await db.query.visitas.findMany({
+      where: eq(visitas.empresaId, ctx.empresaId),
+      with: { vendedor: { columns: { id: true, name: true } } },
+    })
+    const mapa = new Map<number, { vendedorId: number; nome: string; total: number; gerouProposta: number; semResultado: number }>()
+    for (const v of todas) {
+      if (!mapa.has(v.vendedorId)) mapa.set(v.vendedorId, { vendedorId: v.vendedorId, nome: v.vendedor?.name ?? '—', total: 0, gerouProposta: 0, semResultado: 0 })
+      const linha = mapa.get(v.vendedorId)!
+      linha.total++
+      if (v.resultado === 'gerar_proposta') linha.gerouProposta++
+      if (!v.resultado) linha.semResultado++
+    }
+    return Array.from(mapa.values()).sort((a, b) => b.total - a.total)
+  }),
 })

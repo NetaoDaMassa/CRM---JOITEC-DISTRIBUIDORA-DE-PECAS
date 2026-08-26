@@ -233,6 +233,7 @@ export const clientes = sqliteTable('clientes', {
   }).notNull(),
   estado: text('estado'),
   cidade: text('cidade'),
+  endereco: text('endereco'),
   telefoneWhatsapp: text('telefone_whatsapp'),
   email: text('email'),
   // Nome da pessoa de contato na empresa do cliente — diferente da razão

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowLeft, ArrowRight, Ban, Pause, Play } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Ban, Pause, Play, X, Building2, Phone, Mail, MapPin, User } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
@@ -10,6 +10,13 @@ import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 import { getStageSequence, STAGE_LABELS, STAGE_COLORS, ORDER_TYPE_LABELS, type Stage, type OrderType } from '../lib/ordensShared'
+
+function formatarDataHora(dt: string | null | undefined): string {
+  if (!dt) return '—'
+  const [data, hora] = dt.split(' ')
+  const [ano, mes, dia] = data.split('-')
+  return hora ? `${dia}/${mes}/${ano} ${hora.slice(0, 5)}` : `${dia}/${mes}/${ano}`
+}
 
 type TabKey =
   | 'geral'
@@ -103,27 +110,34 @@ export default function OrdensDetail() {
   const tabs = tabsParaTipo(orderType)
 
   return (
-    <div className="p-6">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-dark-400 hover:text-dark-200 text-sm mb-4">
-        <ArrowLeft size={14} /> Voltar
-      </button>
-
-      <div className="flex items-start justify-between flex-wrap gap-3 mb-5">
-        <div>
-          <h1 className="font-heading text-2xl text-dark-50 font-bold">
-            Pedido #{ordem.id} <span className="text-dark-500 text-base font-normal">— {ORDER_TYPE_LABELS[orderType]}</span>
-          </h1>
-          <div className="flex items-center gap-2 mt-1.5">
-            <Badge className={STAGE_COLORS[ordem.stage as Stage] ?? 'text-gold-400 bg-gold-900/20 border-gold-700/40'}>{STAGE_LABELS[ordem.stage as Stage] ?? ordem.stage}</Badge>
-            {ordem.status !== 'ativo' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">{ordem.status}</Badge>}
-            {ordem.pausadoEm && <Badge className="text-yellow-400 bg-yellow-900/20 border-yellow-700/40">Pausado: {ordem.pausadoMotivo}</Badge>}
-            {ordem.cliente && <span className="text-dark-400 text-sm">{ordem.cliente.razaoSocial}</span>}
-            {ordem.vendedor && <span className="text-dark-500 text-sm">· {ordem.vendedor.name}</span>}
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 md:p-8 bg-dark-950/80 backdrop-blur-sm">
+      <div className="w-full max-w-4xl bg-dark-800 border border-dark-600 rounded-2xl shadow-2xl shadow-black/50 my-4">
+        <div className="flex items-start justify-between gap-3 px-6 pt-5">
+          <div>
+            <h1 className="font-heading text-xl text-dark-50 font-bold">
+              Pedido #{ordem.id} <span className="text-dark-500 text-base font-normal">— {ordem.cliente?.razaoSocial ?? ORDER_TYPE_LABELS[orderType]}</span>
+            </h1>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dark-400">
+              {ordem.vendedor && <span>Vendedor: <span className="text-dark-200">{ordem.vendedor.name}</span></span>}
+              <span>Criado: <span className="text-dark-200">{formatarDataHora(ordem.createdAt)}</span></span>
+              <span>Nesta etapa desde: <span className="text-dark-200">{formatarDataHora(ordem.updatedAt)}</span></span>
+              {ordem.cliente?.codigo && <span>Código: <span className="text-dark-200">{ordem.cliente.codigo}</span></span>}
+              {ordem.cliente?.cnpj && <span>CNPJ: <span className="text-dark-200">{ordem.cliente.cnpj}</span></span>}
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <Badge className={STAGE_COLORS[ordem.stage as Stage] ?? 'text-gold-400 bg-gold-900/20 border-gold-700/40'}>{STAGE_LABELS[ordem.stage as Stage] ?? ordem.stage}</Badge>
+              <Badge className="text-dark-300 bg-dark-700 border-dark-600">{ORDER_TYPE_LABELS[orderType]}</Badge>
+              {ordem.status !== 'ativo' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">{ordem.status}</Badge>}
+              {ordem.pausadoEm && <Badge className="text-yellow-400 bg-yellow-900/20 border-yellow-700/40">Pausado: {ordem.pausadoMotivo}</Badge>}
+            </div>
           </div>
+          <button onClick={() => navigate(-1)} className="text-dark-400 hover:text-dark-100 transition-colors p-1.5 rounded-lg hover:bg-dark-700 shrink-0">
+            <X size={18} />
+          </button>
         </div>
 
         {isAdmin && ordem.status === 'ativo' && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap px-6 mt-4">
             {proximaEtapa && (
               <Button size="sm" loading={avancarMut.isPending} onClick={() => avancarMut.mutate({ id: ordemId })}>
                 <ArrowRight size={14} className="mr-1" /> Avançar pra "{STAGE_LABELS[proximaEtapa]}"
@@ -150,21 +164,82 @@ export default function OrdensDetail() {
             </Button>
           </div>
         )}
-      </div>
 
-      <div className="flex gap-1 border-b border-dark-700 mb-5 overflow-x-auto">
-        {tabs.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
+        {ordem.cliente && (
+          <div className="mx-6 mt-4 bg-dark-900/60 border border-dark-700 rounded-xl p-4">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-dark-500 mb-3">Dados do Cliente</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
+              <div className="flex items-start gap-2 sm:col-span-2">
+                <Building2 size={14} className="text-dark-500 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-dark-500 text-[11px]">Empresa</p>
+                  <p className="text-dark-100 font-medium">{ordem.cliente.razaoSocial}</p>
+                </div>
+              </div>
+              {ordem.cliente.cnpj && (
+                <div className="flex items-start gap-2">
+                  <span className="w-[14px] shrink-0" />
+                  <div>
+                    <p className="text-dark-500 text-[11px]">CNPJ</p>
+                    <p className="text-dark-200">{ordem.cliente.cnpj}</p>
+                  </div>
+                </div>
+              )}
+              {ordem.cliente.nomeContato && (
+                <div className="flex items-start gap-2">
+                  <User size={14} className="text-dark-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-dark-500 text-[11px]">Contato</p>
+                    <p className="text-dark-200">{ordem.cliente.nomeContato}</p>
+                  </div>
+                </div>
+              )}
+              {ordem.cliente.telefoneWhatsapp && (
+                <div className="flex items-start gap-2">
+                  <Phone size={14} className="text-dark-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-dark-500 text-[11px]">Telefone</p>
+                    <p className="text-dark-200">{ordem.cliente.telefoneWhatsapp}</p>
+                  </div>
+                </div>
+              )}
+              {ordem.cliente.email && (
+                <div className="flex items-start gap-2">
+                  <Mail size={14} className="text-dark-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-dark-500 text-[11px]">E-mail</p>
+                    <p className="text-dark-200">{ordem.cliente.email}</p>
+                  </div>
+                </div>
+              )}
+              {(ordem.cliente.endereco || ordem.cliente.cidade) && (
+                <div className="flex items-start gap-2 sm:col-span-2">
+                  <MapPin size={14} className="text-dark-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-dark-500 text-[11px]">Endereço do cliente</p>
+                    <p className="text-dark-200">
+                      {[ordem.cliente.endereco, ordem.cliente.cidade, ordem.cliente.estado].filter(Boolean).join(' — ')}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
-      <div className="max-w-2xl">
+        <div className="flex gap-1 border-b border-dark-700 mt-4 mx-6 overflow-x-auto">
+          {tabs.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
+            >
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
+        <div className="p-6">
         {tab === 'geral' && <AbaGeral ordemId={ordemId} />}
         {tab === 'financeiro' && <AbaFinanceiro ordemId={ordemId} isAdmin={isAdmin} />}
         {tab === 'pedido' && <AbaPedido ordemId={ordemId} isAdmin={isAdmin} />}
@@ -178,6 +253,7 @@ export default function OrdensDetail() {
         {tab === 'pos_venda' && <AbaPosVenda ordemId={ordemId} />}
         {tab === 'anexos' && <AbaAnexos ordemId={ordemId} stageAtual={ordem.stage} isAdmin={isAdmin} />}
         {tab === 'historico' && <AbaHistorico ordemId={ordemId} />}
+        </div>
       </div>
 
       <Modal open={modalPausar} onClose={() => setModalPausar(false)} title="Pausar pedido" size="sm">

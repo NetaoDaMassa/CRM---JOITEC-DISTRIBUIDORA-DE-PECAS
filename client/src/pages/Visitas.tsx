@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -8,6 +9,15 @@ import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
+
+function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+      <p className={`text-2xl font-bold ${color}`}>{value}</p>
+      <p className="text-xs text-dark-400 mt-0.5">{label}</p>
+    </div>
+  )
+}
 
 const OBJETIVOS = ['Prospecção de clientes', 'Visita marketing', 'Manutenção', 'Pós venda']
 const RESULTADOS = [
@@ -27,21 +37,83 @@ const RESULTADO_CORES: Record<string, string> = {
   nao_encontrado: 'text-orange-400 bg-orange-900/20 border-orange-700/40',
 }
 
-type TabKey = 'visitas' | 'clientes'
+type TabKey = 'hoje' | 'semana' | 'todas' | 'clientes' | 'equipe'
+const TAB_LABELS: Record<TabKey, string> = { hoje: 'Hoje', semana: 'Semana', todas: 'Todas', clientes: 'Clientes', equipe: 'Equipe' }
 
 export default function Visitas() {
-  const [tab, setTab] = useState<TabKey>('visitas')
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const [tab, setTab] = useState<TabKey>('hoje')
+  const [vendedorId, setVendedorId] = useState('')
+  const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
+  const filtro = { vendedorId: vendedorId ? Number(vendedorId) : undefined }
+  const { data: resumo } = trpc.visitas.resumo.useQuery(filtro)
+
   return (
     <div className="p-6">
-      <h1 className="font-heading text-2xl text-dark-50 font-bold mb-4">Visitas de Campo</h1>
-      <div className="flex gap-1 border-b border-dark-700 mb-5">
-        {(['visitas', 'clientes'] as TabKey[]).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={`px-3 py-2 text-sm border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}>
-            {t === 'visitas' ? 'Visitas' : 'Clientes de Campo'}
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-2">
+            <MapPin size={22} /> Visitas
+          </h1>
+          <p className="text-dark-400 text-sm mt-0.5">Controle de visitas comerciais</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 max-w-2xl">
+        <StatCard label="Hoje" value={resumo?.hoje ?? 0} color="text-dark-50" />
+        <StatCard label="Esta semana" value={resumo?.semana ?? 0} color="text-blue-400" />
+        <StatCard label="Este mês" value={resumo?.mes ?? 0} color="text-purple-400" />
+        <StatCard label="Pedidos (mês)" value={resumo?.pedidosMes ?? 0} color="text-green-400" />
+      </div>
+
+      {isAdmin && (
+        <div className="mb-5 max-w-xs">
+          <Select
+            label="Filtrar por vendedor"
+            value={vendedorId}
+            onChange={(e) => setVendedorId(e.target.value)}
+            placeholder="Todos"
+            options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+          />
+        </div>
+      )}
+
+      <div className="flex gap-1 border-b border-dark-700 mb-5 overflow-x-auto">
+        {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
+          <button key={t} onClick={() => setTab(t)} className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}>
+            {TAB_LABELS[t]}
           </button>
         ))}
+        <Link to="/admin/calendario-odin" className="ml-auto flex items-center gap-1.5 px-3 py-2 text-sm text-dark-400 hover:text-gold-400 transition-colors shrink-0">
+          <CalendarDays size={14} /> Ver no Calendário
+        </Link>
       </div>
-      {tab === 'visitas' ? <AbaVisitas /> : <AbaClientes />}
+
+      {tab === 'hoje' && <AbaVisitas periodo="hoje" vendedorId={filtro.vendedorId} />}
+      {tab === 'semana' && <AbaVisitas periodo="semana" vendedorId={filtro.vendedorId} />}
+      {tab === 'todas' && <AbaVisitas periodo="todas" vendedorId={filtro.vendedorId} />}
+      {tab === 'clientes' && <AbaClientes />}
+      {tab === 'equipe' && <AbaEquipe />}
+    </div>
+  )
+}
+
+function AbaEquipe() {
+  const { data, isLoading } = trpc.visitas.porVendedor.useQuery()
+  if (isLoading) return <p className="text-dark-400 text-sm">Carregando...</p>
+  return (
+    <div className="space-y-1.5 max-w-2xl">
+      <div className="flex items-center gap-2 text-xs text-dark-500 uppercase tracking-wide mb-2">
+        <Users2 size={13} /> Visitas por vendedor
+      </div>
+      {(data ?? []).map((v) => (
+        <div key={v.vendedorId} className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-dark-600 bg-dark-800 text-sm">
+          <span className="text-dark-100 font-medium">{v.nome}</span>
+          <span className="text-dark-400">{v.total} visitas · {v.gerouProposta} propostas · {v.semResultado} em andamento</span>
+        </div>
+      ))}
+      {(!data || data.length === 0) && <p className="text-dark-500 text-sm">Nenhuma visita registrada ainda.</p>}
     </div>
   )
 }
@@ -68,7 +140,17 @@ const VISITA_VAZIA: VisitaForm = {
   propostaItens: '', propostaPagamento: '', propostaComissao: '', propostaRevenda: '',
 }
 
-function AbaVisitas() {
+function filtrarPorPeriodo<T extends { dataVisita: string | null }>(lista: T[], periodo: 'hoje' | 'semana' | 'todas'): T[] {
+  if (periodo === 'todas') return lista
+  const hojeStr = new Date().toISOString().slice(0, 10)
+  if (periodo === 'hoje') return lista.filter((v) => (v.dataVisita ?? '').slice(0, 10) === hojeStr)
+  const inicioSemana = new Date()
+  inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay())
+  const inicioSemanaStr = inicioSemana.toISOString().slice(0, 10)
+  return lista.filter((v) => (v.dataVisita ?? '').slice(0, 10) >= inicioSemanaStr)
+}
+
+function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'todas'; vendedorId?: number }) {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const [modalAberto, setModalAberto] = useState(false)
@@ -77,7 +159,8 @@ function AbaVisitas() {
   const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
 
   const utils = trpc.useUtils()
-  const { data: visitasList, isLoading } = trpc.visitas.listar.useQuery()
+  const { data: visitasTodas, isLoading } = trpc.visitas.listar.useQuery({ vendedorId })
+  const visitasList = filtrarPorPeriodo(visitasTodas ?? [], periodo)
 
   function invalidar() { utils.visitas.listar.invalidate() }
   const criarMut = trpc.visitas.criar.useMutation({
@@ -153,6 +236,7 @@ function AbaVisitas() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-semibold text-dark-100 truncate">{v.nomeEmpresa || v.clienteNome || v.cliente?.nome || 'Cliente não informado'}</span>
                       <Badge className={RESULTADO_CORES[v.resultado ?? '']}>{RESULTADO_LABELS[v.resultado ?? ''] ?? v.resultado}</Badge>
+                      {v.planejada && <Badge className="text-indigo-400 bg-indigo-900/20 border-indigo-700/40">Planejada</Badge>}
                       {v.convertidoParaPropostaId && <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40">Proposta #{v.convertidoParaPropostaId}</Badge>}
                     </div>
 

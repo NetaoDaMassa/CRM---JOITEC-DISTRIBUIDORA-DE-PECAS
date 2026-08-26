@@ -50,6 +50,7 @@ import { qualidadeRouter } from './qualidade.js'
 import { configuracoesOdinRouter } from './configuracoesOdin.js'
 import { relatoriosOdinRouter } from './relatoriosOdin.js'
 import { dashboardOdinRouter } from './dashboardOdin.js'
+import { calendarioOdinRouter } from './calendarioOdin.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -107,6 +108,7 @@ export const appRouter = router({
   configuracoesOdin: configuracoesOdinRouter,
   relatoriosOdin: relatoriosOdinRouter,
   dashboardOdin: dashboardOdinRouter,
+  calendarioOdin: calendarioOdinRouter,
 })
 
 export type AppRouter = typeof appRouter
