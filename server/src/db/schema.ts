@@ -901,6 +901,20 @@ export const boletoAlteracoes = sqliteTable('boleto_alteracoes', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Fila de pedidos de alteração de boleto (mudar vencimento/valor) — o
+// cliente liga/manda mensagem pedindo, fica registrado aqui e o Financeiro
+// acompanha até executar (diferente de `boletoAlteracoes`, que é o histórico
+// do que já foi de fato alterado num boleto específico).
+export const boletoPedidosAlteracao = sqliteTable('boleto_pedidos_alteracao', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id),
+  descricao: text('descricao').notNull(),
+  status: text('status', { enum: ['lancado', 'em_execucao', 'concluido'] }).notNull().default('lancado'),
+  criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
 // Negociações/cobrança (Financeiro) — 3 planilhas separadas, pedido do
 // João: log do dia a dia (sem fase, é só histórico de contato), Cartório
 // (pra lembrar de cobrar de novo quando o cliente "voltar") e RC (clientes
@@ -911,6 +925,14 @@ export const cobrancasRegistro = sqliteTable('cobrancas_registro', {
   clienteId: integer('cliente_id').notNull().references(() => clientes.id),
   canal: text('canal', { enum: ['whatsapp', 'ligacao', 'email'] }).notNull(),
   retornoCliente: text('retorno_cliente').notNull(),
+  // Valor/vencimento da cobrança em si — antes só existia o log de contato,
+  // sem nenhum dado de quanto/quando, então não dava pra gerar relatório
+  // nenhum por data nem saber se o cliente pagou. `status` fecha o ciclo:
+  // pendente → pago, ou pendente → cartorio/rc (que também cria a linha
+  // correspondente em clientesCartorio/clientesRc — ver `cobrancaMarcarStatus`).
+  valor: real('valor'),
+  dataVencimento: text('data_vencimento'),
+  status: text('status', { enum: ['pendente', 'pago', 'cartorio', 'rc'] }).notNull().default('pendente'),
   registradoPorId: integer('registrado_por_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
@@ -948,6 +970,11 @@ export const boletosRelations = relations(boletos, ({ one, many }) => ({
 export const boletoAlteracoesRelations = relations(boletoAlteracoes, ({ one }) => ({
   boleto: one(boletos, { fields: [boletoAlteracoes.boletoId], references: [boletos.id] }),
   alteradoPor: one(users, { fields: [boletoAlteracoes.alteradoPorId], references: [users.id] }),
+}))
+
+export const boletoPedidosAlteracaoRelations = relations(boletoPedidosAlteracao, ({ one }) => ({
+  cliente: one(clientes, { fields: [boletoPedidosAlteracao.clienteId], references: [clientes.id] }),
+  criadoPor: one(users, { fields: [boletoPedidosAlteracao.criadoPorId], references: [users.id] }),
 }))
 
 export const cobrancasRegistroRelations = relations(cobrancasRegistro, ({ one }) => ({

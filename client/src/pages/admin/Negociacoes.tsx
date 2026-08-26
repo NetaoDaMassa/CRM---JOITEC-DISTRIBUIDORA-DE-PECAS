@@ -4,6 +4,7 @@ import { Plus, Download, MessageCircle, Phone, Mail } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
+import { Input } from '../../components/ui/Input'
 import CobrancaModal from '../../components/CobrancaModal'
 import NegociacaoStatusModal from '../../components/NegociacaoStatusModal'
 import { paraCsv, baixarCsv } from '../../lib/csv'
@@ -21,6 +22,13 @@ function formatarData(d: string): string {
 
 const CANAL_ICONE: Record<string, typeof MessageCircle> = { whatsapp: MessageCircle, ligacao: Phone, email: Mail }
 const CANAL_LABEL: Record<string, string> = { whatsapp: 'WhatsApp', ligacao: 'Ligação', email: 'E-mail' }
+
+const STATUS_COBRANCA = [
+  { value: 'pendente', label: 'Pendente', cor: 'text-dark-400 bg-dark-700/40 border-dark-600' },
+  { value: 'pago', label: 'Pago', cor: 'text-green-400 bg-green-900/20 border-green-700/40' },
+  { value: 'cartorio', label: 'Enviado ao cartório', cor: 'text-orange-400 bg-orange-900/20 border-orange-700/40' },
+  { value: 'rc', label: 'Enviado à RC', cor: 'text-red-400 bg-red-900/20 border-red-700/40' },
+]
 
 const ABAS = [
   { id: 'cobrancas', label: 'Cobrança do dia' },
@@ -60,11 +68,27 @@ function SeletorAba({ aba, onChange }: { aba: Aba; onChange: (a: Aba) => void })
 }
 
 function AbaCobrancas() {
-  const { data } = trpc.negociacoes.cobrancasListar.useQuery()
+  const [dataDe, setDataDe] = useState('')
+  const [dataAte, setDataAte] = useState('')
+  const { data } = trpc.negociacoes.cobrancasListar.useQuery({ dataDe: dataDe || undefined, dataAte: dataAte || undefined })
   const [modalAberto, setModalAberto] = useState(false)
   const utils = trpc.useUtils()
+
+  function invalidarTudo() {
+    utils.negociacoes.cobrancasListar.invalidate()
+    utils.negociacoes.cartorioListar.invalidate()
+    utils.negociacoes.rcListar.invalidate()
+  }
+
   const excluirMut = trpc.negociacoes.cobrancaExcluir.useMutation({
     onSuccess: () => utils.negociacoes.cobrancasListar.invalidate(),
+    onError: (e) => toast.error(e.message),
+  })
+  const statusMut = trpc.negociacoes.cobrancaMarcarStatus.useMutation({
+    onSuccess: () => {
+      toast.success('Status atualizado')
+      invalidarTudo()
+    },
     onError: (e) => toast.error(e.message),
   })
 
@@ -77,9 +101,20 @@ function AbaCobrancas() {
           { chave: 'data', rotulo: 'Data/hora' },
           { chave: 'cliente', rotulo: 'Cliente' },
           { chave: 'canal', rotulo: 'Canal' },
+          { chave: 'valor', rotulo: 'Valor' },
+          { chave: 'vencimento', rotulo: 'Vencimento' },
+          { chave: 'status', rotulo: 'Status' },
           { chave: 'retorno', rotulo: 'Retorno do cliente' },
         ],
-        data.map((c) => ({ data: c.createdAt, cliente: c.cliente.razaoSocial, canal: CANAL_LABEL[c.canal], retorno: c.retornoCliente }))
+        data.map((c) => ({
+          data: c.createdAt,
+          cliente: c.cliente.razaoSocial,
+          canal: CANAL_LABEL[c.canal],
+          valor: c.valor ?? '',
+          vencimento: c.dataVencimento ? formatarData(c.dataVencimento) : '',
+          status: STATUS_COBRANCA.find((s) => s.value === c.status)?.label ?? c.status,
+          retorno: c.retornoCliente,
+        }))
       )
     )
   }
@@ -88,23 +123,31 @@ function AbaCobrancas() {
 
   return (
     <div>
-      <div className="flex justify-end gap-2 mb-4">
-        <Button variant="secondary" onClick={exportarCsv}>
-          <Download size={16} /> Exportar CSV
-        </Button>
-        <Button onClick={() => setModalAberto(true)}>
-          <Plus size={16} /> Nova cobrança
-        </Button>
+      <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex items-end gap-3">
+          <Input label="Vencimento de" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
+          <Input label="Vencimento até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+        </div>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={exportarCsv}>
+            <Download size={16} /> Exportar CSV
+          </Button>
+          <Button onClick={() => setModalAberto(true)}>
+            <Plus size={16} /> Nova cobrança
+          </Button>
+        </div>
       </div>
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-dark-700 text-left text-xs text-dark-500 uppercase tracking-wide">
-                <th className="px-4 py-3 font-medium">Data/hora</th>
                 <th className="px-4 py-3 font-medium">Cliente</th>
+                <th className="px-4 py-3 font-medium">Valor</th>
+                <th className="px-4 py-3 font-medium">Vencimento</th>
                 <th className="px-4 py-3 font-medium">Canal</th>
                 <th className="px-4 py-3 font-medium">Retorno do cliente</th>
+                <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
@@ -113,14 +156,33 @@ function AbaCobrancas() {
                 const Icone = CANAL_ICONE[c.canal]
                 return (
                   <tr key={c.id} className="border-b border-dark-700 last:border-0 hover:bg-dark-700/40">
-                    <td className="px-4 py-3 text-dark-400 font-mono whitespace-nowrap">{formatarData(c.createdAt)}</td>
-                    <td className="px-4 py-3 text-dark-100 font-medium">{c.cliente.razaoSocial}</td>
+                    <td className="px-4 py-3 text-dark-100 font-medium">
+                      {c.cliente.razaoSocial}
+                      <p className="text-[10px] text-dark-500 font-normal">{formatarData(c.createdAt)}</p>
+                    </td>
+                    <td className="px-4 py-3 text-dark-400 font-mono">{formatarMoeda(c.valor)}</td>
+                    <td className="px-4 py-3 text-dark-400 font-mono">{c.dataVencimento ? formatarData(c.dataVencimento) : '—'}</td>
                     <td className="px-4 py-3 text-dark-300">
                       <span className="inline-flex items-center gap-1.5">
                         <Icone size={13} /> {CANAL_LABEL[c.canal]}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-dark-300">{c.retornoCliente}</td>
+                    <td className="px-4 py-3">
+                      <select
+                        value={c.status}
+                        onChange={(e) => statusMut.mutate({ id: c.id, status: e.target.value as any })}
+                        className={`text-xs font-semibold rounded-full px-2.5 py-1 border cursor-pointer focus:outline-none ${
+                          STATUS_COBRANCA.find((s) => s.value === c.status)?.cor
+                        }`}
+                      >
+                        {STATUS_COBRANCA.map((s) => (
+                          <option key={s.value} value={s.value} className="bg-dark-800 text-dark-100">
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => excluirMut.mutate({ id: c.id })} className="text-dark-600 hover:text-red-400 text-xs">
                         Excluir
@@ -131,7 +193,7 @@ function AbaCobrancas() {
               })}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-dark-500">
+                  <td colSpan={7} className="px-4 py-8 text-center text-dark-500">
                     Nenhuma cobrança registrada ainda.
                   </td>
                 </tr>

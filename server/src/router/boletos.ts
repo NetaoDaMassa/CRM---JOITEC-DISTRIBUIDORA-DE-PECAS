@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, desc, eq } from 'drizzle-orm'
 import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { boletos, boletoAlteracoes, clientes } from '../db/schema.js'
+import { boletos, boletoAlteracoes, boletoPedidosAlteracao, clientes } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 
 function formatarMoeda(v: number): string {
@@ -147,6 +147,53 @@ export const boletosRouter = router({
     const boleto = await db.query.boletos.findFirst({ where: eq(boletos.id, input.id), with: { cliente: true } })
     if (!boleto || boleto.cliente.empresaId !== ctx.empresaId) throw new Error('Boleto não encontrado')
     await db.delete(boletos).where(eq(boletos.id, input.id))
+    return { success: true }
+  }),
+
+  // ── Pedidos de alteração (fila do dia a dia) ─────────────────────────
+  // Cliente pede pra mudar vencimento/valor de um boleto, fica registrado
+  // aqui até o Financeiro executar — diferente de `boletoAlteracoes`, que é
+  // o histórico do que já foi de fato mudado num boleto.
+  pedidosListar: featureProcedure('boletos').query(async ({ ctx }) => {
+    const linhas = await db
+      .select({
+        id: boletoPedidosAlteracao.id,
+        descricao: boletoPedidosAlteracao.descricao,
+        status: boletoPedidosAlteracao.status,
+        createdAt: boletoPedidosAlteracao.createdAt,
+        updatedAt: boletoPedidosAlteracao.updatedAt,
+        clienteId: clientes.id,
+        clienteNome: clientes.razaoSocial,
+      })
+      .from(boletoPedidosAlteracao)
+      .innerJoin(clientes, eq(boletoPedidosAlteracao.clienteId, clientes.id))
+      .where(eq(clientes.empresaId, ctx.empresaId))
+      .orderBy(desc(boletoPedidosAlteracao.createdAt))
+    return linhas.map((l) => ({ ...l, cliente: { id: l.clienteId, razaoSocial: l.clienteNome } }))
+  }),
+
+  pedidosCriar: featureProcedure('boletos')
+    .input(z.object({ clienteId: z.number(), descricao: z.string().min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId)) })
+      if (!cliente) throw new Error('Cliente não encontrado')
+      await db.insert(boletoPedidosAlteracao).values({ clienteId: input.clienteId, descricao: input.descricao.trim(), criadoPorId: ctx.user.id })
+      return { success: true }
+    }),
+
+  pedidosAtualizarStatus: featureProcedure('boletos')
+    .input(z.object({ id: z.number(), status: z.enum(['lancado', 'em_execucao', 'concluido']) }))
+    .mutation(async ({ ctx, input }) => {
+      const registro = await db.query.boletoPedidosAlteracao.findFirst({ where: eq(boletoPedidosAlteracao.id, input.id), with: { cliente: true } })
+      if (!registro || registro.cliente.empresaId !== ctx.empresaId) throw new Error('Registro não encontrado')
+      await db.update(boletoPedidosAlteracao).set({ status: input.status, updatedAt: agoraSqlite() }).where(eq(boletoPedidosAlteracao.id, input.id))
+      return { success: true }
+    }),
+
+  pedidosExcluir: featureProcedure('boletos').input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    const registro = await db.query.boletoPedidosAlteracao.findFirst({ where: eq(boletoPedidosAlteracao.id, input.id), with: { cliente: true } })
+    if (!registro || registro.cliente.empresaId !== ctx.empresaId) throw new Error('Registro não encontrado')
+    await db.delete(boletoPedidosAlteracao).where(eq(boletoPedidosAlteracao.id, input.id))
     return { success: true }
   }),
 })
