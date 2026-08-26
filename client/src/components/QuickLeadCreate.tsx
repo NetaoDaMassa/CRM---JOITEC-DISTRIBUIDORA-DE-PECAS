@@ -10,21 +10,29 @@ import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS } from '../lib/leadsShared'
 
 // Tira DDD+telefone de qualquer formato colado ("(11) 98888-7777",
 // "11988887777", "+55 11 98888-7777"...). Retorna null se não achar um
-// número BR plausível (10 ou 11 dígitos depois do DDI/zero).
+// número BR plausível (8 ou 9 dígitos locais + DDD).
+//
+// Antes usava um regex guloso (`\d[\d\s().-]{8,}\d`) que, como a classe de
+// caracteres incluía `\s`, atravessava quebra de linha — colando um texto
+// com 2 números (CNPJ, CEP, um 2º telefone) numa linha diferente, o match
+// grudava os dois blocos de dígitos num só e o comprimento final não batia
+// com 10/11, fazendo o autopreenchimento falhar silenciosamente. Esse era
+// o "não funciona direito" reportado. Regex novo é no formato explícito de
+// telefone (DDI opcional + DDD + 4-5 dígitos + 4 dígitos), então só casa
+// dentro de uma sequência que já parece um telefone de verdade.
+const REGEX_TELEFONE = /(?<!\d)0?\(?([1-9]\d)\)?[ .-]?(\d{4,5})[ .-]?(\d{4})(?!\d)/
+
 function extrairTelefone(texto: string): { ddd: number; phone: string; completo: string } | null {
-  const digitosMatch = texto.match(/\d[\d\s().-]{8,}\d/)
-  if (!digitosMatch) return null
-  let digitos = digitosMatch[0].replace(/\D/g, '')
-  if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) digitos = digitos.slice(2)
-  if ((digitos.length === 11 || digitos.length === 12) && digitos.startsWith('0')) digitos = digitos.slice(1)
-  if (digitos.length !== 10 && digitos.length !== 11) return null
-  const ddd = Number(digitos.slice(0, 2))
+  const m = texto.match(REGEX_TELEFONE)
+  if (!m) return null
+  const ddd = Number(m[1])
+  const phone = m[2] + m[3]
+  if (phone.length !== 8 && phone.length !== 9) return null
   // `phone` guarda só o número local (sem o DDD, que já vai separado no
-  // campo `ddd`) — mesma convenção do resto do sistema. Deixar o DDD junto
-  // aqui duplicava ele na tela do lead e quebrava o link do WhatsApp.
-  // `completo` (com DDD) fica só pra reconhecer a linha do telefone no texto
-  // colado e não confundi-la com o nome, em extrairNome.
-  return { ddd, phone: digitos.slice(2), completo: digitos }
+  // campo `ddd`) — mesma convenção do resto do sistema. `completo` (com
+  // DDD) fica só pra reconhecer a linha do telefone no texto colado e não
+  // confundi-la com o nome, em extrairNome.
+  return { ddd, phone, completo: String(ddd) + phone }
 }
 
 // Primeira linha não vazia que não é o próprio telefone/email vira o nome.
@@ -32,7 +40,7 @@ function extrairNome(texto: string, telefoneDigitos: string | null): string {
   const linhas = texto.split('\n').map((l) => l.trim()).filter(Boolean)
   for (const linha of linhas) {
     const soDigitos = linha.replace(/\D/g, '')
-    if (telefoneDigitos && soDigitos.length > 4 && telefoneDigitos.includes(soDigitos)) continue
+    if (telefoneDigitos && soDigitos.length > 4 && (telefoneDigitos.includes(soDigitos) || soDigitos.includes(telefoneDigitos))) continue
     if (linha.includes('@')) continue
     return linha.slice(0, 120)
   }
