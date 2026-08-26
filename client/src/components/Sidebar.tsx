@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -44,6 +44,7 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 export const ADMIN_LINKS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, feature: 'dashboard' },
   { to: '/admin/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
+  { to: '/admin/demandas', label: 'Demandas', icon: ClipboardList, feature: 'demandas' },
   { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
   { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/admin/clientes', label: 'Clientes', icon: List, feature: 'clientes' },
@@ -98,6 +99,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: ListChecks, feature: 'fila_hoje' },
   { to: '/vendedor/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
   { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
+  { to: '/vendedor/demandas', label: 'Demandas', icon: ClipboardList, feature: 'demandas' },
   { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: List, feature: 'clientes' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },

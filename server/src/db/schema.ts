@@ -780,6 +780,92 @@ export const inadimplenciaEmpresas = sqliteTable(
   })
 )
 
+// Demandas (board estilo Trello, pedido do João) — fases/colunas do board,
+// por empresa (cada empresa do grupo pode ter seu próprio fluxo). Toda
+// empresa ganha as 4 fases padrão (A Fazer/Em Andamento/Aguardando/
+// Concluído) na primeira vez que alguém abre o board dela — ver
+// garantirEstagiosPadrao em demandas.ts, não depende de migração/seed.
+// `concluido` marca a fase final do board: mover uma demanda pra lá
+// preenche `demandas.concluidoEm` sozinho.
+export const demandaEstagios = sqliteTable('demanda_estagios', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  ordem: integer('ordem').notNull().default(0),
+  concluido: integer('concluido', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Demanda em si — só o admin cria (pedido do João), endereçada a uma
+// empresa do grupo e, opcionalmente, a uma pessoa específica dentro dela
+// (sem pessoa = demanda da empresa/setor como um todo, todo mundo de lá
+// vê no board). Qualquer um (admin ou vendedor) pode mover de fase depois
+// de criada — só o conteúdo (título/descrição/prazo/etc) é admin-only.
+// `mostrarPainelFinanceiro` é um recorte manual do admin (ex: cobrança
+// pendente, nota a emitir) pra aparecer também no Painel Financeiro — não
+// infere nada sozinho a partir do texto.
+export const demandas = sqliteTable('demandas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  estagioId: integer('estagio_id').notNull().references(() => demandaEstagios.id),
+  titulo: text('titulo').notNull(),
+  descricao: text('descricao'),
+  criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
+  atribuidoParaId: integer('atribuido_para_id').references(() => users.id, { onDelete: 'set null' }),
+  dataLimite: text('data_limite'),
+  lembreteEm: text('lembrete_em'),
+  mostrarPainelFinanceiro: integer('mostrar_painel_financeiro', { mode: 'boolean' }).notNull().default(false),
+  // Posição do card dentro da coluna (drag and drop) — maior primeiro na
+  // hora de reordenar, igual não existe ainda em nenhuma outra tela, mas
+  // segue o mesmo espírito de `sidebarGroupItems.ordem`.
+  ordem: integer('ordem').notNull().default(0),
+  concluidoEm: text('concluido_em'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const demandaAnexos = sqliteTable('demanda_anexos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  demandaId: integer('demanda_id').notNull().references(() => demandas.id, { onDelete: 'cascade' }),
+  nomeArquivo: text('nome_arquivo').notNull(),
+  path: text('path').notNull(),
+  tamanho: integer('tamanho'),
+  enviadoPorId: integer('enviado_por_id').notNull().references(() => users.id),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const demandaComentarios = sqliteTable('demanda_comentarios', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  demandaId: integer('demanda_id').notNull().references(() => demandas.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').notNull().references(() => users.id),
+  texto: text('texto').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const demandaEstagiosRelations = relations(demandaEstagios, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [demandaEstagios.empresaId], references: [empresas.id] }),
+  demandas: many(demandas),
+}))
+
+export const demandasRelations = relations(demandas, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [demandas.empresaId], references: [empresas.id] }),
+  estagio: one(demandaEstagios, { fields: [demandas.estagioId], references: [demandaEstagios.id] }),
+  criadoPor: one(users, { fields: [demandas.criadoPorId], references: [users.id] }),
+  atribuidoPara: one(users, { fields: [demandas.atribuidoParaId], references: [users.id] }),
+  anexos: many(demandaAnexos),
+  comentarios: many(demandaComentarios),
+}))
+
+export const demandaAnexosRelations = relations(demandaAnexos, ({ one }) => ({
+  demanda: one(demandas, { fields: [demandaAnexos.demandaId], references: [demandas.id] }),
+  enviadoPor: one(users, { fields: [demandaAnexos.enviadoPorId], references: [users.id] }),
+}))
+
+export const demandaComentariosRelations = relations(demandaComentarios, ({ one }) => ({
+  demanda: one(demandas, { fields: [demandaComentarios.demandaId], references: [demandas.id] }),
+  user: one(users, { fields: [demandaComentarios.userId], references: [users.id] }),
+}))
+
 // Caixa da empresa (entradas/saídas de dinheiro, registro manual do
 // admin) — pedido do João pra Compretec Loja Física acompanhar movimento
 // de caixa mês a mês, mas escopado por empresaId igual o resto do app

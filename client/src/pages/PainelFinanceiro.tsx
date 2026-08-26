@@ -346,6 +346,47 @@ function SlideImportacoes({ invoices }: { invoices: InvoiceImportacao[] | undefi
   )
 }
 
+type DemandaPainel = {
+  id: number
+  titulo: string
+  dataLimite: string | null
+  empresa: { id: number; nome: string }
+  atribuidoPara: { id: number; name: string } | null
+  estagio: { id: number; nome: string }
+}
+
+function formatarDataDemanda(d: string | null): string {
+  if (!d) return 'Sem prazo'
+  const [ano, mes, dia] = d.slice(0, 10).split('-')
+  return `${dia}/${mes}/${ano}`
+}
+
+// Card marcado "mostrar no Painel Financeiro" lá em Demandas — recorte
+// manual do admin (cobrança pendente, nota a emitir etc.), não é a lista
+// inteira do board. Só leitura aqui, editar é sempre em /admin/demandas.
+function SlideDemandasFinanceiras({ demandas }: { demandas: DemandaPainel[] | undefined }) {
+  if (!demandas) return <p className="text-dark-500">Carregando...</p>
+  if (!demandas.length) return <p className="text-dark-500">Nenhuma demanda financeira pendente no momento.</p>
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+      {demandas.map((d) => (
+        <div key={d.id} className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <p className="text-sm font-semibold text-dark-100">{d.empresa.nome}</p>
+            <span className="text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap text-gold-400 bg-gold-900/20">{d.estagio.nome}</span>
+          </div>
+          <p className="text-lg font-bold text-dark-50">{d.titulo}</p>
+          <div className="mt-4 pt-4 border-t border-dark-700 flex items-center justify-between">
+            <p className="text-xs text-dark-500">{d.atribuidoPara ? d.atribuidoPara.name : 'Sem pessoa atribuída'}</p>
+            <p className="text-sm font-semibold text-dark-100 font-mono tabular-nums">{formatarDataDemanda(d.dataLimite)}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Painel de TV financeiro, restrito a superAdmin — consolida faturamento,
 // vendas, % de meta e inadimplência (registrada manualmente, não tem fonte
 // automática ainda) das empresas do grupo (ver CARDS_PAINEL em
@@ -369,6 +410,10 @@ export default function PainelFinanceiro() {
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   })
+  const { data: demandasFinanceiras } = trpc.demandas.painelFinanceiro.useQuery(undefined, {
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
+  })
 
   // `render` é chamado como função (`slides[i].render()`) mais abaixo, nunca
   // usado como `<slides[i].render />` — isso recriaria uma "nova" função a
@@ -379,6 +424,7 @@ export default function PainelFinanceiro() {
   const slides = [
     { titulo: 'Financeiro', render: () => <SlideResumoFinanceiro data={data} /> },
     { titulo: 'Importações', render: () => <SlideImportacoes invoices={invoices} /> },
+    { titulo: 'Demandas', render: () => <SlideDemandasFinanceiras demandas={demandasFinanceiras} /> },
   ]
   const [slideAtual, setSlideAtual] = useState(0)
   const [configAberta, setConfigAberta] = useState(false)
@@ -408,7 +454,7 @@ export default function PainelFinanceiro() {
         <div>
           <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Grupo Odin · Painel Financeiro</p>
           <h1 className="font-heading text-2xl text-dark-50 font-bold mt-0.5">
-            {slideAtual === 0 ? 'Visão consolidada das empresas' : 'Importações em andamento'}
+            {slideAtual === 0 ? 'Visão consolidada das empresas' : slideAtual === 1 ? 'Importações em andamento' : 'Demandas financeiras pendentes'}
           </h1>
         </div>
         <div className="flex items-center gap-4">

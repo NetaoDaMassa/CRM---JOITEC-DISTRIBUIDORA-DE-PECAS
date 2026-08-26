@@ -246,6 +246,24 @@ app.post('/upload/proposta-anexo', uploadProposta.single('file'), async (req, re
   res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// Anexos de Demandas (board estilo Trello) — mesmo padrão de ordem-anexo/
+// proposta-anexo, aceita qualquer tipo de arquivo (planilha, doc, pdf,
+// imagem etc.), diferente dos outros dois que são só imagem/PDF.
+const storageDemanda = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `demanda-${randomUUID()}${ext}`)
+  },
+})
+const uploadDemanda = multer({ storage: storageDemanda, limits: { fileSize: 20 * 1024 * 1024, files: 10 } })
+app.post('/upload/demanda-anexo', uploadDemanda.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tamanho: req.file.size })
+})
+
 // Importação em massa de clientes (Excel/CSV) — em memória, não vai pro disco
 // de uploads (não é um anexo permanente, só processado e descartado).
 const uploadMemoria = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })

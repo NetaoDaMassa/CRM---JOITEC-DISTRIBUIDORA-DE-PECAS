@@ -10,6 +10,9 @@ import { registrarAuditoria } from '../lib/auditoria.js'
 export const FEATURES_ADMIN = [
   'dashboard',
   'kanban',
+  // Board de Demandas (estilo Trello) — mesma chave em FEATURES_VENDEDOR,
+  // é tela de uso diário de todo mundo, não só admin.
+  'demandas',
   'pos_venda',
   'agenda',
   'clientes',
@@ -101,6 +104,8 @@ export const FEATURES_VENDEDOR = [
   'fila_hoje',
   'pos_venda',
   'kanban',
+  // Board de Demandas — mesma chave de FEATURES_ADMIN acima.
+  'demandas',
   'agenda',
   'clientes',
   'prospeccao',

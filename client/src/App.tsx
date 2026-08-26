@@ -38,6 +38,7 @@ import LeadsDesqualificados from './pages/admin/LeadsDesqualificados'
 import LeadsRelatorios from './pages/admin/LeadsRelatorios'
 import LeadsRegioes from './pages/admin/LeadsRegioes'
 import SidebarGrupos from './pages/admin/SidebarGrupos'
+import Demandas from './pages/Demandas'
 
 import VendorDashboard from './pages/vendor/Dashboard'
 import VendorKanban from './pages/vendor/Kanban'
@@ -159,6 +160,7 @@ export default function App() {
           {/* Admin routes */}
           <Route path="admin" element={<AdminGuard><FeatureGuard feature="dashboard"><AdminDashboard /></FeatureGuard></AdminGuard>} />
           <Route path="admin/kanban" element={<AdminGuard><FeatureGuard feature="kanban"><AdminKanban /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/demandas" element={<AdminGuard><FeatureGuard feature="demandas"><Demandas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/calendario" element={<AdminGuard><FeatureGuard feature="agenda"><AdminCalendario /></FeatureGuard></AdminGuard>} />
           <Route path="admin/clientes" element={<AdminGuard><FeatureGuard feature="clientes"><Clientes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/prospeccao" element={<AdminGuard><FeatureGuard feature="prospeccao"><Prospeccao /></FeatureGuard></AdminGuard>} />
@@ -213,6 +215,7 @@ export default function App() {
           <Route path="vendedor/fila-hoje" element={<FilaHoje />} />
           <Route path="vendedor/pos-venda" element={<FilaPosVenda />} />
           <Route path="vendedor/kanban" element={<VendorKanban />} />
+          <Route path="vendedor/demandas" element={<Demandas />} />
           <Route path="vendedor/clientes" element={<Clientes />} />
           <Route path="vendedor/prospeccao" element={<Prospeccao />} />
           <Route path="vendedor/clientes/novo" element={<ClienteNovo />} />
