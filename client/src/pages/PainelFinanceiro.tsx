@@ -370,6 +370,12 @@ export default function PainelFinanceiro() {
     refetchIntervalInBackground: true,
   })
 
+  // `render` é chamado como função (`slides[i].render()`) mais abaixo, nunca
+  // usado como `<slides[i].render />` — isso recriaria uma "nova" função a
+  // cada re-render (o relógio bate `setRelogio` todo segundo) e o React
+  // desmontaria/remontaria o slide inteiro a cada tick, resetando qualquer
+  // estado local dentro dele (ex: o formulário de editar inadimplência
+  // fechava sozinho menos de 1s depois de abrir).
   const slides = [
     { titulo: 'Financeiro', render: () => <SlideResumoFinanceiro data={data} /> },
     { titulo: 'Importações', render: () => <SlideImportacoes invoices={invoices} /> },
@@ -395,8 +401,6 @@ export default function PainelFinanceiro() {
   }, [slides.length, duracaoSlideMs, autoplay])
 
   useAutoScroll(slideAtual, duracaoSlideMs, autoplay)
-
-  const Slide = slides[slideAtual].render
 
   return (
     <div className="min-h-screen bg-dark-950 text-dark-50 p-8">
@@ -435,7 +439,7 @@ export default function PainelFinanceiro() {
         }
       />
 
-      <Slide />
+      {slides[slideAtual].render()}
 
       <div className="flex items-center justify-center gap-2 mt-8">
         {slides.map((s, i) => (
