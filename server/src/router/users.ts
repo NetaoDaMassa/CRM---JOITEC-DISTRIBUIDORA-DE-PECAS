@@ -138,6 +138,7 @@ export const usersRouter = router({
         funcaoTemplateId: z.number().optional(),
         isActive: z.boolean().optional(),
         ocultoPainelTv: z.boolean().optional(),
+        canalVenda: z.enum(['visitas', 'leads']).optional(),
         fotoUrl: z.string().optional(),
         whatsapp: z.string().optional(),
       })

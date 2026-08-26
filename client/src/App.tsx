@@ -51,6 +51,7 @@ import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
+import PainelTvOdin from './pages/PainelTvOdin'
 import Devolucoes from './pages/Devolucoes'
 import OrdensKanban from './pages/OrdensKanban'
 import OrdensDetail from './pages/OrdensDetail'
@@ -146,6 +147,18 @@ export default function App() {
               <AdminGuard>
                 <FeatureGuard feature="painel_financeiro">
                   <PainelFinanceiro />
+                </FeatureGuard>
+              </AdminGuard>
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/painel-tv-odin"
+          element={
+            <AuthGuard>
+              <AdminGuard>
+                <FeatureGuard feature="painel_tv_odin">
+                  <PainelTvOdin />
                 </FeatureGuard>
               </AdminGuard>
             </AuthGuard>

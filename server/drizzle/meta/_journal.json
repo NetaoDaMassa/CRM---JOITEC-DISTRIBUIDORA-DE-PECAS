@@ -491,6 +491,13 @@
       "when": 1787771626858,
       "tag": "0069_daily_deadpool",
       "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "6",
+      "when": 1787777204291,
+      "tag": "0070_furry_texas_twister",
+      "breakpoints": true
     }
   ]
 }

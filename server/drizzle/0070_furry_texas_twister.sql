@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD `canal_venda` text DEFAULT 'visitas' NOT NULL;

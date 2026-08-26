@@ -32,6 +32,10 @@ export const FEATURES_ADMIN = [
   'backup',
   'painel_financeiro',
   'painel_tv',
+  // Painel de TV específico da Odin Compressores (funil visitas/leads →
+  // propostas → vendas) — mesmo padrão de painel_tv/painel_financeiro,
+  // rota própria fora da sidebar normal.
+  'painel_tv_odin',
   // Financeiro/Cobrança (planilhas), pedido do João — admin-only de
   // propósito, não existe em FEATURES_VENDEDOR. Concedido manualmente em
   // Permissões pra quem cuida disso (não libera pra todo mundo por padrão,

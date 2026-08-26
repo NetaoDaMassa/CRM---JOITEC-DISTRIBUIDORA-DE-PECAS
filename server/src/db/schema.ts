@@ -141,6 +141,12 @@ export const users = sqliteTable('users', {
   // ranking/gráficos do Painel de TV, pra casos tipo alguém de licença ou
   // que o gestor não quer expor no telão por qualquer motivo específico.
   ocultoPainelTv: integer('oculto_painel_tv', { mode: 'boolean' }).notNull().default(false),
+  // Hoje só usado pelo Painel de TV da Odin Compressores — separa quem
+  // trabalha em campo (visita → proposta → venda) de quem só atende leads
+  // do site (Emily/Rodrigo/Matheus: lead → proposta → venda, sem visita).
+  // Fica na tabela global de users, igual regiao/ocultoPainelTv, mesmo só
+  // fazendo sentido pra essa empresa hoje.
+  canalVenda: text('canal_venda', { enum: ['visitas', 'leads'] }).notNull().default('visitas'),
   // Só o último — o histórico dia a dia de acesso fica em logAcessoUsuario.
   lastLoginAt: text('last_login_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),

@@ -215,6 +215,13 @@ export default function Sidebar() {
     { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
+    {
+      to: '/painel-tv-odin',
+      label: 'Painel de TV Odin',
+      icon: Tv,
+      external: true,
+      visivel: empresaAtiva?.slug === SO_ODIN_COMPRESSORES && user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_odin')),
+    },
   ]
 
   // Lista combinada (links normais + extras visíveis) na forma comum que os

@@ -130,9 +130,15 @@ interface UserForm {
   funcaoTemplateId: number | ''
   regiao: string
   whatsapp: string
+  canalVenda: string
 }
 
-const DEFAULT_FORM: UserForm = { name: '', username: '', funcaoTemplateId: '', regiao: '', whatsapp: '' }
+const DEFAULT_FORM: UserForm = { name: '', username: '', funcaoTemplateId: '', regiao: '', whatsapp: '', canalVenda: 'visitas' }
+
+const CANAL_VENDA_OPTIONS = [
+  { value: 'visitas', label: 'Visitas de campo' },
+  { value: 'leads', label: 'Leads do site' },
+]
 
 async function uploadFotoVendedor(file: File): Promise<string> {
   const token = localStorage.getItem('odin_token')
@@ -209,6 +215,7 @@ export default function AdminUsers() {
           funcaoTemplateId: Number(form.funcaoTemplateId),
           regiao: (form.regiao || undefined) as any,
           whatsapp: form.whatsapp || undefined,
+          canalVenda: form.canalVenda as any,
         })
         userId = editUser.id
       } else {
@@ -290,6 +297,7 @@ export default function AdminUsers() {
       funcaoTemplateId: user.funcaoTemplateId ?? '',
       regiao: user.regiao ?? '',
       whatsapp: user.whatsapp ?? '',
+      canalVenda: user.canalVenda ?? 'visitas',
     })
     setFotoForm(null)
   }
@@ -498,6 +506,14 @@ export default function AdminUsers() {
                 />
               </div>
             </div>
+          )}
+          {!!editUser && funcaoTemplates?.find((t) => t.id === form.funcaoTemplateId)?.role === 'vendor' && (
+            <Select
+              label="Canal de venda"
+              value={form.canalVenda}
+              onChange={(e) => setForm({ ...form, canalVenda: e.target.value })}
+              options={CANAL_VENDA_OPTIONS}
+            />
           )}
           <div className="flex gap-3 pt-2">
             <Button

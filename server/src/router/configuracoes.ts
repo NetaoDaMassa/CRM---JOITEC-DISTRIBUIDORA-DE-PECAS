@@ -33,6 +33,9 @@ const CHAVES_NUMERICAS = {
   // (que antes tinha a duração fixa em código, 20s).
   painel_financeiro_segundos: 20,
   painel_financeiro_autoplay: 1,
+  // Mesma ideia, pro Painel de TV da Odin Compressores.
+  painel_tv_odin_segundos: 25,
+  painel_tv_odin_autoplay: 1,
 } as const
 
 export const configuracoesRouter = router({
@@ -73,6 +76,8 @@ export const configuracoesRouter = router({
         painel_tv_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
         painel_financeiro_segundos: z.number().min(3).max(300).optional(),
         painel_financeiro_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
+        painel_tv_odin_segundos: z.number().min(3).max(300).optional(),
+        painel_tv_odin_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -108,6 +113,14 @@ export const configuracoesRouter = router({
     const [segundos, autoplay] = await Promise.all([
       getConfigNumero('painel_financeiro_segundos', CHAVES_NUMERICAS.painel_financeiro_segundos),
       getConfigNumero('painel_financeiro_autoplay', CHAVES_NUMERICAS.painel_financeiro_autoplay),
+    ])
+    return { segundos, autoplay: autoplay === 1 }
+  }),
+
+  painelTvOdinConfig: protectedProcedure.query(async () => {
+    const [segundos, autoplay] = await Promise.all([
+      getConfigNumero('painel_tv_odin_segundos', CHAVES_NUMERICAS.painel_tv_odin_segundos),
+      getConfigNumero('painel_tv_odin_autoplay', CHAVES_NUMERICAS.painel_tv_odin_autoplay),
     ])
     return { segundos, autoplay: autoplay === 1 }
   }),

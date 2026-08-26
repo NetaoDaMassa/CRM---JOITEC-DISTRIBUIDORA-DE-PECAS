@@ -11,7 +11,7 @@ import { eq, and, gte, lte, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas } from '../db/schema.js'
+import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas, users, leads } from '../db/schema.js'
 
 const SLUG_DASHBOARD = 'odin-compressores'
 
@@ -156,6 +156,110 @@ export const dashboardOdinRouter = router({
       alertas,
       recentes,
       porVendedor,
+    }
+  }),
+
+  // Painel de TV específico da Odin Compressores (pedido do João: repensar
+  // o painel como um comercial estratégico) — dois funis lado a lado, mês
+  // corrente:
+  //   Equipe de campo: visita → proposta → venda (visitas.convertidoParaPropostaId
+  //   marca quando uma visita virou proposta de verdade, não é estimativa).
+  //   Equipe de leads (Emily/Rodrigo/Matheus e quem mais tiver `canalVenda:
+  //   'leads'` em Usuários): lead do site → proposta → venda, sem visita.
+  // "Venda" aqui é `ordens` (mesmo sentido de pedidos.ts/dashboardOdinRouter.resumo
+  // pra essa empresa — Odin Compressores não usa `vendas`/funil_mensal).
+  painelTv: adminOrFeatureProcedure('painel_tv_odin').query(async ({ ctx }) => {
+    await assertEmpresa(ctx.empresaId)
+
+    const inicioMes = new Date().toISOString().slice(0, 8) + '01'
+
+    const vendedores = await db.query.users.findMany({
+      where: and(eq(users.empresaId, ctx.empresaId), eq(users.role, 'vendor'), eq(users.isActive, true), eq(users.ocultoPainelTv, false)),
+      columns: { id: true, name: true, fotoUrl: true, canalVenda: true },
+    })
+
+    const [todasVisitas, todasPropostas, todasOrdens, todosLeads] = await Promise.all([
+      db.query.visitas.findMany({
+        where: and(eq(visitas.empresaId, ctx.empresaId), gte(visitas.dataVisita, inicioMes)),
+        columns: { id: true, vendedorId: true, convertidoParaPropostaId: true },
+      }),
+      db.query.propostas.findMany({
+        where: and(eq(propostas.empresaId, ctx.empresaId), gte(propostas.createdAt, inicioMes)),
+        columns: { id: true, vendedorId: true, convertidoParaOrdemId: true },
+      }),
+      db.query.ordens.findMany({
+        where: and(eq(ordens.empresaId, ctx.empresaId), gte(ordens.createdAt, inicioMes)),
+        columns: { id: true, vendedorId: true, status: true },
+      }),
+      db.query.leads.findMany({
+        where: and(eq(leads.empresaId, ctx.empresaId), gte(leads.createdAt, inicioMes)),
+        columns: { id: true, vendorId: true },
+      }),
+    ])
+
+    const vendasValidas = todasOrdens.filter((o) => o.status !== 'cancelado')
+
+    function calcularEquipe(vendedoresDoTime: typeof vendedores) {
+      const ids = new Set(vendedoresDoTime.map((v) => v.id))
+      const visitasTime = todasVisitas.filter((v) => ids.has(v.vendedorId))
+      const propostasTime = todasPropostas.filter((p) => ids.has(p.vendedorId))
+      const vendasTime = vendasValidas.filter((o) => o.vendedorId != null && ids.has(o.vendedorId))
+      const leadsTime = todosLeads.filter((l) => l.vendorId != null && ids.has(l.vendorId))
+
+      const visitasConvertidas = visitasTime.filter((v) => v.convertidoParaPropostaId != null).length
+      const propostasConvertidas = propostasTime.filter((p) => p.convertidoParaOrdemId != null).length
+
+      const porVendedor = vendedoresDoTime
+        .map((v) => {
+          const visitasDele = visitasTime.filter((x) => x.vendedorId === v.id)
+          const propostasDele = propostasTime.filter((x) => x.vendedorId === v.id)
+          const vendasDele = vendasTime.filter((x) => x.vendedorId === v.id)
+          const leadsDele = leadsTime.filter((x) => x.vendorId === v.id)
+          const visitasConvDele = visitasDele.filter((x) => x.convertidoParaPropostaId != null).length
+          const propostasConvDele = propostasDele.filter((x) => x.convertidoParaOrdemId != null).length
+          return {
+            id: v.id,
+            nome: v.name,
+            fotoUrl: v.fotoUrl,
+            visitas: visitasDele.length,
+            leads: leadsDele.length,
+            propostas: propostasDele.length,
+            vendas: vendasDele.length,
+            conversaoVisitaProposta: visitasDele.length ? Math.round((visitasConvDele / visitasDele.length) * 1000) / 10 : null,
+            conversaoPropostaVenda: propostasDele.length ? Math.round((propostasConvDele / propostasDele.length) * 1000) / 10 : null,
+          }
+        })
+        .sort((a, b) => b.vendas - a.vendas)
+
+      return {
+        porVendedor,
+        totais: {
+          visitas: visitasTime.length,
+          leads: leadsTime.length,
+          propostas: propostasTime.length,
+          vendas: vendasTime.length,
+          conversaoVisitaProposta: visitasTime.length ? Math.round((visitasConvertidas / visitasTime.length) * 1000) / 10 : null,
+          conversaoPropostaVenda: propostasTime.length ? Math.round((propostasConvertidas / propostasTime.length) * 1000) / 10 : null,
+        },
+      }
+    }
+
+    const equipeCampo = calcularEquipe(vendedores.filter((v) => v.canalVenda === 'visitas'))
+    const equipeLeads = calcularEquipe(vendedores.filter((v) => v.canalVenda === 'leads'))
+
+    const propostasConvertidasGeral = todasPropostas.filter((p) => p.convertidoParaOrdemId != null).length
+
+    return {
+      mesReferencia: inicioMes.slice(0, 7),
+      equipeCampo,
+      equipeLeads,
+      geral: {
+        visitas: todasVisitas.length,
+        leads: todosLeads.length,
+        propostas: todasPropostas.length,
+        vendas: vendasValidas.length,
+        conversaoPropostaVenda: todasPropostas.length ? Math.round((propostasConvertidasGeral / todasPropostas.length) * 1000) / 10 : null,
+      },
     }
   }),
 })

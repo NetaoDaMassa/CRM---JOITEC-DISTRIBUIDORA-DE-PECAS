@@ -11,6 +11,7 @@ const FEATURES = [
   ...ADMIN_LINKS.map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
+  { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
 ]
 
 const FEATURES_VENDEDOR = VENDOR_LINKS.map((l) => ({ feature: l.feature, label: l.label }))
