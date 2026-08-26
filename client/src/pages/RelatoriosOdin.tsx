@@ -1,15 +1,37 @@
 import { useState } from 'react'
-import { BarChart3, Download } from 'lucide-react'
+import { BarChart3, Download, RefreshCw } from 'lucide-react'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { Input } from '../components/ui/Input'
+import Select from '../components/ui/Select'
 import { STAGE_LABELS, type Stage } from '../lib/ordensShared'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
+function baixarCsv(filename: string, linhas: string[]) {
+  const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+function BotaoCsv({ onClick }: { onClick: () => void }) {
+  return (
+    <button onClick={onClick} className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs font-medium text-dark-300 hover:bg-dark-800 transition-colors">
+      <Download size={13} /> Exportar CSV
+    </button>
+  )
+}
+
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type MarketingData = RouterOutputs['relatoriosOdin']['marketing']
+type Filtro = { dataDe?: string; dataAte?: string; vendedorId?: number }
 
 type TabKey = 'propostas' | 'pipeline' | 'posVenda' | 'faturamento' | 'maquinas' | 'marketing'
 const TAB_LABELS: Record<TabKey, string> = {
@@ -49,15 +71,29 @@ function money(v: number) {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+const TABS_COM_FILTRO_DATA: TabKey[] = ['propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing']
+const TABS_COM_FILTRO_VENDEDOR: TabKey[] = ['propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing']
+
 export default function RelatoriosOdin() {
   const [tab, setTab] = useState<TabKey>('propostas')
   const [dataDe, setDataDe] = useState('')
   const [dataAte, setDataAte] = useState('')
-  const filtro = { dataDe: dataDe || undefined, dataAte: dataAte || undefined }
+  const [vendedorId, setVendedorId] = useState('')
+  const { data: vendedores } = trpc.users.vendors.useQuery()
+  const utils = trpc.useUtils()
+  const filtro = { dataDe: dataDe || undefined, dataAte: dataAte || undefined, vendedorId: vendedorId ? Number(vendedorId) : undefined }
 
   return (
     <div className="p-6">
-      <h1 className="font-heading text-2xl text-dark-50 font-bold mb-4 flex items-center gap-2"><BarChart3 size={22} /> Relatórios</h1>
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-2"><BarChart3 size={22} /> Relatórios</h1>
+        <button
+          onClick={() => utils.relatoriosOdin.invalidate()}
+          className="flex items-center gap-1.5 text-xs text-dark-400 hover:text-gold-400 transition-colors"
+        >
+          <RefreshCw size={13} /> Atualizar
+        </button>
+      </div>
 
       <div className="flex gap-1 border-b border-dark-700 mb-5 overflow-x-auto">
         {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
@@ -67,16 +103,31 @@ export default function RelatoriosOdin() {
         ))}
       </div>
 
-      {(tab === 'propostas' || tab === 'pipeline' || tab === 'faturamento' || tab === 'marketing') && (
-        <div className="flex gap-3 mb-4 max-w-md">
-          <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
-          <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+      {(TABS_COM_FILTRO_DATA.includes(tab) || TABS_COM_FILTRO_VENDEDOR.includes(tab)) && (
+        <div className="flex gap-3 mb-4 max-w-2xl flex-wrap items-end">
+          {TABS_COM_FILTRO_DATA.includes(tab) && (
+            <>
+              <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
+              <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+            </>
+          )}
+          {TABS_COM_FILTRO_VENDEDOR.includes(tab) && (
+            <div className="w-52">
+              <Select
+                label="Vendedor"
+                value={vendedorId}
+                onChange={(e) => setVendedorId(e.target.value)}
+                placeholder="Todos"
+                options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+              />
+            </div>
+          )}
         </div>
       )}
 
       {tab === 'propostas' && <RelatorioPropostas filtro={filtro} />}
       {tab === 'pipeline' && <RelatorioPipeline filtro={filtro} />}
-      {tab === 'posVenda' && <RelatorioPosVenda />}
+      {tab === 'posVenda' && <RelatorioPosVenda filtro={filtro} />}
       {tab === 'faturamento' && <RelatorioFaturamento filtro={filtro} />}
       {tab === 'maquinas' && <RelatorioMaquinas />}
       {tab === 'marketing' && <RelatorioMarketing filtro={filtro} />}
@@ -84,11 +135,19 @@ export default function RelatoriosOdin() {
   )
 }
 
-function RelatorioPropostas({ filtro }: { filtro: { dataDe?: string; dataAte?: string } }) {
+function RelatorioPropostas({ filtro }: { filtro: Filtro }) {
   const { data, isLoading } = trpc.relatoriosOdin.propostas.useQuery(filtro)
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
+  const csv = () => {
+    const linhas = ['Métrica,Valor', `Total de propostas,${data.total}`, `Convertidas em pedido,${data.convertidas}`, `Taxa de conversão,${data.taxaConversao}%`, '', 'Etapa,Quantidade']
+    for (const [etapa, qtd] of Object.entries(data.porEtapa)) linhas.push(`${PROPOSTA_STAGE_LABELS[etapa as PropostaStage] ?? etapa},${qtd}`)
+    linhas.push('', 'Vendedor,Total,Convertidas')
+    for (const v of data.porVendedor) linhas.push(`${v.vendedorNome},${v.total},${v.convertidas}`)
+    baixarCsv(`relatorio_propostas_${new Date().toISOString().slice(0, 10)}.csv`, linhas)
+  }
   return (
     <div className="space-y-5">
+      <div className="flex justify-end"><BotaoCsv onClick={csv} /></div>
       <div className="grid grid-cols-3 gap-3 max-w-2xl">
         <Stat label="Total de propostas" value={data.total} />
         <Stat label="Convertidas em pedido" value={data.convertidas} />
@@ -115,11 +174,21 @@ function RelatorioPropostas({ filtro }: { filtro: { dataDe?: string; dataAte?: s
   )
 }
 
-function RelatorioPipeline({ filtro }: { filtro: { dataDe?: string; dataAte?: string } }) {
+function RelatorioPipeline({ filtro }: { filtro: Filtro }) {
   const { data, isLoading } = trpc.relatoriosOdin.pipeline.useQuery(filtro)
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
+  const csv = () => {
+    const linhas = ['Métrica,Valor', `Total de pedidos,${data.total}`, '', 'Etapa,Quantidade']
+    for (const [etapa, qtd] of Object.entries(data.porEtapa)) linhas.push(`${STAGE_LABELS[etapa as Stage] ?? etapa},${qtd}`)
+    linhas.push('', 'Status,Quantidade')
+    for (const [status, qtd] of Object.entries(data.porStatus)) linhas.push(`${status},${qtd}`)
+    linhas.push('', 'Tipo,Quantidade')
+    for (const [tipo, qtd] of Object.entries(data.porTipo)) linhas.push(`${tipo === 'maquina' ? 'Máquina' : 'Peça'},${qtd}`)
+    baixarCsv(`relatorio_pipeline_${new Date().toISOString().slice(0, 10)}.csv`, linhas)
+  }
   return (
     <div className="space-y-5">
+      <div className="flex justify-end"><BotaoCsv onClick={csv} /></div>
       <Stat label="Total de pedidos" value={data.total} />
       <div className="grid grid-cols-2 gap-6 max-w-3xl">
         <div className="space-y-2">
@@ -143,28 +212,54 @@ function RelatorioPipeline({ filtro }: { filtro: { dataDe?: string; dataAte?: st
   )
 }
 
-function RelatorioPosVenda() {
-  const { data, isLoading } = trpc.relatoriosOdin.posVenda.useQuery()
+function RelatorioPosVenda({ filtro }: { filtro: Filtro }) {
+  const { data, isLoading } = trpc.relatoriosOdin.posVenda.useQuery(filtro)
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
+  const csv = () => {
+    const linhas = [
+      'Métrica,Valor',
+      `Pós-venda registrados,${data.total}`,
+      `Com feedback do cliente,${data.comFeedback}`,
+      `NPS médio,${data.mediaNps ?? ''}`,
+      `Com lembrete pendente,${data.comLembretePendente}`,
+    ]
+    baixarCsv(`relatorio_pos_venda_${new Date().toISOString().slice(0, 10)}.csv`, linhas)
+  }
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
-      <Stat label="Pós-venda registrados" value={data.total} />
-      <Stat label="Com feedback do cliente" value={data.comFeedback} />
-      <Stat label="NPS médio" value={data.mediaNps ?? '—'} />
-      <Stat label="Com lembrete pendente" value={data.comLembretePendente} />
+    <div className="space-y-4">
+      <div className="flex justify-end"><BotaoCsv onClick={csv} /></div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
+        <Stat label="Pós-venda registrados" value={data.total} />
+        <Stat label="Com feedback do cliente" value={data.comFeedback} />
+        <Stat label="NPS médio" value={data.mediaNps ?? '—'} />
+        <Stat label="Com lembrete pendente" value={data.comLembretePendente} />
+      </div>
     </div>
   )
 }
 
-function RelatorioFaturamento({ filtro }: { filtro: { dataDe?: string; dataAte?: string } }) {
+function RelatorioFaturamento({ filtro }: { filtro: Filtro }) {
   const { data, isLoading } = trpc.relatoriosOdin.faturamento.useQuery(filtro)
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
+  const csv = () => {
+    const linhas = [
+      'Métrica,Valor',
+      `Pedidos no período,${data.totalPedidos}`,
+      `Valor total,${money(data.valorTotal)}`,
+      `Valor confirmado,${money(data.valorConfirmado)}`,
+      `Pagamentos confirmados,${data.qtdConfirmado}`,
+    ]
+    baixarCsv(`relatorio_faturamento_${new Date().toISOString().slice(0, 10)}.csv`, linhas)
+  }
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
-      <Stat label="Pedidos no período" value={data.totalPedidos} />
-      <Stat label="Valor total" value={money(data.valorTotal)} />
-      <Stat label="Valor confirmado" value={money(data.valorConfirmado)} />
-      <Stat label="Pagamentos confirmados" value={data.qtdConfirmado} />
+    <div className="space-y-4">
+      <div className="flex justify-end"><BotaoCsv onClick={csv} /></div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
+        <Stat label="Pedidos no período" value={data.totalPedidos} />
+        <Stat label="Valor total" value={money(data.valorTotal)} />
+        <Stat label="Valor confirmado" value={money(data.valorConfirmado)} />
+        <Stat label="Pagamentos confirmados" value={data.qtdConfirmado} />
+      </div>
     </div>
   )
 }
@@ -172,8 +267,16 @@ function RelatorioFaturamento({ filtro }: { filtro: { dataDe?: string; dataAte?:
 function RelatorioMaquinas() {
   const { data, isLoading } = trpc.relatoriosOdin.maquinas.useQuery()
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
+  const csv = () => {
+    const linhas = ['Métrica,Valor', `Total em estoque cadastrado,${data.total}`, '', 'Status,Quantidade']
+    for (const [status, qtd] of Object.entries(data.porStatus)) linhas.push(`${status},${qtd}`)
+    linhas.push('', 'Porte,Quantidade')
+    for (const [porte, qtd] of Object.entries(data.porPorte)) linhas.push(`${porte === 'pequeno' ? 'Pequeno' : 'Grande'},${qtd}`)
+    baixarCsv(`relatorio_maquinas_${new Date().toISOString().slice(0, 10)}.csv`, linhas)
+  }
   return (
     <div className="space-y-5">
+      <div className="flex justify-end"><BotaoCsv onClick={csv} /></div>
       <Stat label="Total em estoque cadastrado" value={data.total} />
       <div className="grid grid-cols-2 gap-6 max-w-2xl">
         <div className="space-y-2">
@@ -233,7 +336,7 @@ function baixarCsvMarketing(data: MarketingData) {
   URL.revokeObjectURL(url)
 }
 
-function RelatorioMarketing({ filtro }: { filtro: { dataDe?: string; dataAte?: string } }) {
+function RelatorioMarketing({ filtro }: { filtro: Filtro }) {
   const { data, isLoading } = trpc.relatoriosOdin.marketing.useQuery(filtro)
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
 

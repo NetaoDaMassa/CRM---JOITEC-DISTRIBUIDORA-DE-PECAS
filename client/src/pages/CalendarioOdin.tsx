@@ -4,7 +4,7 @@
 // cada tipo com sua cor (mesma legenda do sistema original).
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ChevronLeft, ChevronRight, CalendarDays, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, CalendarDays, CheckCircle2, AlertTriangle, RefreshCw } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Select from '../components/ui/Select'
@@ -88,6 +88,7 @@ export default function CalendarioOdin() {
   const dataDe = modo === 'agenda' ? chave(new Date()) : chave(inicioGrid)
   const dataAte = modo === 'agenda' ? chave(new Date(new Date().setDate(new Date().getDate() + 60))) : chave(fimGrid)
 
+  const utils = trpc.useUtils()
   const { data: eventos, isLoading } = trpc.calendarioOdin.eventos.useQuery({
     dataDe,
     dataAte,
@@ -142,16 +143,24 @@ export default function CalendarioOdin() {
         <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-2">
           <CalendarDays size={22} /> Calendário
         </h1>
-        {isAdmin && (
-          <div className="w-56">
-            <Select
-              value={vendedorId}
-              onChange={(e) => setVendedorId(e.target.value)}
-              placeholder="Todos os vendedores"
-              options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
-            />
-          </div>
-        )}
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <div className="w-56">
+              <Select
+                value={vendedorId}
+                onChange={(e) => setVendedorId(e.target.value)}
+                placeholder="Todos os vendedores"
+                options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+              />
+            </div>
+          )}
+          <button
+            onClick={() => utils.calendarioOdin.eventos.invalidate()}
+            className="flex items-center gap-1.5 text-xs text-dark-400 hover:text-gold-400 transition-colors"
+          >
+            <RefreshCw size={13} /> Atualizar
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-1.5 flex-wrap mb-5 text-[11px] text-dark-400 bg-dark-800 border border-dark-600 rounded-xl px-3 py-2">

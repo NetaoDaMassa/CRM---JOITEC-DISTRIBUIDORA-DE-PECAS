@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2 } from 'lucide-react'
+import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2, Download, RefreshCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,6 +9,23 @@ import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
+
+function baixarCsvVisitas(visitas: { dataVisita: string | null; nomeEmpresa: string | null; clienteNome: string | null; vendedor: { name: string } | null; pessoaContato: string | null; telefoneContato: string | null; objetivo: string | null; resultado: string | null; proximoPasso: string | null }[]) {
+  const linhas = ['Data,Vendedor,Empresa,Objetivo,Resultado,Contato,Telefone,Próximo passo']
+  for (const v of visitas) {
+    const nome = (v.nomeEmpresa || v.clienteNome || '').replace(/,/g, ' ')
+    linhas.push([v.dataVisita ?? '', v.vendedor?.name ?? '', nome, v.objetivo ?? '', v.resultado ?? 'Em andamento', v.pessoaContato ?? '', v.telefoneContato ?? '', (v.proximoPasso ?? '').replace(/,/g, ' ')].join(','))
+  }
+  const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `visitas_${new Date().toISOString().slice(0, 10)}.csv`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
@@ -48,6 +65,8 @@ export default function Visitas() {
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
   const filtro = { vendedorId: vendedorId ? Number(vendedorId) : undefined }
   const { data: resumo } = trpc.visitas.resumo.useQuery(filtro)
+  const { data: todasParaCsv } = trpc.visitas.listar.useQuery({ vendedorId: filtro.vendedorId })
+  const utils = trpc.useUtils()
 
   return (
     <div className="p-6">
@@ -57,6 +76,20 @@ export default function Visitas() {
             <MapPin size={22} /> Visitas
           </h1>
           <p className="text-dark-400 text-sm mt-0.5">Controle de visitas comerciais</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => baixarCsvVisitas(todasParaCsv ?? [])}
+            className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs font-medium text-dark-300 hover:bg-dark-800 transition-colors"
+          >
+            <Download size={13} /> Exportar CSV
+          </button>
+          <button
+            onClick={() => { utils.visitas.listar.invalidate(); utils.visitas.resumo.invalidate(); utils.visitas.porVendedor.invalidate() }}
+            className="flex items-center gap-1.5 text-xs text-dark-400 hover:text-gold-400 transition-colors"
+          >
+            <RefreshCw size={13} /> Atualizar
+          </button>
         </div>
       </div>
 

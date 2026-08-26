@@ -21,7 +21,7 @@ async function assertEmpresa(empresaId: number) {
   if (empresa?.slug !== SLUG_RELATORIOS) throw new TRPCError({ code: 'FORBIDDEN', message: 'Módulo disponível só pra Odin Compressores' })
 }
 
-const filtroData = z.object({ dataDe: z.string().optional(), dataAte: z.string().optional() }).optional()
+const filtroData = z.object({ dataDe: z.string().optional(), dataAte: z.string().optional(), vendedorId: z.number().optional() }).optional()
 
 export const relatoriosOdinRouter = router({
   propostas: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
@@ -29,6 +29,7 @@ export const relatoriosOdinRouter = router({
     const condicoes = [eq(propostas.empresaId, ctx.empresaId)]
     if (input?.dataDe) condicoes.push(gte(propostas.createdAt, input.dataDe))
     if (input?.dataAte) condicoes.push(lte(propostas.createdAt, `${input.dataAte} 23:59:59`))
+    if (input?.vendedorId) condicoes.push(eq(propostas.vendedorId, input.vendedorId))
     const todas = await db.query.propostas.findMany({ where: and(...condicoes), with: { vendedor: { columns: { id: true, name: true } } } })
 
     const total = todas.length
@@ -56,6 +57,7 @@ export const relatoriosOdinRouter = router({
     const condicoes = [eq(ordens.empresaId, ctx.empresaId)]
     if (input?.dataDe) condicoes.push(gte(ordens.createdAt, input.dataDe))
     if (input?.dataAte) condicoes.push(lte(ordens.createdAt, `${input.dataAte} 23:59:59`))
+    if (input?.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
     const todos = await db.query.ordens.findMany({ where: and(...condicoes), with: { vendedor: { columns: { id: true, name: true } } } })
 
     const porEtapa: Record<string, number> = {}
@@ -69,11 +71,15 @@ export const relatoriosOdinRouter = router({
     return { total: todos.length, porEtapa, porStatus, porTipo }
   }),
 
-  posVenda: adminProcedure.query(async ({ ctx }) => {
+  posVenda: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
     await assertEmpresa(ctx.empresaId)
+    const condicoes = [eq(ordens.empresaId, ctx.empresaId)]
+    if (input?.dataDe) condicoes.push(gte(ordens.createdAt, input.dataDe))
+    if (input?.dataAte) condicoes.push(lte(ordens.createdAt, `${input.dataAte} 23:59:59`))
+    if (input?.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
     const [registros, pedidosDaEmpresa] = await Promise.all([
       db.query.ordemPosVenda.findMany(),
-      db.query.ordens.findMany({ where: eq(ordens.empresaId, ctx.empresaId), columns: { id: true } }),
+      db.query.ordens.findMany({ where: and(...condicoes), columns: { id: true } }),
     ])
     const idsDaEmpresa = new Set(pedidosDaEmpresa.map((o) => o.id))
     const daEmpresa = registros.filter((r) => idsDaEmpresa.has(r.ordemId))
@@ -87,6 +93,7 @@ export const relatoriosOdinRouter = router({
     const condicoes = [eq(ordens.empresaId, ctx.empresaId)]
     if (input?.dataDe) condicoes.push(gte(ordens.createdAt, input.dataDe))
     if (input?.dataAte) condicoes.push(lte(ordens.createdAt, `${input.dataAte} 23:59:59`))
+    if (input?.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
     const pedidos = await db.query.ordens.findMany({ where: and(...condicoes) })
     const ids = pedidos.map((p) => p.id)
 
@@ -134,9 +141,11 @@ export const relatoriosOdinRouter = router({
     const condVis = [eq(visitas.empresaId, ctx.empresaId)]
     if (input?.dataDe) condVis.push(gte(visitas.dataVisita, input.dataDe))
     if (input?.dataAte) condVis.push(lte(visitas.dataVisita, `${input.dataAte} 23:59:59`))
+    if (input?.vendedorId) condVis.push(eq(visitas.vendedorId, input.vendedorId))
     const condProp = [eq(propostas.empresaId, ctx.empresaId)]
     if (input?.dataDe) condProp.push(gte(propostas.createdAt, input.dataDe))
     if (input?.dataAte) condProp.push(lte(propostas.createdAt, `${input.dataAte} 23:59:59`))
+    if (input?.vendedorId) condProp.push(eq(propostas.vendedorId, input.vendedorId))
 
     const [todasVisitas, todasProp] = await Promise.all([
       db.query.visitas.findMany({ where: and(...condVis), with: { vendedor: { columns: { id: true, name: true } } } }),
