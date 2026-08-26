@@ -75,6 +75,9 @@ export const FEATURES_ADMIN = [
   // Visitas de campo — só Odin Compressores, portado do odincrm.duckdns.org.
   // Também existe em FEATURES_VENDEDOR (é a tela de uso diário do vendedor em campo).
   'visitas_odin',
+  // Controle de Qualidade (resumo de anexos+histórico de Pedidos) — só Odin
+  // Compressores, gestor-only, não existe em FEATURES_VENDEDOR.
+  'qualidade_odin',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito

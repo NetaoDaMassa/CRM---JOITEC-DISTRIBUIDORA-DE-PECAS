@@ -66,6 +66,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },
   { to: '/admin/estoque', label: 'Almoxarifado', icon: Warehouse, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'estoque_odin' },
   { to: '/admin/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
+  { to: '/admin/qualidade', label: 'Controle de Qualidade', icon: ShieldCheck, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'qualidade_odin' },
   { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
