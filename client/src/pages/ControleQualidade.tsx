@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ShieldCheck, Search, ChevronDown, ChevronUp, History, Package } from 'lucide-react'
+import { ShieldCheck, Search, ChevronDown, ChevronUp, History, Package, CalendarRange } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
@@ -9,7 +9,16 @@ import { STAGE_LABELS, type Stage } from '../lib/ordensShared'
 const STATUS_LABEL: Record<string, string> = { ativo: 'Ativo', concluido: 'Concluído', cancelado: 'Cancelado' }
 const STATUS_COLOR: Record<string, string> = { ativo: 'text-amber-400', concluido: 'text-green-400', cancelado: 'text-red-400' }
 
+// Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
+// MonthQuickFill de Relatorios.tsx no odincrm original.
+function monthToRange(mes: string): { from: string; to: string } {
+  const [ano, m] = mes.split('-').map(Number)
+  const ultimoDia = new Date(ano, m, 0).getDate()
+  return { from: `${mes}-01`, to: `${mes}-${String(ultimoDia).padStart(2, '0')}` }
+}
+
 export default function ControleQualidade() {
+  const [mes, setMes] = useState('')
   const [dataDe, setDataDe] = useState('')
   const [dataAte, setDataAte] = useState('')
   const [vendedorId, setVendedorId] = useState('')
@@ -26,6 +35,20 @@ export default function ControleQualidade() {
   })
   const totalArquivos = (linhas ?? []).reduce((acc, l) => acc + l.arquivos.length, 0)
 
+  function aplicarMes(m: string) {
+    setMes(m)
+    if (m) {
+      const { from, to } = monthToRange(m)
+      setDataDe(from)
+      setDataAte(to)
+    }
+  }
+  function alterarData(campo: 'de' | 'ate', valor: string) {
+    if (campo === 'de') setDataDe(valor)
+    else setDataAte(valor)
+    setMes('')
+  }
+
   return (
     <div className="p-6">
       <h1 className="font-heading text-2xl text-dark-50 font-bold mb-4 flex items-center gap-2">
@@ -33,9 +56,19 @@ export default function ControleQualidade() {
       </h1>
 
       <div className="bg-dark-800 border border-dark-600 rounded-xl p-4 mb-4 space-y-3">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
-          <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div>
+            <label className="text-xs text-dark-400 mb-1 flex items-center gap-1">Mês <CalendarRange size={11} className="text-dark-500" /></label>
+            <input
+              type="month"
+              value={mes}
+              onChange={(e) => aplicarMes(e.target.value)}
+              title="Atalho: preenche De/Até com o mês inteiro"
+              className="w-full bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-dark-100 focus:outline-none focus:border-gold-600"
+            />
+          </div>
+          <Input label="De" type="date" value={dataDe} onChange={(e) => alterarData('de', e.target.value)} />
+          <Input label="Até" type="date" value={dataAte} onChange={(e) => alterarData('ate', e.target.value)} />
           <Select
             label="Vendedor"
             value={vendedorId}

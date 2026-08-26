@@ -24,6 +24,49 @@ async function assertEmpresa(empresaId: number) {
 const filtroData = z.object({ dataDe: z.string().optional(), dataAte: z.string().optional(), vendedorId: z.number().optional() }).optional()
 
 export const relatoriosOdinRouter = router({
+  // Aba "Pedidos em Processo" — portado da aba padrão (primeira) de
+  // Relatorios.tsx do odincrm original: KPIs + tabela linha-a-linha dos
+  // pedidos que batem com o filtro (não só contagem agregada, como as
+  // outras abas — aqui dá pra ver CADA pedido).
+  pedidosProcesso: adminProcedure
+    .input(z.object({ dataDe: z.string().optional(), dataAte: z.string().optional(), vendedorId: z.number().optional(), status: z.enum(['ativo', 'concluido', 'cancelado']).optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      await assertEmpresa(ctx.empresaId)
+      const condicoes = [eq(ordens.empresaId, ctx.empresaId)]
+      if (input?.dataDe) condicoes.push(gte(ordens.createdAt, input.dataDe))
+      if (input?.dataAte) condicoes.push(lte(ordens.createdAt, `${input.dataAte} 23:59:59`))
+      if (input?.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
+      if (input?.status) condicoes.push(eq(ordens.status, input.status))
+
+      const pedidos = await db.query.ordens.findMany({
+        where: and(...condicoes),
+        with: { cliente: { columns: { id: true, razaoSocial: true } }, vendedor: { columns: { id: true, name: true } } },
+        orderBy: (o, { desc }) => [desc(o.createdAt)],
+      })
+
+      let active = 0
+      let completed = 0
+      let cancelled = 0
+      const rows = pedidos.map((p) => {
+        const estaConcluido = p.stage === 'pos_venda' || p.status === 'concluido'
+        if (p.status === 'cancelado') cancelled++
+        else if (estaConcluido) completed++
+        else active++
+        const tempoHoras = estaConcluido ? Math.round(((new Date(p.updatedAt.replace(' ', 'T') + 'Z').getTime() - new Date(p.createdAt.replace(' ', 'T') + 'Z').getTime()) / 3_600_000) * 10) / 10 : null
+        return {
+          id: p.id,
+          clienteNome: p.cliente?.razaoSocial ?? '—',
+          vendedorNome: p.vendedor?.name ?? '—',
+          stage: p.stage,
+          status: p.status,
+          createdAt: p.createdAt,
+          tempoHoras,
+        }
+      })
+
+      return { total: rows.length, active, completed, cancelled, rows }
+    }),
+
   propostas: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
     await assertEmpresa(ctx.empresaId)
     const condicoes = [eq(propostas.empresaId, ctx.empresaId)]

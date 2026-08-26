@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Download, RefreshCw } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,6 +9,14 @@ import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import OrdensBoard from '../components/OrdensBoard'
 import { ORDER_TYPE_VALUES, ORDER_TYPE_LABELS, STAGE_LABELS, type OrderType, type Stage } from '../lib/ordensShared'
+
+// Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
+// filtro de data de criação do Kanban.tsx no odincrm original.
+function monthToRange(mes: string): { from: string; to: string } {
+  const [ano, m] = mes.split('-').map(Number)
+  const ultimoDia = new Date(ano, m, 0).getDate()
+  return { from: `${mes}-01`, to: `${mes}-${String(ultimoDia).padStart(2, '0')}` }
+}
 
 function baixarCsvPedidos(ordens: { id: number; stage: string; status: string; updatedAt: string; cliente: { razaoSocial: string } | null; vendedor: { name: string } | null }[]) {
   const linhas = ['ID,Cliente,Vendedor,Etapa,Status,Atualizado em']
@@ -37,11 +45,41 @@ export default function OrdensKanban() {
   const [clienteId, setClienteId] = useState('')
   const [novoOrderType, setNovoOrderType] = useState<OrderType>('maquina')
   const [vendedorId, setVendedorId] = useState('')
+  const [mes, setMes] = useState('')
+  const [dataDe, setDataDe] = useState('')
+  const [dataAte, setDataAte] = useState('')
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
-  const { data: ordens, isLoading } = trpc.ordens.core.listarKanban.useQuery({ orderType, vendedorId: vendedorId ? Number(vendedorId) : undefined })
+  const { data: ordensTodas, isLoading } = trpc.ordens.core.listarKanban.useQuery({ orderType, vendedorId: vendedorId ? Number(vendedorId) : undefined })
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
+
+  const temFiltroData = !!(dataDe || dataAte)
+  const ordens = temFiltroData
+    ? (ordensTodas ?? []).filter((o) => {
+        const dia = o.createdAt.slice(0, 10)
+        if (dataDe && dia < dataDe) return false
+        if (dataAte && dia > dataAte) return false
+        return true
+      })
+    : ordensTodas
+
+  function aplicarMes(m: string) {
+    setMes(m)
+    if (m) {
+      const { from, to } = monthToRange(m)
+      setDataDe(from)
+      setDataAte(to)
+    } else {
+      setDataDe('')
+      setDataAte('')
+    }
+  }
+  function alterarData(campo: 'de' | 'ate', valor: string) {
+    if (campo === 'de') setDataDe(valor)
+    else setDataAte(valor)
+    setMes('')
+  }
 
   const criarMut = trpc.ordens.core.criar.useMutation({
     onSuccess() {
@@ -79,18 +117,35 @@ export default function OrdensKanban() {
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        {isAdmin ? (
-          <div className="w-56">
-            <Select
-              value={vendedorId}
-              onChange={(e) => setVendedorId(e.target.value)}
-              placeholder="Todos os vendedores"
-              options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-2 py-1.5" title="Filtrar por data de criação do pedido">
+            <CalendarRange size={13} className="text-dark-500 shrink-0" />
+            <input
+              type="month"
+              value={mes}
+              title="Atalho: preenche De/Até com o mês inteiro"
+              onChange={(e) => aplicarMes(e.target.value)}
+              className="bg-transparent text-xs py-0.5 px-1 w-[100px] text-dark-100 focus:outline-none"
             />
+            <span className="text-dark-600">|</span>
+            <input type="date" value={dataDe} onChange={(e) => alterarData('de', e.target.value)} className="bg-transparent text-xs py-0.5 px-1 w-[110px] text-dark-100 focus:outline-none" />
+            <span className="text-dark-500 text-xs">até</span>
+            <input type="date" value={dataAte} onChange={(e) => alterarData('ate', e.target.value)} className="bg-transparent text-xs py-0.5 px-1 w-[110px] text-dark-100 focus:outline-none" />
+            {temFiltroData && (
+              <button onClick={() => aplicarMes('')} className="text-dark-500 hover:text-dark-300 shrink-0"><X size={12} /></button>
+            )}
           </div>
-        ) : (
-          <span />
-        )}
+          {isAdmin && (
+            <div className="w-52">
+              <Select
+                value={vendedorId}
+                onChange={(e) => setVendedorId(e.target.value)}
+                placeholder="Todos os vendedores"
+                options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+              />
+            </div>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <button
             onClick={() => baixarCsvPedidos(ordens ?? [])}

@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Package, Clock, CheckCircle2, XCircle, AlertTriangle, FileText, MapPin,
-  TrendingUp, RefreshCw, DollarSign, Wrench, Timer, Download, LayoutDashboard,
+  TrendingUp, RefreshCw, DollarSign, Wrench, Timer, Download, LayoutDashboard, CalendarRange,
 } from 'lucide-react'
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts'
 import { useAuth } from '../contexts/AuthContext'
@@ -26,6 +26,14 @@ function horasParaTexto(h: number | null): string {
   const dias = Math.floor(h / 24)
   const horas = Math.round(h % 24)
   return dias > 0 ? `${dias}d ${horas}h` : `${horas}h`
+}
+
+// Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
+// MonthQuickFill de Relatorios.tsx no odincrm original.
+function monthToRange(mes: string): { from: string; to: string } {
+  const [ano, m] = mes.split('-').map(Number)
+  const ultimoDia = new Date(ano, m, 0).getDate()
+  return { from: `${mes}-01`, to: `${mes}-${String(ultimoDia).padStart(2, '0')}` }
 }
 
 const STATUS_COLORS_HEX = ['#f59e0b', '#22c55e', '#ef4444']
@@ -83,6 +91,7 @@ function useResumo(input: { dataDe?: string; dataAte?: string; vendedorId?: numb
 export default function DashboardOdin() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  const [mes, setMes] = useState('')
   const [dataDe, setDataDe] = useState('')
   const [dataAte, setDataAte] = useState('')
   const [vendedorId, setVendedorId] = useState('')
@@ -93,6 +102,20 @@ export default function DashboardOdin() {
 
   const basePath = isAdmin ? '/admin/ordens' : '/vendedor/ordens'
   const hasFiltro = !!(dataDe || dataAte || vendedorId)
+
+  function aplicarMes(m: string) {
+    setMes(m)
+    if (m) {
+      const { from, to } = monthToRange(m)
+      setDataDe(from)
+      setDataAte(to)
+    }
+  }
+  function alterarData(campo: 'de' | 'ate', valor: string) {
+    if (campo === 'de') setDataDe(valor)
+    else setDataAte(valor)
+    setMes('')
+  }
 
   if (isLoading || !data) {
     return (
@@ -121,9 +144,17 @@ export default function DashboardOdin() {
           <LayoutDashboard size={22} /> Dashboard Odin
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
-          <Input type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} className="w-[150px]" />
+          <input
+            type="month"
+            value={mes}
+            onChange={(e) => aplicarMes(e.target.value)}
+            title="Atalho: preenche De/Até com o mês inteiro"
+            className="w-[130px] bg-dark-800 border border-dark-600 rounded-lg px-2.5 py-2 text-sm text-dark-100 focus:outline-none focus:border-gold-600"
+          />
+          <CalendarRange size={13} className="text-dark-500 -mx-1" />
+          <Input type="date" value={dataDe} onChange={(e) => alterarData('de', e.target.value)} className="w-[150px]" />
           <span className="text-dark-500 text-xs">até</span>
-          <Input type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} className="w-[150px]" />
+          <Input type="date" value={dataAte} onChange={(e) => alterarData('ate', e.target.value)} className="w-[150px]" />
           {isAdmin && (
             <Select
               value={vendedorId}
@@ -134,7 +165,7 @@ export default function DashboardOdin() {
             />
           )}
           {hasFiltro && (
-            <button onClick={() => { setDataDe(''); setDataAte(''); setVendedorId('') }} className="text-xs text-dark-400 hover:text-dark-200 underline">
+            <button onClick={() => { setMes(''); setDataDe(''); setDataAte(''); setVendedorId('') }} className="text-xs text-dark-400 hover:text-dark-200 underline">
               Limpar
             </button>
           )}
