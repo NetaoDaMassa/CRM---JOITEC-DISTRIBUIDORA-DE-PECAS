@@ -1,0 +1,62 @@
+CREATE TABLE `visitas` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`empresa_id` integer NOT NULL,
+	`vendedor_id` integer NOT NULL,
+	`cliente_id` integer,
+	`cliente_nome` text,
+	`data_visita` text NOT NULL,
+	`checkin_em` text,
+	`checkout_em` text,
+	`lat_checkin` real,
+	`lng_checkin` real,
+	`nome_empresa` text,
+	`pessoa_contato` text,
+	`telefone_contato` text,
+	`endereco` text,
+	`objetivo` text,
+	`resultado` text,
+	`proximo_passo` text,
+	`data_retorno` text,
+	`observacoes` text,
+	`planejada` integer DEFAULT false NOT NULL,
+	`proposta_itens` text,
+	`proposta_pagamento` text,
+	`proposta_comissao` text,
+	`proposta_revenda` text,
+	`convertido_para_proposta_id` integer,
+	`legacy_visita_id` integer,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
+	`updated_at` text DEFAULT (datetime('now')) NOT NULL,
+	FOREIGN KEY (`empresa_id`) REFERENCES `empresas`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`vendedor_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`cliente_id`) REFERENCES `visitas_clientes`(`id`) ON UPDATE no action ON DELETE set null,
+	FOREIGN KEY (`convertido_para_proposta_id`) REFERENCES `propostas`(`id`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `visitas_legacy_visita_id_unique` ON `visitas` (`legacy_visita_id`);--> statement-breakpoint
+CREATE INDEX `visitas_empresa_vendedor_idx` ON `visitas` (`empresa_id`,`vendedor_id`);--> statement-breakpoint
+CREATE TABLE `visitas_clientes` (
+	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`empresa_id` integer NOT NULL,
+	`nome` text NOT NULL,
+	`cnpj` text,
+	`nome_contato` text,
+	`telefone_contato` text,
+	`endereco` text,
+	`cidade` text,
+	`estado` text,
+	`lat` real,
+	`lng` real,
+	`segmento` text,
+	`observacoes` text,
+	`vendedor_id` integer,
+	`criado_por` integer,
+	`legacy_cliente_id` integer,
+	`created_at` text DEFAULT (datetime('now')) NOT NULL,
+	`updated_at` text DEFAULT (datetime('now')) NOT NULL,
+	FOREIGN KEY (`empresa_id`) REFERENCES `empresas`(`id`) ON UPDATE no action ON DELETE no action,
+	FOREIGN KEY (`vendedor_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null,
+	FOREIGN KEY (`criado_por`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `visitas_clientes_legacy_cliente_id_unique` ON `visitas_clientes` (`legacy_cliente_id`);

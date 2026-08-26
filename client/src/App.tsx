@@ -55,6 +55,7 @@ import PropostasKanban from './pages/PropostasKanban'
 import PropostaDetail from './pages/PropostaDetail'
 import Revendas from './pages/Revendas'
 import Estoque from './pages/Estoque'
+import Visitas from './pages/Visitas'
 import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
@@ -195,6 +196,7 @@ export default function App() {
           <Route path="admin/propostas/:id" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostaDetail /></FeatureGuard></AdminGuard>} />
           <Route path="admin/revendas" element={<AdminGuard><FeatureGuard feature="revendas_odin"><Revendas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/estoque" element={<AdminGuard><FeatureGuard feature="estoque_odin"><Estoque /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/visitas" element={<AdminGuard><FeatureGuard feature="visitas_odin"><Visitas /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
@@ -219,6 +221,7 @@ export default function App() {
           <Route path="vendedor/propostas" element={<PropostasKanban />} />
           <Route path="vendedor/propostas/:id" element={<PropostaDetail />} />
           <Route path="vendedor/revendas" element={<Revendas />} />
+          <Route path="vendedor/visitas" element={<Visitas />} />
           <Route path="vendedor/leads" element={<Leads />} />
           <Route path="vendedor/leads/kanban" element={<LeadsKanban />} />
           <Route path="vendedor/leads/:id" element={<LeadDetail />} />

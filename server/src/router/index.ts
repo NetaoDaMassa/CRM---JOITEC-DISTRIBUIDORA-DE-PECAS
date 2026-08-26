@@ -45,6 +45,7 @@ import { ordensRouter } from './ordens/index.js'
 import { propostasRouter } from './propostas.js'
 import { revendasRouter } from './revendas.js'
 import { estoqueRouter } from './estoque.js'
+import { visitasRouter } from './visitas.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -97,6 +98,7 @@ export const appRouter = router({
   propostas: propostasRouter,
   revendas: revendasRouter,
   estoque: estoqueRouter,
+  visitas: visitasRouter,
 })
 
 export type AppRouter = typeof appRouter

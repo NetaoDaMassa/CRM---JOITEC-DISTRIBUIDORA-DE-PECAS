@@ -2298,3 +2298,84 @@ export const estoqueMaquinasRelations = relations(estoqueMaquinas, ({ one }) => 
 export const estoqueCatalogoModelosRelations = relations(estoqueCatalogoModelos, ({ one }) => ({
   empresa: one(empresas, { fields: [estoqueCatalogoModelos.empresaId], references: [empresas.id] }),
 }))
+
+// ── Visitas de campo (Odin Compressores, portado do odincrm "FieldTrack") ──
+// `visitasClientes` é opcional/informativo (só 3 cadastrados no odincrm
+// real) — a maioria das visitas usa os campos de texto livre
+// (nomeEmpresa/pessoaContato/telefoneContato) direto na visita, sem vínculo
+// a um cliente formal. Prefixo `visitas*` pra não colidir com `clientes`
+// (a base de clientes "de verdade" do funil de vendas, conceito diferente).
+export const visitasClientes = sqliteTable('visitas_clientes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  nome: text('nome').notNull(),
+  cnpj: text('cnpj'),
+  nomeContato: text('nome_contato'),
+  telefoneContato: text('telefone_contato'),
+  endereco: text('endereco'),
+  cidade: text('cidade'),
+  estado: text('estado'),
+  lat: real('lat'),
+  lng: real('lng'),
+  segmento: text('segmento'),
+  observacoes: text('observacoes'),
+  vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  legacyClienteId: integer('legacy_cliente_id').unique(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const visitas = sqliteTable(
+  'visitas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id),
+    clienteId: integer('cliente_id').references(() => visitasClientes.id, { onDelete: 'set null' }),
+    clienteNome: text('cliente_nome'),
+    dataVisita: text('data_visita').notNull(),
+    checkinEm: text('checkin_em'),
+    checkoutEm: text('checkout_em'),
+    latCheckin: real('lat_checkin'),
+    lngCheckin: real('lng_checkin'),
+    nomeEmpresa: text('nome_empresa'),
+    pessoaContato: text('pessoa_contato'),
+    telefoneContato: text('telefone_contato'),
+    endereco: text('endereco'),
+    // Texto livre com sugestões no front (Prospecção de clientes | Visita
+    // marketing | Manutenção | Pós venda) — igual ao odincrm original.
+    objetivo: text('objetivo'),
+    // '' (null aqui)=Em andamento | gerar_proposta | follow_up |
+    // sem_interesse | nao_encontrado — mesmos valores do odincrm.
+    resultado: text('resultado'),
+    proximoPasso: text('proximo_passo'),
+    dataRetorno: text('data_retorno'),
+    observacoes: text('observacoes'),
+    planejada: integer('planejada', { mode: 'boolean' }).notNull().default(false),
+    propostaItens: text('proposta_itens'),
+    propostaPagamento: text('proposta_pagamento'),
+    propostaComissao: text('proposta_comissao'),
+    propostaRevenda: text('proposta_revenda'),
+    convertidoParaPropostaId: integer('convertido_para_proposta_id').references(() => propostas.id, { onDelete: 'set null' }),
+    legacyVisitaId: integer('legacy_visita_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaVendedorIdx: index('visitas_empresa_vendedor_idx').on(t.empresaId, t.vendedorId),
+  })
+)
+
+export const visitasClientesRelations = relations(visitasClientes, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [visitasClientes.empresaId], references: [empresas.id] }),
+  vendedor: one(users, { fields: [visitasClientes.vendedorId], references: [users.id] }),
+  visitas: many(visitas),
+}))
+
+export const visitasRelations = relations(visitas, ({ one }) => ({
+  empresa: one(empresas, { fields: [visitas.empresaId], references: [empresas.id] }),
+  vendedor: one(users, { fields: [visitas.vendedorId], references: [users.id] }),
+  cliente: one(visitasClientes, { fields: [visitas.clienteId], references: [visitasClientes.id] }),
+  propostaConvertida: one(propostas, { fields: [visitas.convertidoParaPropostaId], references: [propostas.id] }),
+}))

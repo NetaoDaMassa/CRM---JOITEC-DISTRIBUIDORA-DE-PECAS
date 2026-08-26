@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -65,6 +65,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
   { to: '/admin/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },
   { to: '/admin/estoque', label: 'Almoxarifado', icon: Warehouse, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'estoque_odin' },
+  { to: '/admin/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
@@ -110,6 +111,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/vendedor/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
   { to: '/vendedor/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },
+  { to: '/vendedor/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
