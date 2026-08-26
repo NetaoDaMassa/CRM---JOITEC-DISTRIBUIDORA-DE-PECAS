@@ -57,6 +57,7 @@ import Revendas from './pages/Revendas'
 import Estoque from './pages/Estoque'
 import Visitas from './pages/Visitas'
 import ControleQualidade from './pages/ControleQualidade'
+import ConfiguracoesOdin from './pages/ConfiguracoesOdin'
 import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
@@ -199,6 +200,7 @@ export default function App() {
           <Route path="admin/estoque" element={<AdminGuard><FeatureGuard feature="estoque_odin"><Estoque /></FeatureGuard></AdminGuard>} />
           <Route path="admin/visitas" element={<AdminGuard><FeatureGuard feature="visitas_odin"><Visitas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/qualidade" element={<AdminGuard><FeatureGuard feature="qualidade_odin"><ControleQualidade /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/configuracoes-odin" element={<AdminGuard><FeatureGuard feature="configuracoes_odin"><ConfiguracoesOdin /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />

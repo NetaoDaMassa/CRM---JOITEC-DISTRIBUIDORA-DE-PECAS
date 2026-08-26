@@ -2379,3 +2379,46 @@ export const visitasRelations = relations(visitas, ({ one }) => ({
   cliente: one(visitasClientes, { fields: [visitas.clienteId], references: [visitasClientes.id] }),
   propostaConvertida: one(propostas, { fields: [visitas.convertidoParaPropostaId], references: [propostas.id] }),
 }))
+
+// ── Configurações (Odin Compressores, portado do odincrm "settings") ──
+// Três listas de referência simples — mesmo padrão de `revendas`.
+export const condicoesPagamento = sqliteTable(
+  'condicoes_pagamento',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    nome: text('nome').notNull(),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    legacyCondicaoId: integer('legacy_condicao_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ empresaNomeUnique: unique().on(t.empresaId, t.nome) })
+)
+
+export const transportadorasOdin = sqliteTable(
+  'transportadoras_odin',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    nome: text('nome').notNull(),
+    telefoneContato: text('telefone_contato'),
+    observacoes: text('observacoes'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    legacyTransportadoraId: integer('legacy_transportadora_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ empresaNomeUnique: unique().on(t.empresaId, t.nome) })
+)
+
+export const modelosEmailOdin = sqliteTable('modelos_email_odin', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  nome: text('nome').notNull(),
+  assunto: text('assunto').notNull(),
+  mensagem: text('mensagem').notNull(),
+  etapa: text('etapa'),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  legacyModeloId: integer('legacy_modelo_id').unique(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -67,6 +67,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/estoque', label: 'Almoxarifado', icon: Warehouse, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'estoque_odin' },
   { to: '/admin/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/admin/qualidade', label: 'Controle de Qualidade', icon: ShieldCheck, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'qualidade_odin' },
+  { to: '/admin/configuracoes-odin', label: 'Config. Odin', icon: Settings2, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'configuracoes_odin' },
   { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
