@@ -2201,3 +2201,100 @@ export const revendasRelations = relations(revendas, ({ one }) => ({
   empresa: one(empresas, { fields: [revendas.empresaId], references: [empresas.id] }),
   criadoPorUser: one(users, { fields: [revendas.criadoPor], references: [users.id] }),
 }))
+
+// ── Almoxarifado (estoque de máquinas Odin Compressores, portado do odincrm) ──
+// Prefixo `estoque*` pra não colidir com `maquinasCliente` (máquinas já
+// instaladas no cliente, pós-venda/manutenção — conceito totalmente
+// diferente) nem com o router `maquinas.ts` já existente no Joitec CRM.
+export const estoquePortaPallets = sqliteTable(
+  'estoque_porta_pallets',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    codigo: text('codigo').notNull(),
+    andaresCount: integer('andares_count').notNull().default(1),
+    observacoes: text('observacoes'),
+    legacyRackId: integer('legacy_rack_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ empresaCodigoUnique: unique().on(t.empresaId, t.codigo) })
+)
+
+// Capacidade em unidades: uma máquina "pequena" consome 1, uma "grande"
+// consome a vaga inteira (2) — mesma regra do odincrm.
+export const estoqueVagas = sqliteTable(
+  'estoque_vagas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    portaPalletId: integer('porta_pallet_id').notNull().references(() => estoquePortaPallets.id, { onDelete: 'cascade' }),
+    andar: integer('andar').notNull(),
+    posicao: integer('posicao').notNull(),
+    capacidade: integer('capacidade').notNull().default(2),
+    legacySlotId: integer('legacy_slot_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ rackAndarPosicaoUnique: unique().on(t.portaPalletId, t.andar, t.posicao) })
+)
+
+export const estoqueMaquinas = sqliteTable(
+  'estoque_maquinas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    numeroSerie: text('numero_serie').notNull(),
+    modelo: text('modelo'),
+    voltagem: text('voltagem'),
+    pressaoBar: text('pressao_bar'),
+    porte: text('porte', { enum: ['pequeno', 'grande'] }).notNull().default('pequeno'),
+    status: text('status', { enum: ['estoque', 'reservada', 'alocada', 'vendida'] }).notNull().default('estoque'),
+    vagaId: integer('vaga_id').references(() => estoqueVagas.id, { onDelete: 'set null' }),
+    ordemId: integer('ordem_id').references(() => ordens.id, { onDelete: 'set null' }),
+    dataEntrada: text('data_entrada'),
+    observacoes: text('observacoes'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    legacyMaquinaId: integer('legacy_maquina_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ empresaSerieUnique: unique().on(t.empresaId, t.numeroSerie) })
+)
+
+// Catálogo de referência de modelos — sugere/preenche o campo "modelo" ao
+// cadastrar uma máquina em estoque.
+export const estoqueCatalogoModelos = sqliteTable(
+  'estoque_catalogo_modelos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    categoria: text('categoria').notNull(),
+    linha: text('linha'),
+    modelo: text('modelo').notNull(),
+    especificacoes: text('especificacoes'),
+    legacyCatalogoId: integer('legacy_catalogo_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ empresaModeloUnique: unique().on(t.empresaId, t.modelo) })
+)
+
+export const estoquePortaPalletsRelations = relations(estoquePortaPallets, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [estoquePortaPallets.empresaId], references: [empresas.id] }),
+  vagas: many(estoqueVagas),
+}))
+
+export const estoqueVagasRelations = relations(estoqueVagas, ({ one, many }) => ({
+  portaPallet: one(estoquePortaPallets, { fields: [estoqueVagas.portaPalletId], references: [estoquePortaPallets.id] }),
+  maquinas: many(estoqueMaquinas),
+}))
+
+export const estoqueMaquinasRelations = relations(estoqueMaquinas, ({ one }) => ({
+  empresa: one(empresas, { fields: [estoqueMaquinas.empresaId], references: [empresas.id] }),
+  vaga: one(estoqueVagas, { fields: [estoqueMaquinas.vagaId], references: [estoqueVagas.id] }),
+  ordem: one(ordens, { fields: [estoqueMaquinas.ordemId], references: [ordens.id] }),
+  criadoPorUser: one(users, { fields: [estoqueMaquinas.criadoPor], references: [users.id] }),
+}))
+
+export const estoqueCatalogoModelosRelations = relations(estoqueCatalogoModelos, ({ one }) => ({
+  empresa: one(empresas, { fields: [estoqueCatalogoModelos.empresaId], references: [empresas.id] }),
+}))

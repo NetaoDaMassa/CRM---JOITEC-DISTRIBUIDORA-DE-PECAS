@@ -67,6 +67,11 @@ export const FEATURES_ADMIN = [
   'propostas_odin',
   // Lista de Revendas — só Odin Compressores, portado do odincrm.duckdns.org.
   'revendas_odin',
+  // Almoxarifado (porta-pallets, vagas, máquinas em estoque, catálogo de
+  // modelos) — só Odin Compressores, portado do odincrm.duckdns.org. Só
+  // existe em FEATURES_ADMIN — no sistema original é gestor-only, vendedor
+  // nunca tem acesso a essa tela.
+  'estoque_odin',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito

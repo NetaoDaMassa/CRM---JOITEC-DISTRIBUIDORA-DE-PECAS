@@ -54,6 +54,7 @@ import OrdensDetail from './pages/OrdensDetail'
 import PropostasKanban from './pages/PropostasKanban'
 import PropostaDetail from './pages/PropostaDetail'
 import Revendas from './pages/Revendas'
+import Estoque from './pages/Estoque'
 import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
@@ -193,6 +194,7 @@ export default function App() {
           <Route path="admin/propostas" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostasKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/propostas/:id" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostaDetail /></FeatureGuard></AdminGuard>} />
           <Route path="admin/revendas" element={<AdminGuard><FeatureGuard feature="revendas_odin"><Revendas /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/estoque" element={<AdminGuard><FeatureGuard feature="estoque_odin"><Estoque /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
