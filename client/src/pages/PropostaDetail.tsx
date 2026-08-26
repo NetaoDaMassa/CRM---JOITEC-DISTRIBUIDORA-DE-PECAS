@@ -70,7 +70,7 @@ export default function PropostaDetail() {
           </h1>
           <div className="flex items-center gap-2 mt-1.5">
             <Badge className="text-gold-400 bg-gold-900/20 border-gold-700/40">{PROPOSTA_STAGE_LABELS[stage]}</Badge>
-            {proposta.prioridade === 'urgente' && <Badge className="text-yellow-400 bg-yellow-900/20 border-yellow-700/40">Urgente</Badge>}
+            {proposta.prioridade === 'urgente' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">🔴 Urgente</Badge>}
             {proposta.vendedor && <span className="text-dark-500 text-sm">{proposta.vendedor.name}</span>}
           </div>
         </div>
@@ -208,6 +208,8 @@ function AbaGeralForm({
     revenda: string | null
     formaPagamento: string | null
     observacoes: string | null
+    prioridade: string
+    motivoUrgencia: string | null
   }
 }) {
   const utils = trpc.useUtils()
@@ -217,6 +219,8 @@ function AbaGeralForm({
   const [revenda, setRevenda] = useState(proposta?.revenda ?? '')
   const [formaPagamento, setFormaPagamento] = useState(proposta?.formaPagamento ?? '')
   const [observacoes, setObservacoes] = useState(proposta?.observacoes ?? '')
+  const [prioridade, setPrioridade] = useState(proposta?.prioridade ?? 'normal')
+  const [motivoUrgencia, setMotivoUrgencia] = useState(proposta?.motivoUrgencia ?? '')
 
   const salvarMut = trpc.propostas.atualizar.useMutation({
     onSuccess: () => { toast.success('Salvo'); utils.propostas.obterPorId.invalidate({ id: propostaId }) },
@@ -228,6 +232,42 @@ function AbaGeralForm({
 
   return (
     <div className="space-y-4">
+      <div>
+        <label className="text-xs text-dark-400 mb-1.5 block">Prioridade</label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={!podeEditar}
+            onClick={() => { setPrioridade('normal'); setMotivoUrgencia('') }}
+            className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+              prioridade === 'normal' ? 'border-green-500 bg-green-900/20 text-green-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
+            }`}
+          >
+            ✅ Normal
+          </button>
+          <button
+            type="button"
+            disabled={!podeEditar}
+            onClick={() => setPrioridade('urgente')}
+            className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+              prioridade === 'urgente' ? 'border-red-500 bg-red-900/20 text-red-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
+            }`}
+          >
+            🔴 Urgente
+          </button>
+        </div>
+        {prioridade === 'urgente' && (
+          <div className="mt-2">
+            <Input
+              label="Motivo da urgência"
+              placeholder="Ex: Prazo de entrega do cliente, concorrência..."
+              defaultValue={motivoUrgencia}
+              onChange={(e) => setMotivoUrgencia(e.target.value)}
+              disabled={!podeEditar}
+            />
+          </div>
+        )}
+      </div>
       <Input label="WhatsApp do cliente" defaultValue={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} disabled={!podeEditar} />
       <div>
         <Input label="Produtos/Serviços" defaultValue={produtosDescricao} onChange={(e) => setProdutosDescricao(e.target.value)} disabled={!podeEditar || produtosTravado} />
@@ -243,7 +283,7 @@ function AbaGeralForm({
         <Button
           size="sm"
           loading={salvarMut.isPending}
-          onClick={() => salvarMut.mutate({ id: propostaId, clienteWhatsapp, produtosDescricao, comissao, revenda, formaPagamento, observacoes })}
+          onClick={() => salvarMut.mutate({ id: propostaId, clienteWhatsapp, produtosDescricao, comissao, revenda, formaPagamento, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })}
         >
           Salvar
         </Button>

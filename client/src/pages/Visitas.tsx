@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut } from 'lucide-react'
+import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -18,12 +18,13 @@ const RESULTADOS = [
   { value: 'nao_encontrado', label: 'Não encontrado' },
 ]
 const RESULTADO_LABELS: Record<string, string> = Object.fromEntries(RESULTADOS.map((r) => [r.value, r.label]))
+// Mesmas cores do VisitCard.tsx original (RESULT_CONFIG).
 const RESULTADO_CORES: Record<string, string> = {
-  '': 'text-blue-400 bg-blue-900/20 border-blue-700/40',
-  gerar_proposta: 'text-green-400 bg-green-900/20 border-green-700/40',
-  follow_up: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
+  '': 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
+  gerar_proposta: 'text-purple-400 bg-purple-900/20 border-purple-700/40',
+  follow_up: 'text-blue-400 bg-blue-900/20 border-blue-700/40',
   sem_interesse: 'text-red-400 bg-red-900/20 border-red-700/40',
-  nao_encontrado: 'text-dark-400 bg-dark-700/50 border-dark-600',
+  nao_encontrado: 'text-orange-400 bg-orange-900/20 border-orange-700/40',
 }
 
 type TabKey = 'visitas' | 'clientes'
@@ -143,32 +144,61 @@ function AbaVisitas() {
         <div className="space-y-2">
           {(visitasList ?? []).map((v) => {
             const podeEditar = isAdmin || v.vendedorId === user?.id
+            const duracaoMin = v.checkinEm && v.checkoutEm ? Math.round((new Date(v.checkoutEm.replace(' ', 'T')).getTime() - new Date(v.checkinEm.replace(' ', 'T')).getTime()) / 60000) : null
+            const hora = (iso: string | null) => (iso ? iso.slice(11, 16) : null)
             return (
-              <div key={v.id} className="p-3 rounded-lg border border-dark-600 bg-dark-800 text-sm">
+              <div key={v.id} className="bg-dark-800 rounded-xl border border-dark-600 p-4 text-sm hover:shadow-lg hover:shadow-black/20 transition-shadow">
                 <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-dark-100 font-medium">{v.nomeEmpresa || v.clienteNome || v.cliente?.nome || 'Visita sem nome'}</div>
-                    <div className="text-dark-500 text-xs mt-0.5">{v.dataVisita} {isAdmin && v.vendedor ? `· ${v.vendedor.name}` : ''}{v.objetivo ? ` · ${v.objetivo}` : ''}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-dark-100 truncate">{v.nomeEmpresa || v.clienteNome || v.cliente?.nome || 'Cliente não informado'}</span>
+                      <Badge className={RESULTADO_CORES[v.resultado ?? '']}>{RESULTADO_LABELS[v.resultado ?? ''] ?? v.resultado}</Badge>
+                      {v.convertidoParaPropostaId && <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40">Proposta #{v.convertidoParaPropostaId}</Badge>}
+                    </div>
+
+                    {isAdmin && v.vendedor && <p className="text-xs text-dark-500 mt-0.5">{v.vendedor.name}</p>}
+
+                    <div className="flex items-center gap-4 mt-2 text-xs text-dark-400 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <Clock size={12} />
+                        {hora(v.checkinEm) ?? hora(v.dataVisita) ?? v.dataVisita}
+                        {v.checkoutEm && <> – {hora(v.checkoutEm)}</>}
+                        {duracaoMin !== null && <span className="ml-1 text-[11px] text-dark-500">({duracaoMin}min)</span>}
+                      </span>
+                      {v.latCheckin && (
+                        <span className="flex items-center gap-1 text-green-400">
+                          <MapPin size={12} /> GPS
+                        </span>
+                      )}
+                    </div>
+
+                    {(v.pessoaContato || v.telefoneContato || v.endereco) && (
+                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-dark-500">
+                        {v.pessoaContato && <span className="flex items-center gap-1"><UserRound size={11} />{v.pessoaContato}</span>}
+                        {v.telefoneContato && <span className="flex items-center gap-1"><Phone size={11} />{v.telefoneContato}</span>}
+                        {v.endereco && <span className="flex items-center gap-1"><MapPin size={11} />{v.endereco}</span>}
+                      </div>
+                    )}
+
+                    {v.objetivo && <p className="mt-2 text-xs text-dark-400"><span className="font-medium text-dark-300">Objetivo:</span> {v.objetivo}</p>}
+                    {v.proximoPasso && (
+                      <p className="mt-1.5 text-xs text-dark-300 bg-dark-900/60 rounded-lg px-2.5 py-1.5">
+                        <span className="font-medium">Próx. passo:</span> {v.proximoPasso}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge className={RESULTADO_CORES[v.resultado ?? '']}>{RESULTADO_LABELS[v.resultado ?? ''] ?? v.resultado}</Badge>
-                    {v.convertidoParaPropostaId && <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">Proposta #{v.convertidoParaPropostaId}</Badge>}
+
+                  <div className="flex gap-1 shrink-0">
                     {podeEditar && (
                       <>
-                        {!v.checkinEm && <button onClick={() => fazerCheckin(v.id)} title="Check-in" className="text-dark-400 hover:text-green-400"><LogIn size={14} /></button>}
-                        {v.checkinEm && !v.checkoutEm && <button onClick={() => checkoutMut.mutate({ id: v.id })} title="Check-out" className="text-dark-400 hover:text-yellow-400"><LogOut size={14} /></button>}
-                        <button onClick={() => abrirEdicao(v)} className="text-dark-400 hover:text-gold-400"><Pencil size={14} /></button>
+                        {!v.checkinEm && <button onClick={() => fazerCheckin(v.id)} title="Check-in" className="p-1.5 rounded-lg text-dark-400 hover:text-green-400 hover:bg-green-900/20"><LogIn size={14} /></button>}
+                        {v.checkinEm && !v.checkoutEm && <button onClick={() => checkoutMut.mutate({ id: v.id })} title="Check-out" className="p-1.5 rounded-lg text-dark-400 hover:text-yellow-400 hover:bg-yellow-900/20"><LogOut size={14} /></button>}
+                        <button onClick={() => abrirEdicao(v)} className="p-1.5 rounded-lg text-dark-400 hover:text-gold-400 hover:bg-gold-900/10"><Pencil size={14} /></button>
                       </>
                     )}
-                    {isAdmin && <button onClick={() => setExcluindo({ id: v.id, nome: v.nomeEmpresa || v.clienteNome || `#${v.id}` })} className="text-dark-400 hover:text-red-400"><Trash2 size={14} /></button>}
+                    {isAdmin && <button onClick={() => setExcluindo({ id: v.id, nome: v.nomeEmpresa || v.clienteNome || `#${v.id}` })} className="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-900/20"><Trash2 size={14} /></button>}
                   </div>
                 </div>
-                {v.checkinEm && (
-                  <div className="flex items-center gap-1 text-[11px] text-dark-500 mt-1.5">
-                    <MapPin size={10} /> Check-in {v.checkinEm}{v.checkoutEm ? ` · Check-out ${v.checkoutEm}` : ''}
-                  </div>
-                )}
-                {v.proximoPasso && <div className="text-xs text-dark-400 mt-1.5">{v.proximoPasso}</div>}
               </div>
             )
           })}

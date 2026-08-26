@@ -22,7 +22,11 @@ export const estoqueRouter = router({
   // ── Porta-pallets ──────────────────────────────────────────────────────
   listarRacks: adminProcedure.query(async ({ ctx }) => {
     await assertEmpresaEstoque(ctx.empresaId)
-    return db.query.estoquePortaPallets.findMany({ where: eq(estoquePortaPallets.empresaId, ctx.empresaId), with: { vagas: true }, orderBy: (r, { asc }) => [asc(r.codigo)] })
+    return db.query.estoquePortaPallets.findMany({
+      where: eq(estoquePortaPallets.empresaId, ctx.empresaId),
+      with: { vagas: { with: { maquinas: { columns: { id: true, numeroSerie: true, modelo: true, porte: true } } } } },
+      orderBy: (r, { asc }) => [asc(r.codigo)],
+    })
   }),
 
   criarRack: adminProcedure.input(z.object({ codigo: z.string().min(1), andaresCount: z.number().min(1).default(1), observacoes: z.string().optional() })).mutation(async ({ ctx, input }) => {
@@ -92,6 +96,7 @@ export const estoqueRouter = router({
         porte: z.enum(['pequeno', 'grande']).optional(),
         dataEntrada: z.string().optional(),
         observacoes: z.string().optional(),
+        vagaId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {

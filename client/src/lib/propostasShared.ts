@@ -27,6 +27,17 @@ export const PROPOSTA_STAGE_COLORS: Record<PropostaStage, string> = {
   convertido: 'text-cyan-400 bg-cyan-900/20 border-cyan-700/40',
 }
 
+// Dot sólido da coluna — mesmas cores do STAGE_COLUMNS do odincrm original
+// (Propostas.tsx: bg-blue-500/bg-yellow-500/bg-green-500/bg-red-500/bg-orange-500).
+export const PROPOSTA_STAGE_DOT_COLORS: Record<PropostaStage, string> = {
+  proposta: 'bg-blue-500',
+  negociacao: 'bg-yellow-500',
+  fechado: 'bg-green-500',
+  perdido: 'bg-red-500',
+  chamar_depois: 'bg-orange-500',
+  convertido: 'bg-cyan-500',
+}
+
 // Caminho normal (botão "avançar") — perdido/chamar_depois/convertido só
 // por ação explícita, não por avanço linear.
 export const PROPOSTA_STAGE_NEXT: Partial<Record<PropostaStage, PropostaStage>> = {

@@ -9,7 +9,7 @@ import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
-import { getStageSequence, STAGE_LABELS, ORDER_TYPE_LABELS, type Stage, type OrderType } from '../lib/ordensShared'
+import { getStageSequence, STAGE_LABELS, STAGE_COLORS, ORDER_TYPE_LABELS, type Stage, type OrderType } from '../lib/ordensShared'
 
 type TabKey =
   | 'geral'
@@ -114,7 +114,7 @@ export default function OrdensDetail() {
             Pedido #{ordem.id} <span className="text-dark-500 text-base font-normal">— {ORDER_TYPE_LABELS[orderType]}</span>
           </h1>
           <div className="flex items-center gap-2 mt-1.5">
-            <Badge className="text-gold-400 bg-gold-900/20 border-gold-700/40">{STAGE_LABELS[ordem.stage as Stage] ?? ordem.stage}</Badge>
+            <Badge className={STAGE_COLORS[ordem.stage as Stage] ?? 'text-gold-400 bg-gold-900/20 border-gold-700/40'}>{STAGE_LABELS[ordem.stage as Stage] ?? ordem.stage}</Badge>
             {ordem.status !== 'ativo' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">{ordem.status}</Badge>}
             {ordem.pausadoEm && <Badge className="text-yellow-400 bg-yellow-900/20 border-yellow-700/40">Pausado: {ordem.pausadoMotivo}</Badge>}
             {ordem.cliente && <span className="text-dark-400 text-sm">{ordem.cliente.razaoSocial}</span>}
@@ -299,11 +299,12 @@ function AbaPedido({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) 
   return <AbaPedidoForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
 }
 
-function AbaPedidoForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; observacoes: string | null } | null }) {
+function AbaPedidoForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; comissaoRevenda: string | null; observacoes: string | null } | null }) {
   const utils = trpc.useUtils()
   const [numeroPedido, setNumeroPedido] = useState(data?.numeroPedido ?? '')
   const [prioridade, setPrioridade] = useState(data?.prioridadeDespacho ?? 'normal')
   const [valor, setValor] = useState(data?.valorPedido?.toString() ?? '')
+  const [comissaoRevenda, setComissaoRevenda] = useState(data?.comissaoRevenda ?? '')
   const [obs, setObs] = useState(data?.observacoes ?? '')
 
   const salvarMut = trpc.ordens.financeiro.atualizarDetalhes.useMutation({
@@ -328,13 +329,14 @@ function AbaPedidoForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: b
           ]}
         />
         <Input label="Valor do pedido" type="number" defaultValue={valor} onChange={(e) => setValor(e.target.value)} disabled={!isAdmin} />
+        <Input label="Comissão de revenda" defaultValue={comissaoRevenda} onChange={(e) => setComissaoRevenda(e.target.value)} disabled={!isAdmin} />
       </div>
       <Input label="Observações" defaultValue={obs} onChange={(e) => setObs(e.target.value)} disabled={!isAdmin} />
       {isAdmin && (
         <Button
           size="sm"
           loading={salvarMut.isPending}
-          onClick={() => salvarMut.mutate({ ordemId, numeroPedido, prioridadeDespacho: prioridade as any, valorPedido: valor ? Number(valor) : undefined, observacoes: obs })}
+          onClick={() => salvarMut.mutate({ ordemId, numeroPedido, prioridadeDespacho: prioridade as any, valorPedido: valor ? Number(valor) : undefined, comissaoRevenda, observacoes: obs })}
         >
           Salvar
         </Button>

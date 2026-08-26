@@ -33,7 +33,18 @@ export const ordensCoreRouter = router({
     await assertEmpresaOrdens(ctx.empresaId)
     return db.query.ordens.findMany({
       where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, input.orderType)),
-      with: { cliente: { columns: { id: true, razaoSocial: true } }, vendedor: { columns: { id: true, name: true } } },
+      with: {
+        cliente: { columns: { id: true, razaoSocial: true } },
+        vendedor: { columns: { id: true, name: true } },
+        // Campos extras só pra deixar o card do Kanban tão informativo quanto o
+        // do odincrm original (prioridade, badges de frete/preparação, rastreio).
+        detalhes: { columns: { prioridadeDespacho: true } },
+        aprovacaoFrete: { columns: { retiradaLocal: true, semFrete: true, cotacaoSelecionadaId: true } },
+        freteFinalizado: { columns: { confirmado: true } },
+        preparacao: { columns: { aprovadoGestor: true } },
+        coleta: { columns: { confirmado: true } },
+        rastreio: { columns: { transportadora: true, codigoRastreio: true } },
+      },
       orderBy: (o, { desc }) => [desc(o.updatedAt)],
     })
   }),

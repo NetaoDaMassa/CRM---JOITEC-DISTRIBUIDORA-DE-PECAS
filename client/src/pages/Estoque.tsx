@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Search, Pencil, Trash2, Link2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, Link2, Package, Layers, MapPin } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import Button from '../components/ui/Button'
@@ -14,7 +14,7 @@ const TAB_LABELS: Record<TabKey, string> = { maquinas: 'Máquinas em Estoque', c
 const STATUS_LABELS: Record<string, string> = { estoque: 'Em estoque', reservada: 'Reservada', alocada: 'Alocada', vendida: 'Vendida' }
 const STATUS_COLORS: Record<string, string> = {
   estoque: 'text-green-400 bg-green-900/20 border-green-700/40',
-  reservada: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
+  reservada: 'text-amber-400 bg-amber-900/20 border-amber-700/40',
   alocada: 'text-blue-400 bg-blue-900/20 border-blue-700/40',
   vendida: 'text-dark-400 bg-dark-700/50 border-dark-600',
 }
@@ -94,6 +94,11 @@ function AbaMaquinas() {
                 <span className="text-dark-500 ml-2">{m.modelo}</span>
                 {m.voltagem && <span className="text-dark-500 ml-2">· {m.voltagem}V</span>}
                 {m.ordem && <span className="text-dark-500 ml-2">· Pedido #{m.ordem.id}</span>}
+                {m.vaga && (
+                  <span className="flex items-center gap-1 text-dark-500 text-xs mt-0.5">
+                    <MapPin size={11} /> {m.vaga.portaPallet.codigo} · Andar {m.vaga.andar} · Vaga {m.vaga.posicao}
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-2">
                 <Badge className={STATUS_COLORS[m.status]}>{STATUS_LABELS[m.status]}</Badge>
@@ -216,49 +221,224 @@ function AbaCatalogo() {
   )
 }
 
+type Vaga = { id: number; andar: number; posicao: number; capacidade: number; maquinas: { id: number; numeroSerie: string; modelo: string | null; porte: string }[] }
+type Rack = { id: number; codigo: string; andaresCount: number; observacoes: string | null; vagas: Vaga[] }
+
+function ocupacaoVaga(v: Vaga) {
+  return v.maquinas.reduce((s, m) => s + (m.porte === 'grande' ? v.capacidade : 1), 0)
+}
+
 function AbaRacks() {
   const [modalAberto, setModalAberto] = useState(false)
+  const [editandoRack, setEditandoRack] = useState<Rack | null>(null)
   const [codigo, setCodigo] = useState('')
   const [andares, setAndares] = useState('1')
+  const [observacoesRack, setObservacoesRack] = useState('')
+  const [excluindoRack, setExcluindoRack] = useState<Rack | null>(null)
+  const [selecionadoId, setSelecionadoId] = useState<number | null>(null)
+  const [qtdVaga, setQtdVaga] = useState<Record<number, string>>({})
+  const [excluindoVaga, setExcluindoVaga] = useState<Vaga | null>(null)
+  const [modalMaquinaVaga, setModalMaquinaVaga] = useState<Vaga | null>(null)
+  const [numeroSerie, setNumeroSerie] = useState('')
+  const [modeloMaquina, setModeloMaquina] = useState('')
+  const [porteMaquina, setPorteMaquina] = useState<'pequeno' | 'grande'>('pequeno')
 
   const utils = trpc.useUtils()
   const { data: racks, isLoading } = trpc.estoque.listarRacks.useQuery()
+  const selecionado = (racks ?? []).find((r) => r.id === selecionadoId) ?? null
+
+  function invalidar() { utils.estoque.listarRacks.invalidate() }
+
   const criarMut = trpc.estoque.criarRack.useMutation({
-    onSuccess: () => { toast.success('Porta-pallet criado'); setModalAberto(false); setCodigo(''); setAndares('1'); utils.estoque.listarRacks.invalidate() },
+    onSuccess: () => { toast.success('Porta-pallet criado'); fecharModalRack(); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+  const atualizarMut = trpc.estoque.atualizarRack.useMutation({
+    onSuccess: () => { toast.success('Salvo'); fecharModalRack(); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+  const excluirRackMut = trpc.estoque.excluirRack.useMutation({
+    onSuccess: () => { toast.success('Porta-pallet excluído'); setExcluindoRack(null); if (selecionadoId === excluindoRack?.id) setSelecionadoId(null); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+  const criarVagasMut = trpc.estoque.criarVagas.useMutation({
+    onSuccess: () => { toast.success('Vaga(s) adicionada(s)'); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+  const excluirVagaMut = trpc.estoque.excluirVaga.useMutation({
+    onSuccess: () => { toast.success('Vaga excluída'); setExcluindoVaga(null); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+  const criarMaquinaMut = trpc.estoque.criarMaquina.useMutation({
+    onSuccess: () => { toast.success('Máquina cadastrada na vaga'); fecharModalMaquina(); invalidar(); utils.estoque.listarMaquinas.invalidate() },
     onError: (e) => toast.error(e.message),
   })
 
+  function fecharModalRack() { setModalAberto(false); setEditandoRack(null); setCodigo(''); setAndares('1'); setObservacoesRack('') }
+  function abrirEdicaoRack(r: Rack) { setEditandoRack(r); setCodigo(r.codigo); setAndares(String(r.andaresCount)); setObservacoesRack(r.observacoes ?? ''); setModalAberto(true) }
+  function salvarRack() {
+    if (!codigo.trim()) return
+    if (editandoRack) atualizarMut.mutate({ id: editandoRack.id, codigo, andaresCount: Number(andares) || 1, observacoes: observacoesRack || undefined })
+    else criarMut.mutate({ codigo, andaresCount: Number(andares) || 1, observacoes: observacoesRack || undefined })
+  }
+  function fecharModalMaquina() { setModalMaquinaVaga(null); setNumeroSerie(''); setModeloMaquina(''); setPorteMaquina('pequeno') }
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-dark-500">Estrutura física do almoxarifado — usada opcionalmente pra localizar uma máquina.</p>
-        <Button size="sm" onClick={() => setModalAberto(true)}><Plus size={14} className="mr-1" /> Novo Porta-Pallet</Button>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="lg:col-span-1 space-y-3">
+        <Button size="sm" className="w-full" onClick={() => setModalAberto(true)}><Plus size={14} className="mr-1" /> Novo Porta-Pallet</Button>
+
+        <div className="grid grid-cols-2 gap-2">
+          {(racks ?? []).map((r) => {
+            const isSelected = selecionadoId === r.id
+            const totalCap = r.vagas.reduce((s, v) => s + v.capacidade, 0)
+            const totalOcup = r.vagas.reduce((s, v) => s + ocupacaoVaga(v), 0)
+            const cheio = r.vagas.length > 0 && totalOcup >= totalCap
+            return (
+              <button
+                key={r.id}
+                onClick={() => setSelecionadoId(r.id)}
+                className={`text-left bg-dark-800 border rounded-xl p-3 transition-colors ${isSelected ? 'border-gold-500 ring-1 ring-gold-500/50' : 'border-dark-600 hover:border-dark-500'}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5 text-sm font-bold text-dark-100"><Link2 size={12} className="text-dark-500" />{r.codigo}</span>
+                  {cheio && <span className="text-[10px] font-bold text-red-400">CHEIO</span>}
+                </div>
+                <p className="text-xs text-dark-400 mt-1">{r.andaresCount} andar(es)</p>
+                <p className="text-xs text-dark-400">{totalOcup}/{totalCap} · {r.vagas.length} vaga(s)</p>
+              </button>
+            )
+          })}
+          {!isLoading && (!racks || racks.length === 0) && <p className="col-span-full text-sm text-dark-500 text-center py-6">Nenhum porta-pallet cadastrado ainda</p>}
+        </div>
       </div>
 
-      {isLoading ? (
-        <p className="text-dark-400 text-sm">Carregando...</p>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {(racks ?? []).map((r) => (
-            <div key={r.id} className="bg-dark-800 border border-dark-600 rounded-xl p-4">
-              <div className="flex items-center gap-1.5 mb-1">
-                <Link2 size={13} className="text-dark-500" />
-                <h3 className="text-sm font-semibold text-dark-100">{r.codigo}</h3>
+      <div className="lg:col-span-2">
+        {!selecionado ? (
+          <div className="bg-dark-800 border border-dark-600 rounded-xl flex flex-col items-center justify-center gap-2 py-16 text-dark-500">
+            <Layers size={28} />
+            <p className="text-sm">Selecione um porta-pallet para ver os andares e vagas</p>
+          </div>
+        ) : (
+          <div className="bg-dark-800 border border-dark-600 rounded-xl p-4 space-y-5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-dark-100">Porta-Pallet {selecionado.codigo}</h3>
+              <div className="flex items-center gap-3">
+                <button onClick={() => abrirEdicaoRack(selecionado)} className="flex items-center gap-1 text-xs text-dark-400 hover:text-gold-400 transition-colors"><Pencil size={12} /> Editar</button>
+                <button onClick={() => setExcluindoRack(selecionado)} className="flex items-center gap-1 text-xs text-dark-400 hover:text-red-400 transition-colors"><Trash2 size={12} /> Excluir</button>
               </div>
-              <div className="text-xs text-dark-400">{r.andaresCount} andar(es) · {r.vagas.length} vaga(s) cadastrada(s)</div>
-              {r.observacoes && <div className="text-xs text-dark-500 mt-1.5">{r.observacoes}</div>}
             </div>
-          ))}
-          {(!racks || racks.length === 0) && <p className="text-dark-500 text-sm col-span-full">Nenhum porta-pallet cadastrado</p>}
-        </div>
-      )}
+            {selecionado.observacoes && <p className="text-sm text-dark-400">{selecionado.observacoes}</p>}
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Novo Porta-Pallet" size="sm">
+            {Array.from({ length: selecionado.andaresCount }, (_, i) => i + 1).map((andar) => {
+              const vagasAndar = selecionado.vagas.filter((v) => v.andar === andar).sort((a, b) => a.posicao - b.posicao)
+              return (
+                <div key={andar} className="border-t border-dark-700 pt-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-dark-500 mb-2">Andar {andar}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-2">
+                    {vagasAndar.map((v) => {
+                      const ocup = ocupacaoVaga(v)
+                      const cheia = ocup >= v.capacidade
+                      const vazia = ocup === 0
+                      return (
+                        <div
+                          key={v.id}
+                          onClick={() => !cheia && setModalMaquinaVaga(v)}
+                          title={cheia ? undefined : 'Clique para adicionar uma máquina nesta vaga'}
+                          className={`group relative rounded-lg border-2 px-2.5 py-1.5 text-xs ${!cheia ? 'cursor-pointer hover:border-gold-500/60' : ''} ${
+                            cheia ? 'border-red-700/60 bg-red-900/20' : vazia ? 'border-dashed border-dark-600' : 'border-amber-700/60 bg-amber-900/20'
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 font-semibold text-dark-300">
+                            <Package size={12} className={vazia ? 'text-dark-500' : cheia ? 'text-red-400' : 'text-amber-400'} />
+                            Vaga {v.posicao} · {ocup}/{v.capacidade}
+                            {vazia && (
+                              <button onClick={(e) => { e.stopPropagation(); setExcluindoVaga(v) }} className="ml-auto opacity-0 group-hover:opacity-100 text-dark-500 hover:text-red-400 transition-opacity" title="Excluir vaga vazia">
+                                <Trash2 size={11} />
+                              </button>
+                            )}
+                            {!vazia && !cheia && <Plus size={11} className="ml-auto opacity-0 group-hover:opacity-100 text-gold-400 transition-opacity shrink-0" />}
+                          </div>
+                          {v.maquinas.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {v.maquinas.map((m) => (
+                                <p key={m.id} className="truncate text-[11px] font-normal text-dark-400" title={`${m.numeroSerie}${m.modelo ? ` — ${m.modelo}` : ''}`}>
+                                  {m.numeroSerie}{m.modelo ? ` · ${m.modelo}` : ''}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
+                    {vagasAndar.length === 0 && <p className="col-span-full text-xs text-dark-500 italic">Nenhuma vaga neste andar ainda</p>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min={1}
+                      className="w-20 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-200"
+                      placeholder="Qtd."
+                      value={qtdVaga[andar] ?? ''}
+                      onChange={(e) => setQtdVaga((prev) => ({ ...prev, [andar]: e.target.value }))}
+                    />
+                    <button
+                      onClick={() => { criarVagasMut.mutate({ portaPalletId: selecionado.id, andar, quantidade: Number(qtdVaga[andar]) || 1, capacidade: 2 }); setQtdVaga((prev) => ({ ...prev, [andar]: '' })) }}
+                      className="flex items-center gap-1 rounded-lg border border-gold-700/50 px-2.5 py-1 text-xs font-semibold text-gold-400 hover:bg-gold-900/20 transition-colors"
+                    >
+                      <Plus size={12} /> Adicionar vaga(s)
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <Modal open={modalAberto} onClose={fecharModalRack} title={editandoRack ? 'Editar Porta-Pallet' : 'Novo Porta-Pallet'} size="sm">
         <div className="p-5 space-y-4">
           <Input label="Código" value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="ex: A" />
           <Input label="Número de andares" type="number" value={andares} onChange={(e) => setAndares(e.target.value)} />
-          <Button className="w-full" disabled={!codigo.trim()} loading={criarMut.isPending} onClick={() => criarMut.mutate({ codigo, andaresCount: Number(andares) || 1 })}>
-            Criar
+          <Input label="Observações" value={observacoesRack} onChange={(e) => setObservacoesRack(e.target.value)} />
+          <Button className="w-full" disabled={!codigo.trim()} loading={criarMut.isPending || atualizarMut.isPending} onClick={salvarRack}>
+            {editandoRack ? 'Salvar' : 'Criar'}
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={!!excluindoRack} onClose={() => setExcluindoRack(null)} title="Excluir porta-pallet" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-dark-300">Excluir o porta-pallet "{excluindoRack?.codigo}"? Isso também remove todas as vagas dele.</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setExcluindoRack(null)}>Cancelar</Button>
+            <Button variant="danger" className="flex-1" loading={excluirRackMut.isPending} onClick={() => excluindoRack && excluirRackMut.mutate({ id: excluindoRack.id })}>Excluir</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!excluindoVaga} onClose={() => setExcluindoVaga(null)} title="Excluir vaga" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-dark-300">Excluir a vaga {excluindoVaga?.posicao} do andar {excluindoVaga?.andar}?</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setExcluindoVaga(null)}>Cancelar</Button>
+            <Button variant="danger" className="flex-1" loading={excluirVagaMut.isPending} onClick={() => excluindoVaga && excluirVagaMut.mutate({ id: excluindoVaga.id })}>Excluir</Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal open={!!modalMaquinaVaga} onClose={fecharModalMaquina} title={`Adicionar máquina na vaga ${modalMaquinaVaga?.posicao ?? ''}`} size="sm">
+        <div className="p-5 space-y-4">
+          <Input label="Número de série" value={numeroSerie} onChange={(e) => setNumeroSerie(e.target.value)} />
+          <Input label="Modelo" value={modeloMaquina} onChange={(e) => setModeloMaquina(e.target.value)} />
+          <Select label="Porte" value={porteMaquina} onChange={(e) => setPorteMaquina(e.target.value as 'pequeno' | 'grande')} options={[{ value: 'pequeno', label: 'Pequeno (ocupa 1 unidade)' }, { value: 'grande', label: 'Grande (ocupa a vaga inteira)' }]} />
+          <Button
+            className="w-full"
+            disabled={!numeroSerie.trim()}
+            loading={criarMaquinaMut.isPending}
+            onClick={() => modalMaquinaVaga && criarMaquinaMut.mutate({ numeroSerie, modelo: modeloMaquina || undefined, porte: porteMaquina, vagaId: modalMaquinaVaga.id })}
+          >
+            Cadastrar
           </Button>
         </div>
       </Modal>
