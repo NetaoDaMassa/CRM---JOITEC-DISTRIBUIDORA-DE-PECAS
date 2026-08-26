@@ -2169,3 +2169,35 @@ export const propostaHistoricoRelations = relations(propostaHistorico, ({ one })
   proposta: one(propostas, { fields: [propostaHistorico.propostaId], references: [propostas.id] }),
   user: one(users, { fields: [propostaHistorico.userId], references: [users.id] }),
 }))
+
+// ── Revendas (rede de revendedores Odin Compressores, portado do odincrm) ──
+// Lista simples de referência (nome, contato, cidade/estado) — não é um
+// Kanban, é usada como lookup em propostas/pedidos/máquinas (campo
+// `revenda` em texto livre nesses módulos, sem FK — mesmo comportamento do
+// odincrm original, que também guarda o nome da revenda como texto solto
+// nas propostas/pedidos em vez de referenciar esta tabela por id).
+export const revendas = sqliteTable(
+  'revendas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    nome: text('nome').notNull(),
+    nomeContato: text('nome_contato'),
+    telefoneContato: text('telefone_contato'),
+    cidade: text('cidade'),
+    estado: text('estado'),
+    observacoes: text('observacoes'),
+    responsavel: text('responsavel'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    legacyRevendaId: integer('legacy_revenda_id').unique(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaNomeUnique: unique().on(t.empresaId, t.nome),
+  })
+)
+
+export const revendasRelations = relations(revendas, ({ one }) => ({
+  empresa: one(empresas, { fields: [revendas.empresaId], references: [empresas.id] }),
+  criadoPorUser: one(users, { fields: [revendas.criadoPor], references: [users.id] }),
+}))

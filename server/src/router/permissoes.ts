@@ -65,6 +65,8 @@ export const FEATURES_ADMIN = [
   // Funil de Propostas — só Odin Compressores, portado do odincrm.duckdns.org.
   // Também existe em FEATURES_VENDEDOR (vendedor cria e acompanha as próprias).
   'propostas_odin',
+  // Lista de Revendas — só Odin Compressores, portado do odincrm.duckdns.org.
+  'revendas_odin',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
@@ -103,6 +105,8 @@ export const FEATURES_VENDEDOR = [
   'pedidos_odin',
   // Funil de Propostas — mesma chave de FEATURES_ADMIN acima.
   'propostas_odin',
+  // Lista de Revendas — mesma chave de FEATURES_ADMIN acima.
+  'revendas_odin',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima

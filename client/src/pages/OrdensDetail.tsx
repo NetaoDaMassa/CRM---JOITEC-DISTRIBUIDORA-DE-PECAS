@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, Ban, Pause, Play } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
+import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
@@ -57,6 +58,10 @@ export default function OrdensDetail() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const [tab, setTab] = useState<TabKey>('geral')
+  const [modalPausar, setModalPausar] = useState(false)
+  const [motivoPausa, setMotivoPausa] = useState('')
+  const [modalCancelar, setModalCancelar] = useState(false)
+  const [motivoCancelamento, setMotivoCancelamento] = useState('')
 
   const utils = trpc.useUtils()
   const { data: ordem, isLoading } = trpc.ordens.core.obterPorId.useQuery({ id: ordemId })
@@ -72,11 +77,11 @@ export default function OrdensDetail() {
     onError: (e) => toast.error(e.message),
   })
   const cancelarMut = trpc.ordens.core.cancelar.useMutation({
-    onSuccess: () => { toast.success('Pedido cancelado'); invalidarTudo() },
+    onSuccess: () => { toast.success('Pedido cancelado'); setModalCancelar(false); setMotivoCancelamento(''); invalidarTudo() },
     onError: (e) => toast.error(e.message),
   })
   const pausarMut = trpc.ordens.core.pausar.useMutation({
-    onSuccess: () => { toast.success('Pedido pausado'); invalidarTudo() },
+    onSuccess: () => { toast.success('Pedido pausado'); setModalPausar(false); setMotivoPausa(''); invalidarTudo() },
     onError: (e) => toast.error(e.message),
   })
   const retomarMut = trpc.ordens.core.retomar.useMutation({
@@ -136,11 +141,11 @@ export default function OrdensDetail() {
                 <Play size={14} className="mr-1" /> Retomar
               </Button>
             ) : (
-              <Button size="sm" variant="secondary" onClick={() => { const m = prompt('Motivo da pausa?'); if (m) pausarMut.mutate({ id: ordemId, motivo: m }) }}>
+              <Button size="sm" variant="secondary" onClick={() => setModalPausar(true)}>
                 <Pause size={14} className="mr-1" /> Pausar
               </Button>
             )}
-            <Button size="sm" variant="danger" onClick={() => { const m = prompt('Motivo do cancelamento?'); if (m) cancelarMut.mutate({ id: ordemId, motivo: m }) }}>
+            <Button size="sm" variant="danger" onClick={() => setModalCancelar(true)}>
               <Ban size={14} className="mr-1" /> Cancelar
             </Button>
           </div>
@@ -174,6 +179,24 @@ export default function OrdensDetail() {
         {tab === 'anexos' && <AbaAnexos ordemId={ordemId} stageAtual={ordem.stage} isAdmin={isAdmin} />}
         {tab === 'historico' && <AbaHistorico ordemId={ordemId} />}
       </div>
+
+      <Modal open={modalPausar} onClose={() => setModalPausar(false)} title="Pausar pedido" size="sm">
+        <div className="p-5 space-y-4">
+          <Input label="Motivo da pausa" value={motivoPausa} onChange={(e) => setMotivoPausa(e.target.value)} />
+          <Button className="w-full" variant="secondary" disabled={!motivoPausa} loading={pausarMut.isPending} onClick={() => pausarMut.mutate({ id: ordemId, motivo: motivoPausa })}>
+            Confirmar pausa
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={modalCancelar} onClose={() => setModalCancelar(false)} title="Cancelar pedido" size="sm">
+        <div className="p-5 space-y-4">
+          <Input label="Motivo do cancelamento" value={motivoCancelamento} onChange={(e) => setMotivoCancelamento(e.target.value)} />
+          <Button className="w-full" variant="danger" disabled={!motivoCancelamento} loading={cancelarMut.isPending} onClick={() => cancelarMut.mutate({ id: ordemId, motivo: motivoCancelamento })}>
+            Confirmar cancelamento
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }

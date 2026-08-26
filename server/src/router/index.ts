@@ -43,6 +43,7 @@ import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { ordensRouter } from './ordens/index.js'
 import { propostasRouter } from './propostas.js'
+import { revendasRouter } from './revendas.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -93,6 +94,7 @@ export const appRouter = router({
   devolucoes: devolucoesRouter,
   ordens: ordensRouter,
   propostas: propostasRouter,
+  revendas: revendasRouter,
 })
 
 export type AppRouter = typeof appRouter
