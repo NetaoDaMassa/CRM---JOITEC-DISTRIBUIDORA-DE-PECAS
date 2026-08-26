@@ -51,6 +51,8 @@ import PainelFinanceiro from './pages/PainelFinanceiro'
 import Devolucoes from './pages/Devolucoes'
 import OrdensKanban from './pages/OrdensKanban'
 import OrdensDetail from './pages/OrdensDetail'
+import PropostasKanban from './pages/PropostasKanban'
+import PropostaDetail from './pages/PropostaDetail'
 import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
@@ -187,6 +189,8 @@ export default function App() {
           <Route path="admin/devolucoes-relatorios" element={<AdminGuard><FeatureGuard feature="devolucoes"><DevolucaoRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ordens" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ordens/:id" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensDetail /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/propostas" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostasKanban /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/propostas/:id" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostaDetail /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
           <Route path="vendedor" element={<VendorDashboard />} />
@@ -208,6 +212,8 @@ export default function App() {
           <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
           <Route path="vendedor/ordens" element={<OrdensKanban />} />
           <Route path="vendedor/ordens/:id" element={<OrdensDetail />} />
+          <Route path="vendedor/propostas" element={<PropostasKanban />} />
+          <Route path="vendedor/propostas/:id" element={<PropostaDetail />} />
           <Route path="vendedor/leads" element={<Leads />} />
           <Route path="vendedor/leads/kanban" element={<LeadsKanban />} />
           <Route path="vendedor/leads/:id" element={<LeadDetail />} />

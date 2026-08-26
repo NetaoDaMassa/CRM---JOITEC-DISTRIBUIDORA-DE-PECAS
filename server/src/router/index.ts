@@ -42,6 +42,7 @@ import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { ordensRouter } from './ordens/index.js'
+import { propostasRouter } from './propostas.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -91,6 +92,7 @@ export const appRouter = router({
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
   ordens: ordensRouter,
+  propostas: propostasRouter,
 })
 
 export type AppRouter = typeof appRouter

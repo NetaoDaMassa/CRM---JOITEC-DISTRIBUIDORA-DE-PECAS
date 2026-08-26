@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -61,6 +61,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
+  { to: '/admin/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/admin/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
   { to: '/admin/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
@@ -104,6 +105,7 @@ export const VENDOR_LINKS = [
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
+  { to: '/vendedor/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/vendedor/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
   { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },

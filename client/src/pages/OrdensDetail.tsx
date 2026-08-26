@@ -221,9 +221,20 @@ function AbaGeral({ ordemId }: { ordemId: number }) {
   )
 }
 
+// Cada Aba*Form abaixo só monta depois que a query já resolveu (guard no
+// componente wrapper) — assim o useState que pré-preenche o campo a partir
+// do `data` captura o valor certo logo no primeiro render. Sem esse split,
+// o useState roda ANTES da query voltar (data ainda undefined) e o campo
+// fica travado vazio pra sempre, mesmo depois do servidor mandar o valor
+// real — foi um bug de verdade, pego testando a conversão Proposta→Pedido.
 function AbaFinanceiro({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
+  const { data, isLoading } = trpc.ordens.financeiro.obterLiberacao.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaFinanceiroForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
+}
+
+function AbaFinanceiroForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { aprovado: boolean; formaPagamento: string | null; condicaoPagamento: string | null; dataPagamentoPrevista: string | null; observacoes: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.financeiro.obterLiberacao.useQuery({ ordemId })
   const [forma, setForma] = useState(data?.formaPagamento ?? '')
   const [condicao, setCondicao] = useState(data?.condicaoPagamento ?? '')
   const [dataPrevista, setDataPrevista] = useState(data?.dataPagamentoPrevista ?? '')
@@ -260,8 +271,13 @@ function AbaFinanceiro({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean
 }
 
 function AbaPedido({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
+  const { data, isLoading } = trpc.ordens.financeiro.obterDetalhes.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaPedidoForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
+}
+
+function AbaPedidoForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; observacoes: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.financeiro.obterDetalhes.useQuery({ ordemId })
   const [numeroPedido, setNumeroPedido] = useState(data?.numeroPedido ?? '')
   const [prioridade, setPrioridade] = useState(data?.prioridadeDespacho ?? 'normal')
   const [valor, setValor] = useState(data?.valorPedido?.toString() ?? '')
@@ -427,8 +443,13 @@ function AbaPreparacao({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean
 }
 
 function AbaFaturamento({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
+  const { data, isLoading } = trpc.ordens.faturamento.obter.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaFaturamentoForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
+}
+
+function AbaFaturamentoForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { pagamentoConfirmado: boolean; numeroNotaFiscal: string | null; dataPagamento: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.faturamento.obter.useQuery({ ordemId })
   const [nf, setNf] = useState(data?.numeroNotaFiscal ?? '')
   const [dataPag, setDataPag] = useState(data?.dataPagamento ?? '')
 
@@ -502,8 +523,13 @@ function AbaConferencia({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolea
 }
 
 function AbaColeta({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
+  const { data, isLoading } = trpc.ordens.pos.obterColeta.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaColetaForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
+}
+
+function AbaColetaForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { confirmado: boolean; dataColeta: string | null; transportadora: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.pos.obterColeta.useQuery({ ordemId })
   const [dataColeta, setDataColeta] = useState(data?.dataColeta ?? '')
   const [transportadora, setTransportadora] = useState(data?.transportadora ?? '')
 
@@ -527,8 +553,13 @@ function AbaColeta({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) 
 }
 
 function AbaRastreio({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
+  const { data, isLoading } = trpc.ordens.pos.obterRastreio.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaRastreioForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
+}
+
+function AbaRastreioForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { codigoRastreio: string | null; linkRastreio: string | null; transportadora: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.pos.obterRastreio.useQuery({ ordemId })
   const [codigo, setCodigo] = useState(data?.codigoRastreio ?? '')
   const [link, setLink] = useState(data?.linkRastreio ?? '')
   const [transportadora, setTransportadora] = useState(data?.transportadora ?? '')
@@ -553,8 +584,13 @@ function AbaRastreio({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }
 }
 
 function AbaQualidade({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
+  const { data, isLoading } = trpc.ordens.pos.obterQualidade.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaQualidadeForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
+}
+
+function AbaQualidadeForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { observacoes: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.pos.obterQualidade.useQuery({ ordemId })
   const [obs, setObs] = useState(data?.observacoes ?? '')
 
   const salvarMut = trpc.ordens.pos.atualizarQualidade.useMutation({
@@ -571,8 +607,13 @@ function AbaQualidade({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean 
 }
 
 function AbaPosVenda({ ordemId }: { ordemId: number }) {
+  const { data, isLoading } = trpc.ordens.pos.obterPosVenda.useQuery({ ordemId })
+  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
+  return <AbaPosVendaForm ordemId={ordemId} data={data ?? null} />
+}
+
+function AbaPosVendaForm({ ordemId, data }: { ordemId: number; data: { feedbackCliente: string | null } | null }) {
   const utils = trpc.useUtils()
-  const { data } = trpc.ordens.pos.obterPosVenda.useQuery({ ordemId })
   const [feedback, setFeedback] = useState(data?.feedbackCliente ?? '')
 
   const salvarMut = trpc.ordens.pos.atualizarPosVenda.useMutation({

@@ -2052,3 +2052,120 @@ export const ordemAnexosRelations = relations(ordemAnexos, ({ one }) => ({
   ordem: one(ordens, { fields: [ordemAnexos.ordemId], references: [ordens.id] }),
   enviadoPorUser: one(users, { fields: [ordemAnexos.enviadoPor], references: [users.id] }),
 }))
+
+// ── Propostas (funil de vendas Odin Compressores, portado do odincrm.duckdns.org) ──
+// Funil de propostas comerciais anterior ao pedido — diferente de
+// `funilMensal`/`vendas` (o funil próprio do Joitec CRM): aqui o cliente
+// ainda é texto livre (`clienteNome`), só vira um `clientes` de verdade
+// quando a proposta é convertida em pedido (ver `convertidoParaOrdemId`).
+// Etapas não são uma sequência linear estrita como em `ordens` — proposta →
+// negociacao → fechado é o caminho normal, mas perdido/chamar_depois são
+// alcançados por ação explícita a qualquer momento (ver server/src/router/propostas.ts).
+export const propostas = sqliteTable(
+  'propostas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id),
+    clienteNome: text('cliente_nome').notNull(),
+    clienteWhatsapp: text('cliente_whatsapp'),
+    produtosDescricao: text('produtos_descricao'),
+    comissao: text('comissao'),
+    revenda: text('revenda'),
+    formaPagamento: text('forma_pagamento'),
+    observacoes: text('observacoes'),
+    prioridade: text('prioridade', { enum: ['normal', 'urgente'] }).notNull().default('normal'),
+    motivoUrgencia: text('motivo_urgencia'),
+    motivoPerda: text('motivo_perda'),
+    dataRetorno: text('data_retorno'),
+    ultimaAlteracaoSolicitadaEm: text('ultima_alteracao_solicitada_em'),
+    stage: text('stage', { enum: ['proposta', 'negociacao', 'fechado', 'convertido', 'perdido', 'chamar_depois'] })
+      .notNull()
+      .default('proposta'),
+    convertidoParaOrdemId: integer('convertido_para_ordem_id').references(() => ordens.id, { onDelete: 'set null' }),
+    // Gancho pra migração das 229 propostas reais do odincrm — evita duplicar se o script de importação rodar de novo.
+    legacyPropostaId: integer('legacy_proposta_id').unique(),
+    versao: integer('versao').notNull().default(1),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaStageIdx: index('propostas_empresa_stage_idx').on(t.empresaId, t.stage),
+    vendedorIdx: index('propostas_vendedor_idx').on(t.vendedorId),
+  })
+)
+
+export const propostaArquivos = sqliteTable('proposta_arquivos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  propostaId: integer('proposta_id').notNull().references(() => propostas.id, { onDelete: 'cascade' }),
+  // 'proposta_pdf' (exigido pra avançar de "Proposta" pra "Negociação") | 'dados_cadastrais' | outros.
+  fileCategory: text('file_category'),
+  nomeOriginal: text('nome_original').notNull(),
+  nomeArmazenado: text('nome_armazenado').notNull(),
+  tipoArquivo: text('tipo_arquivo'),
+  tamanhoBytes: integer('tamanho_bytes'),
+  enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const propostaFeedbacks = sqliteTable('proposta_feedbacks', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  propostaId: integer('proposta_id').notNull().references(() => propostas.id, { onDelete: 'cascade' }),
+  vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+  conteudo: text('conteudo').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// "Solicitar Alteração" — cada chamada cria uma entrada nova (histórico
+// completo, não sobrescreve) e devolve a proposta pra etapa "proposta"
+// pra revisão, destravando produtosDescricao pro vendedor de novo.
+export const propostaAlteracoes = sqliteTable('proposta_alteracoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  propostaId: integer('proposta_id').notNull().references(() => propostas.id, { onDelete: 'cascade' }),
+  solicitadoPor: integer('solicitado_por').references(() => users.id, { onDelete: 'set null' }),
+  conteudo: text('conteudo').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Histórico de mudança de etapa — não existe no odincrm original (lá só tem
+// `updated_at`), acrescentado aqui seguindo o mesmo padrão de auditoria já
+// usado em `ordemHistorico`/`devolucaoHistoricoStatus` no resto do sistema.
+export const propostaHistorico = sqliteTable('proposta_historico', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  propostaId: integer('proposta_id').notNull().references(() => propostas.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  etapaAnterior: text('etapa_anterior'),
+  etapaNova: text('etapa_nova').notNull(),
+  nota: text('nota'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const propostasRelations = relations(propostas, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [propostas.empresaId], references: [empresas.id] }),
+  vendedor: one(users, { fields: [propostas.vendedorId], references: [users.id] }),
+  convertidoParaOrdem: one(ordens, { fields: [propostas.convertidoParaOrdemId], references: [ordens.id] }),
+  arquivos: many(propostaArquivos),
+  feedbacks: many(propostaFeedbacks),
+  alteracoes: many(propostaAlteracoes),
+  historico: many(propostaHistorico),
+}))
+
+export const propostaArquivosRelations = relations(propostaArquivos, ({ one }) => ({
+  proposta: one(propostas, { fields: [propostaArquivos.propostaId], references: [propostas.id] }),
+  enviadoPorUser: one(users, { fields: [propostaArquivos.enviadoPor], references: [users.id] }),
+}))
+
+export const propostaFeedbacksRelations = relations(propostaFeedbacks, ({ one }) => ({
+  proposta: one(propostas, { fields: [propostaFeedbacks.propostaId], references: [propostas.id] }),
+  vendedor: one(users, { fields: [propostaFeedbacks.vendedorId], references: [users.id] }),
+}))
+
+export const propostaAlteracoesRelations = relations(propostaAlteracoes, ({ one }) => ({
+  proposta: one(propostas, { fields: [propostaAlteracoes.propostaId], references: [propostas.id] }),
+  solicitante: one(users, { fields: [propostaAlteracoes.solicitadoPor], references: [users.id] }),
+}))
+
+export const propostaHistoricoRelations = relations(propostaHistorico, ({ one }) => ({
+  proposta: one(propostas, { fields: [propostaHistorico.propostaId], references: [propostas.id] }),
+  user: one(users, { fields: [propostaHistorico.userId], references: [users.id] }),
+}))
