@@ -61,6 +61,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
+  { to: '/admin/dashboard-odin', label: 'Dashboard Odin', icon: LayoutDashboard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/admin/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/admin/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
   { to: '/admin/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },
@@ -111,6 +112,7 @@ export const VENDOR_LINKS = [
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
+  { to: '/vendedor/dashboard-odin', label: 'Dashboard Odin', icon: LayoutDashboard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/vendedor/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/vendedor/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
   { to: '/vendedor/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },

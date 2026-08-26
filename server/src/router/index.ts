@@ -49,6 +49,7 @@ import { visitasRouter } from './visitas.js'
 import { qualidadeRouter } from './qualidade.js'
 import { configuracoesOdinRouter } from './configuracoesOdin.js'
 import { relatoriosOdinRouter } from './relatoriosOdin.js'
+import { dashboardOdinRouter } from './dashboardOdin.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -105,6 +106,7 @@ export const appRouter = router({
   qualidade: qualidadeRouter,
   configuracoesOdin: configuracoesOdinRouter,
   relatoriosOdin: relatoriosOdinRouter,
+  dashboardOdin: dashboardOdinRouter,
 })
 
 export type AppRouter = typeof appRouter

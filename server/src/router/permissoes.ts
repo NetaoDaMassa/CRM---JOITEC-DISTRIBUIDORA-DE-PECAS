@@ -58,6 +58,10 @@ export const FEATURES_ADMIN = [
   // Diferente do RH, também existe em FEATURES_VENDEDOR (é tela de uso
   // diário do vendedor, não só do admin).
   'leads',
+  // Dashboard consolidado (pedidos+propostas+visitas+alertas+performance) —
+  // só Odin Compressores, portado do odincrm.duckdns.org. Também existe em
+  // FEATURES_VENDEDOR (vendedor vê a mesma tela, só com os próprios números).
+  'dashboard_odin',
   // Kanban de Pedidos (pós-venda) — só Odin Compressores, portado do
   // odincrm.duckdns.org. Também existe em FEATURES_VENDEDOR (é tela de uso
   // diário do vendedor, que cria pedido e preenche dados de várias etapas).
@@ -118,6 +122,8 @@ export const FEATURES_VENDEDOR = [
   'devolucoes_finalizar_fora_ordem',
   // Leads de venda (site) — mesma chave de FEATURES_ADMIN acima.
   'leads',
+  // Dashboard consolidado — mesma chave de FEATURES_ADMIN acima.
+  'dashboard_odin',
   // Kanban de Pedidos (pós-venda) — mesma chave de FEATURES_ADMIN acima.
   'pedidos_odin',
   // Funil de Propostas — mesma chave de FEATURES_ADMIN acima.

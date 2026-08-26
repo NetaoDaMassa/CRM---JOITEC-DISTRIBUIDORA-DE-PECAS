@@ -85,6 +85,25 @@ export const STAGE_DOT_COLORS: Record<Stage, string> = {
   pos_venda: 'bg-emerald-700',
 }
 
+// Cor sólida em hex por etapa — mesmos códigos de STAGE_COLORS_HEX do
+// Dashboard.tsx original (odincrm), usado no gráfico de barras "Pedidos por
+// Etapa" (recharts precisa de hex, não classe Tailwind).
+export const STAGE_COLORS_HEX: Record<Stage, string> = {
+  cadastro: '#94a3b8',
+  liberacao_financeira: '#f59e0b',
+  pedido: '#3b82f6',
+  cotacao_frete: '#06b6d4',
+  preparacao: '#eab308',
+  frete_finalizado: '#0284c7',
+  faturamento: '#8b5cf6',
+  conferencia: '#6366f1',
+  coleta: '#ec4899',
+  rastreio: '#64748b',
+  qualidade: '#14b8a6',
+  concluido: '#22c55e',
+  pos_venda: '#059669',
+}
+
 // Prioridade de despacho (etapa "Pedido") — mesma config de cor/prazo do
 // KanbanCard.tsx original.
 export const PRIORIDADE_CONFIG: Record<string, { barra: string; badge: string; label: string; labelPeca?: string }> = {
