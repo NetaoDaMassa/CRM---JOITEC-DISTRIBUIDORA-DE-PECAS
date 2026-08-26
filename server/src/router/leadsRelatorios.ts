@@ -1,11 +1,43 @@
 import { z } from 'zod'
 import { and, eq, inArray, isNull, gte, lte } from 'drizzle-orm'
+import * as XLSX from 'xlsx'
 import { router, featureProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadHistory, leadContactAttempts, users, metasMarketing } from '../db/schema.js'
 import { businessHoursElapsedMs } from '../lib/businessHours.js'
 import { STATUS_VALUES, STATUS_LABELS } from '../lib/leadsStatus.js'
 import { agoraSqlite } from '../lib/dataBr.js'
+
+const PAYMENT_LABEL: Record<string, string> = {
+  avista: 'À vista',
+  boleto: 'Boleto',
+  boleto_entrada: 'Boleto com entrada',
+  cartao_credito: 'Cartão de crédito',
+}
+
+const vendasFiltroSchema = z
+  .object({
+    dataInicio: z.string().optional(),
+    dataFim: z.string().optional(),
+    vendedorId: z.number().optional(),
+  })
+  .optional()
+
+// Linha a linha dos leads "ganhos" (vendas de fato fechadas) no período —
+// diferente de `reportGeral`, que só soma/agrega. Base pro relatório de
+// vendas de leads que o João pediu, com exportação em Excel.
+async function buscarVendasLeads(empresaId: number, input: z.infer<typeof vendasFiltroSchema>) {
+  const filtros = [eq(leads.empresaId, empresaId), eq(leads.status, 'ganho'), isNull(leads.deletedAt)]
+  if (input?.dataInicio) filtros.push(gte(leads.statusChangedAt, input.dataInicio))
+  if (input?.dataFim) filtros.push(lte(leads.statusChangedAt, `${input.dataFim} 23:59:59`))
+  if (input?.vendedorId) filtros.push(eq(leads.vendorId, input.vendedorId))
+
+  return db.query.leads.findMany({
+    where: and(...filtros),
+    with: { vendor: { columns: { name: true } } },
+    orderBy: (l, { desc }) => [desc(l.statusChangedAt)],
+  })
+}
 
 // Relatórios de marketing do módulo de Leads (bloco E do plano em
 // /Users/weslley/.claude/plans/stateful-soaring-moore.md). `slaOverview` e
@@ -193,6 +225,59 @@ export const leadsRelatoriosRouter = router({
         tempoMedioFechamentoDias,
         totalVendas,
         funnel,
+      }
+    }),
+
+  vendas: featureProcedure('leads')
+    .input(vendasFiltroSchema)
+    .query(async ({ ctx, input }) => {
+      const rows = await buscarVendasLeads(ctx.empresaId, input)
+      const totalVendas = rows.reduce((soma, l) => soma + (l.finalOrderValue ?? 0), 0)
+      return {
+        rows: rows.map((l) => ({
+          id: l.id,
+          nome: l.name,
+          empresa: l.company,
+          cidade: l.city,
+          vendedor: l.vendor?.name ?? 'Sem vendedor',
+          valorOrcado: l.orderValue,
+          valorFinal: l.finalOrderValue,
+          formaPagamento: l.paymentMethod ? PAYMENT_LABEL[l.paymentMethod] ?? l.paymentMethod : null,
+          codSap: l.codSap,
+          dataVenda: l.statusChangedAt,
+          dataCriacao: l.createdAt,
+        })),
+        totalVendas,
+        totalRegistros: rows.length,
+      }
+    }),
+
+  exportarVendas: featureProcedure('leads')
+    .input(vendasFiltroSchema)
+    .mutation(async ({ ctx, input }) => {
+      const rows = await buscarVendasLeads(ctx.empresaId, input)
+
+      const linhas = rows.map((l) => ({
+        Cliente: l.name,
+        Empresa: l.company ?? '',
+        Cidade: l.city ?? '',
+        Vendedor: l.vendor?.name ?? 'Sem vendedor',
+        'Valor orçado': l.orderValue ?? 0,
+        'Valor final': l.finalOrderValue ?? 0,
+        'Forma de pagamento': l.paymentMethod ? PAYMENT_LABEL[l.paymentMethod] ?? l.paymentMethod : '',
+        'Código SAP': l.codSap ?? '',
+        'Data da venda': l.statusChangedAt ? l.statusChangedAt.slice(0, 10).split('-').reverse().join('/') : '',
+      }))
+
+      const wb = XLSX.utils.book_new()
+      const ws = XLSX.utils.json_to_sheet(linhas)
+      XLSX.utils.book_append_sheet(wb, ws, 'Vendas de Leads')
+      const buffer = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer
+
+      return {
+        data: buffer.toString('base64'),
+        filename: `vendas_leads_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        count: linhas.length,
       }
     }),
 

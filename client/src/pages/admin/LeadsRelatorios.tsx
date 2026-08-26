@@ -2,15 +2,18 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
+import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
+import { downloadBase64Excel } from '../../lib/utils'
 
-type Aba = 'sla' | 'transferencias' | 'geral'
+type Aba = 'sla' | 'transferencias' | 'geral' | 'vendas'
 
 const ABAS: { value: Aba; label: string }[] = [
   { value: 'sla', label: 'SLA' },
   { value: 'transferencias', label: 'Transferências' },
   { value: 'geral', label: 'Geral' },
+  { value: 'vendas', label: 'Vendas' },
 ]
 
 function StatTile({ label, value, sub }: { label: string; value: string; sub?: string }) {
@@ -476,6 +479,94 @@ function GeralTab() {
   )
 }
 
+// Vendas de leads (leads "ganhos"), linha a linha, com exportação em Excel
+// — pedido separado do panorama agregado de GeralTab.
+function VendasTab() {
+  const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
+  const [dataFim, setDataFim] = useState(hojeString())
+  const [vendedorId, setVendedorId] = useState('')
+
+  const { data: vendedores } = trpc.users.vendors.useQuery()
+  const filtros = {
+    dataInicio: dataInicio || undefined,
+    dataFim: dataFim || undefined,
+    vendedorId: vendedorId ? Number(vendedorId) : undefined,
+  }
+  const { data, isLoading } = trpc.leadsRelatorios.vendas.useQuery(filtros)
+
+  const exportMut = trpc.leadsRelatorios.exportarVendas.useMutation({
+    onSuccess(res) {
+      downloadBase64Excel(res.data, res.filename)
+      toast.success(`${res.count} venda(s) exportada(s)`)
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-end gap-3 flex-wrap">
+        <Input label="Data inicial" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
+        <Input label="Data final" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
+        <div className="w-52">
+          <Select
+            label="Vendedor"
+            value={vendedorId}
+            onChange={(e) => setVendedorId(e.target.value)}
+            placeholder="Todos"
+            options={(vendedores ?? []).filter((v: any) => v.role === 'vendor').map((v: any) => ({ value: v.id, label: v.name }))}
+          />
+        </div>
+        <Button variant="secondary" loading={exportMut.isPending} onClick={() => exportMut.mutate(filtros)}>
+          Exportar Excel
+        </Button>
+      </div>
+
+      {isLoading || !data ? (
+        <p className="text-dark-500">Carregando...</p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <StatTile label="Total de vendas" value={formatarMoeda(data.totalVendas)} sub={`${data.totalRegistros} venda(s)`} />
+          </div>
+
+          {data.rows.length === 0 ? (
+            <p className="text-center text-dark-500 py-12">Nenhuma venda no período.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-dark-500 uppercase tracking-wide text-left">
+                    <th className="pb-2 font-semibold">Data</th>
+                    <th className="pb-2 font-semibold">Cliente</th>
+                    <th className="pb-2 font-semibold">Vendedor</th>
+                    <th className="pb-2 font-semibold">Cidade</th>
+                    <th className="pb-2 font-semibold">Pagamento</th>
+                    <th className="pb-2 font-semibold text-right">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="text-dark-200">
+                  {data.rows.map((r) => (
+                    <tr key={r.id} className="border-t border-dark-700">
+                      <td className="py-2 whitespace-nowrap">{r.dataVenda ? r.dataVenda.slice(0, 10).split('-').reverse().join('/') : '—'}</td>
+                      <td className="py-2">{r.nome} {r.empresa ? <span className="text-dark-500">· {r.empresa}</span> : ''}</td>
+                      <td className="py-2 text-dark-400">{r.vendedor}</td>
+                      <td className="py-2 text-dark-400">{r.cidade ?? '—'}</td>
+                      <td className="py-2 text-dark-400">{r.formaPagamento ?? '—'}</td>
+                      <td className="py-2 text-right font-mono tabular-nums">{formatarMoeda(r.valorFinal ?? 0)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // Relatórios de marketing do módulo de Leads — SLA (atraso por vendedor,
 // tempo parado, alertas críticos), Histórico de Transferências (com
 // detector de "quicando" entre vendedores) e um panorama Geral (timing,
@@ -508,6 +599,7 @@ export default function LeadsRelatorios() {
       {aba === 'sla' && <SlaTab />}
       {aba === 'transferencias' && <TransferenciasTab />}
       {aba === 'geral' && <GeralTab />}
+      {aba === 'vendas' && <VendasTab />}
     </div>
   )
 }

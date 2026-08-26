@@ -28,8 +28,8 @@ import { buscarCnpj } from '../lib/brasilApi.js'
 
 const STATUS_VALUES = [
   'novo',
-  'em_andamento',
   'analise',
+  'em_andamento',
   'nota_fiscal_devolucao',
   'chegada_materiais',
   'preparacao_envio',
@@ -105,7 +105,17 @@ export const devolucoesRouter = router({
         descricao: z.string().min(1),
         observacao: z.string().optional(),
         ocorrencias: z.array(z.object({ tipo: z.enum(OCORRENCIA_VALUES), rotuloCustom: z.string().optional() })).min(1),
-        materiais: z.array(z.object({ codigoItem: z.string(), descricaoItem: z.string(), quantidade: z.number().default(1) })).optional(),
+        materiais: z
+          .array(
+            z.object({
+              codigoItem: z.string(),
+              descricaoItem: z.string(),
+              quantidade: z.number().default(1),
+              codigoItemCorreto: z.string().optional(),
+              descricaoItemCorreto: z.string().optional(),
+            })
+          )
+          .optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -133,7 +143,14 @@ export const devolucoesRouter = router({
         await db.insert(devolucaoOcorrencias).values({ chamadoId, tipo: oc.tipo, rotuloCustom: oc.rotuloCustom })
       }
       for (const m of input.materiais ?? []) {
-        await db.insert(devolucaoMateriais).values({ chamadoId, codigoItem: m.codigoItem, descricaoItem: m.descricaoItem, quantidade: m.quantidade })
+        await db.insert(devolucaoMateriais).values({
+          chamadoId,
+          codigoItem: m.codigoItem,
+          descricaoItem: m.descricaoItem,
+          quantidade: m.quantidade,
+          codigoItemCorreto: m.codigoItemCorreto,
+          descricaoItemCorreto: m.descricaoItemCorreto,
+        })
       }
       await db.insert(devolucaoHistoricoStatus).values({ chamadoId, statusAnterior: null, statusNovo: 'novo' })
 
@@ -256,7 +273,17 @@ export const devolucoesRouter = router({
         observacao: z.string().optional(),
         vendedorId: z.number().optional(),
         ocorrencias: z.array(z.object({ tipo: z.enum(OCORRENCIA_VALUES), rotuloCustom: z.string().optional() })).min(1),
-        materiais: z.array(z.object({ codigoItem: z.string(), descricaoItem: z.string(), quantidade: z.number().default(1) })).optional(),
+        materiais: z
+          .array(
+            z.object({
+              codigoItem: z.string(),
+              descricaoItem: z.string(),
+              quantidade: z.number().default(1),
+              codigoItemCorreto: z.string().optional(),
+              descricaoItemCorreto: z.string().optional(),
+            })
+          )
+          .optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -287,7 +314,14 @@ export const devolucoesRouter = router({
         await db.insert(devolucaoOcorrencias).values({ chamadoId, tipo: oc.tipo, rotuloCustom: oc.rotuloCustom })
       }
       for (const m of input.materiais ?? []) {
-        await db.insert(devolucaoMateriais).values({ chamadoId, codigoItem: m.codigoItem, descricaoItem: m.descricaoItem, quantidade: m.quantidade })
+        await db.insert(devolucaoMateriais).values({
+          chamadoId,
+          codigoItem: m.codigoItem,
+          descricaoItem: m.descricaoItem,
+          quantidade: m.quantidade,
+          codigoItemCorreto: m.codigoItemCorreto,
+          descricaoItemCorreto: m.descricaoItemCorreto,
+        })
       }
       await db.insert(devolucaoHistoricoStatus).values({ chamadoId, statusAnterior: null, statusNovo: 'novo', alteradoPorUserId: ctx.user.id })
       await registrarAuditoria({ tabela: 'devolucao_chamados', registroId: chamadoId, acao: 'criar', alteradoPor: ctx.user.id })
@@ -530,6 +564,10 @@ export const devolucoesRouter = router({
         freteChegadaValor: z.number().optional(),
         dataSaidaPrevista: z.string().optional(),
         freteEnvioValor: z.number().optional(),
+        // Transportadora que leva a troca/reparo de volta pro cliente —
+        // nem sempre é a mesma que veio buscar o material devolvido
+        // (`transportadoraNome` acima).
+        transportadoraEnvioNome: z.string().optional(),
         // Número da nota de devolução/garantia — antes só dava pra
         // preencher na abertura do chamado; nem sempre é conhecido ainda
         // nesse momento (chega junto com o material), então libera editar
@@ -543,6 +581,38 @@ export const devolucoesRouter = router({
       const { id, ...campos } = input
       await db.update(devolucaoChamados).set(campos).where(eq(devolucaoChamados.id, id))
       await registrarAuditoria({ tabela: 'devolucao_chamados', registroId: id, acao: 'editar', campo: 'logistica', alteradoPor: ctx.user.id })
+      return { ok: true }
+    }),
+
+  // Edita um material já cadastrado no chamado — usado principalmente pra
+  // preencher "qual seria o material correto" depois da abertura, quando a
+  // ocorrência é envio errado e ainda não se sabia o item certo na hora.
+  editarMaterial: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        codigoItem: z.string().optional(),
+        descricaoItem: z.string().min(1),
+        quantidade: z.number().default(1),
+        codigoItemCorreto: z.string().optional(),
+        descricaoItemCorreto: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const material = await db.query.devolucaoMateriais.findFirst({ where: eq(devolucaoMateriais.id, input.id) })
+      if (!material) throw new Error('Material não encontrado')
+      await assertChamadoAlcancavel(material.chamadoId, alcancaveis)
+      await db
+        .update(devolucaoMateriais)
+        .set({
+          codigoItem: input.codigoItem,
+          descricaoItem: input.descricaoItem,
+          quantidade: input.quantidade,
+          codigoItemCorreto: input.codigoItemCorreto,
+          descricaoItemCorreto: input.descricaoItemCorreto,
+        })
+        .where(eq(devolucaoMateriais.id, input.id))
       return { ok: true }
     }),
 
@@ -669,6 +739,40 @@ export const devolucoesRouter = router({
         statusNovo: input.status,
         alteradoPorUserId: ctx.user.id,
       })
+      return { ok: true }
+    }),
+
+  // Corrige um item enviado pra mecânica por engano (descrição/código/
+  // quantidade errados) sem mexer no histórico de status — diferente de
+  // `atualizarStatusMecanica`, que é pra avançar o fluxo, não pra corrigir
+  // um dado digitado errado.
+  editarItemMecanica: adminOrFeatureProcedure('devolucoes_mecanica')
+    .input(z.object({ id: z.number(), codigoItem: z.string().optional(), descricaoItem: z.string().min(1), quantidade: z.number().default(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const item = await db.query.devolucaoMecanicaItens.findFirst({ where: eq(devolucaoMecanicaItens.id, input.id) })
+      if (!item || !alcancaveis.includes(item.empresaId)) throw new Error('Item não encontrado')
+      await db
+        .update(devolucaoMecanicaItens)
+        .set({ codigoItem: input.codigoItem, descricaoItem: input.descricaoItem, quantidade: input.quantidade, updatedAt: agoraSqlite() })
+        .where(eq(devolucaoMecanicaItens.id, input.id))
+      return { ok: true }
+    }),
+
+  // Reverte um envio pra mecânica feito por engano — só permitido enquanto
+  // o item ainda está no status inicial 'enviado' (nada de teste/conserto
+  // real aconteceu ainda), pra não apagar progresso de um item que já foi
+  // efetivamente processado.
+  removerItemMecanica: adminOrFeatureProcedure('devolucoes_mecanica')
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      const item = await db.query.devolucaoMecanicaItens.findFirst({ where: eq(devolucaoMecanicaItens.id, input.id) })
+      if (!item || !alcancaveis.includes(item.empresaId)) throw new Error('Item não encontrado')
+      if (item.status !== 'enviado') throw new Error('Só dá pra reverter enquanto o item ainda está como "Enviado"')
+      await db.delete(devolucaoMecanicaHistorico).where(eq(devolucaoMecanicaHistorico.itemId, input.id))
+      await db.delete(devolucaoMecanicaItens).where(eq(devolucaoMecanicaItens.id, input.id))
+      await registrarAuditoria({ tabela: 'devolucao_mecanica_itens', registroId: input.id, acao: 'excluir', alteradoPor: ctx.user.id })
       return { ok: true }
     }),
 

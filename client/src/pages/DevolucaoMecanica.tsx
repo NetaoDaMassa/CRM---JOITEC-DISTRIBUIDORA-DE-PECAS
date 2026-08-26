@@ -30,11 +30,45 @@ function AtualizarStatusModal({ item, onClose }: { item: any; onClose: () => voi
   const [descricaoManutencao, setDescricaoManutencao] = useState('')
   const [condicaoRetorno, setCondicaoRetorno] = useState('')
   const [motivoDescarte, setMotivoDescarte] = useState('')
+  const [editando, setEditando] = useState(false)
+  const [codigoItem, setCodigoItem] = useState(item.codigoItem ?? '')
+  const [descricaoItem, setDescricaoItem] = useState(item.descricaoItem)
+  const [quantidade, setQuantidade] = useState(item.quantidade)
+  const [confirmandoRemocao, setConfirmandoRemocao] = useState(false)
+
+  function invalidar() {
+    utils.devolucoes.listarMecanica.invalidate()
+  }
 
   const mut = trpc.devolucoes.atualizarStatusMecanica.useMutation({
     onSuccess() {
       toast.success('Item atualizado')
-      utils.devolucoes.listarMecanica.invalidate()
+      invalidar()
+      onClose()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const editarMut = trpc.devolucoes.editarItemMecanica.useMutation({
+    onSuccess() {
+      toast.success('Item corrigido')
+      setEditando(false)
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  // Reverte um envio pra mecânica feito por engano — só dá pra fazer
+  // enquanto o item ainda está como "Enviado" (backend recusa se já tiver
+  // progresso real registrado).
+  const removerMut = trpc.devolucoes.removerItemMecanica.useMutation({
+    onSuccess() {
+      toast.success('Envio revertido')
+      invalidar()
       onClose()
     },
     onError(err) {
@@ -57,6 +91,66 @@ function AtualizarStatusModal({ item, onClose }: { item: any; onClose: () => voi
   return (
     <Modal open onClose={onClose} title={`${item.chamado?.protocolo ?? ''} — ${item.descricaoItem}`} size="md">
       <div className="space-y-4">
+        {editando ? (
+          <div className="bg-dark-900/40 border border-dark-700 rounded-xl p-3 space-y-2">
+            <p className="text-sm font-semibold text-dark-100">Editar item</p>
+            <div className="grid grid-cols-[90px_1fr_60px] gap-2">
+              <input
+                className="bg-dark-950 border border-dark-600 rounded-lg px-2 py-1.5 text-sm text-dark-100"
+                placeholder="Código"
+                value={codigoItem}
+                onChange={(e) => setCodigoItem(e.target.value)}
+              />
+              <input
+                className="bg-dark-950 border border-dark-600 rounded-lg px-2 py-1.5 text-sm text-dark-100"
+                placeholder="Descrição"
+                value={descricaoItem}
+                onChange={(e) => setDescricaoItem(e.target.value)}
+              />
+              <input
+                type="number"
+                min={1}
+                className="bg-dark-950 border border-dark-600 rounded-lg px-2 py-1.5 text-sm text-dark-100"
+                value={quantidade}
+                onChange={(e) => setQuantidade(Number(e.target.value))}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setEditando(false)}>
+                Cancelar
+              </Button>
+              <Button
+                size="sm"
+                loading={editarMut.isPending}
+                onClick={() => editarMut.mutate({ id: item.id, codigoItem: codigoItem || undefined, descricaoItem, quantidade })}
+              >
+                Salvar
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between gap-2">
+            <button type="button" className="text-xs text-gold-400 underline" onClick={() => setEditando(true)}>
+              Editar item
+            </button>
+            {item.status === 'enviado' &&
+              (confirmandoRemocao ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-dark-400">Reverter o envio?</span>
+                  <Button variant="secondary" size="sm" onClick={() => setConfirmandoRemocao(false)}>
+                    Não
+                  </Button>
+                  <Button size="sm" loading={removerMut.isPending} onClick={() => removerMut.mutate({ id: item.id })}>
+                    Confirmar
+                  </Button>
+                </div>
+              ) : (
+                <button type="button" className="text-xs text-red-400 underline" onClick={() => setConfirmandoRemocao(true)}>
+                  Reverter envio pra mecânica
+                </button>
+              ))}
+          </div>
+        )}
         <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value)} options={COLUNAS.map((c) => ({ value: c, label: STATUS_LABEL[c] }))} />
         {status === 'testado' && (
           <Select

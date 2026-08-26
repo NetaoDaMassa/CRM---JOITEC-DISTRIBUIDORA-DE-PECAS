@@ -1475,8 +1475,8 @@ export const devolucaoChamados = sqliteTable('devolucao_chamados', {
   status: text('status', {
     enum: [
       'novo',
-      'em_andamento',
       'analise',
+      'em_andamento',
       'nota_fiscal_devolucao',
       'chegada_materiais',
       'preparacao_envio',
@@ -1501,6 +1501,11 @@ export const devolucaoChamados = sqliteTable('devolucao_chamados', {
   numeroPedidoVenda: text('numero_pedido_venda'),
   descricao: text('descricao'),
   observacao: text('observacao'),
+  // Nem sempre quem coleta o material devolvido é a mesma transportadora
+  // que leva a troca/reparo de volta pro cliente — por isso 2 campos
+  // separados (coleta guarda no campo antigo `transportadoraNome`, envio é
+  // o novo `transportadoraEnvioNome`), o mesmo espírito do frete em 2
+  // momentos logo abaixo.
   transportadoraNome: text('transportadora_nome'),
   dataChegadaPrevista: text('data_chegada_prevista'),
   // Custo do frete pontuado em 2 momentos separados — o de trazer o
@@ -1510,6 +1515,7 @@ export const devolucaoChamados = sqliteTable('devolucao_chamados', {
   freteChegadaValor: real('frete_chegada_valor'),
   dataSaidaPrevista: text('data_saida_prevista'),
   freteEnvioValor: real('frete_envio_valor'),
+  transportadoraEnvioNome: text('transportadora_envio_nome'),
   dataInicioTratamento: text('data_inicio_tratamento'),
   pularNotaFiscalDevolucao: integer('pular_nota_fiscal_devolucao', { mode: 'boolean' }).notNull().default(false),
   origemDemonstracaoId: integer('origem_demonstracao_id').references((): any => devolucaoDemonstracoes.id, { onDelete: 'set null' }),
@@ -1546,6 +1552,11 @@ export const devolucaoMateriais = sqliteTable('devolucao_materiais', {
   descricaoItem: text('descricao_item').notNull(),
   quantidade: real('quantidade').notNull().default(1),
   numeroSerie: text('numero_serie'),
+  // Quando a ocorrência é "envio errado", o que veio (`descricaoItem` acima)
+  // não é o que deveria ter vindo — esses 2 campos guardam qual seria o
+  // material certo, preenchidos na abertura ou depois durante a análise.
+  codigoItemCorreto: text('codigo_item_correto'),
+  descricaoItemCorreto: text('descricao_item_correto'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
