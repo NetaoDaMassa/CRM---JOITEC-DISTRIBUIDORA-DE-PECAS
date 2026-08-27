@@ -216,11 +216,17 @@ export default function Sidebar() {
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     {
+      // Sem trava de empresa aqui de propósito — a permissão concedida em
+      // Permissões já decide quem vê (mesmo padrão de painel_tv/
+      // painel_financeiro). O painel em si (dashboardOdin.ts) continua só
+      // funcionando de verdade pra Odin Compressores hoje — outra empresa
+      // com a permissão concedida vê o menu, mas o painel avisa que o
+      // módulo ainda não está disponível pra ela.
       to: '/painel-tv-odin',
       label: 'Painel de TV Odin',
       icon: Tv,
       external: true,
-      visivel: empresaAtiva?.slug === SO_ODIN_COMPRESSORES && user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_odin')),
+      visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_odin')),
     },
   ]
 
