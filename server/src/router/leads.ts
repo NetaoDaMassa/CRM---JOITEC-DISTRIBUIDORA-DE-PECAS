@@ -4,9 +4,28 @@ import path from 'path'
 import { eq, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { leads, leadNotes, leadHistory, leadAttachments, leadContactAttempts, leadTrackingVisitors, users, notifications, empresas } from '../db/schema.js'
+import {
+  leads,
+  leadNotes,
+  leadHistory,
+  leadAttachments,
+  leadContactAttempts,
+  leadTrackingVisitors,
+  users,
+  notifications,
+  empresas,
+  clientes,
+  carteiraHistorico,
+  funilMensal,
+  propostas,
+} from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD, assignNextVendor } from '../lib/leadsRoundRobin.js'
 import { validateNextContactLimit } from '../lib/businessHours.js'
+import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
+import { cpfValido, limparCpf } from '../lib/cpf.js'
+import { REGIAO_VALUES } from '../lib/regiao.js'
+import { mesReferenciaAtual } from '../lib/dataBr.js'
+import { notificarGestores } from '../lib/propostasGates.js'
 import {
   STATUS_VALUES,
   SEGMENT_VALUES,
@@ -183,6 +202,8 @@ export const leadsRouter = router({
         contactAttempts: { with: { user: { columns: { passwordHash: false } } }, orderBy: (a, { desc }) => [desc(a.createdAt)] },
         attachments: { with: { user: { columns: { passwordHash: false } } }, orderBy: (a, { desc }) => [desc(a.createdAt)] },
         history: { with: { user: { columns: { passwordHash: false } } }, orderBy: (h, { desc }) => [desc(h.createdAt)] },
+        convertidoParaCliente: { columns: { id: true, razaoSocial: true } },
+        convertidoParaProposta: { columns: { id: true } },
       },
     })
     if (!lead) throw new Error('Lead não encontrado')
@@ -999,5 +1020,137 @@ export const leadsRouter = router({
         nextContactAt: l.nextContactAt,
         vendor: l.vendor,
       }))
+    }),
+
+  // Lead "Ganho" vira cliente de verdade — pedido do João: Joitec/Odin Tubos
+  // usam Carteira (esse cadastro completo aqui é o "vendedor obrigado a
+  // completar o cadastro" antes do cliente entrar de vez). Odin Compressores
+  // NÃO usa Carteira (ver transferirParaPropostas abaixo) — bloqueado aqui.
+  transferirParaCarteira: protectedProcedure
+    .input(
+      z.object({
+        leadId: z.number(),
+        razaoSocial: z.string().min(2),
+        cnpj: z.string().optional(),
+        cpf: z.string().optional(),
+        inscricaoEstadual: z.string().optional(),
+        regiao: z.enum(REGIAO_VALUES),
+        estado: z.string().optional(),
+        cidade: z.string().optional(),
+        nomeContato: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
+      if (!lead) throw new Error('Lead não encontrado')
+      if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if (lead.status !== 'ganho') throw new Error('Só dá pra transferir um lead que já está na etapa Ganho')
+      if (lead.convertidoParaClienteId || lead.convertidoParaPropostaId) throw new Error('Este lead já foi transferido')
+      if (!lead.vendorId) throw new Error('Este lead não tem vendedor atribuído')
+
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+      if (empresa?.slug === 'odin-compressores') throw new Error('Odin Compressores não usa Carteira — transfira pra Propostas')
+
+      let cnpjLimpo: string | undefined
+      if (input.cnpj) {
+        if (!cnpjValido(input.cnpj)) throw new Error('CNPJ inválido')
+        cnpjLimpo = limparCnpj(input.cnpj)
+        const existente = await db.query.clientes.findFirst({ where: and(eq(clientes.cnpj, cnpjLimpo), eq(clientes.empresaId, ctx.empresaId)) })
+        if (existente && !existente.deletedAt) throw new Error('Já existe um cliente com este CNPJ')
+      }
+      let cpfLimpo: string | undefined
+      if (input.cpf) {
+        if (!cpfValido(input.cpf)) throw new Error('CPF inválido')
+        cpfLimpo = limparCpf(input.cpf)
+        const existente = await db.query.clientes.findFirst({ where: and(eq(clientes.cpf, cpfLimpo), eq(clientes.empresaId, ctx.empresaId)) })
+        if (existente && !existente.deletedAt) throw new Error('Já existe um cliente com este CPF')
+      }
+
+      const vendedorAtualId = lead.vendorId
+      const result = await db.insert(clientes).values({
+        empresaId: ctx.empresaId,
+        razaoSocial: input.razaoSocial,
+        cnpj: cnpjLimpo,
+        cpf: cpfLimpo,
+        codigo: `M${Date.now()}`,
+        inscricaoEstadual: input.inscricaoEstadual,
+        regiao: input.regiao,
+        estado: input.estado,
+        cidade: input.cidade || lead.city,
+        telefoneWhatsapp: `${lead.ddd}${lead.phone}`,
+        email: lead.email || undefined,
+        nomeContato: input.nomeContato || lead.name,
+        cadastradoPor: ctx.user.id,
+        vendedorAtualId,
+        origemMarketing: true,
+      })
+      const clienteId = Number(result.lastInsertRowid)
+
+      await db.insert(carteiraHistorico).values({ clienteId, vendedorId: vendedorAtualId })
+      await db.insert(funilMensal).values({ clienteId, vendedorId: vendedorAtualId, mesReferencia: mesReferenciaAtual() })
+      await db.update(leads).set({ convertidoParaClienteId: clienteId }).where(eq(leads.id, input.leadId))
+      await db.insert(leadHistory).values({
+        empresaId: ctx.empresaId,
+        leadId: input.leadId,
+        userId: ctx.user.id,
+        action: 'transferido_carteira',
+        details: `Transferido pra Carteira como "${input.razaoSocial}" por ${ctx.user.name}`,
+      })
+
+      return { clienteId }
+    }),
+
+  // Mesma ideia, só que pra Odin Compressores: não vira cliente de Carteira,
+  // vira uma Proposta (dali pra frente segue o funil normal de Propostas —
+  // ver propostas.ts). Pedido do João: diferente da "Nova Proposta" comum
+  // (que só exige nome), aqui exige produto/serviço já na transferência —
+  // o vendedor não pode jogar o lead pra Propostas sem dizer o que está
+  // sendo proposto.
+  transferirParaPropostas: protectedProcedure
+    .input(
+      z.object({
+        leadId: z.number(),
+        produtosDescricao: z.string().min(1, 'Descreva o que está sendo proposto'),
+        clienteWhatsapp: z.string().optional(),
+        formaPagamento: z.string().optional(),
+        observacoes: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
+      if (!lead) throw new Error('Lead não encontrado')
+      if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if (lead.status !== 'ganho') throw new Error('Só dá pra transferir um lead que já está na etapa Ganho')
+      if (lead.convertidoParaClienteId || lead.convertidoParaPropostaId) throw new Error('Este lead já foi transferido')
+      if (!lead.vendorId) throw new Error('Este lead não tem vendedor atribuído')
+
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+      if (empresa?.slug !== 'odin-compressores') throw new Error('Essa empresa usa Carteira, não Propostas — transfira pra Carteira')
+
+      const result = await db.insert(propostas).values({
+        empresaId: ctx.empresaId,
+        vendedorId: lead.vendorId,
+        clienteNome: lead.name,
+        clienteWhatsapp: input.clienteWhatsapp || `${lead.ddd}${lead.phone}`,
+        produtosDescricao: input.produtosDescricao,
+        formaPagamento: input.formaPagamento || undefined,
+        observacoes: input.observacoes || undefined,
+        stage: 'proposta',
+      })
+      const propostaId = Number(result.lastInsertRowid)
+
+      await db.update(leads).set({ convertidoParaPropostaId: propostaId }).where(eq(leads.id, input.leadId))
+      await db.insert(leadHistory).values({
+        empresaId: ctx.empresaId,
+        leadId: input.leadId,
+        userId: ctx.user.id,
+        action: 'transferido_propostas',
+        details: `Transferido pra Propostas por ${ctx.user.name}`,
+      })
+      await notificarGestores(ctx.empresaId, 'Nova proposta (via Lead ganho)', `${lead.name} — proposta criada a partir do lead ganho por ${ctx.user.name}`)
+
+      return { propostaId }
     }),
 })

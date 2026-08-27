@@ -1250,6 +1250,14 @@ export const leads = sqliteTable(
     disqualifyReason: text('disqualify_reason'),
     finalConsumerReason: text('final_consumer_reason'),
     negotiationTag: text('negotiation_tag', { enum: ['vermelho', 'amarelo'] }),
+    // Preenchido quando um lead "Ganho" é transferido pra frente — Carteira
+    // (Joitec/Odin Tubos, cadastro completo de cliente) ou Propostas (Odin
+    // Compressores, que não usa Carteira e segue o funil normal de
+    // propostas). Só um dos dois é preenchido, nunca os dois; nenhum é
+    // preenchido pra quem nunca transferiu. Ver leads.transferirParaCarteira/
+    // transferirParaPropostas.
+    convertidoParaClienteId: integer('convertido_para_cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    convertidoParaPropostaId: integer('convertido_para_proposta_id').references(() => propostas.id, { onDelete: 'set null' }),
     // Id numérico do lead no sistema antigo — só pra rastreabilidade e pra
     // permitir rodar o script de migração de novo sem duplicar (ver
     // server/scripts/migrar-leads-crm-marketing.ts). Nulo pra lead criado
@@ -1394,6 +1402,8 @@ export const leadsRelations = relations(leads, ({ one, many }) => ({
   vendor: one(users, { fields: [leads.vendorId], references: [users.id] }),
   region: one(leadRegions, { fields: [leads.regionId], references: [leadRegions.id] }),
   campaign: one(leadCampaigns, { fields: [leads.campaignId], references: [leadCampaigns.id] }),
+  convertidoParaCliente: one(clientes, { fields: [leads.convertidoParaClienteId], references: [clientes.id] }),
+  convertidoParaProposta: one(propostas, { fields: [leads.convertidoParaPropostaId], references: [propostas.id] }),
   notes: many(leadNotes),
   attachments: many(leadAttachments),
   history: many(leadHistory),

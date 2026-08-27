@@ -498,6 +498,13 @@
       "when": 1787777204291,
       "tag": "0070_furry_texas_twister",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "6",
+      "when": 1787839453208,
+      "tag": "0071_sudden_catseye",
+      "breakpoints": true
     }
   ]
 }

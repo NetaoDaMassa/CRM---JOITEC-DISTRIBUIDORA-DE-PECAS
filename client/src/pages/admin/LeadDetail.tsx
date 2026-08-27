@@ -20,6 +20,8 @@ import LeadChangeStatusModal from '../../components/LeadChangeStatusModal'
 import LeadReopenDisqualifiedModal from '../../components/LeadReopenDisqualifiedModal'
 import LeadContactAttemptForm from '../../components/LeadContactAttemptForm'
 import LeadNegotiationTagPicker from '../../components/LeadNegotiationTagPicker'
+import TransferirParaCarteiraModal from '../../components/TransferirParaCarteiraModal'
+import TransferirParaPropostasModal from '../../components/TransferirParaPropostasModal'
 import {
   LEAD_STATUS_VALUES,
   LEAD_STATUS_LABELS,
@@ -142,6 +144,8 @@ export default function LeadDetail() {
   const [pendingStatus, setPendingStatus] = useState<string | undefined>(undefined)
   const [reopenModalOpen, setReopenModalOpen] = useState(false)
   const [saleValuesOpen, setSaleValuesOpen] = useState(false)
+  const [transferirCarteiraOpen, setTransferirCarteiraOpen] = useState(false)
+  const [transferirPropostasOpen, setTransferirPropostasOpen] = useState(false)
   const [noteContent, setNoteContent] = useState('')
   const [noteType, setNoteType] = useState<'nota' | 'lembrete'>('nota')
   const [noteNextContact, setNoteNextContact] = useState('')
@@ -275,6 +279,29 @@ export default function LeadDetail() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap mt-4">
+          {isOwner && lead.status === 'ganho' && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
+            <>
+              {empresaSlug === 'odin-compressores' ? (
+                <Button size="sm" onClick={() => setTransferirPropostasOpen(true)}>
+                  Transferir pra Propostas
+                </Button>
+              ) : (
+                <Button size="sm" onClick={() => setTransferirCarteiraOpen(true)}>
+                  Transferir pra Carteira
+                </Button>
+              )}
+            </>
+          )}
+          {lead.convertidoParaCliente && (
+            <Button size="sm" variant="secondary" onClick={() => navigate(`${isAdmin ? '/admin' : '/vendedor'}/clientes/${lead.convertidoParaCliente!.id}`)}>
+              Ver na Carteira
+            </Button>
+          )}
+          {lead.convertidoParaProposta && (
+            <Button size="sm" variant="secondary" onClick={() => navigate(`${isAdmin ? '/admin' : '/vendedor'}/propostas/${lead.convertidoParaProposta!.id}`)}>
+              Ver Proposta
+            </Button>
+          )}
           {isAdmin && lead.status === 'desqualificado' && (
             <Button size="sm" variant="secondary" onClick={() => setReopenModalOpen(true)}>
               <ShieldAlert size={14} /> Reabrir
@@ -629,6 +656,19 @@ export default function LeadDetail() {
         }}
       />
       <LeadReopenDisqualifiedModal leadId={lead.id} empresaSlug={empresaSlug} open={reopenModalOpen} onClose={() => setReopenModalOpen(false)} />
+      <TransferirParaCarteiraModal
+        open={transferirCarteiraOpen}
+        onClose={() => setTransferirCarteiraOpen(false)}
+        leadId={lead.id}
+        leadNome={lead.name}
+        leadCidade={lead.city}
+      />
+      <TransferirParaPropostasModal
+        open={transferirPropostasOpen}
+        onClose={() => setTransferirPropostasOpen(false)}
+        leadId={lead.id}
+        telefoneSugerido={leadTelefoneCompleto(lead.ddd, lead.phone)}
+      />
       <SaleValuesModal lead={lead} open={saleValuesOpen} onClose={() => setSaleValuesOpen(false)} />
     </div>
   )
