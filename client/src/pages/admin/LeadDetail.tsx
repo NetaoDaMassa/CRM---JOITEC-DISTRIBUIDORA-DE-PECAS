@@ -279,7 +279,7 @@ export default function LeadDetail() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap mt-4">
-          {isOwner && lead.status === 'ganho' && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
+          {(isAdmin || isOwner) && lead.status === 'ganho' && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
             <>
               {empresaSlug === 'odin-compressores' ? (
                 <Button size="sm" onClick={() => setTransferirPropostasOpen(true)}>
