@@ -25,7 +25,8 @@ COPY --from=build /app/dist ./dist
 COPY --from=build /app/drizzle ./drizzle
 
 # /app/data → banco SQLite (volume) · /app/uploads → arquivos enviados (volume)
-RUN mkdir -p /app/uploads /app/data
+# /app/wa-session → credenciais da sessão de WhatsApp do aviso de leads (volume)
+RUN mkdir -p /app/uploads /app/data /app/wa-session
 
 EXPOSE 3001
 

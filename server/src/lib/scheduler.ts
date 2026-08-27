@@ -5,6 +5,8 @@ import { executarBackupSeNecessario } from './backup.js'
 import { executarResumoDiario } from './resumoDiario.js'
 import { getConfigTexto, getConfigNumero } from './configuracoes.js'
 import { registrarLigacoesAutomaticasPabxone360 } from './pabxone360.js'
+import { executarAvisoLeadsNovos, type Periodo } from './avisoLeadsNovos.js'
+import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
 // (backup) e 14 (resumo diário).
@@ -43,6 +45,57 @@ async function sincronizarPabxone360() {
   if (registradas > 0) console.log(`[pabxone360] ${registradas} ligação(ões) registrada(s) automaticamente`)
 }
 
+// Aviso amigável de leads novos no WhatsApp (ver avisoLeadsNovos.ts). 2x por
+// dia, só dias úteis, fuso America/Sao_Paulo. Só liga com AVISO_LEADS_ENABLED
+// =true — sem isso não agenda nada nem sobe a sessão do WhatsApp (a máquina
+// de dev não deve brigar pela mesma sessão da VPS).
+function agendarAvisoLeadsNovos() {
+  if (process.env.AVISO_LEADS_ENABLED !== 'true') {
+    console.log('[aviso-leads] desativado (defina AVISO_LEADS_ENABLED=true para ligar)')
+    return
+  }
+
+  const bruto = process.env.AVISO_LEADS_HORARIOS ?? '08:00,17:30'
+  let horarios = bruto.split(',').map((s) => s.trim()).filter(Boolean)
+  if (horarios.length < 2) {
+    console.warn(`[aviso-leads] AVISO_LEADS_HORARIOS precisa de 2 horários "HH:MM,HH:MM" (recebido: "${bruto}"). Usando 08:00,17:30`)
+    horarios = ['08:00', '17:30']
+  }
+
+  const periodos: Periodo[] = ['manha', 'tarde']
+  horarios.slice(0, 2).forEach((hhmm, idx) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
+    if (!m) {
+      console.error(`[aviso-leads] horário inválido ignorado: "${hhmm}"`)
+      return
+    }
+    const hora = Number(m[1])
+    const minuto = Number(m[2])
+    const periodo = periodos[idx]
+    // seg–sex (1-5)
+    cron.schedule(
+      `${minuto} ${hora} * * 1-5`,
+      () => {
+        executarAvisoLeadsNovos({
+          periodo,
+          dryRun: process.env.AVISO_LEADS_DRY_RUN === 'true',
+          testMode: process.env.AVISO_LEADS_TEST_MODE === 'true',
+        }).catch((err) => console.error('[aviso-leads] erro na rodada agendada:', err))
+      },
+      { timezone: 'America/Sao_Paulo' },
+    )
+    console.log(
+      `[aviso-leads] agendado (${periodo}) ${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')} seg–sex, America/Sao_Paulo`,
+    )
+  })
+
+  // Sobe a sessão do WhatsApp já, pra estar conectada quando a 1ª rodada
+  // disparar. Dry run puro não precisa de WhatsApp.
+  if (process.env.AVISO_LEADS_DRY_RUN !== 'true') {
+    iniciarSessaoWhatsapp().catch((err) => console.error('[aviso-leads] falha ao iniciar sessão do WhatsApp:', err))
+  }
+}
+
 export function startScheduler() {
   // Roda a cada hora — idempotente (só cria o que falta), então não tem
   // problema rodar de novo sem nada ter mudado.
@@ -58,4 +111,6 @@ export function startScheduler() {
     sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações:', err))
   })
   sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
+
+  agendarAvisoLeadsNovos()
 }

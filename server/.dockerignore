@@ -1,6 +1,7 @@
 node_modules
 dist
 uploads
+wa-session
 *.db
 *.db-shm
 *.db-wal

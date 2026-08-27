@@ -12,6 +12,9 @@ server/backups/
 server/uploads/*
 !server/uploads/.gitkeep
 
+# Sessão do WhatsApp (Baileys) — credenciais do aviso de leads novos
+server/wa-session/
+
 # Build
 dist/
 build/

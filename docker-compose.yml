@@ -27,9 +27,22 @@ services:
       # "Leads aguardando" do Painel de TV. Se vazio, o slide some sozinho.
       MARKETING_CRM_URL: ${MARKETING_CRM_URL:-}
       MARKETING_CRM_API_KEY: ${MARKETING_CRM_API_KEY:-}
+      # Aviso amigável de leads novos no WhatsApp (server/src/lib/avisoLeadsNovos.ts).
+      # Enquanto AVISO_LEADS_ENABLED != true, nada disso roda nem sobe sessão de WhatsApp.
+      AVISO_LEADS_ENABLED: ${AVISO_LEADS_ENABLED:-false}
+      AVISO_LEADS_DRY_RUN: ${AVISO_LEADS_DRY_RUN:-false}
+      AVISO_LEADS_TEST_MODE: ${AVISO_LEADS_TEST_MODE:-false}
+      AVISO_LEADS_TEST_NUMERO: ${AVISO_LEADS_TEST_NUMERO:-}
+      AVISO_LEADS_ADMIN_NUMERO: ${AVISO_LEADS_ADMIN_NUMERO:-}
+      AVISO_LEADS_HORARIOS: ${AVISO_LEADS_HORARIOS:-08:00,17:30}
+      AVISO_LEADS_EMPRESA_ID: ${AVISO_LEADS_EMPRESA_ID:-1}
+      AVISO_LEADS_MIN_INTERVALO_MS: ${AVISO_LEADS_MIN_INTERVALO_MS:-3000}
+      AVISO_LEADS_MAX_INTERVALO_MS: ${AVISO_LEADS_MAX_INTERVALO_MS:-5000}
+      WA_SESSION_DIR: /app/wa-session
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads
+      - wa_session:/app/wa-session
     expose:
       - "3001"
     networks:
@@ -62,3 +75,6 @@ networks:
 volumes:
   db_data:
   uploads:
+  # Sessão do WhatsApp (Baileys) do aviso de leads novos — precisa persistir
+  # entre deploys, senão o QR teria que ser pareado de novo a cada atualização.
+  wa_session:

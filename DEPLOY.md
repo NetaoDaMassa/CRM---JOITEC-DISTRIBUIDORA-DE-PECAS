@@ -190,10 +190,71 @@ docker compose up -d --build
 
 ---
 
+## Aviso de leads novos no WhatsApp
+
+Lembrete amigável 2x por dia (seg–sex, fuso America/Sao_Paulo) pra cada
+vendedor da Joitec com leads parados na etapa "Novo". Só leitura no funil.
+Código: `server/src/lib/avisoLeadsNovos.ts`. Usa Baileys — a sessão fica no
+volume `joitec-crm_wa_session`.
+
+**Passo a passo pra ligar (fazer uma vez):**
+
+1. No `.env` do VPS, preencha (deixe `AVISO_LEADS_ENABLED=false` por enquanto):
+
+   ```
+   AVISO_LEADS_TEST_NUMERO=5547997008385   # seu número (recebe testes e resumos)
+   AVISO_LEADS_HORARIOS=08:00,17:30
+   ```
+
+2. Suba a nova versão: `docker compose up -d --build`.
+
+3. Grave os telefones dos vendedores na coluna `users.whatsapp`:
+
+   ```bash
+   docker compose exec backend node dist/scripts/seedWhatsappVendedoresJoitec.js --dry-run
+   docker compose exec backend node dist/scripts/seedWhatsappVendedoresJoitec.js
+   ```
+
+4. Pareie o WhatsApp (número que vai ENVIAR). Ligue só a sessão:
+
+   ```bash
+   # no .env: AVISO_LEADS_ENABLED=true
+   docker compose up -d
+   docker compose logs -f backend        # aparece um QR code no log
+   ```
+
+   No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho → escaneie.
+   O log mostra `[whatsapp] sessão conectada`.
+
+5. Teste sem enviar pra ninguém (dry run):
+
+   ```bash
+   docker compose exec backend node dist/scripts/avisarLeadsNovos.js --dry-run
+   ```
+
+6. Teste enviando tudo só pro seu número:
+
+   ```bash
+   docker compose exec backend node dist/scripts/avisarLeadsNovos.js --teste
+   ```
+
+7. Liberado pro time: confirme no `.env` que `AVISO_LEADS_DRY_RUN=false` e
+   `AVISO_LEADS_TEST_MODE=false`, e `docker compose up -d`. Nos logs, na subida,
+   tem que aparecer `[aviso-leads] agendado (manha) 08:00 ...` e `(tarde) 17:30 ...`.
+
+**Se ninguém receber:** procure `[aviso-leads]` e `[whatsapp]` em
+`docker compose logs backend`. Se a sessão caiu (logout no celular), o log diz
+`precisa parear o QR de novo` e os admins recebem um aviso no sino do CRM —
+apague a pasta da sessão (`docker compose exec backend rm -rf /app/wa-session/*`)
+e refaça o passo 4.
+
+---
+
 ## Persistência e backup
 
 - **Banco**: volume `joitec-crm_db_data` (arquivo SQLite em `/app/data/joitec_crm.db`).
 - **Uploads**: volume `joitec-crm_uploads` (`/app/uploads`).
+- **Sessão WhatsApp**: volume `joitec-crm_wa_session` (`/app/wa-session`).
 
 Backup do banco:
 
