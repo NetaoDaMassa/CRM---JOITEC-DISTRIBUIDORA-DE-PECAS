@@ -5,6 +5,13 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# git: o workspace inclui o server, cujo Baileys puxa `libsignal` do GitHub.
+# A imagem alpine não vem com git; o `insteadOf` força HTTPS público (o npm
+# grava a dep como git+ssh no lock, o que falharia sem chave SSH). Só no build.
+RUN apk add --no-cache git \
+ && git config --global url."https://github.com/".insteadOf ssh://git@github.com/ \
+ && git config --global url."https://github.com/".insteadOf git@github.com:
+
 # Instala as dependências do workspace (raiz + client + server).
 COPY package.json package-lock.json ./
 COPY client/package.json ./client/

@@ -3,6 +3,14 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# git: o Baileys puxa a dependência `libsignal` direto do GitHub, e a imagem
+# alpine não vem com git. O `insteadOf` força HTTPS público — o npm canoniza
+# deps do GitHub como git+ssh no lock, o que falharia sem chave SSH no build.
+# Tudo isso só é necessário nesta etapa de build.
+RUN apk add --no-cache git \
+ && git config --global url."https://github.com/".insteadOf ssh://git@github.com/ \
+ && git config --global url."https://github.com/".insteadOf git@github.com:
+
 COPY package.json ./
 RUN npm install
 
