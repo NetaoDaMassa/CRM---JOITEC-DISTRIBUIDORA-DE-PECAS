@@ -274,10 +274,15 @@ export default function Sidebar() {
   // pedaço do nome do que ficar abrindo grupo por grupo procurando. Enquanto
   // tem texto digitado, ignora a estrutura de grupos e mostra tudo que bateu
   // numa lista só (achar rápido é mais importante que manter a organização).
+  // Bate tanto no nome do item quanto no nome do GRUPO — digitar "Marketing"
+  // (nome do grupo) traz todos os itens de dentro dele, não só um item que
+  // por acaso se chame igual.
   const [busca, setBusca] = useState('')
   const buscaNormalizada = busca.trim().toLowerCase()
+  const gruposBatidos = grupos?.filter((g) => g.nome.toLowerCase().includes(buscaNormalizada)) ?? []
+  const idsDeGruposBatidos = new Set(gruposBatidos.flatMap((g) => g.itens))
   const itensBuscados = buscaNormalizada
-    ? todosItensVisiveis.filter((item) => item.label.toLowerCase().includes(buscaNormalizada))
+    ? todosItensVisiveis.filter((item) => item.label.toLowerCase().includes(buscaNormalizada) || idsDeGruposBatidos.has(item.to))
     : null
 
   return (
