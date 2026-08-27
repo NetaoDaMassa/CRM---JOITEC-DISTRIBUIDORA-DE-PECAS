@@ -160,14 +160,18 @@ export const dashboardOdinRouter = router({
   }),
 
   // Painel de TV específico da Odin Compressores (pedido do João: repensar
-  // o painel como um comercial estratégico) — dois funis lado a lado, mês
+  // o painel como um comercial estratégico) — dois funis de 4 etapas, mês
   // corrente:
-  //   Equipe de campo: visita → proposta → venda (visitas.convertidoParaPropostaId
-  //   marca quando uma visita virou proposta de verdade, não é estimativa).
+  //   Equipe de campo: visita → proposta → pedido → venda (visita não é
+  //   obrigatória pra fechar negócio — nem toda proposta desse time nasce
+  //   de uma visita registrada, então a conversão visita→proposta é só um
+  //   indicador, não uma regra fechada).
   //   Equipe de leads (Emily/Rodrigo/Matheus e quem mais tiver `canalVenda:
-  //   'leads'` em Usuários): lead do site → proposta → venda, sem visita.
-  // "Venda" aqui é `ordens` (mesmo sentido de pedidos.ts/dashboardOdinRouter.resumo
-  // pra essa empresa — Odin Compressores não usa `vendas`/funil_mensal).
+  //   'leads'` em Usuários): lead do site → proposta → pedido → venda.
+  // "Pedido" = qualquer `ordens` não cancelada criada no mês (entrou no
+  // processo); "Venda" = subconjunto que já completou todas as etapas
+  // (stage 'pos_venda') — mesma definição de "completed" que
+  // dashboardOdinRouter.resumo já usa pra essa empresa.
   painelTv: adminOrFeatureProcedure('painel_tv_odin').query(async ({ ctx }) => {
     await assertEmpresa(ctx.empresaId)
 
@@ -189,7 +193,7 @@ export const dashboardOdinRouter = router({
       }),
       db.query.ordens.findMany({
         where: and(eq(ordens.empresaId, ctx.empresaId), gte(ordens.createdAt, inicioMes)),
-        columns: { id: true, vendedorId: true, status: true },
+        columns: { id: true, vendedorId: true, status: true, stage: true },
       }),
       db.query.leads.findMany({
         where: and(eq(leads.empresaId, ctx.empresaId), gte(leads.createdAt, inicioMes)),
@@ -197,23 +201,25 @@ export const dashboardOdinRouter = router({
       }),
     ])
 
-    const vendasValidas = todasOrdens.filter((o) => o.status !== 'cancelado')
+    const pedidosValidos = todasOrdens.filter((o) => o.status !== 'cancelado')
 
     function calcularEquipe(vendedoresDoTime: typeof vendedores) {
       const ids = new Set(vendedoresDoTime.map((v) => v.id))
       const visitasTime = todasVisitas.filter((v) => ids.has(v.vendedorId))
       const propostasTime = todasPropostas.filter((p) => ids.has(p.vendedorId))
-      const vendasTime = vendasValidas.filter((o) => o.vendedorId != null && ids.has(o.vendedorId))
+      const pedidosTime = pedidosValidos.filter((o) => o.vendedorId != null && ids.has(o.vendedorId))
       const leadsTime = todosLeads.filter((l) => l.vendorId != null && ids.has(l.vendorId))
 
       const visitasConvertidas = visitasTime.filter((v) => v.convertidoParaPropostaId != null).length
       const propostasConvertidas = propostasTime.filter((p) => p.convertidoParaOrdemId != null).length
+      const vendasTime = pedidosTime.filter((o) => o.stage === 'pos_venda')
 
       const porVendedor = vendedoresDoTime
         .map((v) => {
           const visitasDele = visitasTime.filter((x) => x.vendedorId === v.id)
           const propostasDele = propostasTime.filter((x) => x.vendedorId === v.id)
-          const vendasDele = vendasTime.filter((x) => x.vendedorId === v.id)
+          const pedidosDele = pedidosTime.filter((x) => x.vendedorId === v.id)
+          const vendasDele = pedidosDele.filter((x) => x.stage === 'pos_venda')
           const leadsDele = leadsTime.filter((x) => x.vendorId === v.id)
           const visitasConvDele = visitasDele.filter((x) => x.convertidoParaPropostaId != null).length
           const propostasConvDele = propostasDele.filter((x) => x.convertidoParaOrdemId != null).length
@@ -224,9 +230,11 @@ export const dashboardOdinRouter = router({
             visitas: visitasDele.length,
             leads: leadsDele.length,
             propostas: propostasDele.length,
+            pedidos: pedidosDele.length,
             vendas: vendasDele.length,
             conversaoVisitaProposta: visitasDele.length ? Math.round((visitasConvDele / visitasDele.length) * 1000) / 10 : null,
-            conversaoPropostaVenda: propostasDele.length ? Math.round((propostasConvDele / propostasDele.length) * 1000) / 10 : null,
+            conversaoPropostaPedido: propostasDele.length ? Math.round((propostasConvDele / propostasDele.length) * 1000) / 10 : null,
+            conversaoPedidoVenda: pedidosDele.length ? Math.round((vendasDele.length / pedidosDele.length) * 1000) / 10 : null,
           }
         })
         .sort((a, b) => b.vendas - a.vendas)
@@ -237,9 +245,11 @@ export const dashboardOdinRouter = router({
           visitas: visitasTime.length,
           leads: leadsTime.length,
           propostas: propostasTime.length,
+          pedidos: pedidosTime.length,
           vendas: vendasTime.length,
           conversaoVisitaProposta: visitasTime.length ? Math.round((visitasConvertidas / visitasTime.length) * 1000) / 10 : null,
-          conversaoPropostaVenda: propostasTime.length ? Math.round((propostasConvertidas / propostasTime.length) * 1000) / 10 : null,
+          conversaoPropostaPedido: propostasTime.length ? Math.round((propostasConvertidas / propostasTime.length) * 1000) / 10 : null,
+          conversaoPedidoVenda: pedidosTime.length ? Math.round((vendasTime.length / pedidosTime.length) * 1000) / 10 : null,
         },
       }
     }
@@ -247,18 +257,17 @@ export const dashboardOdinRouter = router({
     const equipeCampo = calcularEquipe(vendedores.filter((v) => v.canalVenda === 'visitas'))
     const equipeLeads = calcularEquipe(vendedores.filter((v) => v.canalVenda === 'leads'))
 
-    const propostasConvertidasGeral = todasPropostas.filter((p) => p.convertidoParaOrdemId != null).length
+    const vendasGeral = pedidosValidos.filter((o) => o.stage === 'pos_venda')
 
     return {
       mesReferencia: inicioMes.slice(0, 7),
       equipeCampo,
       equipeLeads,
       geral: {
-        visitas: todasVisitas.length,
         leads: todosLeads.length,
         propostas: todasPropostas.length,
-        vendas: vendasValidas.length,
-        conversaoPropostaVenda: todasPropostas.length ? Math.round((propostasConvertidasGeral / todasPropostas.length) * 1000) / 10 : null,
+        pedidos: pedidosValidos.length,
+        vendas: vendasGeral.length,
       },
     }
   }),
