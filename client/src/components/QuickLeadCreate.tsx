@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Paperclip, X } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Modal from './ui/Modal'
@@ -128,6 +129,8 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
   const [autoAssign, setAutoAssign] = useState(true)
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
   const ultimoCnpjConsultadoRef = useRef<string | null>(null)
+  const [arquivos, setArquivos] = useState<File[]>([])
+  const [enviandoAnexos, setEnviandoAnexos] = useState(false)
 
   function reset() {
     setColado('')
@@ -142,6 +145,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     setVendorId('')
     setAutoAssign(true)
     ultimoCnpjConsultadoRef.current = null
+    setArquivos([])
   }
 
   async function aplicarColado(texto: string) {
@@ -224,11 +228,45 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     if (mail) setEmail(mail)
   }
 
+  const addAttachmentMut = trpc.leads.addAttachment.useMutation({
+    onError(err) {
+      toast.error(`Anexo não enviado: ${err.message}`)
+    },
+  })
+
+  // Lead precisa existir antes de anexar (mesmo endpoint de upload que
+  // LeadDetail.tsx já usa pra anexo em lead existente) — por isso o envio
+  // só acontece aqui, depois que `leads.create` devolve o id.
+  async function enviarAnexos(leadId: number) {
+    setEnviandoAnexos(true)
+    const token = localStorage.getItem('odin_token')
+    try {
+      for (const file of arquivos) {
+        try {
+          const form = new FormData()
+          form.append('file', file)
+          const res = await fetch('/upload/lead-attachment', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form })
+          if (!res.ok) {
+            toast.error(`Falha ao enviar ${file.name}`)
+            continue
+          }
+          const data = await res.json()
+          await addAttachmentMut.mutateAsync({ leadId, filename: data.path, originalName: data.originalName, mimeType: data.mimeType, size: data.size })
+        } catch {
+          toast.error(`Falha ao enviar ${file.name}`)
+        }
+      }
+    } finally {
+      setEnviandoAnexos(false)
+    }
+  }
+
   const mut = trpc.leads.create.useMutation({
-    onSuccess(data) {
+    async onSuccess(data) {
       toast.success('Lead criado')
       utils.leads.list.invalidate()
       utils.leads.stats.invalidate()
+      if (arquivos.length) await enviarAnexos(data.id)
       reset()
       onClose()
       onCreated?.(data.id)
@@ -296,6 +334,34 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
         />
         <Textarea label="Observações" value={observations} onChange={(e) => setObservations(e.target.value)} rows={2} />
 
+        <div>
+          <label className="text-sm text-dark-200 font-medium block mb-1">Anexos (opcional)</label>
+          <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-dark-700 hover:bg-dark-600 text-dark-100 border border-dark-600 cursor-pointer">
+            <Paperclip size={13} /> Escolher arquivo(s)
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) setArquivos((prev) => [...prev, ...Array.from(e.target.files!)])
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {!!arquivos.length && (
+            <div className="space-y-1 mt-2">
+              {arquivos.map((f, i) => (
+                <div key={`${f.name}-${i}`} className="flex items-center justify-between text-xs bg-dark-800 border border-dark-600 rounded-lg px-2.5 py-1.5">
+                  <span className="text-dark-300 truncate">{f.name}</span>
+                  <button type="button" onClick={() => setArquivos((prev) => prev.filter((_, j) => j !== i))} className="text-dark-500 hover:text-red-400 shrink-0 ml-2">
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         {user?.role === 'admin' && (
           <div>
             <Select
@@ -318,7 +384,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
           <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" className="flex-1" loading={mut.isPending}>
+          <Button type="submit" className="flex-1" loading={mut.isPending || enviandoAnexos}>
             Criar lead
           </Button>
         </div>
