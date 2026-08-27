@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,18 +9,22 @@ import { Input, Textarea } from './ui/Input'
 import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS } from '../lib/leadsShared'
 
 // Tira DDD+telefone de qualquer formato colado ("(11) 98888-7777",
-// "11988887777", "+55 11 98888-7777"...). Retorna null se não achar um
-// número BR plausível (8 ou 9 dígitos locais + DDD).
+// "11988887777", "+55 11 98888-7777", "+5511993321152"...). Retorna null se
+// não achar um número BR plausível (8 ou 9 dígitos locais + DDD).
 //
 // Antes usava um regex guloso (`\d[\d\s().-]{8,}\d`) que, como a classe de
 // caracteres incluía `\s`, atravessava quebra de linha — colando um texto
 // com 2 números (CNPJ, CEP, um 2º telefone) numa linha diferente, o match
 // grudava os dois blocos de dígitos num só e o comprimento final não batia
-// com 10/11, fazendo o autopreenchimento falhar silenciosamente. Esse era
-// o "não funciona direito" reportado. Regex novo é no formato explícito de
-// telefone (DDI opcional + DDD + 4-5 dígitos + 4 dígitos), então só casa
-// dentro de uma sequência que já parece um telefone de verdade.
-const REGEX_TELEFONE = /(?<!\d)0?\(?([1-9]\d)\)?[ .-]?(\d{4,5})[ .-]?(\d{4})(?!\d)/
+// com 10/11, fazendo o autopreenchimento falhar silenciosamente. Regex novo
+// é no formato explícito de telefone BR (DDI opcional + DDD + 4-5 dígitos +
+// 4 dígitos) — o DDI precisa ficar dentro do mesmo grupo opcional que o
+// resto (não como checagem separada), senão um número compacto sem
+// espaços tipo "+5511993321152" falha: o `(?<!\d)` do início só permite
+// começar o match uma vez no texto (logo depois do "+"), então se o DDI
+// não for consumido ali mesmo, o resto do dígitos vira uma sequência longa
+// demais pra bater com "DDD + 8/9 dígitos" sozinha.
+const REGEX_TELEFONE = /(?<!\d)(?:\+?55[ .-]?)?0?\(?([1-9]\d)\)?[ .-]?(\d{4,5})[ .-]?(\d{4})(?!\d)/
 
 function extrairTelefone(texto: string): { ddd: number; phone: string; completo: string } | null {
   const m = texto.match(REGEX_TELEFONE)
@@ -52,6 +56,60 @@ function extrairEmail(texto: string): string {
   return m ? m[0] : ''
 }
 
+function normalizar(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+}
+
+type CampoFormulario = { label: string; valor: string }
+
+// Formulário de anúncio (Meta Lead Ads e afins) manda um texto com
+// "Pergunta/Rótulo: valor" linha a linha, ex:
+//   Full name: Francisco
+//   Phone number: +5511993321152
+//   Qual seu Cnpj ?: 08561411864
+// A heurística antiga (1ª linha = nome) pegava a saudação do topo do
+// formulário como se fosse o nome, e nunca olhava pros rótulos — daí "tudo
+// trocado". Aqui separa rótulo/valor de cada linha; a saudação (sem ":")
+// simplesmente não vira um campo.
+function extrairCamposRotulados(texto: string): CampoFormulario[] {
+  const campos: CampoFormulario[] = []
+  for (const linhaBruta of texto.split('\n')) {
+    const linha = linhaBruta.trim()
+    const m = linha.match(/^([^:]{2,60}):\s*(.+)$/)
+    if (!m) continue
+    const valor = m[2].trim()
+    if (!valor) continue
+    campos.push({ label: m[1].trim(), valor })
+  }
+  return campos
+}
+
+function achaCampo(campos: CampoFormulario[], ...palavrasChave: string[]): string | null {
+  for (const c of campos) {
+    const labelNorm = normalizar(c.label)
+    if (palavrasChave.some((p) => labelNorm.includes(p))) return c.valor
+  }
+  return null
+}
+
+const LABELS_NOME = ['full name', 'nome completo', 'nome']
+const LABELS_TELEFONE = ['phone', 'telefone', 'whatsapp', 'celular']
+const LABELS_EMAIL = ['email', 'e-mail']
+const LABELS_CIDADE = ['city', 'cidade']
+const LABELS_CNPJ = ['cnpj']
+const LABELS_CONHECIDOS = [...LABELS_NOME, ...LABELS_TELEFONE, ...LABELS_EMAIL, ...LABELS_CIDADE, ...LABELS_CNPJ]
+
+// A pergunta de segmento varia de campanha pra campanha (ex: "Você trabalha
+// com compressor de ar?"), então não dá pra reconhecer pelo rótulo — em vez
+// disso, olha se a RESPOSTA bate com um dos segmentos já cadastrados.
+function segmentoPorResposta(resposta: string): string | null {
+  const r = normalizar(resposta)
+  if (r.includes('assistente')) return 'assistente_tecnico'
+  if (r.includes('instalador')) return 'instalador'
+  if (r.includes('revend') || r.includes('lojist')) return 'revendedor_lojista'
+  return null
+}
+
 export default function QuickLeadCreate({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated?: (id: number) => void }) {
   const { user } = useAuth()
   const utils = trpc.useUtils()
@@ -68,6 +126,8 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
   const [observations, setObservations] = useState('')
   const [vendorId, setVendorId] = useState('')
   const [autoAssign, setAutoAssign] = useState(true)
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false)
+  const ultimoCnpjConsultadoRef = useRef<string | null>(null)
 
   function reset() {
     setColado('')
@@ -81,10 +141,78 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     setObservations('')
     setVendorId('')
     setAutoAssign(true)
+    ultimoCnpjConsultadoRef.current = null
   }
 
-  function aplicarColado(texto: string) {
+  async function aplicarColado(texto: string) {
     setColado(texto)
+
+    const campos = extrairCamposRotulados(texto)
+    const nomeRotulado = achaCampo(campos, ...LABELS_NOME)
+    const telefoneRotulado = achaCampo(campos, ...LABELS_TELEFONE)
+
+    // Só entra no modo "formulário com rótulo" quando reconhece nome ou
+    // telefone rotulados — senão cai pro modo genérico (cartão de contato
+    // colado solto), que já lida bem com texto sem essa estrutura.
+    if (nomeRotulado || telefoneRotulado) {
+      if (nomeRotulado) setName(nomeRotulado)
+      if (telefoneRotulado) {
+        const tel = extrairTelefone(telefoneRotulado)
+        if (tel) {
+          setDdd(String(tel.ddd))
+          setPhone(tel.phone)
+        }
+      }
+      const emailRotulado = achaCampo(campos, ...LABELS_EMAIL)
+      if (emailRotulado) setEmail(emailRotulado)
+      const cidadeRotulada = achaCampo(campos, ...LABELS_CIDADE)
+      if (cidadeRotulada) setCity(cidadeRotulada)
+
+      // Perguntas sem rótulo reconhecido (ex: "Você trabalha com compressor
+      // de ar?") viram observação, e se a resposta bater com um segmento
+      // conhecido, preenche o segmento sozinho.
+      const extras = campos.filter((c) => !LABELS_CONHECIDOS.some((l) => normalizar(c.label).includes(l)))
+      if (extras.length) {
+        setObservations(extras.map((c) => `${c.label}: ${c.valor}`).join('\n'))
+        for (const c of extras) {
+          const seg = segmentoPorResposta(c.valor)
+          if (seg) {
+            setSegment(seg)
+            break
+          }
+        }
+      }
+
+      // Não existe campo de CNPJ no cadastro de lead — o "Empresa do lead"
+      // é o lugar mais próximo, então preenche com o CNPJ bruto primeiro
+      // (nunca perde o dado) e, se for um CNPJ válido de verdade (14
+      // dígitos), troca pela razão social consultada na Receita.
+      const cnpjRotulado = achaCampo(campos, ...LABELS_CNPJ)
+      if (cnpjRotulado) {
+        setCompany(cnpjRotulado)
+        const cnpjDigitos = cnpjRotulado.replace(/\D/g, '')
+        if (cnpjDigitos.length === 14 && cnpjDigitos !== ultimoCnpjConsultadoRef.current) {
+          ultimoCnpjConsultadoRef.current = cnpjDigitos
+          setBuscandoCnpj(true)
+          try {
+            const dados = await utils.clientes.cnpjLookup.fetch({ cnpj: cnpjDigitos })
+            if (dados) {
+              setCompany(dados.razaoSocial)
+              if (!cidadeRotulada && dados.cidade) setCity(dados.cidade)
+            }
+          } catch {
+            // Consulta fora do ar ou CNPJ não encontrado não deve travar o
+            // resto do preenchimento — fica o valor bruto já preenchido.
+          } finally {
+            setBuscandoCnpj(false)
+          }
+        }
+      }
+      return
+    }
+
+    // Texto solto (cartão de contato copiado, sem rótulos) — heurística
+    // antiga: 1ª linha vira nome, 1º telefone/e-mail reconhecido no texto.
     const tel = extrairTelefone(texto)
     if (tel) {
       setDdd(String(tel.ddd))
@@ -153,7 +281,10 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
         </div>
         <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <div className="grid grid-cols-2 gap-2">
-          <Input label="Empresa do lead" value={company} onChange={(e) => setCompany(e.target.value)} />
+          <div>
+            <Input label="Empresa do lead" value={company} onChange={(e) => setCompany(e.target.value)} />
+            {buscandoCnpj && <p className="text-xs text-dark-500 mt-1">Consultando CNPJ na Receita...</p>}
+          </div>
           <Input label="Cidade" value={city} onChange={(e) => setCity(e.target.value)} />
         </div>
         <Select
