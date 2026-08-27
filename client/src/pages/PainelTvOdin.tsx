@@ -1,6 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { Settings, MapPin, UserPlus } from 'lucide-react'
-import { FunnelChart, Funnel, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts'
+import { Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from 'recharts'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
@@ -24,31 +24,6 @@ const COR_PEDIDOS = '#8b6fd1'
 const COR_VENDAS = '#0ca30c'
 
 const SEGUNDOS_PADRAO = 25
-
-function TooltipFunil({ active, payload }: { active?: boolean; payload?: { payload: { nome: string; valor: number } }[] }) {
-  if (!active || !payload?.length) return null
-  const { nome, valor } = payload[0].payload
-  return (
-    <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
-      <p className="text-dark-100 font-medium">{nome}</p>
-      <p className="text-dark-400">{valor}</p>
-    </div>
-  )
-}
-
-// Rótulo dentro de cada trapézio — desenhado via função customizada no
-// próprio prop `label` do <Funnel> (não como <LabelList> filho: no recharts
-// 3 instalado aqui isso quebra a renderização inteira do gráfico, mesmo bug
-// já documentado/contornado pro <Bar> em PainelTV.tsx — mesma solução).
-function RotuloFunil(props: any) {
-  const { x, y, width, height, value, name } = props
-  if (x == null || y == null || width == null || height == null) return null
-  return (
-    <text x={x + width / 2} y={y + height / 2} dy={4} textAnchor="middle" fill="#fff" fontSize={13} fontWeight={700}>
-      {`${name} · ${value}`}
-    </text>
-  )
-}
 
 function LabelFimDaBarra({ x, y, width, height, value }: { x?: number; y?: number; width?: number; height?: number; value?: number }) {
   if (x == null || y == null || width == null || height == null || value == null) return null
@@ -96,15 +71,30 @@ function Funil({
           <p className="text-xs text-dark-500">{subtitulo}</p>
         </div>
       </div>
-      <ResponsiveContainer width="100%" height={230}>
-        <FunnelChart>
-          <Tooltip content={<TooltipFunil />} />
-          <Funnel dataKey="valor" data={etapas} isAnimationActive={false} label={RotuloFunil} stroke="#111e2d" strokeWidth={2}>
+      {/* Barras horizontais em vez de gráfico de funil de verdade — as
+          etapas aqui não são um funil estrito (nem toda proposta/pedido
+          nasce da etapa anterior rastreada, ver comentário em
+          dashboardOdin.ts), então o valor pode CRESCER de uma etapa pra
+          outra. O componente <Funnel> do recharts pressupõe valores sempre
+          decrescentes e distorce feio quando isso não acontece — barra
+          horizontal representa qualquer combinação de valores sem ficar
+          esquisita. */}
+      <ResponsiveContainer width="100%" height={etapas.length * 42 + 10}>
+        <BarChart data={etapas} layout="vertical" margin={{ top: 0, right: 36, bottom: 0, left: 0 }} barCategoryGap={10}>
+          <XAxis type="number" hide domain={[0, 'dataMax']} />
+          <YAxis type="category" dataKey="nome" width={90} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
+          <Bar
+            dataKey="valor"
+            radius={[0, 4, 4, 0]}
+            maxBarSize={26}
+            isAnimationActive={false}
+            label={(props: any) => <LabelFimDaBarra {...props} />}
+          >
             {etapas.map((e, i) => (
               <Cell key={e.nome} fill={cores[i]} />
             ))}
-          </Funnel>
-        </FunnelChart>
+          </Bar>
+        </BarChart>
       </ResponsiveContainer>
       <div className="space-y-1.5 mt-2 pt-3 border-t border-dark-700/60">
         {conversoes.map((c) => (
