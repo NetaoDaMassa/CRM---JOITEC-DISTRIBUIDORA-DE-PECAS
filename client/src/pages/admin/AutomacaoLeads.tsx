@@ -125,13 +125,15 @@ export default function AutomacaoLeads() {
   }
   useEffect(() => () => pararPollQr(), [])
 
+  // Hooks têm que vir todos ANTES de qualquer return condicional.
+  const sujo = useMemo(
+    () => (cfg ? JSON.stringify(cfg) !== JSON.stringify(painel.data?.config) : false),
+    [cfg, painel.data],
+  )
+
   if (!cfg) return <div className="p-6 text-dark-400">Carregando…</div>
 
   const patch = (p: Partial<Config>) => setCfg({ ...cfg, ...p })
-  const sujo = useMemo(
-    () => JSON.stringify(cfg) !== JSON.stringify(painel.data?.config),
-    [cfg, painel.data],
-  )
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
