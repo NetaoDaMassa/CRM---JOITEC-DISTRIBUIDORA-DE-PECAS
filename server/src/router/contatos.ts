@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull, lte } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { registroContato, funilMensal } from '../db/schema.js'
+import { registroContato, funilMensal, compromissos } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 
 export const contatosRouter = router({
@@ -74,6 +74,23 @@ export const contatosRouter = router({
           dataUltimoContato: agoraSqlite(),
         })
         .where(eq(funilMensal.id, input.funilMensalId))
+
+      // Contato de verdade acabou de ser registrado — se o cliente tinha
+      // compromisso pendente já atrasado (badge vermelho no card), considera
+      // resolvido: o vendedor fez contato, só não bateu exatamente na hora
+      // marcada. Só os JÁ atrasados (dataHora no passado) — um lembrete
+      // futuro não deve fechar sozinho só porque teve outro contato hoje.
+      await db
+        .update(compromissos)
+        .set({ concluido: true, updatedAt: agoraSqlite() })
+        .where(
+          and(
+            eq(compromissos.clienteId, funil.clienteId),
+            eq(compromissos.concluido, false),
+            isNull(compromissos.deletedAt),
+            lte(compromissos.dataHora, agoraSqlite())
+          )
+        )
 
       return { success: true }
     }),
