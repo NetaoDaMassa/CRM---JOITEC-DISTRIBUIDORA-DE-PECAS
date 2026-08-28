@@ -244,6 +244,10 @@ export const painelRouter = router({
       .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
       .where(and(eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt), filtroVendedorEmpresa))
 
+    // Sem limite de propósito — o Painel de TV rola a página inteira sozinho
+    // (useAutoScroll no client) até o fim do slide antes de trocar, então
+    // cortar em 15 escondia negociação de quem tem mais que isso aberto (o
+    // selo do topo já mostrava o total certo, só a tabela ficava incompleta).
     const negociosAbertos = await db
       .select({
         clienteId: funilMensal.clienteId,
@@ -264,12 +268,15 @@ export const painelRouter = router({
           eq(users.empresaId, ctx.empresaId)
         )
       )
-      .orderBy(desc(funilMensal.dataEntradaEtapa))
-      .limit(15)
+      // Maior valor orçado primeiro — pedido do João, quem tem mais dinheiro
+      // parado em negociação chama mais atenção no telão do que quem entrou
+      // na etapa mais recentemente. Sem valor lançado fica por último (NULL
+      // ordena como "menor que qualquer valor" no SQLite, já cai no fim sozinho).
+      .orderBy(desc(funilMensal.valorOrcado))
 
     // Total de orçamentos/propostas em aberto (todos os negócios em
-    // "negociação" esse mês, não só os 15 exibidos na tabela) — pro tile de
-    // resumo no Dashboard e no Painel de TV.
+    // "negociação" esse mês — mesma lista de `negociosAbertos` acima, contada
+    // e somada) — pro tile de resumo no Dashboard e no Painel de TV.
     const [{ orcamentosAbertosValor, orcamentosAbertosQtd }] = await db
       .select({ orcamentosAbertosValor: sum(funilMensal.valorOrcado).mapWith(Number), orcamentosAbertosQtd: count() })
       .from(funilMensal)
