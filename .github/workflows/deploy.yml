@@ -1,10 +1,9 @@
 name: Deploy CRM Joitec
 
 on:
-  # Deploy automático: todo push no main atualiza a VPS sozinho.
-  push:
-    branches: [main]
-  # Continua dando pra disparar na mão pela aba Actions, se precisar.
+  # Fallback manual pela aba Actions. O deploy automático é feito pela própria
+  # VPS (cron /root/joitec-autodeploy.sh) — o SSH de entrada do GitHub runner
+  # é bloqueado de forma intermitente pela rede da Hostinger.
   workflow_dispatch:
 
 concurrency:
