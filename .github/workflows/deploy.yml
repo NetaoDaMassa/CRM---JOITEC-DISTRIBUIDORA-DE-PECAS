@@ -1,6 +1,10 @@
 name: Deploy CRM Joitec
 
 on:
+  # Deploy automático: todo push no main atualiza a VPS sozinho.
+  push:
+    branches: [main]
+  # Continua dando pra disparar na mão pela aba Actions, se precisar.
   workflow_dispatch:
 
 concurrency:
