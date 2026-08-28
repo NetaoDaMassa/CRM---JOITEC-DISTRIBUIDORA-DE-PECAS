@@ -1,9 +1,24 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
+
+// Todas as seções da página (dentro e fora do formulário principal) — usado
+// pra busca filtrar por título de seção, igual a busca da sidebar já faz
+// por item de menu. Precisa bater com os `<h2>` de cada bloco abaixo.
+const TITULOS_SECOES_FORM = [
+  'Segurança de login',
+  'Meta geral da empresa',
+  'Metas padrão (vendedor novo)',
+  'Ligações automáticas (GoTo Connect)',
+  'Notificações',
+  'Horário de expediente (seg-sex)',
+  'Painel de TV',
+  'Backup',
+]
 
 // Itens de manutenção por horas (filtro de ar, óleo, elemento separador...)
 // — configurável só pra Odin Compressores, que é quem acompanha isso no
@@ -334,6 +349,18 @@ export default function AdminConfiguracoes() {
   const [almocoInicio, setAlmocoInicio] = useState('12:00')
   const [almocoFim, setAlmocoFim] = useState('13:00')
   const [carregado, setCarregado] = useState(false)
+  const [busca, setBusca] = useState('')
+  const buscaNorm = busca.trim().toLowerCase()
+  function bate(titulo: string): boolean {
+    return !buscaNorm || titulo.toLowerCase().includes(buscaNorm)
+  }
+  const formTemAlgoVisivel = TITULOS_SECOES_FORM.some(bate)
+  const titulosForaForm = [
+    'Integração GoTo Connect',
+    ...(user?.superAdmin ? ['Integração Aton ERP (Compretec)', 'Integração CRM Odin Compressores'] : []),
+    ...(ehOdinCompressores ? ['Itens de manutenção por horas'] : []),
+  ]
+  const nadaEncontrado = !!buscaNorm && !formTemAlgoVisivel && !titulosForaForm.some(bate)
 
   function paraHHMM(hora: number, minuto: number): string {
     return `${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')}`
@@ -405,7 +432,23 @@ export default function AdminConfiguracoes() {
   return (
     <div className="p-6 max-w-lg space-y-4">
       <h1 className="font-heading text-xl text-dark-50">Configurações</h1>
+
+      <div className="relative">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
+        <input
+          type="text"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar em Configurações..."
+          className="w-full bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 placeholder-dark-500 pl-8 pr-3 py-2 focus:outline-none focus:border-gold-600"
+        />
+      </div>
+
+      {nadaEncontrado && <p className="text-sm text-dark-500">Nada encontrado pra "{busca.trim()}".</p>}
+
+      {formTemAlgoVisivel && (
       <form onSubmit={handleSubmit} className="space-y-4 bg-dark-800 border border-dark-600 rounded-2xl p-5">
+        {bate('Segurança de login') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Segurança de login</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -423,7 +466,9 @@ export default function AdminConfiguracoes() {
             />
           </div>
         </div>
+        )}
 
+        {bate('Meta geral da empresa') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Meta geral da empresa</h2>
           <Input
@@ -437,7 +482,9 @@ export default function AdminConfiguracoes() {
             individual.
           </p>
         </div>
+        )}
 
+        {bate('Metas padrão (vendedor novo)') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Metas padrão (vendedor novo)</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -455,7 +502,9 @@ export default function AdminConfiguracoes() {
             />
           </div>
         </div>
+        )}
 
+        {bate('Ligações automáticas (GoTo Connect)') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Ligações automáticas (GoTo Connect)</h2>
           <Input
@@ -470,7 +519,9 @@ export default function AdminConfiguracoes() {
             falou com o cliente ou caiu na caixa postal — a duração sozinha não prova que teve conversa de verdade.
           </p>
         </div>
+        )}
 
+        {bate('Notificações') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Notificações</h2>
           <Input
@@ -480,7 +531,9 @@ export default function AdminConfiguracoes() {
             onChange={(e) => setDiasSemContatoAlerta(e.target.value)}
           />
         </div>
+        )}
 
+        {bate('Horário de expediente (seg-sex)') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Horário de expediente (seg-sex)</h2>
           <div className="grid grid-cols-2 gap-3">
@@ -491,7 +544,9 @@ export default function AdminConfiguracoes() {
           </div>
           <p className="text-xs text-dark-500 mt-1.5">Sábado e domingo não trabalham — fixo no sistema.</p>
         </div>
+        )}
 
+        {bate('Painel de TV') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Painel de TV</h2>
           <Input
@@ -503,7 +558,9 @@ export default function AdminConfiguracoes() {
           />
           <p className="text-xs text-dark-500 mt-1.5">Quanto tempo cada tela fica visível antes de trocar pra próxima, automaticamente.</p>
         </div>
+        )}
 
+        {bate('Backup') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Backup</h2>
           <Input
@@ -513,18 +570,20 @@ export default function AdminConfiguracoes() {
             onChange={(e) => setBackupRetencaoDias(e.target.value)}
           />
         </div>
+        )}
 
         <Button type="submit" loading={setMut.isPending}>
           Salvar
         </Button>
       </form>
+      )}
 
-      <IntegracaoGoTo />
+      {bate('Integração GoTo Connect') && <IntegracaoGoTo />}
 
-      {user?.superAdmin && <IntegracaoAton />}
-      {user?.superAdmin && <IntegracaoOdinCrm />}
+      {user?.superAdmin && bate('Integração Aton ERP (Compretec)') && <IntegracaoAton />}
+      {user?.superAdmin && bate('Integração CRM Odin Compressores') && <IntegracaoOdinCrm />}
 
-      {ehOdinCompressores && <ItensManutencao />}
+      {ehOdinCompressores && bate('Itens de manutenção por horas') && <ItensManutencao />}
     </div>
   )
 }
