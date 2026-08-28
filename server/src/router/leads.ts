@@ -86,6 +86,44 @@ async function findEmpresaAdmin(empresaId: number): Promise<{ id: number; name: 
 }
 
 export const leadsRouter = router({
+  // Leads parados em "Novo" por vendedor — pro slide "Leads aguardando" do
+  // Painel de TV. Antes vinha do CRM de marketing externo (odin-tubos-crm,
+  // cruzado por username); trocado 2026-08-28 pra ler direto da tabela
+  // `leads` daqui, já que os leads de verdade agora moram no Joitec CRM (o
+  // sistema antigo tinha dado desatualizado — ex: vendedor sem lead nenhum
+  // aqui ainda aparecia lá).
+  aguardandoPorVendedor: protectedProcedure.query(async ({ ctx }) => {
+    const abertos = await db.query.leads.findMany({
+      where: and(eq(leads.empresaId, ctx.empresaId), eq(leads.status, 'novo'), isNull(leads.deletedAt)),
+      columns: { id: true, vendorId: true },
+    })
+
+    const vendedoresLocais = await db.query.users.findMany({
+      where: eq(users.empresaId, ctx.empresaId),
+      columns: { id: true, name: true, fotoUrl: true },
+    })
+    const porId = new Map(vendedoresLocais.map((v) => [v.id, v]))
+
+    const contagemPorVendedor = new Map<number, number>()
+    let semVendedor = 0
+    for (const l of abertos) {
+      if (l.vendorId == null) {
+        semVendedor++
+        continue
+      }
+      contagemPorVendedor.set(l.vendorId, (contagemPorVendedor.get(l.vendorId) ?? 0) + 1)
+    }
+
+    const vendedores = [...contagemPorVendedor.entries()]
+      .map(([vendorId, leadsNovo]) => {
+        const local = porId.get(vendorId)
+        return { id: vendorId, nome: local?.name ?? `Vendedor #${vendorId}`, fotoUrl: local?.fotoUrl ?? null, leadsNovo }
+      })
+      .sort((a, b) => b.leadsNovo - a.leadsNovo)
+
+    return { totalLeadsNovo: abertos.length, semVendedor, vendedores }
+  }),
+
   list: protectedProcedure
     .input(
       z.object({

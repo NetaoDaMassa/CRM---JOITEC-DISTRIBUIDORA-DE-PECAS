@@ -594,11 +594,10 @@ const SlideNegociacoes = memo(function SlideNegociacoes({ data }: { data: Painel
   )
 })
 
-type LeadsNovoData = NonNullable<RouterOutputs['integracoes']['leadsNovoMarketing']>
+type LeadsNovoData = RouterOutputs['leads']['aguardandoPorVendedor']
 
-// Leads que chegaram pelo CRM de marketing (site, tráfego pago etc.) e ainda
-// estão em "Novo" por lá, esperando alguém puxar pra carteira daqui — cruzado
-// por vendedor pelo username, que é o mesmo nos dois sistemas.
+// Leads (site, tráfego pago etc.) que ainda estão em "Novo" no Joitec CRM,
+// esperando algum vendedor abordar — por vendedor.
 const SlideLeadsNovo = memo(function SlideLeadsNovo({ data }: { data: LeadsNovoData }) {
   const maiorFila = Math.max(0, ...data.vendedores.map((v) => v.leadsNovo))
   return (
@@ -669,10 +668,10 @@ export default function PainelTV() {
   const { data } = trpc.painel.resumo.useQuery(undefined, { refetchInterval: 15000, refetchIntervalInBackground: true })
   const { celebracao, fecharCelebracao } = useCelebrarMeta(data?.vendedores)
 
-  // Some sozinho da rotação se a ponte com o CRM de marketing não estiver
-  // configurada (MARKETING_CRM_URL/MARKETING_CRM_API_KEY vazios no servidor)
-  // ou se a empresa ativa aqui não existir por lá.
-  const { data: leadsNovoMarketing } = trpc.integracoes.leadsNovoMarketing.useQuery(undefined, {
+  // Leads parados em "Novo" na tabela local (trocado 2026-08-28 — antes
+  // vinha do CRM de marketing externo, que ficava com dado desatualizado).
+  // Some sozinho da rotação quando não tem nenhum lead esperando.
+  const { data: leadsAguardando } = trpc.leads.aguardandoPorVendedor.useQuery(undefined, {
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   })
@@ -684,7 +683,9 @@ export default function PainelTV() {
     { titulo: 'Conversão', render: SlideConversao },
     { titulo: 'Tendências', render: SlideTendencias },
     { titulo: 'Orçamentos', render: SlideNegociacoes },
-    ...(leadsNovoMarketing ? [{ titulo: 'Leads aguardando', render: () => <SlideLeadsNovo data={leadsNovoMarketing} /> }] : []),
+    ...(leadsAguardando && leadsAguardando.totalLeadsNovo > 0
+      ? [{ titulo: 'Leads aguardando', render: () => <SlideLeadsNovo data={leadsAguardando} /> }]
+      : []),
   ]
   const [slideAtual, setSlideAtual] = useState(0)
   const [configAberta, setConfigAberta] = useState(false)
