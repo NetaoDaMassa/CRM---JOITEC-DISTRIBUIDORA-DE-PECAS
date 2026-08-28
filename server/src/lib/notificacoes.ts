@@ -3,6 +3,7 @@ import { db } from '../db/client.js'
 import { funilMensal, notifications } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from './dataBr.js'
 import { getConfigNumero } from './configuracoes.js'
+import { ultimoContatoDoGrupoPorCliente } from './coberturaContatos.js'
 
 const ETAPAS_ABERTAS = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato'] as const
 
@@ -19,6 +20,10 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
     with: { cliente: { columns: { razaoSocial: true } } },
   })
 
+  // Último contato considerando CNPJs vinculados do mesmo vendedor — pra não
+  // alertar sobre a filial quando a matriz já foi contatada.
+  const ultimoContatoGrupo = await ultimoContatoDoGrupoPorCliente(mesAtual)
+
   let criadas = 0
 
   for (const funil of funis) {
@@ -30,7 +35,8 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
     if (!funil.cliente) continue
     if (!ETAPAS_ABERTAS.includes(funil.etapa as (typeof ETAPAS_ABERTAS)[number])) continue
 
-    const dias = diasDesde(funil.dataUltimoContato ?? funil.dataEntradaEtapa)
+    const ultimoContato = ultimoContatoGrupo.get(funil.clienteId) ?? funil.dataUltimoContato
+    const dias = diasDesde(ultimoContato ?? funil.dataEntradaEtapa)
     if (dias === null || dias < limiteDias) continue
 
     const jaNotificadoRecente = await db.query.notifications.findFirst({

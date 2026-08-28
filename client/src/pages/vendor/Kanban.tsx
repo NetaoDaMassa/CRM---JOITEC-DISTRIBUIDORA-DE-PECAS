@@ -24,6 +24,7 @@ export default function VendorKanban() {
       </div>
       <FunilBoard
         cards={cards ?? []}
+        coberturaMes={mesReferencia}
         permitirVendaRapida={ehCompretecLojaFisica}
         mostrarFaturamento={ehCompretecLojaFisica}
         mostrarConsumidorFinalLoja={ehCompretecLojaFisica}

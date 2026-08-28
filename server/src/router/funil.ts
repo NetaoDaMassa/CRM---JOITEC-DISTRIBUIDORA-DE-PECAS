@@ -6,6 +6,7 @@ import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitaco
 import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
+import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { SLUG_VENDA_RAPIDA } from './vendas.js'
 
@@ -320,6 +321,16 @@ export const funilRouter = router({
     .input(z.object({ vendedorId: z.number(), mesReferencia: z.string().optional() }))
     .query(async ({ ctx, input }) => {
       return buscarFunilDoVendedor(input.vendedorId, ctx.user.id, true, input.mesReferencia)
+    }),
+
+  // Cobertura de contato do mês (widget do Kanban). Denominador = carteira
+  // inteira do vendedor; conta qualquer tipo de contato; CNPJ vinculado do
+  // mesmo vendedor propaga. Vendedor vê a própria; admin passa vendedorId.
+  coberturaContatos: protectedProcedure
+    .input(z.object({ vendedorId: z.number().optional(), mesReferencia: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const alvo = ctx.user.role === 'admin' && input?.vendedorId ? input.vendedorId : ctx.user.id
+      return coberturaContatosVendedor(ctx.empresaId, alvo, input?.mesReferencia ?? mesReferenciaAtual())
     }),
 
   // Visão "Faturamento Geral" — todos os cards Fechado/Faturamento da

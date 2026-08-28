@@ -14,6 +14,7 @@ import {
   logAuditoria,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
+import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 
 // Vendedores que o usuário logado tem permissão de ver neste relatório —
 // admin vê todos (ou só um, se filtrar) e vendedor só vê a si mesmo.
@@ -274,45 +275,27 @@ export const reportsRouter = router({
     return linhas
   }),
 
-  // "Vendedor tem 100 clientes, pra quantos ele ligou ou mandou WhatsApp no
-  // mês" — cobertura de contato por telefone, por vendedor (não conta
-  // e-mail/visita, só os dois canais que o João pediu: "whats e fones").
-  // Mesmo formato de `positivacaoPorVendedor`, trocando "comprou" por
-  // "recebeu contato".
+  // "Vendedor tem 100 clientes, pra quantos ele teve contato no mês" — usa o
+  // MESMO cálculo do widget do Kanban e do alerta (lib/coberturaContatos.ts):
+  // denominador = carteira inteira; conta QUALQUER tipo de contato; CNPJ
+  // vinculado do mesmo vendedor propaga. O mês vem da data de início do
+  // filtro.
   contatosCoberturaPorVendedor: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
-    const { inicio, fim } = limitesDia(input)
     const vendedores = await vendedoresPermitidos(ctx, input.vendedorId)
-    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    const mesRef = `${input.dataInicio.slice(0, 7)}-01`
 
     const linhas = await Promise.all(
       vendedores.map(async (v) => {
-        const filtrosCarteira = [eq(clientes.vendedorAtualId, v.id), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)]
-        if (filtroReg) filtrosCarteira.push(filtroReg)
-        const [{ totalCarteira }] = await db.select({ totalCarteira: count() }).from(clientes).where(and(...filtrosCarteira))
-
-        const filtrosContatados = [
-          eq(funilMensal.vendedorId, v.id),
-          sql`${registroContato.tipo} in ('whatsapp', 'ligacao')`,
-          between(registroContato.dataHora, inicio, fim),
-          isNull(registroContato.deletedAt),
-        ]
-        if (filtroReg) filtrosContatados.push(filtroReg)
-        const [{ contatados }] = await db
-          .select({ contatados: sql<number>`count(distinct ${funilMensal.clienteId})`.mapWith(Number) })
-          .from(registroContato)
-          .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
-          .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
-          .where(and(...filtrosContatados))
-
+        const c = await coberturaContatosVendedor(ctx.empresaId, v.id, mesRef, input.regiao)
         return {
           vendedorId: v.id,
           nome: v.name,
-          totalCarteira,
-          contatados,
-          semContato: totalCarteira - contatados,
-          percentual: totalCarteira > 0 ? Math.round((contatados / totalCarteira) * 1000) / 10 : 0,
+          totalCarteira: c.total,
+          contatados: c.contatados,
+          semContato: c.semContato,
+          percentual: c.percentual,
         }
-      })
+      }),
     )
     return linhas.sort((a, b) => b.percentual - a.percentual)
   }),

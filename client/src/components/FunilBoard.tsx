@@ -376,8 +376,15 @@ export default function FunilBoard({
   mostrarFaturamento,
   mostrarConsumidorFinalLoja,
   apenasEtapas,
+  coberturaMes,
+  coberturaVendedorId,
 }: {
   cards: Card[]
+  // Mês (YYYY-MM-01) pra mostrar o widget "Cobertura de contatos". Sem isso,
+  // o widget não aparece (ex: visão Faturamento Geral).
+  coberturaMes?: string
+  // Só o admin passa (qual vendedor). Vendedor não passa — o backend usa ele mesmo.
+  coberturaVendedorId?: number
   permitirVendaRapida?: boolean
   // Só o admin usa isso: qual vendedor recebe o crédito da venda rápida
   // registrada por ele (o vendor/Kanban.tsx não passa — lá é sempre o
@@ -499,15 +506,19 @@ export default function FunilBoard({
     sincronizando.current = false
   }
 
-  const totalClientes = cards.length
-  const clientesContatados = cards.filter((c) => c.qtdTentativasContato > 0).length
-  const clientesSemContato = totalClientes - clientesContatados
-  const percentualContatados = totalClientes > 0 ? Math.round((clientesContatados / totalClientes) * 100) : 0
+  // Cobertura vem do backend (carteira inteira do vendedor, qualquer tipo de
+  // contato, CNPJ vinculado do mesmo vendedor conta) — não é mais calculada
+  // pelos cards deste mês.
+  const { data: cobertura } = trpc.funil.coberturaContatos.useQuery(
+    { vendedorId: coberturaVendedorId, mesReferencia: coberturaMes },
+    { enabled: !!coberturaMes },
+  )
+  const percentualContatados = cobertura?.percentual ?? 0
   const corCobertura = percentualContatados >= 70 ? 'bg-green-500' : percentualContatados >= 40 ? 'bg-amber-500' : 'bg-red-500'
 
   return (
     <div>
-      {totalClientes > 0 && (
+      {!!coberturaMes && !!cobertura && cobertura.total > 0 && (
         <div className="mb-4 bg-dark-800 border border-dark-600 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-sm font-semibold text-dark-100">📞 Cobertura de contatos este mês</h3>
@@ -518,11 +529,11 @@ export default function FunilBoard({
           </div>
           <div className="flex items-center justify-between mt-2 text-xs">
             <span className="text-green-400 font-medium">
-              ✅ {pluralizar(clientesContatados, 'cliente contatado', 'clientes contatados')}
+              ✅ {pluralizar(cobertura.contatados, 'cliente contatado', 'clientes contatados')}
             </span>
-            <span className={clientesSemContato > 0 ? 'text-red-400 font-medium' : 'text-dark-500'}>
-              {clientesSemContato > 0 ? '⚠️ ' : ''}
-              {pluralizar(clientesSemContato, 'cliente sem contato', 'clientes sem contato')} ainda
+            <span className={cobertura.semContato > 0 ? 'text-red-400 font-medium' : 'text-dark-500'}>
+              {cobertura.semContato > 0 ? '⚠️ ' : ''}
+              {pluralizar(cobertura.semContato, 'cliente sem contato', 'clientes sem contato')} ainda
             </span>
           </div>
         </div>

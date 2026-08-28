@@ -49,6 +49,8 @@ export default function AdminKanban() {
       {!isLoading && vendedorId !== null && (
         <FunilBoard
           cards={cards ?? []}
+          coberturaMes={mesReferencia}
+          coberturaVendedorId={vendedorId}
           permitirVendaRapida={ehCompretecLojaFisica}
           vendedorIdVendaRapida={vendedorId}
           mostrarFaturamento={ehCompretecLojaFisica}
