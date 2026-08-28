@@ -481,12 +481,14 @@ async function registrarLigacaoAutomatica(numeroExterno: string, duracaoMs: numb
           : `Ligação captada automaticamente pela integração GoTo Connect — confirme se você conversou com o cliente ou se caiu na caixa postal.${duracaoTexto}`,
       })
       .returning({ id: registroContato.id })
-    await db
-      .update(funilMensal)
-      .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
-      .where(eq(funilMensal.id, funil.id))
+    // `efetiva` aqui é sempre false (GoTo não confirma sozinho se rolou
+    // conversa de verdade) — não conta como tentativa ainda; só quando o
+    // vendedor confirmar/editar esse registro (ver contatos.ts) é que
+    // funilMensal é atualizado. Senão uma ligação perdida sozinha já
+    // destrava sair de "Novo" e infla a Cobertura de Contatos sem ninguém
+    // ter conversado com o cliente (achado do João, 2026-08-28).
 
-    console.log(`[goto] ligação registrada automaticamente pro cliente ${cliente.id}`)
+    console.log(`[goto] ligação registrada automaticamente pro cliente ${cliente.id} (aguardando confirmação)`)
     return { clienteId: cliente.id, registroContatoId: registro?.id }
   }
 

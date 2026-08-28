@@ -35,11 +35,10 @@ export const contatosRouter = router({
         observacao: 'WhatsApp aberto pelo sistema — aguardando confirmação se o contato foi realizado.',
       })
 
-      await db
-        .update(funilMensal)
-        .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
-        .where(eq(funilMensal.id, funil.id))
-
+      // Só conta como tentativa de contato de verdade quando confirmado
+      // (ver `confirmar`/`editar` abaixo) — abrir o wa.me sozinho não prova
+      // que teve conversa, senão infla a Cobertura de Contatos e destrava
+      // sair de "Novo" sem contato nenhum (achado do João, 2026-08-28).
       return { success: true }
     }),
 
@@ -84,6 +83,12 @@ export const contatosRouter = router({
   // Marca resultado='confirmado' (não conta como `efetiva` — só "respondeu"
   // conta, ver editar) e, se o card ainda estiver em "Novo", já move pra
   // "Abordagem" (regra pedida: confirmar um contato tira o cliente de Novo).
+  //
+  // É AQUI (e em `editar`, na 1ª vez que o registro ganha um resultado) que
+  // um registro automático (whatsapp_automatico/ligacao_automatica) passa a
+  // contar em funilMensal.qtdTentativasContato — antes disso ele fica
+  // "pendente" e não conta, pra não inflar a Cobertura de Contatos nem
+  // destravar sair de "Novo" sozinho (achado do João, 2026-08-28).
   confirmar: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const contato = await db.query.registroContato.findFirst({ where: eq(registroContato.id, input.id) })
     if (!contato) throw new Error('Contato não encontrado')
@@ -94,6 +99,7 @@ export const contatosRouter = router({
 
     if (!contato.resultado) {
       await db.update(registroContato).set({ resultado: 'confirmado' }).where(eq(registroContato.id, input.id))
+      if (contato.origem !== 'manual') await contarTentativaSePendente(contato.funilMensalId)
     }
     return { success: true }
   }),
@@ -116,6 +122,8 @@ export const contatosRouter = router({
           (await ehMesCorrente(contato.funilMensalId)))
       if (!podeEditar) throw new Error('Não é mais possível editar este contato (mês fechado ou não é seu).')
 
+      const eraPendente = !contato.resultado
+
       await db
         .update(registroContato)
         .set({
@@ -124,6 +132,13 @@ export const contatosRouter = router({
           efetiva: contato.tipo === 'ligacao' ? input.resultado === 'respondeu' : contato.efetiva,
         })
         .where(eq(registroContato.id, input.id))
+
+      // Editar um registro automático ainda pendente e dar um resultado a
+      // ele conta como a 1ª confirmação, igual clicar em "Confirmar" — ver
+      // comentário lá.
+      if (eraPendente && input.resultado && contato.origem !== 'manual') {
+        await contarTentativaSePendente(contato.funilMensalId)
+      }
       return { success: true }
     }),
 
@@ -144,4 +159,16 @@ export const contatosRouter = router({
 async function ehMesCorrente(funilMensalId: number): Promise<boolean> {
   const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, funilMensalId) })
   return funil?.mesReferencia === mesReferenciaAtual()
+}
+
+// Só chamada pra registro automático que ainda estava sem resultado (nunca
+// tinha sido contado) — resultado não volta pra null depois de definido,
+// então isso nunca conta a mesma tentativa 2x.
+async function contarTentativaSePendente(funilMensalId: number): Promise<void> {
+  const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, funilMensalId) })
+  if (!funil) return
+  await db
+    .update(funilMensal)
+    .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
+    .where(eq(funilMensal.id, funilMensalId))
 }

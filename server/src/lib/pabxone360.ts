@@ -318,10 +318,17 @@ export async function registrarLigacoesAutomaticasPabxone360(
       })
       .returning({ id: registroContato.id })
 
-    await db
-      .update(funilMensal)
-      .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
-      .where(eq(funilMensal.id, funil.id))
+    // Ligação não atendida/curta demais fica registrada no histórico do card
+    // (pro vendedor ver que a integração captou algo), mas não conta como
+    // "tentativa de contato" de verdade — senão uma ligação perdida sozinha
+    // já destrava sair de "Novo" e infla a Cobertura de Contatos sem
+    // ninguém ter conversado com o cliente (achado do João, 2026-08-28).
+    if (chamada.efetiva) {
+      await db
+        .update(funilMensal)
+        .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
+        .where(eq(funilMensal.id, funil.id))
+    }
 
     await finalizar({ direcao, numeroExterno, clienteId: cliente.id, registroContatoId: registro?.id })
   }
