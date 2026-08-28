@@ -26,8 +26,10 @@ const ITENS_EXTRAS = [
   { to: '/admin/permissoes', label: 'Permissões' },
   { to: '/admin/funcoes', label: 'Funções' },
   { to: '/admin/leads-regioes', label: 'Regiões de Leads' },
+  { to: '/admin/automacoes', label: 'Automações' },
   { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar' },
   { to: '/painel-financeiro', label: 'Painel Financeiro' },
+  { to: '/painel-tv-odin', label: 'Painel de TV Odin' },
 ]
 const TODOS_ITENS = [...ITENS_ADMIN, ...ITENS_VENDEDOR, ...ITENS_EXTRAS]
 const LABEL_POR_ITEM = new Map(TODOS_ITENS.map((i) => [i.to, i.label]))
