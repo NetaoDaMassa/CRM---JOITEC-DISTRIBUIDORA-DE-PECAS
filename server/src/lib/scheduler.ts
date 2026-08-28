@@ -7,7 +7,7 @@ import { getConfigTexto, getConfigNumero } from './configuracoes.js'
 import { registrarLigacoesAutomaticasPabxone360 } from './pabxone360.js'
 import { executarAvisoLeadsNovos, type Periodo } from './avisoLeadsNovos.js'
 import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
-import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv } from './avisoLeadsConfig.js'
+import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -47,15 +47,16 @@ async function sincronizarPabxone360() {
   if (registradas > 0) console.log(`[pabxone360] ${registradas} ligação(ões) registrada(s) automaticamente`)
 }
 
-// Aviso amigável de leads novos no WhatsApp (ver avisoLeadsNovos.ts). 2x por
-// dia, só dias úteis, fuso America/Sao_Paulo. Config fica na tabela
+// Aviso amigável de leads novos no WhatsApp (ver avisoLeadsNovos.ts) — POR
+// EMPRESA. 2x por dia, só dias úteis, fuso America/Sao_Paulo. Config na tabela
 // `configuracoes` (tela Automações) — este agendador relê a cada minuto e se
-// re-registra sozinho quando o gestor liga/desliga ou muda os horários.
-let tarefasAvisoLeads: ScheduledTask[] = []
-let assinaturaAtual = '' // "enabled|horarios|dryRun" — pra saber se mudou
+// re-registra sozinho quando o gestor liga/desliga ou muda os horários de
+// qualquer empresa. O WhatsApp que envia é um só pra todas.
+const tarefasAvisoLeads = new Map<number, ScheduledTask[]>() // empresaId → tarefas
+const assinaturaPorEmpresa = new Map<number, string>() // empresaId → "horarios|dryRun"
 
-function pararTarefasAvisoLeads() {
-  for (const t of tarefasAvisoLeads) {
+function pararTarefasEmpresa(empresaId: number) {
+  for (const t of tarefasAvisoLeads.get(empresaId) ?? []) {
     try {
       t.stop()
       t.destroy?.()
@@ -63,49 +64,62 @@ function pararTarefasAvisoLeads() {
       // ignora
     }
   }
-  tarefasAvisoLeads = []
+  tarefasAvisoLeads.delete(empresaId)
 }
 
-// Lê a config e (re)registra os crons se algo relevante mudou. Chamada no
+// (Re)registra os crons de cada empresa com a automação ligada. Chamada no
 // boot, a cada minuto, e na hora pelo router quando o gestor salva a tela.
 export async function reagendarAvisoLeadsNovos(): Promise<void> {
-  const conf = await getAvisoLeadsConfig()
-  const horarios = conf.horarios.split(',').map((s) => s.trim()).filter(Boolean)
-  const assinatura = `${conf.enabled ? 1 : 0}|${horarios.join(',')}|${conf.dryRun ? 1 : 0}`
-  if (assinatura === assinaturaAtual) return
-  assinaturaAtual = assinatura
+  const ativas = new Set(await getAvisoLeadsEmpresasAtivas())
 
-  pararTarefasAvisoLeads()
-
-  if (!conf.enabled) {
-    console.log('[aviso-leads] desativado (ligue pela tela Automações)')
-    return
+  // Empresas que estavam agendadas e não estão mais ativas → para.
+  for (const empresaId of [...tarefasAvisoLeads.keys()]) {
+    if (!ativas.has(empresaId)) {
+      pararTarefasEmpresa(empresaId)
+      assinaturaPorEmpresa.delete(empresaId)
+      console.log(`[aviso-leads] empresa ${empresaId} desativada`)
+    }
   }
 
-  const valido = horarios.length === 2 && horarios.every((h) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(h))
-  const usar = valido ? horarios : ['08:00', '17:30']
-  if (!valido) console.warn(`[aviso-leads] horários inválidos ("${conf.horarios}"), usando 08:00,17:30`)
+  let algumaPrecisaSessao = false
 
-  const periodos: Periodo[] = ['manha', 'tarde']
-  usar.forEach((hhmm, idx) => {
-    const [hora, minuto] = hhmm.split(':').map(Number)
-    const periodo = periodos[idx]
-    const tarefa = cron.schedule(
-      `${minuto} ${hora} * * 1-5`, // seg–sex
-      () => {
-        getAvisoLeadsConfig()
-          .then((c) => executarAvisoLeadsNovos({ periodo, dryRun: c.dryRun, testMode: c.testMode }))
-          .catch((err) => console.error('[aviso-leads] erro na rodada agendada:', err))
-      },
-      { timezone: 'America/Sao_Paulo' },
-    )
-    tarefasAvisoLeads.push(tarefa)
-    console.log(`[aviso-leads] agendado (${periodo}) ${hhmm} seg–sex, America/Sao_Paulo`)
-  })
+  for (const empresaId of ativas) {
+    const conf = await getAvisoLeadsConfig(empresaId)
+    if (!conf.dryRun) algumaPrecisaSessao = true
 
-  // Sobe a sessão do WhatsApp já, pra estar conectada quando a 1ª rodada
-  // disparar. Dry run puro não precisa.
-  if (!conf.dryRun) {
+    const horarios = conf.horarios.split(',').map((s) => s.trim()).filter(Boolean)
+    const valido = horarios.length === 2 && horarios.every((h) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(h))
+    const usar = valido ? horarios : ['08:00', '17:30']
+    if (!valido) console.warn(`[aviso-leads] empresa ${empresaId}: horários inválidos ("${conf.horarios}"), usando 08:00,17:30`)
+
+    const assinatura = `${usar.join(',')}|${conf.dryRun ? 1 : 0}`
+    if (assinaturaPorEmpresa.get(empresaId) === assinatura) continue // nada mudou
+    assinaturaPorEmpresa.set(empresaId, assinatura)
+    pararTarefasEmpresa(empresaId)
+
+    const periodos: Periodo[] = ['manha', 'tarde']
+    const tarefas = usar.map((hhmm, idx) => {
+      const [hora, minuto] = hhmm.split(':').map(Number)
+      const periodo = periodos[idx]
+      const tarefa = cron.schedule(
+        `${minuto} ${hora} * * 1-5`, // seg–sex
+        () => {
+          getAvisoLeadsConfig(empresaId)
+            .then((c) => executarAvisoLeadsNovos({ empresaId, periodo, dryRun: c.dryRun, testMode: c.testMode }))
+            .catch((err) => console.error(`[aviso-leads] empresa ${empresaId}: erro na rodada agendada:`, err))
+        },
+        { timezone: 'America/Sao_Paulo' },
+      )
+      console.log(`[aviso-leads] empresa ${empresaId} agendada (${periodo}) ${hhmm} seg–sex, America/Sao_Paulo`)
+      return tarefa
+    })
+    tarefasAvisoLeads.set(empresaId, tarefas)
+  }
+
+  if (ativas.size === 0) console.log('[aviso-leads] nenhuma empresa com a automação ligada')
+
+  // Sobe a sessão do WhatsApp (uma só pra todas) se alguma empresa envia de verdade.
+  if (algumaPrecisaSessao) {
     iniciarSessaoWhatsapp().catch((err) => console.error('[aviso-leads] falha ao iniciar sessão do WhatsApp:', err))
   }
 }

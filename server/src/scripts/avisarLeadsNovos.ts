@@ -11,8 +11,9 @@
 //   docker compose exec backend node dist/scripts/avisarLeadsNovos.js --teste
 //
 // Flags:
-//   --dry-run   não envia nada, só loga (ou AVISO_LEADS_DRY_RUN=true)
-//   --teste     envia tudo pro número de teste (ou AVISO_LEADS_TEST_MODE=true)
+//   --empresa <id>  qual empresa (padrão: 1 = Joitec Distribuidora)
+//   --dry-run   não envia nada, só loga
+//   --teste     envia tudo pro número de teste da empresa
 //   --manha / --tarde   força o tom da mensagem (padrão: decide pelo horário)
 
 import { config } from 'dotenv'
@@ -22,7 +23,11 @@ import { executarAvisoLeadsNovos, type Periodo } from '../lib/avisoLeadsNovos.js
 import { pararSessao } from '../lib/whatsapp/session.js'
 import { hojeBr } from '../lib/dataBr.js'
 
-const flags = new Set(process.argv.slice(2))
+const argv = process.argv.slice(2)
+const flags = new Set(argv)
+
+const idxEmpresa = argv.indexOf('--empresa')
+const empresaId = idxEmpresa >= 0 ? Number(argv[idxEmpresa + 1]) || 1 : 1
 
 const dryRun = flags.has('--dry-run') || process.env.AVISO_LEADS_DRY_RUN === 'true'
 const testMode = flags.has('--teste') || flags.has('--test') || process.env.AVISO_LEADS_TEST_MODE === 'true'
@@ -32,9 +37,9 @@ if (flags.has('--tarde')) periodo = 'tarde'
 else if (flags.has('--manha')) periodo = 'manha'
 else periodo = hojeBr().getUTCHours() < 12 ? 'manha' : 'tarde'
 
-console.log(`[aviso-leads] execução manual | período=${periodo} | dryRun=${dryRun} | testMode=${testMode}`)
+console.log(`[aviso-leads] execução manual | empresa=${empresaId} | período=${periodo} | dryRun=${dryRun} | testMode=${testMode}`)
 
-executarAvisoLeadsNovos({ periodo, dryRun, testMode })
+executarAvisoLeadsNovos({ empresaId, periodo, dryRun, testMode })
   .then(async (r) => {
     console.log('[aviso-leads] resultado:', JSON.stringify(r))
     await pararSessao().catch(() => {})

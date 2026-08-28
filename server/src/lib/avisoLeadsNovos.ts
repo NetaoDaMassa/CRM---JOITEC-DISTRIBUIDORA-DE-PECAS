@@ -1,18 +1,20 @@
-// Aviso amigável de leads novos no WhatsApp.
+// Aviso amigável de leads novos no WhatsApp — por empresa.
 //
-// 2x por dia (dias úteis) cada vendedor da Joitec recebe quantos leads ele
+// 2x por dia (dias úteis) cada vendedor da empresa recebe quantos leads ele
 // tem parados na etapa "Novo" do funil, com a lista. NÃO é cobrança de
 // atraso: não olha há quantos dias o lead está lá, não tem corte de tempo.
-// É só um lembrete de "tem gente esperando seu contato".
+// É só um lembrete de "tem gente esperando seu contato". Config (horários,
+// texto, número de teste, modos) é por empresa — ver avisoLeadsConfig.ts.
+// O número de WhatsApp que envia é o mesmo pra todas as empresas.
 //
 // SOMENTE LEITURA na tabela de leads — não move, não marca, não altera nada
 // no funil. A única escrita que este módulo faz é em `notifications` (sino do
 // CRM), e só no caso de a sessão do WhatsApp estar fora do ar.
 //
-// Modos (por variável de ambiente ou parâmetro):
+// Modos:
 //  - dryRun   : monta tudo e escreve no log, NÃO envia.
-//  - testMode : manda TODAS as mensagens pro AVISO_LEADS_TEST_NUMERO (um só
-//               número), em vez de mandar pra cada vendedor.
+//  - testMode : manda TODAS as mensagens pro número de teste da empresa (um
+//               só número), em vez de mandar pra cada vendedor.
 
 import { and, eq, isNull, isNotNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
@@ -23,10 +25,10 @@ import { getAvisoLeadsConfig, registrarUltimaExecucao } from './avisoLeadsConfig
 export type Periodo = 'manha' | 'tarde'
 
 export interface OpcoesAviso {
+  empresaId: number
   periodo: Periodo
   dryRun: boolean
   testMode: boolean
-  empresaId?: number
 }
 
 export interface MensagemMontada {
@@ -208,9 +210,8 @@ async function avisarAdminsNoSino(empresaId: number, periodo: Periodo, motivo: s
 // ── Orquestração ────────────────────────────────────────────────────────────
 
 export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<ResultadoAviso> {
-  const { periodo, dryRun, testMode } = opts
-  const conf = await getAvisoLeadsConfig()
-  const empresaId = opts.empresaId ?? conf.empresaId
+  const { empresaId, periodo, dryRun, testMode } = opts
+  const conf = await getAvisoLeadsConfig(empresaId)
   const minMs = conf.minIntervaloMs
   const maxMs = conf.maxIntervaloMs
   const testNumero = conf.testNumero
@@ -234,7 +235,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
   if (testMode && !dryRun && !testNumero) {
     console.error('[aviso-leads] modo teste ligado mas o número de teste está vazio — nada foi enviado.')
     resultado.abortadoPorConexao = true
-    await registrarUltimaExecucao(paraUltimaExecucao(resultado))
+    await registrarUltimaExecucao(empresaId, paraUltimaExecucao(resultado))
     return resultado
   }
 
@@ -258,7 +259,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
 
   if (vendedores.length === 0 && !temAlgoPraAvisarAdmin) {
     console.log(`[aviso-leads] rodada ${periodo}: nenhum lead "Novo" com vendedor — nada a notificar.`)
-    await registrarUltimaExecucao(paraUltimaExecucao(resultado))
+    await registrarUltimaExecucao(empresaId, paraUltimaExecucao(resultado))
     return resultado
   }
 
@@ -278,7 +279,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
       }
       resultado.abortadoPorConexao = true
       logFinal(resultado, inicio)
-      await registrarUltimaExecucao(paraUltimaExecucao(resultado))
+      await registrarUltimaExecucao(empresaId, paraUltimaExecucao(resultado))
       return resultado
     }
   }
@@ -335,7 +336,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
   }
 
   logFinal(resultado, inicio)
-  await registrarUltimaExecucao(paraUltimaExecucao(resultado))
+  await registrarUltimaExecucao(empresaId, paraUltimaExecucao(resultado))
   return resultado
 }
 

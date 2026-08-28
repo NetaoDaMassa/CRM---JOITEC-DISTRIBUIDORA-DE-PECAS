@@ -1,17 +1,18 @@
 // Tela "Automações → Aviso de leads no WhatsApp" (só superAdmin).
-// Controla a automação sem mexer em .env nem SSH: liga/desliga, horários,
-// número de teste, status/QR da sessão do WhatsApp, rodar agora, e os
-// telefones dos vendedores.
+// Controla a automação POR EMPRESA sem mexer em .env nem SSH: liga/desliga,
+// horários, texto, número de teste, status/QR do WhatsApp (uma sessão só pra
+// todas as empresas), rodar agora, e os telefones dos vendedores.
 
 import { z } from 'zod'
 import { and, eq, isNull, isNotNull } from 'drizzle-orm'
 import { router, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, leads } from '../db/schema.js'
+import { users, leads, empresas } from '../db/schema.js'
 import {
   getAvisoLeadsConfig,
   setAvisoLeadsConfig,
   getUltimaExecucao,
+  getAvisoLeadsEmpresasAtivas,
 } from '../lib/avisoLeadsConfig.js'
 import { getStatus, getUltimoQr, precisaPareamento, ensureStarted, desconectar } from '../lib/whatsapp/session.js'
 import { executarAvisoLeadsNovos, type Periodo } from '../lib/avisoLeadsNovos.js'
@@ -27,23 +28,37 @@ async function sessaoInfo() {
   return { status: getStatus(), precisaPareamento: precisaPareamento(), qr: getUltimoQr() }
 }
 
+const empresaInput = z.object({ empresaId: z.number().int().min(1) })
+
 export const avisoLeadsRouter = router({
-  // Estado completo pra montar a tela.
-  getPainel: superAdminProcedure.query(async () => {
-    const [config, ultimaExecucao] = await Promise.all([getAvisoLeadsConfig(), getUltimaExecucao()])
-    return { config, sessao: await sessaoInfo(), ultimaExecucao }
+  // Lista de empresas pro seletor da tela + quais têm a automação ligada.
+  listarEmpresas: superAdminProcedure.query(async () => {
+    const [todas, ativas] = await Promise.all([
+      db.query.empresas.findMany({ columns: { id: true, nome: true }, orderBy: (e, { asc }) => [asc(e.nome)] }),
+      getAvisoLeadsEmpresasAtivas(),
+    ])
+    const ativasSet = new Set(ativas)
+    return todas.map((e) => ({ id: e.id, nome: e.nome, ativa: ativasSet.has(e.id) }))
+  }),
+
+  // Estado completo pra montar a tela de uma empresa.
+  getPainel: superAdminProcedure.input(empresaInput).query(async ({ input }) => {
+    const [config, ultimaExecucao] = await Promise.all([
+      getAvisoLeadsConfig(input.empresaId),
+      getUltimaExecucao(input.empresaId),
+    ])
+    return { empresaId: input.empresaId, config, sessao: await sessaoInfo(), ultimaExecucao }
   }),
 
   salvarConfig: superAdminProcedure
     .input(
-      z.object({
+      empresaInput.extend({
         enabled: z.boolean().optional(),
         dryRun: z.boolean().optional(),
         testMode: z.boolean().optional(),
         testNumero: z.string().optional(),
         adminNumero: z.string().optional(),
         horarios: z.string().optional(),
-        empresaId: z.number().int().min(1).optional(),
         minIntervaloMs: z.number().int().min(0).optional(),
         maxIntervaloMs: z.number().int().min(0).optional(),
         msgManha: z.string().optional(),
@@ -51,13 +66,13 @@ export const avisoLeadsRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
-      await setAvisoLeadsConfig(input)
+      const { empresaId, ...patch } = input
+      await setAvisoLeadsConfig(empresaId, patch)
       await reagendarAvisoLeadsNovos()
-      return getAvisoLeadsConfig()
+      return getAvisoLeadsConfig(empresaId)
     }),
 
-  // Garante que a sessão está tentando conectar e devolve o QR atual (pra
-  // desenhar na tela). Chamado em loop pela tela enquanto não conecta.
+  // Sessão do WhatsApp — uma só pra todas as empresas (sem empresaId).
   getQr: superAdminProcedure.mutation(async () => {
     if (getStatus() === 'desconectado') {
       await ensureStarted().catch((err) => console.error('[aviso-leads] ensureStarted (getQr):', err))
@@ -70,11 +85,10 @@ export const avisoLeadsRouter = router({
     return { ok: true }
   }),
 
-  // Roda a automação agora, DENTRO do servidor (usa a sessão já conectada —
-  // sem o conflito do script em processo separado). Por padrão em dry run.
+  // Roda a automação agora, DENTRO do servidor (usa a sessão já conectada).
   rodarAgora: superAdminProcedure
     .input(
-      z.object({
+      empresaInput.extend({
         periodo: z.enum(['manha', 'tarde']).optional(),
         dryRun: z.boolean().default(true),
         testMode: z.boolean().default(true),
@@ -82,12 +96,12 @@ export const avisoLeadsRouter = router({
     )
     .mutation(async ({ input }) => {
       const periodo = input.periodo ?? periodoAgora()
-      return executarAvisoLeadsNovos({ periodo, dryRun: input.dryRun, testMode: input.testMode })
+      return executarAvisoLeadsNovos({ empresaId: input.empresaId, periodo, dryRun: input.dryRun, testMode: input.testMode })
     }),
 
-  // Vendedores da empresa configurada, com telefone e quantos leads "Novo".
-  listarVendedores: superAdminProcedure.query(async () => {
-    const { empresaId } = await getAvisoLeadsConfig()
+  // Vendedores da empresa, com telefone e quantos leads "Novo".
+  listarVendedores: superAdminProcedure.input(empresaInput).query(async ({ input }) => {
+    const { empresaId } = input
 
     const vendedores = await db.query.users.findMany({
       where: and(eq(users.empresaId, empresaId), eq(users.role, 'vendor'), eq(users.isActive, true)),
@@ -130,11 +144,10 @@ export const avisoLeadsRouter = router({
   }),
 
   salvarTelefoneVendedor: superAdminProcedure
-    .input(z.object({ userId: z.number().int(), whatsapp: z.string() }))
+    .input(empresaInput.extend({ userId: z.number().int(), whatsapp: z.string() }))
     .mutation(async ({ input }) => {
-      const { empresaId } = await getAvisoLeadsConfig()
       const alvo = await db.query.users.findFirst({
-        where: and(eq(users.id, input.userId), eq(users.empresaId, empresaId)),
+        where: and(eq(users.id, input.userId), eq(users.empresaId, input.empresaId)),
         columns: { id: true },
       })
       if (!alvo) throw new Error('Vendedor não encontrado nesta empresa')

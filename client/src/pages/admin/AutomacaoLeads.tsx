@@ -20,7 +20,6 @@ type Config = {
   testNumero: string
   adminNumero: string
   horarios: string
-  empresaId: number
   minIntervaloMs: number
   maxIntervaloMs: number
   msgManha: string
@@ -64,19 +63,41 @@ function QrImg({ texto }: { texto: string }) {
 
 export default function AutomacaoLeads() {
   const utils = trpc.useUtils()
-  const painel = trpc.avisoLeads.getPainel.useQuery(undefined, { refetchInterval: 15000 })
-  const vendedores = trpc.avisoLeads.listarVendedores.useQuery()
+  const empresas = trpc.avisoLeads.listarEmpresas.useQuery()
 
+  const [empresaId, setEmpresaId] = useState<number | null>(null)
   const [cfg, setCfg] = useState<Config | null>(null)
   const [qr, setQr] = useState<string | null>(null)
   const [buscandoQr, setBuscandoQr] = useState(false)
   const [previa, setPrevia] = useState<RodarResultado | null>(null)
   const qrTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Semeia o formulário com o que veio do servidor (uma vez).
+  // Escolhe uma empresa assim que a lista chega (a 1ª que já está ligada, ou a 1ª).
   useEffect(() => {
-    if (painel.data && !cfg) setCfg(painel.data.config)
-  }, [painel.data, cfg])
+    if (empresaId == null && empresas.data?.length) {
+      setEmpresaId((empresas.data.find((e) => e.ativa) ?? empresas.data[0]).id)
+    }
+  }, [empresas.data, empresaId])
+
+  const painel = trpc.avisoLeads.getPainel.useQuery(
+    { empresaId: empresaId ?? 0 },
+    { enabled: empresaId != null, refetchInterval: 15000 },
+  )
+  const vendedores = trpc.avisoLeads.listarVendedores.useQuery(
+    { empresaId: empresaId ?? 0 },
+    { enabled: empresaId != null },
+  )
+
+  // Trocou de empresa → limpa o formulário e a prévia.
+  useEffect(() => {
+    setCfg(null)
+    setPrevia(null)
+  }, [empresaId])
+
+  // Semeia o formulário com o que veio do servidor (uma vez por empresa).
+  useEffect(() => {
+    if (painel.data?.empresaId === empresaId && !cfg) setCfg(painel.data.config)
+  }, [painel.data, cfg, empresaId])
 
   const sessao = painel.data?.sessao
   const status = sessao?.status ?? 'desconectado'
@@ -86,6 +107,7 @@ export default function AutomacaoLeads() {
       toast.success('Configuração salva')
       setCfg(nova)
       utils.avisoLeads.getPainel.invalidate()
+      utils.avisoLeads.listarEmpresas.invalidate()
     },
     onError: (e) => toast.error(e.message),
   })
@@ -140,24 +162,43 @@ export default function AutomacaoLeads() {
 
   // Hooks têm que vir todos ANTES de qualquer return condicional.
   const sujo = useMemo(
-    () => (cfg ? JSON.stringify(cfg) !== JSON.stringify(painel.data?.config) : false),
-    [cfg, painel.data],
+    () => (cfg && painel.data?.empresaId === empresaId ? JSON.stringify(cfg) !== JSON.stringify(painel.data?.config) : false),
+    [cfg, painel.data, empresaId],
   )
 
-  if (!cfg) return <div className="p-6 text-dark-400">Carregando…</div>
+  if (empresaId == null || !cfg) return <div className="p-6 text-dark-400">Carregando…</div>
 
   const patch = (p: Partial<Config>) => setCfg({ ...cfg, ...p })
+  const salvar = () => salvarMut.mutate({ empresaId, ...cfg })
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-5">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold text-dark-50 flex items-center gap-2">
-            <MessageCircle size={18} /> Aviso de leads novos no WhatsApp
-          </h1>
-          <p className="text-xs text-dark-400 mt-1">
-            Lembrete 2x por dia (dias úteis) pra cada vendedor com leads parados na etapa “Novo”. Só leitura no funil.
-          </p>
+      <div>
+        <h1 className="text-lg font-semibold text-dark-50 flex items-center gap-2">
+          <MessageCircle size={18} /> Aviso de leads novos no WhatsApp
+        </h1>
+        <p className="text-xs text-dark-400 mt-1">
+          Lembrete 2x por dia (dias úteis) pra cada vendedor com leads parados na etapa “Novo”. Só leitura no funil.
+          Configuração por empresa; o WhatsApp que envia é o mesmo pra todas.
+        </p>
+      </div>
+
+      {/* Seletor de empresa + liga/desliga desta empresa */}
+      <div className="flex items-center justify-between gap-3 bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-dark-400">Empresa:</label>
+          <select
+            value={empresaId}
+            onChange={(e) => setEmpresaId(Number(e.target.value))}
+            className="bg-dark-900 border border-dark-600 rounded-lg px-2 py-1.5 text-sm text-dark-100"
+          >
+            {empresas.data?.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.nome}
+                {e.ativa ? ' • ligada' : ''}
+              </option>
+            ))}
+          </select>
         </div>
         <button
           onClick={() => patch({ enabled: !cfg.enabled })}
@@ -167,7 +208,7 @@ export default function AutomacaoLeads() {
               : 'bg-dark-700 text-dark-300 border-dark-600'
           }`}
         >
-          {cfg.enabled ? 'Ligada' : 'Desligada'}
+          {cfg.enabled ? 'Ligada nesta empresa' : 'Desligada nesta empresa'}
         </button>
       </div>
 
@@ -231,14 +272,6 @@ export default function AutomacaoLeads() {
             <label className="text-xs text-dark-400 block mb-1">Número de teste / resumo do gestor</label>
             <Input value={cfg.testNumero} onChange={(e) => patch({ testNumero: e.target.value })} placeholder="5547999999999" />
           </div>
-          <div>
-            <label className="text-xs text-dark-400 block mb-1">Empresa (ID do funil)</label>
-            <Input
-              type="number"
-              value={String(cfg.empresaId)}
-              onChange={(e) => patch({ empresaId: Number(e.target.value) || 1 })}
-            />
-          </div>
         </div>
 
         <div className="flex flex-col gap-2 pt-1">
@@ -253,7 +286,7 @@ export default function AutomacaoLeads() {
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={() => salvarMut.mutate(cfg)} disabled={!sujo || salvarMut.isPending}>
+          <Button onClick={() => salvar()} disabled={!sujo || salvarMut.isPending}>
             <Save size={15} /> Salvar
           </Button>
         </div>
@@ -290,7 +323,7 @@ export default function AutomacaoLeads() {
           )
         })}
         <div className="flex justify-end">
-          <Button onClick={() => salvarMut.mutate(cfg)} disabled={!sujo || salvarMut.isPending}>
+          <Button onClick={() => salvar()} disabled={!sujo || salvarMut.isPending}>
             <Save size={15} /> Salvar
           </Button>
         </div>
@@ -301,7 +334,7 @@ export default function AutomacaoLeads() {
         <div className="flex gap-2 flex-wrap">
           <Button
             variant="secondary"
-            onClick={() => rodarMut.mutate({ dryRun: true, testMode: true })}
+            onClick={() => rodarMut.mutate({ empresaId, dryRun: true, testMode: true })}
             disabled={rodarMut.isPending}
           >
             <Play size={15} /> Simular (não envia)
@@ -309,7 +342,7 @@ export default function AutomacaoLeads() {
           <Button
             onClick={() => {
               if (confirm(`Enviar as mensagens de teste agora para ${cfg.testNumero || '(número de teste vazio)'}?`))
-                rodarMut.mutate({ dryRun: false, testMode: true })
+                rodarMut.mutate({ empresaId, dryRun: false, testMode: true })
             }}
             disabled={rodarMut.isPending || !cfg.testNumero}
           >
@@ -357,7 +390,7 @@ export default function AutomacaoLeads() {
               leadsNovos={v.leadsNovos}
               whatsapp={v.whatsapp}
               salvando={telMut.isPending}
-              onSalvar={(whatsapp) => telMut.mutate({ userId: v.id, whatsapp })}
+              onSalvar={(whatsapp) => telMut.mutate({ empresaId, userId: v.id, whatsapp })}
             />
           ))}
         </div>

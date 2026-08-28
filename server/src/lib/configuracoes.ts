@@ -1,6 +1,11 @@
-import { eq } from 'drizzle-orm'
+import { eq, like } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { configuracoes } from '../db/schema.js'
+
+// Todas as linhas cuja chave começa com `prefixo` (ex: "aviso_leads_").
+export async function listarConfigPrefixo(prefixo: string): Promise<{ chave: string; valor: string }[]> {
+  return db.query.configuracoes.findMany({ where: like(configuracoes.chave, `${prefixo}%`) })
+}
 
 export async function getConfigNumero(chave: string, padrao: number): Promise<number> {
   const row = await db.query.configuracoes.findFirst({ where: eq(configuracoes.chave, chave) })
