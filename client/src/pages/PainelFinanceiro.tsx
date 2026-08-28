@@ -81,6 +81,9 @@ type Card = {
   metaFaturamento: number
   percentualMeta: number
   bateuMeta: boolean
+  valorAFaturar: number | null
+  qtdAFaturar: number | null
+  valorEmNegociacao: number | null
   inadimplencia: { valorTotal: number; quantidadeClientes: number; atualizadoEm: string | null }
 }
 
@@ -198,6 +201,25 @@ function EmpresaCard({ card, editavel, idealHoje }: { card: Card; editavel: bool
           <p className="text-[10px] text-dark-500 uppercase tracking-wide">Vendas no mês</p>
         </div>
       </div>
+
+      {card.valorAFaturar !== null && (
+        <div className="mt-3 pt-3 border-t border-dark-700 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] text-cyan-400 uppercase tracking-wide font-semibold">📦 A faturar</p>
+            <p className="text-[10px] text-dark-500">{card.qtdAFaturar ?? 0} pedido(s) no processo</p>
+          </div>
+          <p className="text-base font-bold font-mono tabular-nums text-cyan-400">{formatarMoeda(card.valorAFaturar)}</p>
+        </div>
+      )}
+      {card.valorEmNegociacao !== null && (
+        <div className="mt-3 pt-3 border-t border-dark-700 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-[10px] text-amber-400 uppercase tracking-wide font-semibold">🤝 Em negociação</p>
+            <p className="text-[10px] text-dark-500">o que ainda podemos fechar</p>
+          </div>
+          <p className="text-base font-bold font-mono tabular-nums text-amber-400">{formatarMoeda(card.valorEmNegociacao)}</p>
+        </div>
+      )}
 
       <div className="mt-4 pt-4 border-t border-dark-700">
         <div className="relative h-2 bg-dark-700 rounded-full overflow-hidden">

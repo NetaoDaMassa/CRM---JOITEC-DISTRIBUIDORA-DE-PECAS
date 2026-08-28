@@ -82,6 +82,14 @@ export const financeiroRouter = router({
         let vendasMesQtd = 0
         let vendasMesValor = 0
         let tokenConfigurado: boolean | undefined
+        // Só a Odin Compressores/Comprefer tem "valor a faturar" (vem do
+        // relatório do odincrm.duckdns.org, pedido já entrou no processo
+        // mas ainda não chegou em Faturamento). As demais empresas (que
+        // usam o funil local) mostram "valor em negociação" no lugar —
+        // pedido do João 2026-08-28: "pontuar o que podemos fechar ainda".
+        let valorAFaturar: number | null = null
+        let qtdAFaturar: number | null = null
+        let valorEmNegociacao: number | null = null
 
         let descontoPct = 0
 
@@ -133,8 +141,16 @@ export const financeiroRouter = router({
               if (externo) {
                 vendasMesQtd += externo.quantidade
                 vendasMesValor += externo.valor
+                valorAFaturar = externo.valorAFaturar
+                qtdAFaturar = externo.qtdAFaturar
               }
             }
+          } else {
+            const [{ valor: valorNegociacao }] = await db
+              .select({ valor: sum(funilMensal.valorOrcado).mapWith(Number) })
+              .from(funilMensal)
+              .where(and(eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt), filtroVendedor))
+            valorEmNegociacao = valorNegociacao ?? 0
           }
         }
 
@@ -164,6 +180,9 @@ export const financeiroRouter = router({
           metaFaturamento,
           percentualMeta: metaFaturamento ? Math.round((valorMes / metaFaturamento) * 1000) / 10 : 0,
           bateuMeta: metaFaturamento ? valorMes >= metaFaturamento : false,
+          valorAFaturar,
+          qtdAFaturar,
+          valorEmNegociacao,
           inadimplencia: {
             valorTotal: inad?.valorTotal ?? 0,
             quantidadeClientes: inad?.quantidadeClientes ?? 0,

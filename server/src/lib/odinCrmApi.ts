@@ -8,7 +8,8 @@
 // "vendas hoje".
 const ODIN_CRM_BASE_URL = 'https://odincrm.duckdns.org'
 
-type OdinCrmFaturamento = { period: string; total_value: number; order_count: number }
+type OdinCrmFaturamento = { period: string; total_value: number; order_count: number; a_faturar_value: number; a_faturar_count: number }
+type FaturamentoOdinCrm = { quantidade: number; valor: number; qtdAFaturar: number; valorAFaturar: number }
 
 async function login(email: string, senha: string): Promise<string> {
   const resposta = await fetch(`${ODIN_CRM_BASE_URL}/api/auth/login`, {
@@ -21,21 +22,25 @@ async function login(email: string, senha: string): Promise<string> {
   return dados.access_token
 }
 
-async function buscarFaturamentoMes(email: string, senha: string, mesReferencia: string): Promise<{ quantidade: number; valor: number }> {
+// Além do faturamento já fechado, o relatório de lá também traz "a
+// faturar" — pedido que já entrou no processo (da Liberação Financeira em
+// diante) mas ainda não chegou em Faturamento. Pedido do João, 2026-08-28:
+// mostrar esse valor no quadrado da Odin Compressores no Painel Financeiro.
+async function buscarFaturamentoMes(email: string, senha: string, mesReferencia: string): Promise<FaturamentoOdinCrm> {
   const token = await login(email, senha)
   const resposta = await fetch(`${ODIN_CRM_BASE_URL}/api/reports/faturamento?period=${mesReferencia}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!resposta.ok) throw new Error(`Odin CRM: relatório de faturamento falhou (${resposta.status})`)
   const dados: OdinCrmFaturamento = await resposta.json()
-  return { quantidade: dados.order_count, valor: dados.total_value }
+  return { quantidade: dados.order_count, valor: dados.total_value, qtdAFaturar: dados.a_faturar_count, valorAFaturar: dados.a_faturar_value }
 }
 
 // Mesmo padrão de cache do atonErp.ts — o Painel Financeiro reconsulta a
 // cada 30s, não faz sentido logar de novo nessa frequência. Se a Odin CRM
 // estiver fora do ar, a última leitura boa continua servindo em vez de
 // zerar o card.
-type CacheEntry = { expiraEm: number; dados: { quantidade: number; valor: number } }
+type CacheEntry = { expiraEm: number; dados: FaturamentoOdinCrm }
 const cache = new Map<string, CacheEntry>()
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -43,7 +48,7 @@ export async function buscarFaturamentoOdinCrmComCache(
   email: string,
   senha: string,
   mesReferencia: string
-): Promise<{ quantidade: number; valor: number } | null> {
+): Promise<FaturamentoOdinCrm | null> {
   const chave = `${email}:${mesReferencia}`
   const emCache = cache.get(chave)
   if (emCache && emCache.expiraEm > Date.now()) return emCache.dados
