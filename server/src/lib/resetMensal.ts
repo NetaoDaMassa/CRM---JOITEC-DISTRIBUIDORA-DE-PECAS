@@ -3,18 +3,40 @@ import { db } from '../db/client.js'
 import { clientes, funilMensal } from '../db/schema.js'
 import { mesReferenciaAtual } from './dataBr.js'
 
-const ETAPAS_ABERTAS = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
+// Odin Compressores mantém a regra ANTIGA (tudo volta pra "novo") até ela
+// ganhar regra própria.
+const EMPRESA_ODIN_COMPRESSORES = 4
+
+// ── Regra NOVA (todas as empresas, menos Odin Compressores) ─────────────────
+// Card do mês que fechou → card do mês novo:
+//   novo / abordagem / interessado / sem_contato  → "novo" (selo "carregado do mês anterior")
+//   negociacao                                    → CONTINUA em "negociacao"
+//                                                   (leva valor_orcado + pdf da proposta + selo;
+//                                                    contador de contato zera; "entrou na etapa" = agora)
+//   fechado / perdido                             → "novo" (sem selo)
+//   faturamento / consumidor_final(_loja)         → NÃO cria card (fica parado onde está)
+//   sem card no mês passado (cliente novo)        → "novo" (sem selo)
+const ETAPAS_VOLTA_NOVO_CARREGADO = ['novo', 'abordagem', 'interessado', 'sem_contato']
+const ETAPAS_TERMINAIS_SEM_CARD = ['faturamento', 'consumidor_final', 'consumidor_final_loja']
+
+// ── Regra ANTIGA (Odin Compressores) ───────────────────────────────────────
+// "aberto" = card volta pra "novo" com selo; o resto vira "novo" sem selo.
+const ETAPAS_ABERTAS_ANTIGA = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 
 // Roda todo dia (idempotente — só cria o que ainda não existe): garante que
-// todo cliente com vendedor tenha um funil_mensal no mês corrente. Se o funil
-// do mês anterior não tinha fechado nem perdido, o novo nasce marcado
-// "carregado_mes_anterior" (mesma regra do spec original em Postgres).
+// todo cliente DA CARTEIRA (com vendedor e fora de prospecção) tenha o
+// funil_mensal do mês corrente. Prospects ficam de fora — só entram na
+// carteira quando o vendedor clica "enviar pra carteira".
 export async function executarResetMensal(): Promise<{ criados: number }> {
   const mesAtual = mesReferenciaAtual()
 
   const clientesAtivos = await db.query.clientes.findMany({
-    where: and(isNull(clientes.deletedAt), isNotNull(clientes.vendedorAtualId)),
-    columns: { id: true, vendedorAtualId: true },
+    where: and(
+      isNull(clientes.deletedAt),
+      isNotNull(clientes.vendedorAtualId),
+      eq(clientes.emProspeccao, false),
+    ),
+    columns: { id: true, empresaId: true, vendedorAtualId: true },
   })
 
   let criados = 0
@@ -27,38 +49,63 @@ export async function executarResetMensal(): Promise<{ criados: number }> {
     })
     if (jaExiste) continue
 
-    // Um cliente pode ter tido mais de um orçamento aberto ao mesmo tempo no
-    // mês anterior (múltiplos orçamentos em paralelo) — carrega cada um que
-    // ainda estava em aberto, não só o primeiro que a busca encontrar.
-    const mesesAnteriores = await db.query.funilMensal.findMany({
-      where: and(eq(funilMensal.clienteId, cliente.id), lt(funilMensal.mesReferencia, mesAtual), isNull(funilMensal.deletedAt)),
+    // Cards do mês anterior mais recente (pode ter mais de um — orçamentos
+    // em paralelo).
+    const anteriores = await db.query.funilMensal.findMany({
+      where: and(
+        eq(funilMensal.clienteId, cliente.id),
+        lt(funilMensal.mesReferencia, mesAtual),
+        isNull(funilMensal.deletedAt),
+      ),
       orderBy: (f, { desc }) => [desc(f.mesReferencia)],
     })
-    const ultimoMesReferencia = mesesAnteriores[0]?.mesReferencia
-    const funisAbertosUltimoMes = ultimoMesReferencia
-      ? mesesAnteriores.filter((f) => f.mesReferencia === ultimoMesReferencia && ETAPAS_ABERTAS.includes(f.etapa))
-      : []
+    const ultimoMes = anteriores[0]?.mesReferencia
+    const cardsUltimoMes = ultimoMes ? anteriores.filter((f) => f.mesReferencia === ultimoMes) : []
 
-    if (funisAbertosUltimoMes.length > 0) {
-      for (const f of funisAbertosUltimoMes) {
-        await db.insert(funilMensal).values({
-          clienteId: cliente.id,
-          vendedorId: cliente.vendedorAtualId,
-          mesReferencia: mesAtual,
-          etapa: 'novo',
-          carregadoMesAnterior: true,
-        })
+    const base = { clienteId: cliente.id, vendedorId: cliente.vendedorAtualId, mesReferencia: mesAtual }
+    let criouAlgum = false
+
+    if (cliente.empresaId === EMPRESA_ODIN_COMPRESSORES) {
+      // Regra antiga: cada card "aberto" vira um "novo" com selo.
+      const abertos = cardsUltimoMes.filter((f) => ETAPAS_ABERTAS_ANTIGA.includes(f.etapa))
+      for (const _f of abertos) {
+        await db.insert(funilMensal).values({ ...base, etapa: 'novo', carregadoMesAnterior: true })
+        criouAlgum = true
       }
     } else {
-      await db.insert(funilMensal).values({
-        clienteId: cliente.id,
-        vendedorId: cliente.vendedorAtualId,
-        mesReferencia: mesAtual,
-        etapa: 'novo',
-        carregadoMesAnterior: false,
-      })
+      // Regra nova.
+      for (const f of cardsUltimoMes) {
+        if (f.etapa === 'negociacao') {
+          await db.insert(funilMensal).values({
+            ...base,
+            etapa: 'negociacao',
+            carregadoMesAnterior: true,
+            valorOrcado: f.valorOrcado,
+            pdfPropostaPath: f.pdfPropostaPath,
+          })
+          criouAlgum = true
+        } else if (ETAPAS_VOLTA_NOVO_CARREGADO.includes(f.etapa)) {
+          await db.insert(funilMensal).values({ ...base, etapa: 'novo', carregadoMesAnterior: true })
+          criouAlgum = true
+        }
+        // fechado / perdido → cai no fallback abaixo (novo sem selo)
+        // faturamento / consumidor_final(_loja) → nada, fica parado
+      }
     }
-    criados++
+
+    if (!criouAlgum) {
+      // Nenhum card carregado. Cria um "novo" limpo — MENOS quando os únicos
+      // cards do mês passado eram terminais de loja (faturamento / consumidor
+      // final): aí não cria nada, o card fica onde está.
+      const soTerminaisLoja =
+        cardsUltimoMes.length > 0 && cardsUltimoMes.every((f) => ETAPAS_TERMINAIS_SEM_CARD.includes(f.etapa))
+      if (!soTerminaisLoja) {
+        await db.insert(funilMensal).values({ ...base, etapa: 'novo', carregadoMesAnterior: false })
+        criouAlgum = true
+      }
+    }
+
+    if (criouAlgum) criados++
   }
 
   return { criados }
