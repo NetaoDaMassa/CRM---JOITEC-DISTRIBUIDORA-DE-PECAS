@@ -139,29 +139,30 @@ async function coletar(empresaId: number): Promise<{
 
 // ── Mensagem ────────────────────────────────────────────────────────────────
 
-export function montarMensagem(periodo: Periodo, nomeVendedor: string, listaLeads: LeadResumo[]): string {
-  const nome = primeiroNome(nomeVendedor)
-  const total = listaLeads.length
-  const plural = total === 1 ? 'lead novo' : 'leads novos'
-
-  const saudacao = periodo === 'manha' ? `Bom dia, ${nome}!` : `Boa tarde, ${nome}!`
-  const abertura =
-    periodo === 'manha'
-      ? `Pra organizar o dia: você tem *${total} ${plural}* esperando o primeiro contato.`
-      : `Fechando o dia: ainda tem *${total} ${plural}* esperando o primeiro contato. Dá tempo de falar com alguns antes de sair.`
-
+// Monta a lista de leads pro atalho {leads}: 10 primeiros + "...e mais X".
+function montarBlocoLeads(listaLeads: LeadResumo[]): string {
   const visiveis = listaLeads.slice(0, MOSTRAR_NA_LISTA)
   const linhas = visiveis.map((l) => `• ${rotuloLead(l)}`).join('\n')
-  const restantes = total - visiveis.length
-  const rodapeLista =
-    restantes > 0 ? `\n\n...e mais ${restantes} ${restantes === 1 ? 'lead' : 'leads'} no CRM.` : ''
+  const restantes = listaLeads.length - visiveis.length
+  return restantes > 0
+    ? `${linhas}\n\n...e mais ${restantes} ${restantes === 1 ? 'lead' : 'leads'} no CRM.`
+    : linhas
+}
 
-  const fecho =
-    periodo === 'manha'
-      ? '\n\nÉ só um lembrete pra ninguém ficar esperando. Bom trabalho! 🙂'
-      : '\n\nUm contato rápido agora já ajuda. 🙂'
-
-  return `${saudacao}\n${abertura}\n\n${linhas}${rodapeLista}${fecho}`
+// Aplica o template (editável na tela) trocando os atalhos.
+//   {nome}       → primeiro nome do vendedor
+//   {qtd}        → só o número
+//   {qtd_leads}  → "1 lead novo" / "N leads novos"
+//   {leads}      → a lista com marcadores (+ "...e mais X leads no CRM")
+export function montarMensagem(template: string, nomeVendedor: string, listaLeads: LeadResumo[]): string {
+  const total = listaLeads.length
+  const subs: Record<string, string> = {
+    '{nome}': primeiroNome(nomeVendedor),
+    '{qtd}': String(total),
+    '{qtd_leads}': `${total} ${total === 1 ? 'lead novo' : 'leads novos'}`,
+    '{leads}': montarBlocoLeads(listaLeads),
+  }
+  return template.replace(/\{nome\}|\{qtd_leads\}|\{qtd\}|\{leads\}/g, (m) => subs[m] ?? m)
 }
 
 function montarResumoAdmin(
@@ -246,12 +247,13 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
   const temAlgoPraAvisarAdmin = leadsSemVendedor > 0 || semNumero.length > 0
 
   // Monta as mensagens de todos os vendedores (serve pro envio e pra
-  // pré-visualização na tela).
+  // pré-visualização na tela). Template vem da config (editável na tela).
+  const template = periodo === 'manha' ? conf.msgManha : conf.msgTarde
   resultado.mensagens = vendedores.map((v) => ({
     vendedor: v.nome,
     telefone: v.whatsapp,
     qtdLeads: v.leads.length,
-    texto: montarMensagem(periodo, v.nome, v.leads),
+    texto: montarMensagem(template, v.nome, v.leads),
   }))
 
   if (vendedores.length === 0 && !temAlgoPraAvisarAdmin) {

@@ -23,6 +23,19 @@ type Config = {
   empresaId: number
   minIntervaloMs: number
   maxIntervaloMs: number
+  msgManha: string
+  msgTarde: string
+}
+
+// Substitui os atalhos com dados de exemplo — só pra prévia na tela.
+function renderPrevia(template: string): string {
+  const exemploLeads =
+    '• Metalúrgica Santos\n• Auto Peças Lima\n• Ferramentas Dias\n• João da Borracharia\n\n...e mais 8 leads no CRM.'
+  return (template || '')
+    .replace(/\{nome\}/g, 'Carlos')
+    .replace(/\{qtd_leads\}/g, '12 leads novos')
+    .replace(/\{qtd\}/g, '12')
+    .replace(/\{leads\}/g, exemploLeads)
 }
 
 const STATUS_LABEL: Record<string, { txt: string; cls: string }> = {
@@ -239,6 +252,43 @@ export default function AutomacaoLeads() {
           </label>
         </div>
 
+        <div className="flex justify-end">
+          <Button onClick={() => salvarMut.mutate(cfg)} disabled={!sujo || salvarMut.isPending}>
+            <Save size={15} /> Salvar
+          </Button>
+        </div>
+      </Secao>
+
+      {/* Texto das mensagens */}
+      <Secao titulo="Texto das mensagens">
+        <p className="text-xs text-dark-400">
+          Atalhos que o sistema troca na hora de enviar:{' '}
+          <code className="text-dark-200">{'{nome}'}</code> (1º nome do vendedor),{' '}
+          <code className="text-dark-200">{'{qtd}'}</code> (só o número),{' '}
+          <code className="text-dark-200">{'{qtd_leads}'}</code> (“12 leads novos”),{' '}
+          <code className="text-dark-200">{'{leads}'}</code> (a lista — obrigatório).
+        </p>
+        {(['manha', 'tarde'] as const).map((p) => {
+          const chave = p === 'manha' ? 'msgManha' : 'msgTarde'
+          const valor = cfg[chave]
+          return (
+            <div key={p} className="space-y-1">
+              <label className="text-xs text-dark-400 block">
+                {p === 'manha' ? 'Mensagem da manhã' : 'Mensagem do fim da tarde'}
+              </label>
+              <div className="grid md:grid-cols-2 gap-2">
+                <textarea
+                  className="bg-dark-900 border border-dark-600 rounded-lg p-3 text-sm text-dark-100 min-h-[150px] font-mono"
+                  value={valor}
+                  onChange={(e) => patch({ [chave]: e.target.value } as Partial<Config>)}
+                />
+                <pre className="bg-dark-900 border border-dark-700 rounded-lg p-3 text-xs text-dark-200 whitespace-pre-wrap min-h-[150px]">
+                  {renderPrevia(valor)}
+                </pre>
+              </div>
+            </div>
+          )
+        })}
         <div className="flex justify-end">
           <Button onClick={() => salvarMut.mutate(cfg)} disabled={!sujo || salvarMut.isPending}>
             <Save size={15} /> Salvar

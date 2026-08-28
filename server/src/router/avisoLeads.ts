@@ -46,6 +46,8 @@ export const avisoLeadsRouter = router({
         empresaId: z.number().int().min(1).optional(),
         minIntervaloMs: z.number().int().min(0).optional(),
         maxIntervaloMs: z.number().int().min(0).optional(),
+        msgManha: z.string().optional(),
+        msgTarde: z.string().optional(),
       }),
     )
     .mutation(async ({ input }) => {

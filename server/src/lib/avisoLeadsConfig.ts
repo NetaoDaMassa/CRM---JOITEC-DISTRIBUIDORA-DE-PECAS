@@ -25,7 +25,25 @@ export interface AvisoLeadsConfig {
   empresaId: number
   minIntervaloMs: number
   maxIntervaloMs: number
+  msgManha: string
+  msgTarde: string
 }
+
+// Texto padrão das mensagens — igual ao que era fixo no código. Editável pela
+// tela. Atalhos: {nome} (1º nome do vendedor), {qtd} (só o número),
+// {qtd_leads} ("1 lead novo" / "N leads novos"), {leads} (lista com
+// marcadores, 10 primeiros + "...e mais X leads no CRM").
+export const MSG_MANHA_PADRAO =
+  'Bom dia, {nome}!\n' +
+  'Pra organizar o dia: você tem *{qtd_leads}* esperando o primeiro contato.\n\n' +
+  '{leads}\n\n' +
+  'É só um lembrete pra ninguém ficar esperando. Bom trabalho! 🙂'
+
+export const MSG_TARDE_PADRAO =
+  'Boa tarde, {nome}!\n' +
+  'Fechando o dia: ainda tem *{qtd_leads}* esperando o primeiro contato. Dá tempo de falar com alguns antes de sair.\n\n' +
+  '{leads}\n\n' +
+  'Um contato rápido agora já ajuda. 🙂'
 
 export const AVISO_LEADS_DEFAULTS: AvisoLeadsConfig = {
   enabled: false,
@@ -37,6 +55,8 @@ export const AVISO_LEADS_DEFAULTS: AvisoLeadsConfig = {
   empresaId: 1,
   minIntervaloMs: 3000,
   maxIntervaloMs: 5000,
+  msgManha: MSG_MANHA_PADRAO,
+  msgTarde: MSG_TARDE_PADRAO,
 }
 
 const K = {
@@ -49,12 +69,14 @@ const K = {
   empresaId: 'aviso_leads_empresa_id',
   minIntervaloMs: 'aviso_leads_min_intervalo_ms',
   maxIntervaloMs: 'aviso_leads_max_intervalo_ms',
+  msgManha: 'aviso_leads_msg_manha',
+  msgTarde: 'aviso_leads_msg_tarde',
 } as const
 
 const K_ULTIMA_EXEC = 'aviso_leads_ultima_execucao'
 
 export async function getAvisoLeadsConfig(): Promise<AvisoLeadsConfig> {
-  const [enabled, dryRun, testMode, testNumero, adminNumero, horarios, empresaId, minIntervaloMs, maxIntervaloMs] =
+  const [enabled, dryRun, testMode, testNumero, adminNumero, horarios, empresaId, minIntervaloMs, maxIntervaloMs, msgManha, msgTarde] =
     await Promise.all([
       getConfigBool(K.enabled, AVISO_LEADS_DEFAULTS.enabled),
       getConfigBool(K.dryRun, AVISO_LEADS_DEFAULTS.dryRun),
@@ -65,6 +87,8 @@ export async function getAvisoLeadsConfig(): Promise<AvisoLeadsConfig> {
       getConfigNumero(K.empresaId, AVISO_LEADS_DEFAULTS.empresaId),
       getConfigNumero(K.minIntervaloMs, AVISO_LEADS_DEFAULTS.minIntervaloMs),
       getConfigNumero(K.maxIntervaloMs, AVISO_LEADS_DEFAULTS.maxIntervaloMs),
+      getConfigTexto(K.msgManha),
+      getConfigTexto(K.msgTarde),
     ])
   return {
     enabled,
@@ -76,6 +100,8 @@ export async function getAvisoLeadsConfig(): Promise<AvisoLeadsConfig> {
     empresaId,
     minIntervaloMs,
     maxIntervaloMs,
+    msgManha: msgManha && msgManha.trim() ? msgManha : AVISO_LEADS_DEFAULTS.msgManha,
+    msgTarde: msgTarde && msgTarde.trim() ? msgTarde : AVISO_LEADS_DEFAULTS.msgTarde,
   }
 }
 
@@ -114,6 +140,17 @@ export async function setAvisoLeadsConfig(patch: AvisoLeadsConfigPatch): Promise
     ops.push(setConfig(K.maxIntervaloMs, patch.maxIntervaloMs))
   }
 
+  for (const [chave, valor, rotulo] of [
+    [K.msgManha, patch.msgManha, 'texto da manhã'],
+    [K.msgTarde, patch.msgTarde, 'texto da tarde'],
+  ] as const) {
+    if (valor === undefined) continue
+    const t = valor.trim()
+    if (!t) throw new Error(`O ${rotulo} não pode ficar vazio`)
+    if (!t.includes('{leads}')) throw new Error(`O ${rotulo} precisa conter o atalho {leads} (a lista de leads)`)
+    ops.push(setConfig(chave, t))
+  }
+
   await Promise.all(ops)
 }
 
@@ -138,6 +175,8 @@ export async function seedAvisoLeadsConfigFromEnv(): Promise<void> {
     add(K.empresaId, String(Number(env.AVISO_LEADS_EMPRESA_ID ?? AVISO_LEADS_DEFAULTS.empresaId))),
     add(K.minIntervaloMs, String(Number(env.AVISO_LEADS_MIN_INTERVALO_MS ?? AVISO_LEADS_DEFAULTS.minIntervaloMs))),
     add(K.maxIntervaloMs, String(Number(env.AVISO_LEADS_MAX_INTERVALO_MS ?? AVISO_LEADS_DEFAULTS.maxIntervaloMs))),
+    add(K.msgManha, AVISO_LEADS_DEFAULTS.msgManha),
+    add(K.msgTarde, AVISO_LEADS_DEFAULTS.msgTarde),
   ])
 
   for (const [chave, valor] of semear) await setConfig(chave, valor)
