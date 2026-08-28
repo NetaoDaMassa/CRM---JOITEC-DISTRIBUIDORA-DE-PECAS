@@ -915,12 +915,15 @@ function CardModal({
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfPathEnviado, setPdfPathEnviado] = useState<string | null>(null)
   const [novaVendaAberta, setNovaVendaAberta] = useState(false)
-  const [motivoCategoria, setMotivoCategoria] = useState('')
-  const [motivoOpcao, setMotivoOpcao] = useState('')
-  const [motivoItem, setMotivoItem] = useState('')
-  const [motivoObs, setMotivoObs] = useState('')
-  const [empresaRepasse, setEmpresaRepasse] = useState('')
-  const [motivoRepasseObs, setMotivoRepasseObs] = useState('')
+  // Hidrata do card quando ele já está Perdido/Consumidor Final (reabrir um
+  // card já classificado mostrava os campos em branco, mesmo o motivo já
+  // estando salvo — parecia que "não gravou", mas só faltava ler de volta.
+  const [motivoCategoria, setMotivoCategoria] = useState(card.motivoPerdaCategoria ?? '')
+  const [motivoOpcao, setMotivoOpcao] = useState(card.motivoPerdaOpcao ?? '')
+  const [motivoItem, setMotivoItem] = useState(card.motivoPerdaItem ?? '')
+  const [motivoObs, setMotivoObs] = useState(card.motivoPerdaObservacao ?? '')
+  const [empresaRepasse, setEmpresaRepasse] = useState(card.empresaRepasse ?? '')
+  const [motivoRepasseObs, setMotivoRepasseObs] = useState(card.motivoRepasseObservacao ?? '')
   const [agendarAberto, setAgendarAberto] = useState(false)
   const [itensPedido, setItensPedido] = useState<{ descricao: string; quantidade: string; valorUnitario: string }[]>([])
   const [clienteIdFaturamento, setClienteIdFaturamento] = useState(card.clienteId)

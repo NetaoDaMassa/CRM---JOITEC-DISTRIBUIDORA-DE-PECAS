@@ -16,7 +16,7 @@ import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
-import { hojeBrString, primeiroDiaMesString } from '../../lib/utils'
+import { formatDate, hojeBrString, primeiroDiaMesString } from '../../lib/utils'
 import { paraCsv, baixarCsv } from '../../lib/csv'
 
 function BotaoExportar({ onClick }: { onClick: () => void }) {
@@ -1259,6 +1259,61 @@ export default function AdminReports() {
                   ))}
                   {!motivosPerdas?.porItem.length && <p className="text-sm text-dark-500">Nenhuma perda com peça informada.</p>}
                 </div>
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs text-dark-500">Detalhe — motivo escrito pelo vendedor em cada perda</p>
+                <BotaoExportar
+                  onClick={() =>
+                    baixarCsv(
+                      'motivos-perda-detalhe.csv',
+                      paraCsv(
+                        [
+                          { chave: 'data', rotulo: 'Data' },
+                          { chave: 'cliente', rotulo: 'Cliente' },
+                          { chave: 'vendedor', rotulo: 'Vendedor' },
+                          { chave: 'valor', rotulo: 'Valor orçado' },
+                          { chave: 'categoria', rotulo: 'Categoria' },
+                          { chave: 'opcao', rotulo: 'Opção' },
+                          { chave: 'item', rotulo: 'Item' },
+                          { chave: 'observacao', rotulo: 'Observação' },
+                        ],
+                        (motivosPerdas?.detalhes ?? []).map((d) => ({
+                          data: formatDate(d.dataEntradaEtapa),
+                          cliente: d.razaoSocial,
+                          vendedor: d.vendedorNome,
+                          valor: d.valorOrcado ?? '',
+                          categoria: d.motivoPerdaCategoria ? CATEGORIA_LABEL[d.motivoPerdaCategoria] : '',
+                          opcao: d.motivoPerdaOpcao ?? '',
+                          item: d.motivoPerdaItem ?? '',
+                          observacao: d.motivoPerdaObservacao ?? '',
+                        }))
+                      )
+                    )
+                  }
+                />
+              </div>
+              <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                {motivosPerdas?.detalhes.map((d, i) => (
+                  <div key={i} className="bg-dark-900/50 border border-dark-700 rounded-lg px-3 py-2 text-sm">
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <span className="text-dark-100 font-medium">{d.razaoSocial}</span>
+                      <span className="text-xs text-dark-500">
+                        {d.vendedorNome} · {formatDate(d.dataEntradaEtapa)}
+                        {d.valorOrcado != null && ` · ${formatarMoeda(d.valorOrcado)}`}
+                      </span>
+                    </div>
+                    <p className="text-xs text-dark-400 mt-1">
+                      {d.motivoPerdaCategoria ? CATEGORIA_LABEL[d.motivoPerdaCategoria] : 'Sem categoria'}
+                      {d.motivoPerdaOpcao && ` · ${d.motivoPerdaOpcao}`}
+                      {d.motivoPerdaItem && ` · ${d.motivoPerdaItem}`}
+                    </p>
+                    {d.motivoPerdaObservacao && <p className="text-dark-300 mt-1 whitespace-pre-wrap">{d.motivoPerdaObservacao}</p>}
+                  </div>
+                ))}
+                {!motivosPerdas?.detalhes.length && <p className="text-sm text-dark-500">Nenhuma perda no período.</p>}
               </div>
             </div>
           </section>

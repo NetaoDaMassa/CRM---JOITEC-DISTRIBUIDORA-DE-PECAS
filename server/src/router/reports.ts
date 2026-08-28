@@ -798,7 +798,29 @@ export const reportsRouter = router({
       .groupBy(funilMensal.motivoPerdaItem)
       .orderBy(desc(count()))
 
-    return { porCategoria, porItem }
+    // Lista individual (cliente + motivo por extenso) — os cards acima só
+    // contam quantidade por categoria/item, nunca mostravam o texto que o
+    // vendedor escreveu de verdade. Pedido do João: "não está puxando os
+    // motivos nos relatórios" — isso aqui é o motivo em si, não só a contagem.
+    const detalhes = await db
+      .select({
+        clienteId: funilMensal.clienteId,
+        razaoSocial: clientes.razaoSocial,
+        vendedorNome: users.name,
+        dataEntradaEtapa: funilMensal.dataEntradaEtapa,
+        valorOrcado: funilMensal.valorOrcado,
+        motivoPerdaCategoria: funilMensal.motivoPerdaCategoria,
+        motivoPerdaOpcao: funilMensal.motivoPerdaOpcao,
+        motivoPerdaItem: funilMensal.motivoPerdaItem,
+        motivoPerdaObservacao: funilMensal.motivoPerdaObservacao,
+      })
+      .from(funilMensal)
+      .innerJoin(users, eq(users.id, funilMensal.vendedorId))
+      .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+      .where(and(...filtros))
+      .orderBy(desc(funilMensal.dataEntradaEtapa))
+
+    return { porCategoria, porItem, detalhes }
   }),
 
   // Clientes completamente esquecidos no mês corrente: zero contato

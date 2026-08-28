@@ -230,6 +230,15 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     dataEntradaEtapa: f.dataEntradaEtapa,
     valorOrcado: f.valorOrcado,
     pdfPropostaPath: f.pdfPropostaPath,
+    // Nunca iam pro card antes — reabrir um card já Perdido/Consumidor Final
+    // mostrava tudo em branco (o motivo estava salvo no banco, só não
+    // chegava até aqui).
+    motivoPerdaCategoria: f.motivoPerdaCategoria,
+    motivoPerdaOpcao: f.motivoPerdaOpcao,
+    motivoPerdaItem: f.motivoPerdaItem,
+    motivoPerdaObservacao: f.motivoPerdaObservacao,
+    empresaRepasse: f.empresaRepasse,
+    motivoRepasseObservacao: f.motivoRepasseObservacao,
     vendas: f.vendas.map((v) => ({
       id: v.id,
       valorFechado: v.valorFechado,
