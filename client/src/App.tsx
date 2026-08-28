@@ -36,6 +36,7 @@ import LeadDetail from './pages/admin/LeadDetail'
 import LeadsKanban from './pages/admin/LeadsKanban'
 import LeadsDesqualificados from './pages/admin/LeadsDesqualificados'
 import LeadsRelatorios from './pages/admin/LeadsRelatorios'
+import Campanhas from './pages/admin/Campanhas'
 import LeadsRegioes from './pages/admin/LeadsRegioes'
 import SidebarGrupos from './pages/admin/SidebarGrupos'
 import Demandas from './pages/Demandas'
@@ -208,6 +209,7 @@ export default function App() {
           <Route path="admin/leads/:id" element={<AdminGuard><FeatureGuard feature="leads"><LeadDetail /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-desqualificados" element={<AdminGuard><FeatureGuard feature="leads"><LeadsDesqualificados /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-relatorios" element={<AdminGuard><FeatureGuard feature="leads"><LeadsRelatorios /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/campanhas" element={<AdminGuard><FeatureGuard feature="leads"><Campanhas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />

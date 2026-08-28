@@ -18,6 +18,7 @@ import {
   carteiraHistorico,
   funilMensal,
   propostas,
+  leadCampaigns,
 } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD, assignNextVendor } from '../lib/leadsRoundRobin.js'
 import { validateNextContactLimit } from '../lib/businessHours.js'
@@ -204,6 +205,7 @@ export const leadsRouter = router({
         history: { with: { user: { columns: { passwordHash: false } } }, orderBy: (h, { desc }) => [desc(h.createdAt)] },
         convertidoParaCliente: { columns: { id: true, razaoSocial: true } },
         convertidoParaProposta: { columns: { id: true } },
+        campaign: { columns: { id: true, name: true } },
       },
     })
     if (!lead) throw new Error('Lead não encontrado')
@@ -275,6 +277,11 @@ export const leadsRouter = router({
       } else if (input.autoAssign) {
         vendorId = await getVendorByDDD(input.ddd, ctx.empresaId)
         regionId = await getRegionIdByDDD(input.ddd, ctx.empresaId)
+      }
+
+      if (input.campaignId) {
+        const campanha = await db.query.leadCampaigns.findFirst({ where: eq(leadCampaigns.id, input.campaignId) })
+        if (!campanha || campanha.empresaId !== ctx.empresaId) throw new Error('Campanha inválida')
       }
 
       const result = await db.insert(leads).values({
@@ -418,6 +425,15 @@ export const leadsRouter = router({
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+
+      // Lead já transferido (virou cliente de Carteira ou proposta de
+      // verdade) trava a etapa — mudar pra outro status aqui não desfaz o
+      // cliente/proposta já criado, só deixaria os dois registros
+      // contando histórias diferentes. Pra reverter, mexe direto no
+      // cliente/proposta (ex: excluir), não no lead.
+      if (existing.convertidoParaClienteId || existing.convertidoParaPropostaId) {
+        throw new Error('Este lead já foi transferido — a etapa não pode mais mudar por aqui')
+      }
 
       const slug = await empresaSlug(ctx.empresaId)
       if (!isStatusAllowedForCompany(input.status, slug)) {

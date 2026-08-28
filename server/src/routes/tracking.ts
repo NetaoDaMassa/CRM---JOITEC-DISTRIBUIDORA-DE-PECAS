@@ -92,6 +92,7 @@ trackingRouter.post('/events', async (req, res) => {
         phone,
         email,
         source: eventType,
+        utmCampaign: existingVisitor?.utmCampaign ?? utmCampaign ?? undefined,
       })
       if (matchedLeadId && matchedLeadId !== leadId) {
         await db.update(leadTrackingVisitors).set({ leadId: matchedLeadId }).where(eq(leadTrackingVisitors.id, visitorId))

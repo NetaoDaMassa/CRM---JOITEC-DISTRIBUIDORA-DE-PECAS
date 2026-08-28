@@ -18,6 +18,7 @@ const LINK_TO_VALIDOS = [
   '/admin/devolucoes-demonstracao', '/admin/devolucoes-relatorios', '/admin/vagas', '/admin/candidatos',
   '/admin/mensagens-rh', '/admin/analytics', '/admin/leads', '/admin/leads/kanban', '/admin/leads-desqualificados',
   '/admin/leads-relatorios',
+  '/admin/campanhas',
   '/vendedor', '/vendedor/fila-hoje', '/vendedor/pos-venda', '/vendedor/kanban', '/vendedor/calendario',
   '/vendedor/clientes', '/vendedor/prospeccao', '/vendedor/banco-clientes', '/vendedor/faturamento-geral',
   '/vendedor/relatorios', '/vendedor/solicitar-design', '/vendedor/devolucoes', '/vendedor/devolucoes-mecanica',

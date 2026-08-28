@@ -126,6 +126,8 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
   const [segment, setSegment] = useState('')
   const [observations, setObservations] = useState('')
   const [vendorId, setVendorId] = useState('')
+  const [campaignId, setCampaignId] = useState('')
+  const { data: campanhas } = trpc.leadCampaigns.listarAtivas.useQuery()
   const [autoAssign, setAutoAssign] = useState(true)
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
   const ultimoCnpjConsultadoRef = useRef<string | null>(null)
@@ -144,6 +146,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     setObservations('')
     setVendorId('')
     setAutoAssign(true)
+    setCampaignId('')
     ultimoCnpjConsultadoRef.current = null
     setArquivos([])
   }
@@ -291,6 +294,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
       observations: observations || undefined,
       vendorId: user?.role === 'admin' && vendorId ? Number(vendorId) : undefined,
       autoAssign: user?.role === 'admin' ? (!vendorId ? autoAssign : false) : true,
+      campaignId: campaignId ? Number(campaignId) : undefined,
     })
   }
 
@@ -333,6 +337,15 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
           options={LEAD_SEGMENT_VALUES.map((s) => ({ value: s, label: LEAD_SEGMENT_LABELS[s] }))}
         />
         <Textarea label="Observações" value={observations} onChange={(e) => setObservations(e.target.value)} rows={2} />
+        {!!campanhas?.length && (
+          <Select
+            label="Campanha (opcional)"
+            value={campaignId}
+            onChange={(e) => setCampaignId(e.target.value)}
+            placeholder="Nenhuma"
+            options={campanhas.map((c) => ({ value: c.id, label: c.name }))}
+          />
+        )}
 
         <div>
           <label className="text-sm text-dark-200 font-medium block mb-1">Anexos (opcional)</label>

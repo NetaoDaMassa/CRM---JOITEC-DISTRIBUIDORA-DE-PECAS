@@ -89,6 +89,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
   { to: '/admin/leads-desqualificados', label: 'Revisão de Leads', icon: ShieldCheck, feature: 'leads' },
   { to: '/admin/leads-relatorios', label: 'Relatórios de Leads', icon: BarChart3, feature: 'leads' },
+  { to: '/admin/campanhas', label: 'Campanhas', icon: Megaphone, feature: 'leads' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,

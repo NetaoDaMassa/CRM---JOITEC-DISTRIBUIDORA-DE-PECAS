@@ -325,8 +325,18 @@ export default function LeadDetail() {
           )}
         </div>
 
-        {/* Posição na etapa — clicar em outra etapa já abre o modal com ela pré-selecionada */}
-        {isOwner && (
+        {/* Posição na etapa — clicar em outra etapa já abre o modal com ela pré-selecionada.
+            Admin vê e pode mudar em qualquer lead da empresa (não só nos próprios), mesma
+            regra do botão de transferir logo acima — precisa enxergar a etapa de qualquer
+            lead pra saber quando dá pra transferir. */}
+        {(isAdmin || isOwner) && (lead.convertidoParaCliente || lead.convertidoParaProposta) && (
+          <div className="mt-4 pt-4 border-t border-dark-700">
+            <Badge className="text-dark-400 bg-dark-700/50 border-dark-600">
+              Etapa travada em "{LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS]}" — lead já transferido
+            </Badge>
+          </div>
+        )}
+        {(isAdmin || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
           <div className="flex items-center gap-1.5 flex-wrap mt-4 pt-4 border-t border-dark-700">
             {LEAD_STATUS_VALUES.filter((s) => isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => (
               <button
@@ -358,6 +368,7 @@ export default function LeadDetail() {
           <InfoRow icon={MapPin} label="Região">{lead.region?.name ?? '—'}</InfoRow>
           <InfoRow icon={Building2} label="Segmento">{lead.segment ? LEAD_SEGMENT_LABELS[lead.segment] : '—'}</InfoRow>
           <InfoRow icon={Building2} label="Origem">{lead.source ?? '—'}</InfoRow>
+          {lead.campaign && <InfoRow icon={Building2} label="Campanha">{lead.campaign.name}</InfoRow>}
           {tempoAtendimento && (
             <InfoRow icon={Clock} label="Atendimento">
               {tempoAtendimento}

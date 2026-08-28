@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { leads, leadHistory, notifications } from '../db/schema.js'
+import { leads, leadHistory, notifications, leadCampaigns } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD } from './leadsRoundRobin.js'
 
 interface FindOrCreateLeadFromTrackingInput {
@@ -9,6 +9,19 @@ interface FindOrCreateLeadFromTrackingInput {
   phone: string
   email?: string
   source: string
+  utmCampaign?: string
+}
+
+// Casa o utm_campaign do anúncio com o nome de uma campanha já cadastrada
+// (Marketing > Campanhas) — sem bater, o lead nasce sem campanha vinculada
+// de propósito (nunca cria campanha sozinho, ver leadCampaigns.naoVinculados
+// pra descobrir o que falta cadastrar). Comparação sem acento/maiúscula pra
+// não depender de digitar idêntico ao configurado no anúncio.
+async function encontrarCampanhaPorUtm(empresaId: number, utmCampaign: string | undefined): Promise<number | null> {
+  if (!utmCampaign?.trim()) return null
+  const alvo = utmCampaign.trim().toLowerCase()
+  const campanhas = await db.query.leadCampaigns.findMany({ where: eq(leadCampaigns.empresaId, empresaId), columns: { id: true, name: true } })
+  return campanhas.find((c) => c.name.trim().toLowerCase() === alvo)?.id ?? null
 }
 
 // Separa DDD (2 primeiros dígitos, removendo o 55 do Brasil se presente) do
@@ -35,7 +48,7 @@ function parseTelefone(phoneRaw: string): { ddd: number; phone: string } | null 
 export async function findOrCreateLeadFromTracking(
   input: FindOrCreateLeadFromTrackingInput
 ): Promise<number | null> {
-  const { empresaId, email, name, source } = input
+  const { empresaId, email, name, source, utmCampaign } = input
 
   const parsed = parseTelefone(input.phone)
   if (!parsed) return null
@@ -48,6 +61,7 @@ export async function findOrCreateLeadFromTracking(
 
   const vendorId = await getVendorByDDD(ddd, empresaId)
   const regionId = await getRegionIdByDDD(ddd, empresaId)
+  const campaignId = await encontrarCampanhaPorUtm(empresaId, utmCampaign)
 
   const result = await db.insert(leads).values({
     empresaId,
@@ -58,6 +72,7 @@ export async function findOrCreateLeadFromTracking(
     source,
     vendorId,
     regionId,
+    campaignId,
     assignedAt: vendorId ? new Date().toISOString() : null,
     statusChangedAt: new Date().toISOString(),
   })
