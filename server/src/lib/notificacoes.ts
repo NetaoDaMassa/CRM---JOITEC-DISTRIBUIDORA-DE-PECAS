@@ -23,6 +23,8 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
   // Último contato considerando CNPJs vinculados do mesmo vendedor — pra não
   // alertar sobre a filial quando a matriz já foi contatada.
   const ultimoContatoGrupo = await ultimoContatoDoGrupoPorCliente(mesAtual)
+  // 1 aviso por GRUPO de CNPJs vinculados (não 1 por cadastro).
+  const gruposAvisados = new Set<number>()
 
   let criadas = 0
 
@@ -35,7 +37,11 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
     if (!funil.cliente) continue
     if (!ETAPAS_ABERTAS.includes(funil.etapa as (typeof ETAPAS_ABERTAS)[number])) continue
 
-    const ultimoContato = ultimoContatoGrupo.get(funil.clienteId) ?? funil.dataUltimoContato
+    const info = ultimoContatoGrupo.get(funil.clienteId)
+    const raizGrupo = info?.raiz ?? funil.clienteId
+    if (gruposAvisados.has(raizGrupo)) continue // já avisou outro CNPJ deste grupo nesta rodada
+
+    const ultimoContato = info?.ultimo ?? funil.dataUltimoContato
     const dias = diasDesde(ultimoContato ?? funil.dataEntradaEtapa)
     if (dias === null || dias < limiteDias) continue
 
@@ -55,6 +61,7 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
       title: 'Cliente sem contato',
       message: `${funil.cliente.razaoSocial} está há ${dias} dia(s) sem contato.`,
     })
+    gruposAvisados.add(raizGrupo)
     criadas++
   }
 

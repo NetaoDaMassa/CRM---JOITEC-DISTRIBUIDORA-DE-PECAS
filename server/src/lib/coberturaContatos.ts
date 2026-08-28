@@ -62,8 +62,7 @@ export async function coberturaContatosVendedor(
     where: and(...filtros),
     columns: { id: true },
   })
-  const total = carteira.length
-  if (total === 0) return { total: 0, contatados: 0, semContato: 0, percentual: 0 }
+  if (carteira.length === 0) return { total: 0, contatados: 0, semContato: 0, percentual: 0 }
   const idSet = new Set(carteira.map((c) => c.id))
 
   // Clientes do vendedor com algum contato no card do mês (qualquer tipo).
@@ -93,13 +92,18 @@ export async function coberturaContatosVendedor(
     }
   }
 
-  // Um "grupo" (cliente + vinculados do mesmo vendedor) conta como contatado
-  // se qualquer membro teve contato.
+  // 3 cadastros com o mesmo CNPJ (mesmo vendedor) = 1 cliente. O denominador
+  // conta GRUPOS (raízes do union-find), não linhas de `clientes`.
+  const raizes = new Set<number>()
+  for (const id of idSet) raizes.add(uf.find(id))
+  const total = raizes.size
+
+  // Um grupo conta como contatado se qualquer membro teve contato.
   const gruposContatados = new Set<number>()
   for (const cid of comContatoProprio) gruposContatados.add(uf.find(cid))
 
   let contatados = 0
-  for (const id of idSet) if (gruposContatados.has(uf.find(id))) contatados++
+  for (const raiz of raizes) if (gruposContatados.has(raiz)) contatados++
 
   return {
     total,
@@ -110,13 +114,13 @@ export async function coberturaContatosVendedor(
 }
 
 // Pro alerta "cliente sem contato": pra cada cliente que tem card no mês,
-// devolve a data do ÚLTIMO contato do GRUPO (cliente + vinculados do mesmo
-// vendedor) naquele mês — ou null se o grupo não teve contato nenhum.
-// O alerta usa isso no lugar de `funil.dataUltimoContato` (que só enxerga o
-// contato do próprio card).
+// devolve { ultimo, raiz } — a data do ÚLTIMO contato do GRUPO (cliente +
+// vinculados do mesmo vendedor) naquele mês (ou null se o grupo não teve
+// contato), e a "raiz" do grupo (pro alerta mandar 1 aviso só por grupo,
+// não 1 por cadastro).
 export async function ultimoContatoDoGrupoPorCliente(
   mesReferencia: string = mesReferenciaAtual(),
-): Promise<Map<number, string>> {
+): Promise<Map<number, { ultimo: string | null; raiz: number }>> {
   const cards = await db
     .select({ id: funilMensal.id, clienteId: funilMensal.clienteId, vendedorId: funilMensal.vendedorId })
     .from(funilMensal)
@@ -164,10 +168,10 @@ export async function ultimoContatoDoGrupoPorCliente(
   }
 
   // Espalha pro cada cliente que tem card no mês.
-  const resultado = new Map<number, string>()
+  const resultado = new Map<number, { ultimo: string | null; raiz: number }>()
   for (const c of cards) {
-    const d = ultimoDoGrupo.get(uf.find(c.clienteId))
-    if (d) resultado.set(c.clienteId, d)
+    const raiz = uf.find(c.clienteId)
+    resultado.set(c.clienteId, { ultimo: ultimoDoGrupo.get(raiz) ?? null, raiz })
   }
   return resultado
 }
