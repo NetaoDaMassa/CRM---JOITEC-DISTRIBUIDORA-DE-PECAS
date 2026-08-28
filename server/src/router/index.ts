@@ -55,6 +55,7 @@ import { demandasRouter } from './demandas.js'
 import { boletosRouter } from './boletos.js'
 import { negociacoesRouter } from './negociacoes.js'
 import { leadCampaignsRouter } from './leadCampaigns.js'
+import { avisoLeadsRouter } from './avisoLeads.js'
 import { router } from './_base.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -117,6 +118,7 @@ export const appRouter = router({
   boletos: boletosRouter,
   negociacoes: negociacoesRouter,
   leadCampaigns: leadCampaignsRouter,
+  avisoLeads: avisoLeadsRouter,
 })
 
 export type AppRouter = typeof appRouter

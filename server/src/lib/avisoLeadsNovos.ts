@@ -18,6 +18,7 @@ import { and, eq, isNull, isNotNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, users, notifications } from '../db/schema.js'
 import { ensureStarted, aguardarConexao, enviarTexto, precisaPareamento } from './whatsapp/session.js'
+import { getAvisoLeadsConfig, registrarUltimaExecucao } from './avisoLeadsConfig.js'
 
 export type Periodo = 'manha' | 'tarde'
 
@@ -26,6 +27,13 @@ export interface OpcoesAviso {
   dryRun: boolean
   testMode: boolean
   empresaId?: number
+}
+
+export interface MensagemMontada {
+  vendedor: string
+  telefone: string | null
+  qtdLeads: number
+  texto: string
 }
 
 export interface ResultadoAviso {
@@ -38,6 +46,10 @@ export interface ResultadoAviso {
   vendedoresSemNumero: string[]
   falhas: { vendedor: string; motivo: string }[]
   abortadoPorConexao: boolean
+  // Mensagens montadas nesta rodada (pra pré-visualizar na tela). Sempre
+  // preenchido — no envio real também, pra registro.
+  mensagens: MensagemMontada[]
+  resumoAdmin: string | null
 }
 
 const MOSTRAR_NA_LISTA = 10
@@ -52,16 +64,6 @@ interface VendedorComLeads {
   nome: string
   whatsapp: string | null
   leads: LeadResumo[]
-}
-
-function cfg() {
-  return {
-    empresaId: Number(process.env.AVISO_LEADS_EMPRESA_ID ?? 1),
-    minMs: Number(process.env.AVISO_LEADS_MIN_INTERVALO_MS ?? 3000),
-    maxMs: Number(process.env.AVISO_LEADS_MAX_INTERVALO_MS ?? 5000),
-    testNumero: (process.env.AVISO_LEADS_TEST_NUMERO ?? '').trim(),
-    adminNumero: (process.env.AVISO_LEADS_ADMIN_NUMERO || process.env.AVISO_LEADS_TEST_NUMERO || '').trim(),
-  }
 }
 
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -206,9 +208,12 @@ async function avisarAdminsNoSino(empresaId: number, periodo: Periodo, motivo: s
 
 export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<ResultadoAviso> {
   const { periodo, dryRun, testMode } = opts
-  const base = cfg()
-  const empresaId = opts.empresaId ?? base.empresaId
-  const { minMs, maxMs, testNumero, adminNumero } = base
+  const conf = await getAvisoLeadsConfig()
+  const empresaId = opts.empresaId ?? conf.empresaId
+  const minMs = conf.minIntervaloMs
+  const maxMs = conf.maxIntervaloMs
+  const testNumero = conf.testNumero
+  const adminNumero = conf.adminNumero || conf.testNumero
   const inicio = Date.now()
 
   const resultado: ResultadoAviso = {
@@ -221,11 +226,14 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
     vendedoresSemNumero: [],
     falhas: [],
     abortadoPorConexao: false,
+    mensagens: [],
+    resumoAdmin: null,
   }
 
   if (testMode && !dryRun && !testNumero) {
-    console.error('[aviso-leads] testMode ligado mas AVISO_LEADS_TEST_NUMERO está vazio — nada foi enviado.')
+    console.error('[aviso-leads] modo teste ligado mas o número de teste está vazio — nada foi enviado.')
     resultado.abortadoPorConexao = true
+    await registrarUltimaExecucao(paraUltimaExecucao(resultado))
     return resultado
   }
 
@@ -237,8 +245,18 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
 
   const temAlgoPraAvisarAdmin = leadsSemVendedor > 0 || semNumero.length > 0
 
+  // Monta as mensagens de todos os vendedores (serve pro envio e pra
+  // pré-visualização na tela).
+  resultado.mensagens = vendedores.map((v) => ({
+    vendedor: v.nome,
+    telefone: v.whatsapp,
+    qtdLeads: v.leads.length,
+    texto: montarMensagem(periodo, v.nome, v.leads),
+  }))
+
   if (vendedores.length === 0 && !temAlgoPraAvisarAdmin) {
     console.log(`[aviso-leads] rodada ${periodo}: nenhum lead "Novo" com vendedor — nada a notificar.`)
+    await registrarUltimaExecucao(paraUltimaExecucao(resultado))
     return resultado
   }
 
@@ -258,6 +276,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
       }
       resultado.abortadoPorConexao = true
       logFinal(resultado, inicio)
+      await registrarUltimaExecucao(paraUltimaExecucao(resultado))
       return resultado
     }
   }
@@ -265,7 +284,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
   // Envio por vendedor — falha de um NÃO derruba os outros
   for (let i = 0; i < vendedores.length; i++) {
     const v = vendedores[i]
-    const texto = montarMensagem(periodo, v.nome, v.leads)
+    const texto = resultado.mensagens[i].texto
     const corpo = testMode ? `🧪 *TESTE* — esta mensagem iria para ${v.nome}\n\n${texto}` : texto
     const destino = testMode ? testNumero : (v.whatsapp as string)
 
@@ -297,6 +316,7 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
       leadsSemVendedor,
       falhas: resultado.falhas,
     })
+    resultado.resumoAdmin = resumo
     if (dryRun) {
       console.log(`\n──────── [DRY RUN] resumo para o admin <${adminNumero || 'sem número'}> ────────\n${resumo}\n`)
     } else if (adminNumero) {
@@ -313,7 +333,21 @@ export async function executarAvisoLeadsNovos(opts: OpcoesAviso): Promise<Result
   }
 
   logFinal(resultado, inicio)
+  await registrarUltimaExecucao(paraUltimaExecucao(resultado))
   return resultado
+}
+
+function paraUltimaExecucao(r: ResultadoAviso) {
+  return {
+    em: new Date().toISOString(),
+    periodo: r.periodo,
+    modo: (r.dryRun ? 'dry-run' : r.testMode ? 'teste' : 'real') as 'real' | 'teste' | 'dry-run',
+    vendedoresNotificados: r.vendedoresNotificados,
+    leadsNoTotal: r.leadsNoTotal,
+    leadsSemVendedor: r.leadsSemVendedor,
+    falhas: r.falhas,
+    abortadoPorConexao: r.abortadoPorConexao,
+  }
 }
 
 function logFinal(r: ResultadoAviso, inicioMs: number): void {

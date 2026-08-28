@@ -7,6 +7,8 @@ import { getConfigTexto, getConfigNumero } from './configuracoes.js'
 import { registrarLigacoesAutomaticasPabxone360 } from './pabxone360.js'
 import { executarAvisoLeadsNovos, type Periodo } from './avisoLeadsNovos.js'
 import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
+import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv } from './avisoLeadsConfig.js'
+import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
 // (backup) e 14 (resumo diário).
@@ -46,54 +48,76 @@ async function sincronizarPabxone360() {
 }
 
 // Aviso amigável de leads novos no WhatsApp (ver avisoLeadsNovos.ts). 2x por
-// dia, só dias úteis, fuso America/Sao_Paulo. Só liga com AVISO_LEADS_ENABLED
-// =true — sem isso não agenda nada nem sobe a sessão do WhatsApp (a máquina
-// de dev não deve brigar pela mesma sessão da VPS).
-function agendarAvisoLeadsNovos() {
-  if (process.env.AVISO_LEADS_ENABLED !== 'true') {
-    console.log('[aviso-leads] desativado (defina AVISO_LEADS_ENABLED=true para ligar)')
+// dia, só dias úteis, fuso America/Sao_Paulo. Config fica na tabela
+// `configuracoes` (tela Automações) — este agendador relê a cada minuto e se
+// re-registra sozinho quando o gestor liga/desliga ou muda os horários.
+let tarefasAvisoLeads: ScheduledTask[] = []
+let assinaturaAtual = '' // "enabled|horarios|dryRun" — pra saber se mudou
+
+function pararTarefasAvisoLeads() {
+  for (const t of tarefasAvisoLeads) {
+    try {
+      t.stop()
+      t.destroy?.()
+    } catch {
+      // ignora
+    }
+  }
+  tarefasAvisoLeads = []
+}
+
+// Lê a config e (re)registra os crons se algo relevante mudou. Chamada no
+// boot, a cada minuto, e na hora pelo router quando o gestor salva a tela.
+export async function reagendarAvisoLeadsNovos(): Promise<void> {
+  const conf = await getAvisoLeadsConfig()
+  const horarios = conf.horarios.split(',').map((s) => s.trim()).filter(Boolean)
+  const assinatura = `${conf.enabled ? 1 : 0}|${horarios.join(',')}|${conf.dryRun ? 1 : 0}`
+  if (assinatura === assinaturaAtual) return
+  assinaturaAtual = assinatura
+
+  pararTarefasAvisoLeads()
+
+  if (!conf.enabled) {
+    console.log('[aviso-leads] desativado (ligue pela tela Automações)')
     return
   }
 
-  const bruto = process.env.AVISO_LEADS_HORARIOS ?? '08:00,17:30'
-  let horarios = bruto.split(',').map((s) => s.trim()).filter(Boolean)
-  if (horarios.length < 2) {
-    console.warn(`[aviso-leads] AVISO_LEADS_HORARIOS precisa de 2 horários "HH:MM,HH:MM" (recebido: "${bruto}"). Usando 08:00,17:30`)
-    horarios = ['08:00', '17:30']
-  }
+  const valido = horarios.length === 2 && horarios.every((h) => /^([01]?\d|2[0-3]):[0-5]\d$/.test(h))
+  const usar = valido ? horarios : ['08:00', '17:30']
+  if (!valido) console.warn(`[aviso-leads] horários inválidos ("${conf.horarios}"), usando 08:00,17:30`)
 
   const periodos: Periodo[] = ['manha', 'tarde']
-  horarios.slice(0, 2).forEach((hhmm, idx) => {
-    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm)
-    if (!m) {
-      console.error(`[aviso-leads] horário inválido ignorado: "${hhmm}"`)
-      return
-    }
-    const hora = Number(m[1])
-    const minuto = Number(m[2])
+  usar.forEach((hhmm, idx) => {
+    const [hora, minuto] = hhmm.split(':').map(Number)
     const periodo = periodos[idx]
-    // seg–sex (1-5)
-    cron.schedule(
-      `${minuto} ${hora} * * 1-5`,
+    const tarefa = cron.schedule(
+      `${minuto} ${hora} * * 1-5`, // seg–sex
       () => {
-        executarAvisoLeadsNovos({
-          periodo,
-          dryRun: process.env.AVISO_LEADS_DRY_RUN === 'true',
-          testMode: process.env.AVISO_LEADS_TEST_MODE === 'true',
-        }).catch((err) => console.error('[aviso-leads] erro na rodada agendada:', err))
+        getAvisoLeadsConfig()
+          .then((c) => executarAvisoLeadsNovos({ periodo, dryRun: c.dryRun, testMode: c.testMode }))
+          .catch((err) => console.error('[aviso-leads] erro na rodada agendada:', err))
       },
       { timezone: 'America/Sao_Paulo' },
     )
-    console.log(
-      `[aviso-leads] agendado (${periodo}) ${String(hora).padStart(2, '0')}:${String(minuto).padStart(2, '0')} seg–sex, America/Sao_Paulo`,
-    )
+    tarefasAvisoLeads.push(tarefa)
+    console.log(`[aviso-leads] agendado (${periodo}) ${hhmm} seg–sex, America/Sao_Paulo`)
   })
 
   // Sobe a sessão do WhatsApp já, pra estar conectada quando a 1ª rodada
-  // disparar. Dry run puro não precisa de WhatsApp.
-  if (process.env.AVISO_LEADS_DRY_RUN !== 'true') {
+  // disparar. Dry run puro não precisa.
+  if (!conf.dryRun) {
     iniciarSessaoWhatsapp().catch((err) => console.error('[aviso-leads] falha ao iniciar sessão do WhatsApp:', err))
   }
+}
+
+async function iniciarAvisoLeadsNovos() {
+  await seedAvisoLeadsConfigFromEnv().catch((err) => console.error('[aviso-leads] falha ao semear config:', err))
+  await reagendarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha ao agendar:', err))
+  // Relê a config a cada minuto — pega mudanças feitas pela tela mesmo que o
+  // router não tenha chamado reagendar (defesa).
+  cron.schedule('* * * * *', () => {
+    reagendarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha ao reagendar:', err))
+  })
 }
 
 export function startScheduler() {
@@ -112,5 +136,5 @@ export function startScheduler() {
   })
   sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
 
-  agendarAvisoLeadsNovos()
+  iniciarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha na inicialização:', err))
 }

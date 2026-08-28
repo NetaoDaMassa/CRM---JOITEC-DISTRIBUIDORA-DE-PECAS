@@ -14,6 +14,21 @@ export async function getConfigTexto(chave: string): Promise<string | null> {
   return row?.valor ?? null
 }
 
+// Booleano guardado como texto '1'/'0' (também aceita 'true'/'false' por
+// tolerância). Ausente = padrão.
+export async function getConfigBool(chave: string, padrao: boolean): Promise<boolean> {
+  const row = await db.query.configuracoes.findFirst({ where: eq(configuracoes.chave, chave) })
+  if (!row) return padrao
+  return row.valor === '1' || row.valor.toLowerCase() === 'true'
+}
+
+// true só se a chave AINDA não existe na tabela (usado pelo seed inicial:
+// só semeia o que nunca foi definido, nunca sobrescreve).
+export async function configExiste(chave: string): Promise<boolean> {
+  const row = await db.query.configuracoes.findFirst({ where: eq(configuracoes.chave, chave), columns: { chave: true } })
+  return !!row
+}
+
 export async function apagarConfig(chave: string): Promise<void> {
   await db.delete(configuracoes).where(eq(configuracoes.chave, chave))
 }

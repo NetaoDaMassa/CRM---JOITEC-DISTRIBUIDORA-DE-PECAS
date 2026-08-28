@@ -32,6 +32,7 @@ let estado: Estado = 'desconectado'
 let iniciando: Promise<void> | null = null
 let reconectarTimer: NodeJS.Timeout | null = null
 let precisaParear = false
+let ultimoQr: string | null = null
 
 const logger = pino({ level: 'silent' })
 
@@ -41,6 +42,12 @@ function sessionDir(): string {
 
 export function getStatus(): Estado {
   return estado
+}
+
+// String bruta do QR atual (quando aguardando pareamento) — a tela desenha
+// como imagem. null quando já conectado ou ainda não gerou.
+export function getUltimoQr(): string | null {
+  return estado === 'conectado' ? null : ultimoQr
 }
 
 // true = deu logout no celular / credenciais inválidas → precisa escanear o QR
@@ -89,7 +96,8 @@ async function iniciar(): Promise<void> {
     const { connection, lastDisconnect, qr } = update
 
     if (qr) {
-      console.log('\n[whatsapp] Escaneie o QR abaixo com o WhatsApp do número que vai ENVIAR os avisos')
+      ultimoQr = qr
+      console.log('\n[whatsapp] Escaneie o QR abaixo (ou pela tela Automações no CRM) com o WhatsApp do número que vai ENVIAR os avisos')
       console.log('[whatsapp] (WhatsApp → Aparelhos conectados → Conectar um aparelho):\n')
       qrcode.generate(qr, { small: true })
     }
@@ -97,6 +105,7 @@ async function iniciar(): Promise<void> {
     if (connection === 'open') {
       estado = 'conectado'
       precisaParear = false
+      ultimoQr = null
       console.log('[whatsapp] sessão conectada')
     }
 
@@ -178,4 +187,25 @@ export async function pararSessao(): Promise<void> {
   }
   sock = null
   estado = 'desconectado'
+}
+
+// Desliga a sessão E apaga as credenciais do disco, pra trocar de número —
+// a próxima chamada a ensureStarted() gera um QR novo. Usado pelo botão
+// "Desconectar / trocar número" da tela Automações.
+export async function desconectar(): Promise<void> {
+  try {
+    await sock?.logout()
+  } catch {
+    // se já estava fora, tudo bem
+  }
+  await pararSessao()
+  ultimoQr = null
+  precisaParear = false
+  try {
+    fs.rmSync(sessionDir(), { recursive: true, force: true })
+    fs.mkdirSync(sessionDir(), { recursive: true })
+  } catch (err) {
+    console.error('[whatsapp] falha ao limpar a pasta da sessão:', err)
+  }
+  console.log('[whatsapp] sessão desconectada e credenciais apagadas')
 }
