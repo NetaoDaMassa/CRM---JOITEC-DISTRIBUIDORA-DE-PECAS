@@ -44,6 +44,7 @@ export default function LeadsDesqualificados() {
         ) : !data || data.length === 0 ? (
           <div className="p-12 text-center text-dark-400 text-sm">Nenhum lead pendente de revisão. 🎉</div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-dark-600 bg-dark-900/40">
@@ -80,6 +81,7 @@ export default function LeadsDesqualificados() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

@@ -328,6 +328,7 @@ export default function AdminUsers() {
       </div>
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-dark-600 bg-dark-700/50">
@@ -442,6 +443,7 @@ export default function AdminUsers() {
                 ))}
           </tbody>
         </table>
+        </div>
       </div>
 
       <input ref={fotoInputRef} type="file" accept="image/*" className="hidden" onChange={handleFotoSelecionada} />

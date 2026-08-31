@@ -795,7 +795,7 @@ export default function AdminReports() {
                 </BarChart>
               </ResponsiveContainer>
             )}
-            <div className="mt-3 max-h-80 overflow-y-auto pr-1">
+            <div className="mt-3 max-h-80 overflow-y-auto overflow-x-auto pr-1">
               <table className="w-full text-xs">
                 <thead className="sticky top-0 bg-dark-800">
                   <tr className="text-left text-dark-500 uppercase tracking-wide">

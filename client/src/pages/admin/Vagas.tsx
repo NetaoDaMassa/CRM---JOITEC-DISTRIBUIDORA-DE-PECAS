@@ -159,6 +159,7 @@ export default function AdminVagas() {
             </Button>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-dark-600 bg-dark-900/40">
@@ -243,6 +244,7 @@ export default function AdminVagas() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

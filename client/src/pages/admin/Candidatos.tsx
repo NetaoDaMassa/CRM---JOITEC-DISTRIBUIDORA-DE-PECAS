@@ -78,6 +78,7 @@ export default function AdminCandidatos() {
             <p className="text-dark-400 text-sm">Nenhum candidato ainda</p>
           </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-dark-600 bg-dark-900/40">
@@ -140,6 +141,7 @@ export default function AdminCandidatos() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>
