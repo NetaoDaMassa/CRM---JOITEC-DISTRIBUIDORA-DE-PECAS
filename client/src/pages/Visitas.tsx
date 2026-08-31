@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2, Download, RefreshCw, Search } from 'lucide-react'
+import { Plus, MapPin, MapPinOff, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2, Download, RefreshCw, Search, LoaderCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -215,8 +215,20 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
     onError: (e) => toast.error(e.message),
   })
   const excluirMut = trpc.visitas.excluir.useMutation({ onSuccess: () => { toast.success('Removida'); setExcluindo(null); invalidar() }, onError: (e) => toast.error(e.message) })
-  const checkinMut = trpc.visitas.checkin.useMutation({ onSuccess: () => { toast.success('Check-in registrado'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const [capturandoGpsId, setCapturandoGpsId] = useState<number | null>(null)
+  const checkinMut = trpc.visitas.checkin.useMutation({
+    onSuccess: (_r, variables) => {
+      if (variables.lat != null) toast.success('Check-in registrado com localização')
+      else toast('Check-in registrado, mas sem localização — veja abaixo', { icon: '⚠️' })
+      invalidar()
+    },
+    onError: (e) => toast.error(e.message),
+  })
   const checkoutMut = trpc.visitas.checkout.useMutation({ onSuccess: () => { toast.success('Check-out registrado'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const corrigirLocalizacaoMut = trpc.visitas.atualizarLocalizacaoCheckin.useMutation({
+    onSuccess: () => { toast.success('Localização atualizada'); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
 
   function fechar() { setModalAberto(false); setEditando(null); setForm(VISITA_VAZIA) }
   function abrirEdicao(v: NonNullable<typeof visitasList>[number]) {
@@ -246,16 +258,47 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
     else criarMut.mutate(payload)
   }
 
-  function fazerCheckin(id: number) {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => checkinMut.mutate({ id, lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        () => checkinMut.mutate({ id }),
-        { timeout: 5000 }
-      )
-    } else {
-      checkinMut.mutate({ id })
+  // 5s era curto demais pro GPS conseguir um fix de verdade (principalmente
+  // dentro de prédio/loja) e o erro caía calado — vendedor via "Check-in
+  // registrado" sem saber que a localização não foi capturada (achado do
+  // João, 2026-08-31: "eles falam que marcam mas não vai"). Agora espera até
+  // 20s com alta precisão e avisa qual foi o motivo se falhar.
+  function obterLocalizacao(aoConseguir: (lat: number, lng: number) => void, aoFalhar: (motivo: string) => void) {
+    if (!navigator.geolocation) {
+      aoFalhar('esse navegador não suporta GPS')
+      return
     }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => aoConseguir(pos.coords.latitude, pos.coords.longitude),
+      (err) => {
+        const motivo =
+          err.code === err.PERMISSION_DENIED
+            ? 'permissão de localização negada — ative o GPS/localização pro navegador e tente de novo'
+            : err.code === err.TIMEOUT
+              ? 'sinal de GPS demorou demais — tente num lugar mais aberto'
+              : 'não foi possível obter a localização'
+        aoFalhar(motivo)
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 }
+    )
+  }
+
+  function fazerCheckin(id: number) {
+    setCapturandoGpsId(id)
+    obterLocalizacao(
+      (lat, lng) => { setCapturandoGpsId(null); checkinMut.mutate({ id, lat, lng }) },
+      (motivo) => { setCapturandoGpsId(null); toast.error(`Check-in salvo sem localização: ${motivo}`); checkinMut.mutate({ id }) }
+    )
+  }
+
+  // Retry de localização pra check-in que já foi feito sem GPS — não mexe
+  // no horário, só tenta preencher lat/lng depois (ver "Sem GPS" na lista).
+  function tentarLocalizacaoDeNovo(id: number) {
+    setCapturandoGpsId(id)
+    obterLocalizacao(
+      (lat, lng) => { setCapturandoGpsId(null); corrigirLocalizacaoMut.mutate({ id, lat, lng }) },
+      (motivo) => { setCapturandoGpsId(null); toast.error(`Não foi possível pegar a localização: ${motivo}`) }
+    )
   }
 
   return (
@@ -305,11 +348,24 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
                         {v.checkoutEm && <> – {hora(v.checkoutEm)}</>}
                         {duracaoMin !== null && <span className="ml-1 text-[11px] text-dark-500">({duracaoMin}min)</span>}
                       </span>
-                      {v.latCheckin && (
+                      {v.latCheckin ? (
                         <span className="flex items-center gap-1 text-green-400">
                           <MapPin size={12} /> GPS
                         </span>
-                      )}
+                      ) : v.checkinEm ? (
+                        <span className="flex items-center gap-1 text-amber-400" title="Check-in feito sem captar localização">
+                          <MapPinOff size={12} /> Sem GPS
+                          {podeEditar && (
+                            <button
+                              onClick={() => tentarLocalizacaoDeNovo(v.id)}
+                              disabled={capturandoGpsId === v.id}
+                              className="ml-0.5 underline decoration-dotted hover:text-amber-300 disabled:opacity-60"
+                            >
+                              {capturandoGpsId === v.id ? 'obtendo...' : 'tentar de novo'}
+                            </button>
+                          )}
+                        </span>
+                      ) : null}
                     </div>
 
                     {(v.pessoaContato || v.telefoneContato || v.endereco) && (
@@ -331,7 +387,16 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
                   <div className="flex gap-1 shrink-0">
                     {podeEditar && (
                       <>
-                        {!v.checkinEm && <button onClick={() => fazerCheckin(v.id)} title="Check-in" className="p-1.5 rounded-lg text-dark-400 hover:text-green-400 hover:bg-green-900/20"><LogIn size={14} /></button>}
+                        {!v.checkinEm && (
+                          <button
+                            onClick={() => fazerCheckin(v.id)}
+                            disabled={capturandoGpsId === v.id}
+                            title={capturandoGpsId === v.id ? 'Obtendo localização...' : 'Check-in'}
+                            className="p-1.5 rounded-lg text-dark-400 hover:text-green-400 hover:bg-green-900/20 disabled:opacity-60"
+                          >
+                            {capturandoGpsId === v.id ? <LoaderCircle size={14} className="animate-spin" /> : <LogIn size={14} />}
+                          </button>
+                        )}
                         {v.checkinEm && !v.checkoutEm && <button onClick={() => checkoutMut.mutate({ id: v.id })} title="Check-out" className="p-1.5 rounded-lg text-dark-400 hover:text-yellow-400 hover:bg-yellow-900/20"><LogOut size={14} /></button>}
                         <button onClick={() => abrirEdicao(v)} className="p-1.5 rounded-lg text-dark-400 hover:text-gold-400 hover:bg-gold-900/10"><Pencil size={14} /></button>
                       </>

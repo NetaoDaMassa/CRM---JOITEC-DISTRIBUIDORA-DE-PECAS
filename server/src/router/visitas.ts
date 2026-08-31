@@ -211,6 +211,20 @@ export const visitasRouter = router({
     return { ok: true }
   }),
 
+  // Corrige/tenta de novo só a localização de um check-in que já foi feito
+  // sem GPS (sinal fraco/timeout na hora) — não mexe em checkinEm, senão
+  // perderia o horário real de chegada. Ver Visitas.tsx: badge "Sem GPS".
+  atualizarLocalizacaoCheckin: adminOrFeatureProcedure('visitas_odin')
+    .input(z.object({ id: z.number(), lat: z.number(), lng: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaVisitas(ctx.empresaId)
+      const visita = await db.query.visitas.findFirst({ where: and(eq(visitas.id, input.id), eq(visitas.empresaId, ctx.empresaId)) })
+      if (!visita) throw new TRPCError({ code: 'NOT_FOUND' })
+      assertDonoOuGestor(visita.vendedorId, ctx.user.id, ctx.user.role)
+      await db.update(visitas).set({ latCheckin: input.lat, lngCheckin: input.lng, updatedAt: agoraSqlite() }).where(eq(visitas.id, input.id))
+      return { ok: true }
+    }),
+
   checkout: adminOrFeatureProcedure('visitas_odin').input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaVisitas(ctx.empresaId)
     const visita = await db.query.visitas.findFirst({ where: and(eq(visitas.id, input.id), eq(visitas.empresaId, ctx.empresaId)) })
