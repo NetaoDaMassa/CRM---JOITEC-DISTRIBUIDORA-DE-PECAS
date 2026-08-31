@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2 } from 'lucide-react'
+import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2, Copy, Upload } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { timeAgo } from '../lib/utils'
@@ -26,8 +26,23 @@ type PropostaCard = {
   formaPagamento: string | null
   updatedAt: string
   vendedor: { id: number; name: string; whatsapp: string | null } | null
-  arquivos: { fileCategory: string | null; tipoArquivo: string | null }[]
+  arquivos: { id: number; fileCategory: string | null; tipoArquivo: string | null; nomeArmazenado: string; createdAt: string }[]
   alteracoes: unknown[]
+}
+
+function buildPropostaWhatsAppText(p: PropostaCard, pdfUrlAbsoluto: string | null): string {
+  return [
+    'Olá! Segue o resumo da proposta:',
+    '',
+    `Cliente: *${p.clienteNome}*`,
+    p.produtosDescricao ? `Produtos/Serviços: ${p.produtosDescricao}` : null,
+    p.formaPagamento ? `Forma de pagamento: ${p.formaPagamento}` : null,
+    p.comissao ? `Comissão: ${p.comissao}` : null,
+    p.revenda ? `Revenda: ${p.revenda}` : null,
+    pdfUrlAbsoluto ? `\n📄 PDF da proposta:\n${pdfUrlAbsoluto}` : null,
+    '',
+    p.vendedor?.name ? `Vendedor: ${p.vendedor.name}` : null,
+  ].filter((l) => l !== null).join('\n')
 }
 
 export default function PropostasBoard({ propostas, basePath, mostrarVendedor = true }: { propostas: PropostaCard[]; basePath: string; mostrarVendedor?: boolean }) {
@@ -42,11 +57,44 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
   const [chamarDepoisId, setChamarDepoisId] = useState<number | null>(null)
   const [dataRetorno, setDataRetorno] = useState('')
   const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
+  const [uploadingId, setUploadingId] = useState<number | null>(null)
 
   function invalidar() { utils.propostas.listar.invalidate() }
   const moverMut = trpc.propostas.moverEtapa.useMutation({ onSuccess: () => { toast.success('Etapa alterada'); invalidar() }, onError: (e) => toast.error(e.message) })
   const atualizarMut = trpc.propostas.atualizar.useMutation()
   const excluirMut = trpc.propostas.excluir.useMutation({ onSuccess: () => { toast.success('Excluída'); setExcluindo(null); invalidar() }, onError: (e) => toast.error(e.message) })
+  const registrarArquivoMut = trpc.propostas.registrarArquivo.useMutation({ onSuccess: () => { toast.success('PDF anexado'); invalidar() }, onError: (e) => toast.error(e.message) })
+
+  async function anexarPdfRapido(propostaId: number, file: File) {
+    setUploadingId(propostaId)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const token = localStorage.getItem('odin_token')
+      const resp = await fetch('/upload/proposta-anexo', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+      const json = await resp.json()
+      if (!resp.ok) throw new Error(json.error ?? 'Falha no upload')
+      await registrarArquivoMut.mutateAsync({ propostaId, fileCategory: 'proposta_pdf', nomeOriginal: json.nome, nomeArmazenado: json.path.replace('/uploads/', ''), tipoArquivo: json.tipo, tamanhoBytes: json.tamanho })
+    } catch (e: any) {
+      toast.error(e.message ?? 'Erro no upload')
+    } finally {
+      setUploadingId(null)
+    }
+  }
+
+  function compartilharWhatsApp(p: PropostaCard, pdfUrl: string | null) {
+    const texto = buildPropostaWhatsAppText(p, pdfUrl ? `${window.location.origin}${pdfUrl}` : null)
+    window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, '_blank')
+  }
+
+  async function copiarLinkPdf(pdfUrl: string) {
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${pdfUrl}`)
+      toast.success('Link do PDF copiado')
+    } catch {
+      toast.error('Não foi possível copiar o link')
+    }
+  }
 
   async function confirmarChamarDepois() {
     if (!chamarDepoisId || !dataRetorno) return
@@ -93,7 +141,11 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
               </div>
               <div className="space-y-2">
                 {cards.map((p) => {
-                  const temPdf = p.arquivos.some((a) => a.fileCategory === 'proposta_pdf' || a.tipoArquivo?.includes('pdf'))
+                  const pdfArquivo = p.arquivos
+                    .filter((a) => a.fileCategory === 'proposta_pdf' || a.tipoArquivo?.includes('pdf'))
+                    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
+                  const pdfUrl = pdfArquivo ? `/uploads/${pdfArquivo.nomeArmazenado}` : null
+                  const temPdf = !!pdfArquivo
                   const isUrgente = p.prioridade === 'urgente'
                   const temAlteracao = p.alteracoes.length > 0
                   const podeAgir = isAdmin || p.vendedorId === user?.id
@@ -144,6 +196,45 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                         </div>
                       </div>
                       <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors mb-1">{p.clienteNome}</h4>
+
+                      {/* Ações rápidas — pegar a proposta sem abrir o detalhe */}
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5" onClick={(e) => e.stopPropagation()}>
+                        {pdfUrl ? (
+                          <>
+                            <a
+                              href={pdfUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1 rounded-lg bg-gold-600 hover:bg-gold-500 px-2 py-1 text-[11px] font-semibold text-dark-950 border border-gold-500 transition-colors"
+                            >
+                              <FileText size={11} /> Abrir PDF
+                            </a>
+                            <button
+                              onClick={() => compartilharWhatsApp(p, pdfUrl)}
+                              className="flex items-center gap-1 rounded-lg bg-green-600 hover:bg-green-500 px-2 py-1 text-[11px] font-semibold text-white transition-colors"
+                            >
+                              <MessageCircle size={11} /> WhatsApp
+                            </button>
+                            <button
+                              onClick={() => copiarLinkPdf(pdfUrl)}
+                              className="flex items-center gap-1 rounded-lg bg-dark-700 hover:bg-dark-600 px-2 py-1 text-[11px] font-medium text-dark-200 transition-colors"
+                            >
+                              <Copy size={11} /> Copiar link
+                            </button>
+                          </>
+                        ) : podeAgir ? (
+                          <label className="flex items-center gap-1 rounded-lg border border-dashed border-gold-600/60 text-gold-400 hover:bg-gold-900/10 px-2 py-1 text-[11px] font-semibold cursor-pointer transition-colors">
+                            <Upload size={11} /> {uploadingId === p.id ? 'Enviando...' : 'Anexar PDF'}
+                            <input
+                              type="file"
+                              accept=".pdf,application/pdf"
+                              className="hidden"
+                              disabled={uploadingId === p.id}
+                              onChange={(e) => { const f = e.target.files?.[0]; if (f) anexarPdfRapido(p.id, f); e.target.value = '' }}
+                            />
+                          </label>
+                        ) : null}
+                      </div>
 
                       {isUrgente && p.motivoUrgencia && (
                         <p className="text-[11px] text-red-400 bg-red-900/20 rounded px-2 py-1 mb-1.5">⚡ {p.motivoUrgencia}</p>
