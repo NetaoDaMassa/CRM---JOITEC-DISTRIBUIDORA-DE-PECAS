@@ -266,8 +266,14 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
     )
   }
 
+  // GPS obrigatório pra registrar visita nova (não pra editar) — pedido do
+  // João, 2026-08-31: prova que o vendedor está de verdade no local. Gestor
+  // fica de fora (pode lançar visita retroativa/de relatório em papel).
+  const gpsObrigatorioFaltando = !editando && !isAdmin && !gpsRegistro
+
   function salvar() {
     if (!form.nomeEmpresa.trim() && !form.dataVisita) return
+    if (gpsObrigatorioFaltando) { toast.error('Capture sua localização antes de registrar a visita'); return }
     const payload = { ...form, clienteNome: form.nomeEmpresa, ...(gpsRegistro && !editando ? gpsRegistro : {}) }
     if (editando) atualizarMut.mutate({ id: editando, ...payload })
     else criarMut.mutate(payload)
@@ -465,7 +471,17 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
 
           <Input label="Próximo passo" value={form.proximoPasso} onChange={(e) => setForm({ ...form, proximoPasso: e.target.value })} />
           <Input label="Observações" value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
-          <Button className="w-full" loading={criarMut.isPending || atualizarMut.isPending} onClick={salvar}>{editando ? 'Salvar' : 'Registrar visita'}</Button>
+          {gpsObrigatorioFaltando && (
+            <p className="text-xs text-amber-400 text-center">Capture sua localização acima pra poder registrar a visita.</p>
+          )}
+          <Button
+            className="w-full"
+            disabled={gpsObrigatorioFaltando}
+            loading={criarMut.isPending || atualizarMut.isPending}
+            onClick={salvar}
+          >
+            {editando ? 'Salvar' : 'Registrar visita'}
+          </Button>
         </div>
       </Modal>
 

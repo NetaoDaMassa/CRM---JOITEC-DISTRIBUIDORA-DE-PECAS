@@ -161,6 +161,14 @@ export const visitasRouter = router({
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaVisitas(ctx.empresaId)
       const { lat, lng, ...dados } = input
+      // Pedido do João, 2026-08-31: GPS vira obrigatório pra registrar visita
+      // (prova que o vendedor está de verdade no local) — validado aqui, não
+      // só no front, senão dá pra contornar chamando a mutation direto.
+      // Gestor fica de fora dessa trava: as vezes precisa lançar uma visita
+      // retroativa/de relatório em papel, sem estar fisicamente lá.
+      if (ctx.user.role !== 'admin' && (lat == null || lng == null)) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Não foi possível pegar sua localização — capture o GPS antes de registrar a visita' })
+      }
       const comLocalizacao = lat != null && lng != null ? { checkinEm: agoraSqlite(), latCheckin: lat, lngCheckin: lng } : {}
       const result = await db.insert(visitas).values({ empresaId: ctx.empresaId, vendedorId: ctx.user.id, ...dados, ...comLocalizacao })
       const visitaId = Number(result.lastInsertRowid)
