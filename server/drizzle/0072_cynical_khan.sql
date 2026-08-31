@@ -1,0 +1,1 @@
+ALTER TABLE `notifications` ADD `lead_id` integer REFERENCES leads(id);

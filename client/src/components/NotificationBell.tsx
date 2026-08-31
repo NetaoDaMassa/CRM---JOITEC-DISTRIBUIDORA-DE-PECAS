@@ -56,10 +56,9 @@ export default function NotificationBell() {
             })
             desktopNotification.onclick = () => {
               window.focus()
-              if (n.clienteId) {
-                const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
-                navigate(`${basePath}/clientes/${n.clienteId}`)
-              }
+              const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
+              if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
+              else if (n.leadId) navigate(`${basePath}/leads/${n.leadId}`)
               desktopNotification.close()
             }
           }
@@ -76,13 +75,12 @@ export default function NotificationBell() {
     onSuccess: () => utils.notifications.list.invalidate(),
   })
 
-  function handleNotificationClick(n: { id: number; read: boolean; clienteId: number | null }) {
+  function handleNotificationClick(n: { id: number; read: boolean; clienteId: number | null; leadId: number | null }) {
     if (!n.read) markReadMut.mutate({ id: n.id })
     setOpen(false)
-    if (n.clienteId) {
-      const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
-      navigate(`${basePath}/clientes/${n.clienteId}`)
-    }
+    const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
+    if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
+    else if (n.leadId) navigate(`${basePath}/leads/${n.leadId}`)
   }
 
   return (

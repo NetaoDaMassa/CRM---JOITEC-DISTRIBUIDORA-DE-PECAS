@@ -661,6 +661,10 @@ export const notifications = sqliteTable('notifications', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'cascade' }),
+  // Motor de SLA de Leads (server/src/lib/leadsSlaScheduler.ts) — nunca
+  // preenchido junto com clienteId (são dois tipos de notificação
+  // diferentes: Carteira vs. Leads/marketing).
+  leadId: integer('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
   type: text('type').notNull(),
   title: text('title').notNull(),
   message: text('message').notNull(),

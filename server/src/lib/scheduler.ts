@@ -8,6 +8,7 @@ import { registrarLigacoesAutomaticasPabxone360 } from './pabxone360.js'
 import { executarAvisoLeadsNovos, type Periodo } from './avisoLeadsNovos.js'
 import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
+import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -151,4 +152,12 @@ export function startScheduler() {
   sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
 
   iniciarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha na inicialização:', err))
+
+  // Motor de SLA de Leads (novo parado/rodízio/abordagem sem contato/
+  // esfriando) — mesma cadência de 5min do sistema antigo, separado do
+  // runChecks horário porque os limites aqui são medidos em horas, não dias.
+  cron.schedule('*/5 * * * *', () => {
+    runLeadsSlaChecks().catch((err) => console.error('[leads-sla] erro ao processar checagens:', err))
+  })
+  runLeadsSlaChecks().catch((err) => console.error('[leads-sla] erro ao processar checagens iniciais:', err))
 }
