@@ -2015,6 +2015,8 @@ export const ordemLiberacaoFinanceira = sqliteTable('ordem_liberacao_financeira'
   condicaoPagamento: text('condicao_pagamento'),
   dataPagamentoPrevista: text('data_pagamento_prevista'),
   observacoes: text('observacoes'),
+  obsTravadaEm: text('obs_travada_em'), // observação travada após "Salvar" — edição só por gestor
+  obsTravadaPor: integer('obs_travada_por').references(() => users.id, { onDelete: 'set null' }),
   aprovado: integer('aprovado', { mode: 'boolean' }).notNull().default(false),
   aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
   aprovadoEm: text('aprovado_em'),
@@ -2059,6 +2061,9 @@ export const ordemAprovacaoFrete = sqliteTable('ordem_aprovacao_frete', {
   retiradaData: text('retirada_data'),
   semFrete: integer('sem_frete', { mode: 'boolean' }).notNull().default(false),
   semFreteObservacoes: text('sem_frete_observacoes'),
+  cotacaoFinalizada: integer('cotacao_finalizada', { mode: 'boolean' }).notNull().default(false), // operador marcou "cotação finalizada" (selo no card)
+  cotacaoFinalizadaEm: text('cotacao_finalizada_em'),
+  cotacaoFinalizadaPor: integer('cotacao_finalizada_por').references(() => users.id, { onDelete: 'set null' }),
   aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
   aprovadoEm: text('aprovado_em'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
@@ -2072,6 +2077,11 @@ export const ordemPreparacao = sqliteTable('ordem_preparacao', {
   ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
   dataEntradaEstoque: text('data_entrada_estoque'),
   observacoes: text('observacoes'),
+  obsTravadaEm: text('obs_travada_em'),
+  obsTravadaPor: integer('obs_travada_por').references(() => users.id, { onDelete: 'set null' }),
+  operadorFinalizou: integer('operador_finalizou', { mode: 'boolean' }).notNull().default(false), // marca do operador (selo no card)
+  operadorFinalizouEm: text('operador_finalizou_em'),
+  operadorFinalizouPor: integer('operador_finalizou_por').references(() => users.id, { onDelete: 'set null' }),
   aprovadoGestor: integer('aprovado_gestor', { mode: 'boolean' }).notNull().default(false),
   aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
   aprovadoEm: text('aprovado_em'),
@@ -2131,10 +2141,13 @@ export const ordemConferencia = sqliteTable('ordem_conferencia', {
   // Tri-state de propósito (null = ainda não respondido).
   inspecaoVisualAvaria: integer('inspecao_visual_avaria', { mode: 'boolean' }),
   embalagemOk: integer('embalagem_ok', { mode: 'boolean' }).notNull().default(false),
+  embalagemPor: text('embalagem_por'), // quem embalou: RAFAEL | MARCUS | EDUARDO
   embalagemConfirmadoPor: integer('embalagem_confirmado_por').references(() => users.id, { onDelete: 'set null' }),
   embalagemConfirmadoEm: text('embalagem_confirmado_em'),
   observacoes: text('observacoes'),
   observacoesGerais: text('observacoes_gerais'),
+  obsTravadaEm: text('obs_travada_em'),
+  obsTravadaPor: integer('obs_travada_por').references(() => users.id, { onDelete: 'set null' }),
   confirmado: integer('confirmado', { mode: 'boolean' }).notNull().default(false),
   confirmadoPor: integer('confirmado_por').references(() => users.id, { onDelete: 'set null' }),
   confirmadoEm: text('confirmado_em'),
@@ -2314,6 +2327,8 @@ export const propostas = sqliteTable(
     clienteNome: text('cliente_nome').notNull(),
     clienteWhatsapp: text('cliente_whatsapp'),
     produtosDescricao: text('produtos_descricao'),
+    produtosItens: text('produtos_itens'), // JSON: [{modelo, qtd, voltagem}] — fonte da verdade do seletor
+    semProposta: integer('sem_proposta', { mode: 'boolean' }).notNull().default(false), // fechamento direto, criado já em "fechado"
     comissao: text('comissao'),
     revenda: text('revenda'),
     formaPagamento: text('forma_pagamento'),

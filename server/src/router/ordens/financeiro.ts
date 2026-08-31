@@ -3,12 +3,18 @@
 // vendedor também (ele que costuma preencher os dados do pedido).
 import { z } from 'zod'
 import { eq } from 'drizzle-orm'
+import { TRPCError } from '@trpc/server'
 import { router, adminProcedure, adminOrFeatureProcedure } from '../_base.js'
 import { db } from '../../db/client.js'
 import { ordemLiberacaoFinanceira, ordemDetalhes } from '../../db/schema.js'
 import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
+
+// "«antes» → «depois»" pra registrar a versão da observação no histórico.
+export function diffObs(label: string, antes: string | null, depois: string | null | undefined): string {
+  return `${label}: «${(antes ?? '').trim() || '—'}» → «${(depois ?? '').trim() || '—'}»`
+}
 
 async function upsertLiberacao(ordemId: number, values: Record<string, unknown>) {
   const existente = await db.query.ordemLiberacaoFinanceira.findFirst({ where: eq(ordemLiberacaoFinanceira.ordemId, ordemId) })
@@ -43,13 +49,25 @@ export const ordensFinanceiroRouter = router({
         condicaoPagamento: z.string().optional(),
         dataPagamentoPrevista: z.string().optional(),
         observacoes: z.string().optional(),
+        travar: z.boolean().optional(), // true = trava a observação após salvar; false = destrava (gestor "Editar")
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
-      const { ordemId, ...values } = input
-      await upsertLiberacao(ordemId, values)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const atual = await db.query.ordemLiberacaoFinanceira.findFirst({ where: eq(ordemLiberacaoFinanceira.ordemId, input.ordemId) })
+      const { ordemId, travar, ...values } = input
+      const obsMudou = values.observacoes !== undefined && values.observacoes !== (atual?.observacoes ?? null)
+      if (atual?.obsTravadaEm && obsMudou && travar !== false && ctx.user.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: "Observação travada — só o gestor pode editar (use 'Editar')." })
+      }
+      const extra: Record<string, unknown> = {}
+      if (travar === true) { extra.obsTravadaEm = agoraSqlite(); extra.obsTravadaPor = ctx.user.id }
+      else if (travar === false) { extra.obsTravadaEm = null; extra.obsTravadaPor = null }
+      await upsertLiberacao(ordemId, { ...values, ...extra })
+      if (obsMudou) {
+        await registrarHistoricoOrdem({ ordemId, userId: ctx.user.id, action: 'update', description: diffObs('Observações da liberação financeira', atual?.observacoes ?? null, values.observacoes), stage: ordem.stage })
+      }
       return { ok: true }
     }),
 

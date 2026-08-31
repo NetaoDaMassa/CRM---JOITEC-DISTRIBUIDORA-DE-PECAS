@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Download, RefreshCw, CalendarRange, X } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -40,6 +40,7 @@ export default function PropostasKanban() {
   const basePath = isAdmin ? '/admin/propostas' : '/vendedor/propostas'
 
   const [modalAberto, setModalAberto] = useState(false)
+  const [semProposta, setSemProposta] = useState(false)
   const [clienteNome, setClienteNome] = useState('')
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [produtosDescricao, setProdutosDescricao] = useState('')
@@ -81,8 +82,9 @@ export default function PropostasKanban() {
 
   const criarMut = trpc.propostas.criar.useMutation({
     onSuccess() {
-      toast.success('Proposta criada')
+      toast.success(semProposta ? 'Fechamento registrado em Fechado' : 'Proposta criada')
       setModalAberto(false)
+      setSemProposta(false)
       setClienteNome('')
       setClienteWhatsapp('')
       setProdutosDescricao('')
@@ -93,13 +95,26 @@ export default function PropostasKanban() {
     },
   })
 
+  function abrirModal(sem: boolean) {
+    setSemProposta(sem)
+    setClienteNome('')
+    setClienteWhatsapp('')
+    setProdutosDescricao('')
+    setModalAberto(true)
+  }
+
   return (
     <div className="p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <h1 className="font-heading text-2xl text-dark-50 font-bold">Propostas</h1>
-        <Button size="sm" onClick={() => setModalAberto(true)}>
-          <Plus size={14} className="mr-1" /> Nova Proposta
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => abrirModal(true)} title="Registrar um negócio já fechado, sem passar pelo funil">
+            <CheckCircle2 size={14} className="mr-1" /> Fechamento / Sem Proposta
+          </Button>
+          <Button size="sm" onClick={() => abrirModal(false)}>
+            <Plus size={14} className="mr-1" /> Nova Proposta
+          </Button>
+        </div>
       </div>
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
@@ -154,8 +169,11 @@ export default function PropostasKanban() {
         <PropostasBoard propostas={propostas ?? []} basePath={basePath} mostrarVendedor={isAdmin} />
       )}
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Nova Proposta" size="sm">
+      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title={semProposta ? 'Fechamento / Sem Proposta' : 'Nova Proposta'} size="sm">
         <div className="p-5 space-y-4">
+          {semProposta && (
+            <p className="text-xs text-dark-400">Cria a proposta já em <span className="font-semibold text-dark-200">Fechado</span>, sem precisar anexar PDF. Complete os demais dados abrindo o card.</p>
+          )}
           <Input label="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
           <Input label="WhatsApp do cliente" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
           <Input label="Produtos/Serviços" value={produtosDescricao} onChange={(e) => setProdutosDescricao(e.target.value)} />
@@ -163,9 +181,14 @@ export default function PropostasKanban() {
             className="w-full"
             disabled={!clienteNome || criarMut.isPending}
             loading={criarMut.isPending}
-            onClick={() => criarMut.mutate({ clienteNome, clienteWhatsapp: clienteWhatsapp || undefined, produtosDescricao: produtosDescricao || undefined })}
+            onClick={() => criarMut.mutate({
+              clienteNome,
+              clienteWhatsapp: clienteWhatsapp || undefined,
+              produtosDescricao: produtosDescricao || undefined,
+              ...(semProposta ? { stage: 'fechado' as const, semProposta: true } : {}),
+            })}
           >
-            Criar proposta
+            {semProposta ? 'Registrar fechamento' : 'Criar proposta'}
           </Button>
         </div>
       </Modal>

@@ -14,9 +14,9 @@ type OrdemCard = {
   cliente: { id: number; razaoSocial: string } | null
   vendedor: { id: number; name: string } | null
   detalhes: { prioridadeDespacho: string | null } | null
-  aprovacaoFrete: { retiradaLocal: boolean; semFrete: boolean; cotacaoSelecionadaId: number | null } | null
+  aprovacaoFrete: { retiradaLocal: boolean; semFrete: boolean; cotacaoSelecionadaId: number | null; cotacaoFinalizada?: boolean } | null
   freteFinalizado: { confirmado: boolean } | null
-  preparacao: { aprovadoGestor: boolean } | null
+  preparacao: { aprovadoGestor: boolean; operadorFinalizou?: boolean } | null
   coleta: { confirmado: boolean } | null
   rastreio: { transportadora: string | null; codigoRastreio: string | null } | null
 }
@@ -141,6 +141,21 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                         <div className="mt-2 flex items-center gap-1 rounded-full bg-green-900/30 border border-green-700/40 px-2 py-0.5 w-fit">
                           <CheckCircle2 size={10} className="text-green-400" />
                           <span className="text-[10px] font-bold text-green-400">PRONTO PARA RASTREIO</span>
+                        </div>
+                      )}
+
+                      {(ordem.aprovacaoFrete?.cotacaoFinalizada || ordem.preparacao?.operadorFinalizou) && (
+                        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                          {ordem.aprovacaoFrete?.cotacaoFinalizada && (
+                            <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold border text-green-400 bg-green-900/20 border-green-700/40">
+                              <CheckCircle2 size={10} /> Cotação finalizada
+                            </span>
+                          )}
+                          {ordem.preparacao?.operadorFinalizou && (
+                            <span className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold border text-green-400 bg-green-900/20 border-green-700/40">
+                              <CheckCircle2 size={10} /> Preparação finalizada
+                            </span>
+                          )}
                         </div>
                       )}
 

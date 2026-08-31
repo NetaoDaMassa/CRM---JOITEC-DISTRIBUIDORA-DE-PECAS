@@ -55,19 +55,30 @@ export const propostasRouter = router({
         clienteNome: z.string().min(1),
         clienteWhatsapp: z.string().optional(),
         produtosDescricao: z.string().optional(),
+        produtosItens: z.string().optional(),
         comissao: z.string().optional(),
         revenda: z.string().optional(),
         formaPagamento: z.string().optional(),
         observacoes: z.string().optional(),
         prioridade: z.enum(['normal', 'urgente']).optional(),
         motivoUrgencia: z.string().optional(),
+        stage: z.enum(['proposta', 'fechado']).optional(),
+        semProposta: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaPropostas(ctx.empresaId)
-      const result = await db.insert(propostas).values({ empresaId: ctx.empresaId, vendedorId: ctx.user.id, ...input })
+      const { stage, ...rest } = input
+      // "Fechamento / Sem Proposta" cria direto em "fechado"; qualquer outro valor cai em "proposta".
+      const result = await db.insert(propostas).values({
+        empresaId: ctx.empresaId,
+        vendedorId: ctx.user.id,
+        ...rest,
+        stage: stage === 'fechado' ? 'fechado' : 'proposta',
+      })
       const propostaId = Number(result.lastInsertRowid)
-      await notificarGestores(ctx.empresaId, 'Nova proposta recebida', `${input.clienteNome} — proposta criada por ${ctx.user.name}`)
+      const titulo = input.semProposta ? 'Fechamento registrado (sem proposta)' : 'Nova proposta recebida'
+      await notificarGestores(ctx.empresaId, titulo, `${input.clienteNome} — ${input.semProposta ? 'fechamento' : 'proposta'} criado por ${ctx.user.name}`)
       await registrarAuditoria({ tabela: 'propostas', registroId: propostaId, acao: 'criar', alteradoPor: ctx.user.id })
       return { id: propostaId }
     }),
@@ -86,6 +97,7 @@ export const propostasRouter = router({
         clienteNome: z.string().optional(),
         clienteWhatsapp: z.string().optional(),
         produtosDescricao: z.string().optional(),
+        produtosItens: z.string().optional(),
         comissao: z.string().optional(),
         revenda: z.string().optional(),
         formaPagamento: z.string().optional(),
@@ -103,7 +115,10 @@ export const propostasRouter = router({
 
       // Produtos/Serviços trava pro vendedor assim que sai da coluna "Proposta" —
       // só destrava via "Solicitar Alteração", que devolve a proposta pra lá.
-      if (values.produtosDescricao !== undefined && values.produtosDescricao !== proposta.produtosDescricao && proposta.stage !== 'proposta' && ctx.user.role !== 'admin') {
+      const mexeuNosProdutos =
+        (values.produtosDescricao !== undefined && values.produtosDescricao !== proposta.produtosDescricao) ||
+        (values.produtosItens !== undefined && values.produtosItens !== proposta.produtosItens)
+      if (mexeuNosProdutos && proposta.stage !== 'proposta' && ctx.user.role !== 'admin') {
         throw new TRPCError({ code: 'FORBIDDEN', message: "Campo travado após o envio — use 'Solicitar Alteração' para poder editar" })
       }
 
@@ -227,13 +242,13 @@ export const propostasRouter = router({
     // Pré-popula a liberação financeira com os dados relevantes da proposta —
     // observations é o único espaço livre nessa etapa, então concentra tudo
     // que a proposta carregava e que senão se perderia na conversão.
+    // Só o que a Liberação Financeira precisa da proposta: máquinas/itens,
+    // condição de pagamento, comissão e revenda.
     const partes: string[] = []
-    if (proposta.produtosDescricao) partes.push(`Produto/Serviço: ${proposta.produtosDescricao}`)
+    if (proposta.produtosDescricao) partes.push(`Máquinas/Itens: ${proposta.produtosDescricao}`)
+    if (proposta.formaPagamento) partes.push(`Condição de pagamento: ${proposta.formaPagamento}`)
     if (proposta.comissao) partes.push(`Comissão: ${proposta.comissao}`)
     if (proposta.revenda) partes.push(`Revenda: ${proposta.revenda}`)
-    if (proposta.prioridade === 'urgente') partes.push(`Prioridade: urgente${proposta.motivoUrgencia ? ` — ${proposta.motivoUrgencia}` : ''}`)
-    if (proposta.clienteWhatsapp) partes.push(`WhatsApp cliente: ${proposta.clienteWhatsapp}`)
-    if (proposta.observacoes) partes.push(`Observações: ${proposta.observacoes}`)
 
     const result = await db.insert(ordens).values({
       empresaId: ctx.empresaId,

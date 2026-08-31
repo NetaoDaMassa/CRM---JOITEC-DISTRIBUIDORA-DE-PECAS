@@ -11,6 +11,7 @@ import { ordemPreparacao, ordemMaquinas, ordemAnexos } from '../../db/schema.js'
 import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
+import { diffObs } from './financeiro.js'
 
 // Categorias de foto exigidas por tipo de máquina, inferido do prefixo do
 // modelo — mesma convenção `{categoria}__{maquinaId}` do odincrm original.
@@ -29,14 +30,42 @@ export const ordensPreparacaoRouter = router({
   }),
 
   atualizarPreparacao: adminProcedure
-    .input(z.object({ ordemId: z.number(), dataEntradaEstoque: z.string().optional(), observacoes: z.string().optional() }))
+    .input(z.object({ ordemId: z.number(), dataEntradaEstoque: z.string().optional(), observacoes: z.string().optional(), travar: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
-      const { ordemId, ...values } = input
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const { ordemId, travar, ...values } = input
       const existente = await db.query.ordemPreparacao.findFirst({ where: eq(ordemPreparacao.ordemId, ordemId) })
-      if (existente) await db.update(ordemPreparacao).set({ ...values, updatedAt: agoraSqlite() }).where(eq(ordemPreparacao.ordemId, ordemId))
-      else await db.insert(ordemPreparacao).values({ ordemId, ...values })
+      const obsMudou = values.observacoes !== undefined && values.observacoes !== (existente?.observacoes ?? null)
+      if (existente?.obsTravadaEm && obsMudou && travar !== false && ctx.user.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: "Observação travada — só o gestor pode editar (use 'Editar')." })
+      }
+      const extra: Record<string, unknown> = {}
+      if (travar === true) { extra.obsTravadaEm = agoraSqlite(); extra.obsTravadaPor = ctx.user.id }
+      else if (travar === false) { extra.obsTravadaEm = null; extra.obsTravadaPor = null }
+      const set = { ...values, ...extra }
+      if (existente) await db.update(ordemPreparacao).set({ ...set, updatedAt: agoraSqlite() }).where(eq(ordemPreparacao.ordemId, ordemId))
+      else await db.insert(ordemPreparacao).values({ ordemId, ...set })
+      if (obsMudou) {
+        await registrarHistoricoOrdem({ ordemId, userId: ctx.user.id, action: 'update', description: diffObs('Observações da preparação', existente?.observacoes ?? null, values.observacoes), stage: ordem.stage })
+      }
+      return { ok: true }
+    }),
+
+  finalizarPreparacao: adminOrFeatureProcedure('pedidos_odin')
+    .input(z.object({ ordemId: z.number(), finalizado: z.boolean().default(true) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaOrdens(ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const existente = await db.query.ordemPreparacao.findFirst({ where: eq(ordemPreparacao.ordemId, input.ordemId) })
+      const values = {
+        operadorFinalizou: input.finalizado,
+        operadorFinalizouEm: input.finalizado ? agoraSqlite() : null,
+        operadorFinalizouPor: input.finalizado ? ctx.user.id : null,
+      }
+      if (existente) await db.update(ordemPreparacao).set(values).where(eq(ordemPreparacao.ordemId, input.ordemId))
+      else await db.insert(ordemPreparacao).values({ ordemId: input.ordemId, ...values })
+      await registrarHistoricoOrdem({ ordemId: input.ordemId, userId: ctx.user.id, action: 'confirmation', description: input.finalizado ? 'Operador finalizou a preparação' : 'Operador desfez a finalização da preparação', stage: ordem.stage })
       return { ok: true }
     }),
 

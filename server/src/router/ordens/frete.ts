@@ -133,6 +133,24 @@ export const ordensFreteRouter = router({
     return { ok: true }
   }),
 
+  // Marca do operador — "cotação finalizada" (acende selo na frente do card).
+  finalizarCotacao: adminOrFeatureProcedure('pedidos_odin')
+    .input(z.object({ ordemId: z.number(), finalizado: z.boolean().default(true) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaOrdens(ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const existente = await db.query.ordemAprovacaoFrete.findFirst({ where: eq(ordemAprovacaoFrete.ordemId, input.ordemId) })
+      const values = {
+        cotacaoFinalizada: input.finalizado,
+        cotacaoFinalizadaEm: input.finalizado ? agoraSqlite() : null,
+        cotacaoFinalizadaPor: input.finalizado ? ctx.user.id : null,
+      }
+      if (existente) await db.update(ordemAprovacaoFrete).set(values).where(eq(ordemAprovacaoFrete.ordemId, input.ordemId))
+      else await db.insert(ordemAprovacaoFrete).values({ ordemId: input.ordemId, ...values })
+      await registrarHistoricoOrdem({ ordemId: input.ordemId, userId: ctx.user.id, action: 'confirmation', description: input.finalizado ? 'Cotação finalizada' : 'Finalização da cotação desfeita', stage: ordem.stage })
+      return { ok: true }
+    }),
+
   obterFreteFinalizado: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
     await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)

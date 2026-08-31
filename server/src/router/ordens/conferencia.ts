@@ -10,6 +10,7 @@ import { ordemConferencia, ordemConferenciaItens, ordemMaquinas, ordemAnexos } f
 import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
+import { diffObs } from './financeiro.js'
 
 export const ordensConferenciaRouter = router({
   obter: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
@@ -30,14 +31,17 @@ export const ordensConferenciaRouter = router({
         kitSecador: z.boolean().optional(),
         inspecaoVisualAvaria: z.boolean().optional(),
         embalagemOk: z.boolean().optional(),
+        embalagemPor: z.string().optional(),
         observacoes: z.string().optional(),
         observacoesGerais: z.string().optional(),
+        travar: z.boolean().optional(), // trava observacoes + observacoesGerais após "Salvar"
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
-      const { ordemId, embalagemOk, ...resto } = input
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const { ordemId, embalagemOk, travar, ...resto } = input
+      const existente = await db.query.ordemConferencia.findFirst({ where: eq(ordemConferencia.ordemId, ordemId) })
       const values: Record<string, unknown> = { ...resto }
       if (embalagemOk !== undefined) {
         values.embalagemOk = embalagemOk
@@ -46,9 +50,21 @@ export const ordensConferenciaRouter = router({
           values.embalagemConfirmadoEm = agoraSqlite()
         }
       }
-      const existente = await db.query.ordemConferencia.findFirst({ where: eq(ordemConferencia.ordemId, ordemId) })
+      const camposObs = ['observacoes', 'observacoesGerais'] as const
+      const mudouObs = camposObs.some((c) => resto[c] !== undefined && resto[c] !== (existente?.[c] ?? null))
+      if (existente?.obsTravadaEm && mudouObs && travar !== false && ctx.user.role !== 'admin') {
+        throw new TRPCError({ code: 'FORBIDDEN', message: "Observações da conferência travadas — só o gestor pode editar (use 'Editar')." })
+      }
+      if (travar === true) { values.obsTravadaEm = agoraSqlite(); values.obsTravadaPor = ctx.user.id }
+      else if (travar === false) { values.obsTravadaEm = null; values.obsTravadaPor = null }
       if (existente) await db.update(ordemConferencia).set({ ...values, updatedAt: agoraSqlite() }).where(eq(ordemConferencia.ordemId, ordemId))
       else await db.insert(ordemConferencia).values({ ordemId, ...values })
+      if (mudouObs) {
+        const partes = camposObs
+          .filter((c) => resto[c] !== undefined && resto[c] !== (existente?.[c] ?? null))
+          .map((c) => diffObs(c === 'observacoesGerais' ? 'Observações da conferência' : 'Instrução de embalagem', existente?.[c] ?? null, resto[c]))
+        await registrarHistoricoOrdem({ ordemId, userId: ctx.user.id, action: 'update', description: partes.join('; '), stage: ordem.stage })
+      }
       return { ok: true }
     }),
 

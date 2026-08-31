@@ -512,6 +512,13 @@
       "when": 1788200850664,
       "tag": "0072_cynical_khan",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "6",
+      "when": 1788208553040,
+      "tag": "0073_minor_sabra",
+      "breakpoints": true
     }
   ]
 }

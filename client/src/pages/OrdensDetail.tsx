@@ -332,12 +332,13 @@ function AbaFinanceiro({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean
   return <AbaFinanceiroForm ordemId={ordemId} isAdmin={isAdmin} data={data ?? null} />
 }
 
-function AbaFinanceiroForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { aprovado: boolean; formaPagamento: string | null; condicaoPagamento: string | null; dataPagamentoPrevista: string | null; observacoes: string | null } | null }) {
+function AbaFinanceiroForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmin: boolean; data: { aprovado: boolean; formaPagamento: string | null; condicaoPagamento: string | null; dataPagamentoPrevista: string | null; observacoes: string | null; obsTravadaEm?: string | null } | null }) {
   const utils = trpc.useUtils()
   const [forma, setForma] = useState(data?.formaPagamento ?? '')
   const [condicao, setCondicao] = useState(data?.condicaoPagamento ?? '')
   const [dataPrevista, setDataPrevista] = useState(data?.dataPagamentoPrevista ?? '')
   const [obs, setObs] = useState(data?.observacoes ?? '')
+  const travada = !!data?.obsTravadaEm
 
   function invalidar() {
     utils.ordens.financeiro.obterLiberacao.invalidate({ ordemId })
@@ -354,11 +355,20 @@ function AbaFinanceiroForm({ ordemId, isAdmin, data }: { ordemId: number; isAdmi
         <Input label="Condição de pagamento" defaultValue={condicao} onChange={(e) => setCondicao(e.target.value)} disabled={!isAdmin} />
         <Input label="Data prevista" defaultValue={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} disabled={!isAdmin} />
       </div>
-      <Input label="Observações" defaultValue={obs} onChange={(e) => setObs(e.target.value)} disabled={!isAdmin} />
+      <div>
+        <Input label={`Observações${travada ? ` 🔒 travada em ${formatarDataHora(data?.obsTravadaEm)}` : ''}`} value={obs} onChange={(e) => setObs(e.target.value)} disabled={!isAdmin || travada} />
+        {isAdmin && (
+          travada ? (
+            <button onClick={() => salvarMut.mutate({ ordemId, travar: false })} className="mt-1.5 text-xs font-semibold text-gold-400 hover:text-gold-300">Editar observação</button>
+          ) : (
+            <Button size="sm" variant="secondary" className="mt-1.5" loading={salvarMut.isPending} onClick={() => salvarMut.mutate({ ordemId, observacoes: obs, travar: true })}>Salvar observação</Button>
+          )
+        )}
+      </div>
       {isAdmin && (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" loading={salvarMut.isPending} onClick={() => salvarMut.mutate({ ordemId, formaPagamento: forma, condicaoPagamento: condicao, dataPagamentoPrevista: dataPrevista, observacoes: obs })}>
-            Salvar
+          <Button size="sm" variant="secondary" loading={salvarMut.isPending} onClick={() => salvarMut.mutate({ ordemId, formaPagamento: forma, condicaoPagamento: condicao, dataPagamentoPrevista: dataPrevista })}>
+            Salvar dados
           </Button>
           {!data?.aprovado && (
             <Button size="sm" loading={aprovarMut.isPending} onClick={() => aprovarMut.mutate({ ordemId })}>Aprovar liberação financeira</Button>
@@ -442,9 +452,20 @@ function AbaFrete({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean }) {
   const semFreteMut = trpc.ordens.frete.definirSemFrete.useMutation({ onSuccess: () => { toast.success('Definido "sem frete"'); invalidar() }, onError: (e) => toast.error(e.message) })
   const retiradaMut = trpc.ordens.frete.definirRetiradaLocal.useMutation({ onSuccess: () => { toast.success('Definida retirada local'); invalidar() }, onError: (e) => toast.error(e.message) })
   const confirmarMut = trpc.ordens.frete.confirmarFreteFinalizado.useMutation({ onSuccess: () => { toast.success('Frete finalizado confirmado'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const finalizarCotacaoMut = trpc.ordens.frete.finalizarCotacao.useMutation({ onSuccess: () => { toast.success('Atualizado'); invalidar(); utils.ordens.core.obterPorId.invalidate({ id: ordemId }) }, onError: (e) => toast.error(e.message) })
+  const aprovacaoAny = aprovacao as { cotacaoFinalizada?: boolean; cotacaoFinalizadaEm?: string | null } | null | undefined
 
   return (
     <div className="space-y-5">
+      {aprovacaoAny?.cotacaoFinalizada ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-green-700/40 bg-green-900/10 px-3 py-2.5 text-sm">
+          <span className="text-green-400 font-medium">✅ Cotação finalizada{aprovacaoAny.cotacaoFinalizadaEm ? ` em ${formatarDataHora(aprovacaoAny.cotacaoFinalizadaEm)}` : ''}</span>
+          <button onClick={() => finalizarCotacaoMut.mutate({ ordemId, finalizado: false })} className="text-xs font-semibold text-green-400 underline hover:no-underline">desfazer</button>
+        </div>
+      ) : (
+        <Button size="sm" variant="secondary" loading={finalizarCotacaoMut.isPending} onClick={() => finalizarCotacaoMut.mutate({ ordemId, finalizado: true })}>🏁 Finalizar cotação</Button>
+      )}
+
       <div>
         <h3 className="text-sm font-semibold text-dark-200 mb-2">Cotações</h3>
         <div className="space-y-2">
@@ -498,17 +519,48 @@ function AbaPreparacao({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolean
   const { data: maquinas } = trpc.ordens.preparacao.listarMaquinas.useQuery({ ordemId })
   const [modelo, setModelo] = useState('')
   const [serie, setSerie] = useState('')
+  const [obs, setObs] = useState('')
+  const prepAny = prep as { observacoes?: string | null; obsTravadaEm?: string | null; operadorFinalizou?: boolean; operadorFinalizouEm?: string | null } | null | undefined
+  const travada = !!prepAny?.obsTravadaEm
 
   function invalidar() {
     utils.ordens.preparacao.obterPreparacao.invalidate({ ordemId })
     utils.ordens.preparacao.listarMaquinas.invalidate({ ordemId })
+    utils.ordens.core.obterPorId.invalidate({ id: ordemId })
   }
   const criarMaquinaMut = trpc.ordens.preparacao.criarMaquina.useMutation({ onSuccess: () => { toast.success('Máquina adicionada'); invalidar(); setModelo(''); setSerie('') }, onError: (e) => toast.error(e.message) })
   const excluirMaquinaMut = trpc.ordens.preparacao.excluirMaquina.useMutation({ onSuccess: () => { toast.success('Removida'); invalidar() }, onError: (e) => toast.error(e.message) })
   const aprovarMut = trpc.ordens.preparacao.aprovarPreparacao.useMutation({ onSuccess: () => { toast.success('Preparação aprovada'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const salvarObsMut = trpc.ordens.preparacao.atualizarPreparacao.useMutation({ onSuccess: () => { toast.success('Salvo'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const finalizarMut = trpc.ordens.preparacao.finalizarPreparacao.useMutation({ onSuccess: () => { toast.success('Atualizado'); invalidar() }, onError: (e) => toast.error(e.message) })
 
   return (
     <div className="space-y-5">
+      <div>
+        <Input
+          label={`Observações da preparação${travada ? ` 🔒 travada em ${formatarDataHora(prepAny?.obsTravadaEm)}` : ''}`}
+          value={travada ? (prepAny?.observacoes ?? '') : obs}
+          defaultValue={travada ? undefined : (prepAny?.observacoes ?? '')}
+          onChange={(e) => setObs(e.target.value)}
+          disabled={!isAdmin || travada}
+        />
+        {isAdmin && (
+          travada ? (
+            <button onClick={() => salvarObsMut.mutate({ ordemId, travar: false })} className="mt-1.5 text-xs font-semibold text-gold-400 hover:text-gold-300">Editar observação</button>
+          ) : (
+            <Button size="sm" variant="secondary" className="mt-1.5" loading={salvarObsMut.isPending} onClick={() => salvarObsMut.mutate({ ordemId, observacoes: obs || (prepAny?.observacoes ?? ''), travar: true })}>Salvar observação</Button>
+          )
+        )}
+      </div>
+
+      {prepAny?.operadorFinalizou ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-green-700/40 bg-green-900/10 px-3 py-2.5 text-sm">
+          <span className="text-green-400 font-medium">✅ Preparação finalizada{prepAny.operadorFinalizouEm ? ` em ${formatarDataHora(prepAny.operadorFinalizouEm)}` : ''}</span>
+          <button onClick={() => finalizarMut.mutate({ ordemId, finalizado: false })} className="text-xs font-semibold text-green-400 underline hover:no-underline">desfazer</button>
+        </div>
+      ) : (
+        <Button size="sm" variant="secondary" loading={finalizarMut.isPending} onClick={() => finalizarMut.mutate({ ordemId, finalizado: true })}>🏁 Finalizar preparação</Button>
+      )}
       <div>
         <h3 className="text-sm font-semibold text-dark-200 mb-2">Máquinas do pedido</h3>
         <div className="space-y-2">
@@ -585,8 +637,15 @@ function AbaConferencia({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolea
     utils.ordens.conferencia.listarItens.invalidate({ ordemId })
   }
   const atualizarMut = trpc.ordens.conferencia.atualizar.useMutation({ onSuccess: () => invalidar(), onError: (e) => toast.error(e.message) })
+  const salvarObsMut = trpc.ordens.conferencia.atualizar.useMutation({ onSuccess: () => { toast.success('Salvo'); invalidar() }, onError: (e) => toast.error(e.message) })
   const itemMut = trpc.ordens.conferencia.atualizarItem.useMutation({ onSuccess: () => invalidar(), onError: (e) => toast.error(e.message) })
   const confirmarMut = trpc.ordens.conferencia.confirmar.useMutation({ onSuccess: () => { toast.success('Conferência confirmada'); invalidar() }, onError: (e) => toast.error(e.message) })
+
+  const confAny = conf as { embalagemPor?: string | null; observacoes?: string | null; observacoesGerais?: string | null; obsTravadaEm?: string | null } | null | undefined
+  const notasTravadas = !!confAny?.obsTravadaEm
+  const [obsGerais, setObsGerais] = useState('')
+  const [obsEmbal, setObsEmbal] = useState('')
+  const EMBALADORES = ['RAFAEL', 'MARCUS', 'EDUARDO']
 
   return (
     <div className="space-y-5">
@@ -594,6 +653,39 @@ function AbaConferencia({ ordemId, isAdmin }: { ordemId: number; isAdmin: boolea
         <input type="checkbox" checked={!!conf?.embalagemOk} disabled={!isAdmin} onChange={(e) => atualizarMut.mutate({ ordemId, embalagemOk: e.target.checked })} />
         Embalagem OK
       </label>
+
+      <div>
+        <label className="text-xs text-dark-400 mb-1 block">Quem embalou</label>
+        <Select
+          value={confAny?.embalagemPor ?? ''}
+          disabled={!isAdmin || !!conf?.embalagemOk}
+          onChange={(e) => atualizarMut.mutate({ ordemId, embalagemPor: e.target.value })}
+          options={EMBALADORES.map((n) => ({ value: n, label: n }))}
+          placeholder="Selecione..."
+        />
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-dark-600 p-3">
+        <Input
+          label={`Observações da conferência${notasTravadas ? ' 🔒' : ''}`}
+          defaultValue={confAny?.observacoesGerais ?? ''}
+          onChange={(e) => setObsGerais(e.target.value)}
+          disabled={!isAdmin || notasTravadas}
+        />
+        <Input
+          label="Instrução de embalagem"
+          defaultValue={confAny?.observacoes ?? ''}
+          onChange={(e) => setObsEmbal(e.target.value)}
+          disabled={!isAdmin || notasTravadas}
+        />
+        {isAdmin && (
+          notasTravadas ? (
+            <button onClick={() => salvarObsMut.mutate({ ordemId, travar: false })} className="text-xs font-semibold text-gold-400 hover:text-gold-300">Editar observações</button>
+          ) : (
+            <Button size="sm" variant="secondary" loading={salvarObsMut.isPending} onClick={() => salvarObsMut.mutate({ ordemId, observacoesGerais: obsGerais || (confAny?.observacoesGerais ?? ''), observacoes: obsEmbal || (confAny?.observacoes ?? ''), travar: true })}>Salvar observações da conferência</Button>
+          )
+        )}
+      </div>
 
       <div>
         <h3 className="text-sm font-semibold text-dark-200 mb-2">Checklist por máquina</h3>

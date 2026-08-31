@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2, Copy, Upload } from 'lucide-react'
+import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2, Copy, Upload, CheckCircle2 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { timeAgo } from '../lib/utils'
@@ -24,6 +24,8 @@ type PropostaCard = {
   comissao: string | null
   revenda: string | null
   formaPagamento: string | null
+  semProposta?: boolean
+  convertidoParaOrdemId?: number | null
   updatedAt: string
   vendedor: { id: number; name: string; whatsapp: string | null } | null
   arquivos: { id: number; fileCategory: string | null; tipoArquivo: string | null; nomeArmazenado: string; createdAt: string }[]
@@ -169,6 +171,9 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                             <span className="rounded-full bg-amber-900/30 px-2 py-0.5 text-[10px] font-bold text-amber-400 flex items-center gap-0.5">
                               <AlertCircle size={9} /> ALTERAÇÃO{p.alteracoes.length > 1 ? ` (${p.alteracoes.length})` : ''}
                             </span>
+                          )}
+                          {p.semProposta && (
+                            <span className="rounded-full bg-dark-700 px-2 py-0.5 text-[10px] font-bold text-dark-200">SEM PROPOSTA</span>
                           )}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
@@ -318,6 +323,40 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
           )
         })}
       </div>
+
+      {/* Finalizadas — viraram Pedido */}
+      {(() => {
+        const convertidas = propostas.filter((p) => p.stage === 'convertido')
+        return (
+          <details className="mt-2 rounded-xl border border-dark-600 bg-dark-800/40">
+            <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-dark-200 flex items-center gap-2">
+              <CheckCircle2 size={14} className="text-green-400" />
+              Finalizadas — viraram Pedido ({convertidas.length})
+            </summary>
+            <div className="border-t border-dark-600 divide-y divide-dark-700">
+              {convertidas.length === 0 ? (
+                <p className="px-4 py-3 text-xs text-dark-500">Nenhuma proposta convertida ainda.</p>
+              ) : (
+                convertidas.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm">
+                    <div className="min-w-0">
+                      <span className="font-medium text-dark-100">{p.clienteNome}</span>
+                      <span className="ml-2 text-[11px] font-mono text-dark-500">#{p.id}</span>
+                      {p.vendedor?.name && <span className="ml-2 text-xs text-dark-500">{p.vendedor.name}</span>}
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-[11px] text-dark-500">{timeAgo(p.updatedAt)}</span>
+                      {p.convertidoParaOrdemId && (
+                        <span className="rounded-full bg-green-900/30 px-2 py-0.5 text-[11px] font-semibold text-green-400">→ Pedido #{p.convertidoParaOrdemId}</span>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </details>
+        )
+      })()}
 
       <Modal open={chamarDepoisId !== null} onClose={() => setChamarDepoisId(null)} title="Chamar depois" size="sm">
         <div className="p-5 space-y-4">

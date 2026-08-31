@@ -216,6 +216,7 @@ function AbaGeralForm({
     stage: string
     clienteWhatsapp: string | null
     produtosDescricao: string | null
+    produtosItens: string | null
     comissao: string | null
     revenda: string | null
     formaPagamento: string | null
@@ -227,6 +228,7 @@ function AbaGeralForm({
   const utils = trpc.useUtils()
   const [clienteWhatsapp, setClienteWhatsapp] = useState(proposta?.clienteWhatsapp ?? '')
   const [produtosDescricao, setProdutosDescricao] = useState(proposta?.produtosDescricao ?? '')
+  const [produtosItens, setProdutosItens] = useState(proposta?.produtosItens ?? '')
   const [comissao, setComissao] = useState(proposta?.comissao ?? '')
   const [revenda, setRevenda] = useState(proposta?.revenda ?? '')
   const [formaPagamento, setFormaPagamento] = useState(proposta?.formaPagamento ?? '')
@@ -283,7 +285,7 @@ function AbaGeralForm({
       <Input label="WhatsApp do cliente" defaultValue={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} disabled={!podeEditar} />
       <div>
         <label className="text-xs text-dark-400 mb-1.5 block">Produtos/Serviços</label>
-        <ProductSelector value={produtosDescricao} onChange={setProdutosDescricao} disabled={!podeEditar || produtosTravado} />
+        <ProductSelector value={produtosDescricao} onChange={setProdutosDescricao} itensJson={produtosItens} onItensChange={setProdutosItens} disabled={!podeEditar || produtosTravado} />
         {produtosTravado && <p className="text-xs text-yellow-500 mt-1">Travado após o envio — use a aba "Alterações" pra pedir mudança.</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -296,7 +298,7 @@ function AbaGeralForm({
         <Button
           size="sm"
           loading={salvarMut.isPending}
-          onClick={() => salvarMut.mutate({ id: propostaId, clienteWhatsapp, produtosDescricao, comissao, revenda, formaPagamento, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })}
+          onClick={() => salvarMut.mutate({ id: propostaId, clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })}
         >
           Salvar
         </Button>
