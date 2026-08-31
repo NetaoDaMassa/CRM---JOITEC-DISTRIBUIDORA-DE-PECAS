@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2, Download, RefreshCw } from 'lucide-react'
+import { Plus, MapPin, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2, Download, RefreshCw, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -190,10 +190,20 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
   const [editando, setEditando] = useState<number | null>(null)
   const [form, setForm] = useState<VisitaForm>(VISITA_VAZIA)
   const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
+  const [busca, setBusca] = useState('')
 
   const utils = trpc.useUtils()
   const { data: visitasTodas, isLoading } = trpc.visitas.listar.useQuery({ vendedorId })
-  const visitasList = filtrarPorPeriodo(visitasTodas ?? [], periodo)
+  const visitasPeriodo = filtrarPorPeriodo(visitasTodas ?? [], periodo)
+  const buscaLC = busca.trim().toLowerCase()
+  const visitasList =
+    periodo === 'todas' && buscaLC
+      ? visitasPeriodo.filter((v) =>
+          [v.nomeEmpresa, v.clienteNome, v.pessoaContato, v.endereco]
+            .filter((c): c is string => !!c)
+            .some((c) => c.toLowerCase().includes(buscaLC)),
+        )
+      : visitasPeriodo
 
   function invalidar() { utils.visitas.listar.invalidate() }
   const criarMut = trpc.visitas.criar.useMutation({
@@ -250,7 +260,17 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
 
   return (
     <div>
-      <div className="flex justify-end mb-4">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="w-full max-w-xs">
+          {periodo === 'todas' && (
+            <Input
+              icon={<Search size={14} />}
+              placeholder="Buscar empresa, contato, endereço..."
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+          )}
+        </div>
         <Button size="sm" onClick={() => setModalAberto(true)}><Plus size={14} className="mr-1" /> Nova Visita</Button>
       </div>
 
@@ -258,6 +278,9 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
         <p className="text-dark-400 text-sm">Carregando...</p>
       ) : (
         <div className="space-y-2">
+          {periodo === 'todas' && (
+            <p className="text-xs text-dark-500 mb-1">{visitasList.length} {visitasList.length === 1 ? 'visita' : 'visitas'}</p>
+          )}
           {(visitasList ?? []).map((v) => {
             const podeEditar = isAdmin || v.vendedorId === user?.id
             const duracaoMin = v.checkinEm && v.checkoutEm ? Math.round((new Date(v.checkoutEm.replace(' ', 'T')).getTime() - new Date(v.checkinEm.replace(' ', 'T')).getTime()) / 60000) : null
@@ -319,7 +342,9 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
               </div>
             )
           })}
-          {(!visitasList || visitasList.length === 0) && <p className="text-dark-500 text-sm">Nenhuma visita registrada</p>}
+          {(!visitasList || visitasList.length === 0) && (
+            <p className="text-dark-500 text-sm">{buscaLC ? 'Nenhuma visita encontrada para esta busca' : 'Nenhuma visita registrada'}</p>
+          )}
         </div>
       )}
 
