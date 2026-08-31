@@ -60,6 +60,27 @@ export const ordensCoreRouter = router({
     return rows.length
   }),
 
+  // Bolinha vermelha no toggle Máquina/Peça (pedido do João, 2026-08-31) —
+  // conta quantos pedidos de cada tipo estão parados na primeira etapa "de
+  // fila" (a que precisa de aprovação/ação antes de seguir pro resto do
+  // fluxo), pra quem cuida do despacho já saber de cara sem entrar no board.
+  // Máquina tem "liberação financeira" como esse gargalo inicial; Peça não
+  // tem essa etapa (começa direto em "pedido"), então usa "pedido" mesmo.
+  contarEtapaInicial: adminOrFeatureProcedure('pedidos_odin').query(async ({ ctx }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    const [maquina, peca] = await Promise.all([
+      db.query.ordens.findMany({
+        where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, 'maquina'), eq(ordens.status, 'ativo'), eq(ordens.stage, 'liberacao_financeira')),
+        columns: { id: true },
+      }),
+      db.query.ordens.findMany({
+        where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, 'peca'), eq(ordens.status, 'ativo'), eq(ordens.stage, 'pedido')),
+        columns: { id: true },
+      }),
+    ])
+    return { maquina: maquina.length, peca: peca.length }
+  }),
+
   criar: adminOrFeatureProcedure('pedidos_odin')
     .input(
       z.object({

@@ -52,6 +52,11 @@ export default function OrdensKanban() {
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
   const { data: ordensTodas, isLoading } = trpc.ordens.core.listarKanban.useQuery({ orderType, vendedorId: vendedorId ? Number(vendedorId) : undefined })
+  // Bolinha vermelha nos botões Máquina/Peça — quantos pedidos de cada tipo
+  // estão parados na primeira etapa (liberação financeira / pedido), pra
+  // quem cuida do despacho ver de cara sem precisar clicar em cada aba.
+  const { data: etapaInicial } = trpc.ordens.core.contarEtapaInicial.useQuery(undefined, { refetchInterval: 60_000 })
+  const BADGE_POR_TIPO: Record<OrderType, number | undefined> = { maquina: etapaInicial?.maquina, peca: etapaInicial?.peca }
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
 
   const temFiltroData = !!(dataDe || dataAte)
@@ -104,9 +109,15 @@ export default function OrdensKanban() {
               <button
                 key={t}
                 onClick={() => setOrderType(t)}
-                className={`px-3 py-1.5 text-sm rounded-md transition-colors ${orderType === t ? 'bg-gold-600 text-dark-950 font-semibold' : 'text-dark-300 hover:text-dark-100'}`}
+                title={BADGE_POR_TIPO[t] ? `${BADGE_POR_TIPO[t]} pedido(s) aguardando em ${t === 'maquina' ? 'Liberação Financeira' : 'Pedido'}` : undefined}
+                className={`relative px-3 py-1.5 text-sm rounded-md transition-colors ${orderType === t ? 'bg-gold-600 text-dark-950 font-semibold' : 'text-dark-300 hover:text-dark-100'}`}
               >
                 {ORDER_TYPE_LABELS[t]}
+                {!!BADGE_POR_TIPO[t] && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white">
+                    {BADGE_POR_TIPO[t]}
+                  </span>
+                )}
               </button>
             ))}
           </div>
