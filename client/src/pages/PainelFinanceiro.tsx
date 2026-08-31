@@ -94,7 +94,7 @@ function InadimplenciaEditor({ card, onClose }: { card: Card; onClose: () => voi
 
   const mut = trpc.financeiro.atualizarInadimplencia.useMutation({
     onSuccess() {
-      toast.success('Inadimplência atualizada')
+      toast.success('Inadimplência mensal atualizada')
       utils.financeiro.painelResumo.invalidate()
       onClose()
     },
@@ -238,7 +238,7 @@ function EmpresaCard({ card, editavel, idealHoje }: { card: Card; editavel: bool
         ) : (
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wide text-red-400">Inadimplência</p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-red-400">Inadimplência Mensal</p>
               <p className="text-[10px] text-dark-500 mt-0.5">✏️ registro manual</p>
             </div>
             <div className="text-right flex items-center gap-2">
@@ -306,7 +306,7 @@ function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
         <div className="flex items-center justify-center">
           <div className="text-center">
             <p className="text-3xl font-bold font-mono tabular-nums text-red-400">{formatarMoeda(consolidado.inadimplenciaTotal)}</p>
-            <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Inadimplência total</p>
+            <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold mt-1">Inadimplência mensal total</p>
           </div>
         </div>
       </div>
