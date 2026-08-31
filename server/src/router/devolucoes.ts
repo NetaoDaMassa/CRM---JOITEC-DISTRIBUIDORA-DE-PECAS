@@ -222,6 +222,8 @@ export const devolucoesRouter = router({
           empresa: { columns: { nome: true } },
           analise: { columns: { resultado: true, quemErrou: true, impactaComissao: true, valorImpactoComissao: true } },
           servicos: { columns: { teveServico: true, valorCobrado: true } },
+          // Só o texto dos itens — pra tela poder pesquisar card por material.
+          materiais: { columns: { codigoItem: true, descricaoItem: true, codigoItemCorreto: true, descricaoItemCorreto: true } },
         },
         orderBy: (c, { desc }) => [desc(c.createdAt)],
       })

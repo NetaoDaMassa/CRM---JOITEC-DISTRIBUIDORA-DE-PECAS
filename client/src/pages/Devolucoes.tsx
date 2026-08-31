@@ -1130,6 +1130,13 @@ function CardResumoBadges({ chamado }: { chamado: any }) {
 // Kanban de chamados de Devolução — reaproveitado igual pra admin e
 // vendedor (mesma tela em /admin/devolucoes e /vendedor/devolucoes), a
 // diferença de escopo (vê tudo x só o próprio) já acontece no backend.
+function norm(v: unknown): string {
+  return String(v ?? '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
 export default function Devolucoes() {
   const { user } = useAuth()
   const [modalNovo, setModalNovo] = useState(false)
@@ -1137,6 +1144,7 @@ export default function Devolucoes() {
   const [empresaFiltro, setEmpresaFiltro] = useState('')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
+  const [busca, setBusca] = useState('')
 
   const souAdmin = user?.role === 'admin'
   const utils = trpc.useUtils()
@@ -1160,6 +1168,35 @@ export default function Devolucoes() {
     dataInicio: dataInicio || undefined,
     dataFim: dataFim || undefined,
   })
+
+  // Pesquisa livre no card: protocolo, cliente (nome/razão), CNPJ, código,
+  // contato, notas/pedido, vendedor, empresa e os itens (enviado + correto).
+  const termos = norm(busca).split(/\s+/).filter(Boolean)
+  const chamadosFiltrados = !termos.length
+    ? chamados ?? []
+    : (chamados ?? []).filter((c: any) => {
+        const alvo = norm(
+          [
+            c.protocolo,
+            c.clienteNome,
+            c.clienteCnpj,
+            c.clienteCodigo,
+            c.clienteWhatsapp,
+            c.clienteEmail,
+            c.descricao,
+            c.observacao,
+            c.numeroNotaFiscal,
+            c.numeroNotaFiscalVenda,
+            c.numeroPedidoVenda,
+            c.vendedor?.name,
+            c.empresa?.nome,
+            ...(c.materiais ?? []).flatMap((m: any) => [m.codigoItem, m.descricaoItem, m.codigoItemCorreto, m.descricaoItemCorreto]),
+          ]
+            .filter(Boolean)
+            .join(' '),
+        )
+        return termos.every((t) => alvo.includes(t))
+      })
 
   return (
     <div className="p-6 space-y-6">
@@ -1199,11 +1236,25 @@ export default function Devolucoes() {
         </div>
       )}
 
+      <div className="flex items-center gap-2">
+        <Input
+          className="max-w-md"
+          placeholder="Pesquisar: protocolo, cliente, CNPJ, código, NF, pedido, vendedor, item..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+        {busca && (
+          <span className="text-xs text-dark-500">
+            {chamadosFiltrados.length} resultado(s)
+          </span>
+        )}
+      </div>
+
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
 
       <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${STATUS_COLUNAS.length}, minmax(240px, 1fr))` }}>
         {STATUS_COLUNAS.map((status) => {
-          const cards = (chamados ?? []).filter((c) => c.status === status)
+          const cards = chamadosFiltrados.filter((c: any) => c.status === status)
           return (
             <div key={status} className="bg-dark-900/40 border border-dark-700 rounded-2xl p-3 min-h-[200px]">
               <p className="text-xs font-bold text-dark-300 uppercase tracking-wide mb-3">
