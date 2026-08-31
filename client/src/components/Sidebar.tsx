@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -134,11 +134,27 @@ export const VENDOR_LINKS = [
 
 // Uma linha da sidebar (link normal ou externo em nova aba) — usado tanto
 // solto quanto dentro de um grupo aberto, mesmo visual dos dois jeitos.
-function SidebarItemLink({ to, label, icon: Icon, end, external }: { to: string; label: string; icon: LucideIcon; end?: boolean; external?: boolean }) {
+function SidebarItemLink({
+  to,
+  label,
+  icon: Icon,
+  end,
+  external,
+  onNavigate,
+}: {
+  to: string
+  label: string
+  icon: LucideIcon
+  end?: boolean
+  external?: boolean
+  // Fecha o menu no mobile depois de escolher um item — no desktop o
+  // Sidebar é sempre visível, então isso não tem efeito nenhum lá.
+  onNavigate?: () => void
+}) {
   const className = "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-dark-300 hover:text-dark-100 hover:bg-dark-800"
   if (external) {
     return (
-      <a href={to} target="_blank" rel="noopener noreferrer" className={className}>
+      <a href={to} target="_blank" rel="noopener noreferrer" className={className} onClick={onNavigate}>
         <Icon size={17} />
         <span className="flex-1">{label}</span>
       </a>
@@ -148,6 +164,7 @@ function SidebarItemLink({ to, label, icon: Icon, end, external }: { to: string;
     <NavLink
       to={to}
       end={end}
+      onClick={onNavigate}
       className={({ isActive }) =>
         `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
           isActive ? 'bg-gold-600/20 text-gold-400 border border-gold-600/30' : 'text-dark-300 hover:text-dark-100 hover:bg-dark-800'
@@ -160,7 +177,10 @@ function SidebarItemLink({ to, label, icon: Icon, end, external }: { to: string;
   )
 }
 
-export default function Sidebar() {
+// `open`/`onClose` só controlam a gaveta no mobile (abaixo do breakpoint
+// `md`) — no desktop o Sidebar continua sempre visível e fixo, exatamente
+// como antes (pedido do João, 2026-08-31: não mexer em nada do desktop).
+export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user, logout, empresaAtivaId, trocarEmpresa, login } = useAuth()
   const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
@@ -288,16 +308,29 @@ export default function Sidebar() {
     : null
 
   return (
-    <aside className="w-64 shrink-0 bg-dark-900 border-r border-dark-700 flex flex-col h-screen sticky top-0">
-      <div className="px-4 py-4 border-b border-dark-700">
-        {logoEmpresa ? (
-          <div className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-center">
-            <img src={logoEmpresa} alt={empresaAtiva?.nome ?? 'Logo da empresa'} className="h-9 w-auto object-contain" />
-          </div>
-        ) : (
-          <p className="font-heading text-gold-400 font-bold text-lg">CRM</p>
-        )}
-        <p className="text-xs text-dark-400 truncate mt-2 text-center">{empresaAtiva?.nome ?? '...'}</p>
+    <>
+      {/* Fundo escurecido atrás da gaveta — só existe no mobile, some
+          sozinho a partir do `md` porque o Sidebar nunca fica "aberto" lá. */}
+      {open && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={onClose} />}
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-dark-900 border-r border-dark-700 flex flex-col h-screen transform transition-transform duration-200 ease-out md:sticky md:top-0 md:translate-x-0 md:z-auto ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+      <div className="px-4 py-4 border-b border-dark-700 flex items-start gap-2">
+        <div className="flex-1 min-w-0">
+          {logoEmpresa ? (
+            <div className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-center">
+              <img src={logoEmpresa} alt={empresaAtiva?.nome ?? 'Logo da empresa'} className="h-9 w-auto object-contain" />
+            </div>
+          ) : (
+            <p className="font-heading text-gold-400 font-bold text-lg">CRM</p>
+          )}
+          <p className="text-xs text-dark-400 truncate mt-2 text-center">{empresaAtiva?.nome ?? '...'}</p>
+        </div>
+        <button onClick={onClose} className="p-1.5 rounded-lg text-dark-400 hover:text-dark-100 hover:bg-dark-800 md:hidden shrink-0">
+          <X size={18} />
+        </button>
       </div>
 
       {/* superAdmin sempre vê o seletor (acessa qualquer empresa); admin
@@ -360,7 +393,7 @@ export default function Sidebar() {
         <div className="space-y-1">
           {itensBuscados ? (
             itensBuscados.length > 0 ? (
-              itensBuscados.map((item) => <SidebarItemLink key={item.to} {...item} />)
+              itensBuscados.map((item) => <SidebarItemLink key={item.to} {...item} onNavigate={onClose} />)
             ) : (
               <p className="text-xs text-dark-500 text-center py-4">Nada encontrado pra "{busca.trim()}"</p>
             )
@@ -384,7 +417,7 @@ export default function Sidebar() {
                     {aberto && (
                       <div className="pl-4 space-y-1 mt-1">
                         {itensDoGrupo.map((item) => (
-                          <SidebarItemLink key={item.to} {...item} />
+                          <SidebarItemLink key={item.to} {...item} onNavigate={onClose} />
                         ))}
                       </div>
                     )}
@@ -393,7 +426,7 @@ export default function Sidebar() {
               })}
 
               {itensSoltos.map((item) => (
-                <SidebarItemLink key={item.to} {...item} />
+                <SidebarItemLink key={item.to} {...item} onNavigate={onClose} />
               ))}
             </>
           )}
@@ -427,6 +460,7 @@ export default function Sidebar() {
           Sair
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   )
 }
