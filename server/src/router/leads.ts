@@ -61,6 +61,11 @@ import {
 
 const ABORDAGEM_MAX_BUSINESS_DAYS = 4
 
+// Etapas a partir das quais dá pra transferir um lead da Odin Compressores
+// pra Propostas (ver transferirParaPropostas abaixo) — pedido do João,
+// 2026-08-31: libera já em "Em Negociação", não só em "Ganho".
+const ETAPAS_TRANSFERIVEIS_PROPOSTA = ['em_negociacao', 'ganho']
+
 function validateLeadNextContact(lead: { status: string }, nextContactAt: string | null | undefined): void {
   if (nextContactAt && lead.status === 'abordagem') {
     const error = validateNextContactLimit(nextContactAt, ABORDAGEM_MAX_BUSINESS_DAYS)
@@ -1176,7 +1181,14 @@ export const leadsRouter = router({
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
-      if (lead.status !== 'ganho') throw new Error('Só dá pra transferir um lead que já está na etapa Ganho')
+      // Pedido do João, 2026-08-31: pra Odin Compressores o botão de
+      // transferir pra Propostas libera já em "Em Negociação", não só em
+      // "Ganho" — o time quer levar o lead pro módulo de Propostas (que já
+      // acompanha revenda/comissão/arquivo) assim que a negociação começa
+      // de verdade, sem esperar fechar antes de começar a trabalhar a
+      // proposta formal. "Ganho" continua valendo também, pra não travar
+      // quem já tinha passado direto dessa etapa antes da mudança.
+      if (!ETAPAS_TRANSFERIVEIS_PROPOSTA.includes(lead.status)) throw new Error('Só dá pra transferir um lead que já está em Negociação ou Ganho')
       if (lead.convertidoParaClienteId || lead.convertidoParaPropostaId) throw new Error('Este lead já foi transferido')
       if (!lead.vendorId) throw new Error('Este lead não tem vendedor atribuído')
 

@@ -279,17 +279,21 @@ export default function LeadDetail() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap mt-4">
-          {(isAdmin || isOwner) && lead.status === 'ganho' && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
+          {(isAdmin || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
             <>
-              {empresaSlug === 'odin-compressores' ? (
-                <Button size="sm" onClick={() => setTransferirPropostasOpen(true)}>
-                  Transferir pra Propostas
-                </Button>
-              ) : (
-                <Button size="sm" onClick={() => setTransferirCarteiraOpen(true)}>
-                  Transferir pra Carteira
-                </Button>
-              )}
+              {empresaSlug === 'odin-compressores'
+                ? // Odin Compressores libera já em "Em Negociação", não só em
+                  // "Ganho" — pedido do João, 2026-08-31.
+                  ['em_negociacao', 'ganho'].includes(lead.status) && (
+                    <Button size="sm" onClick={() => setTransferirPropostasOpen(true)}>
+                      Transferir pra Propostas
+                    </Button>
+                  )
+                : lead.status === 'ganho' && (
+                    <Button size="sm" onClick={() => setTransferirCarteiraOpen(true)}>
+                      Transferir pra Carteira
+                    </Button>
+                  )}
             </>
           )}
           {lead.convertidoParaCliente && (
