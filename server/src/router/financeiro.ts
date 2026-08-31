@@ -1,12 +1,11 @@
 import { z } from 'zod'
-import { and, between, count, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
+import { and, between, count, eq, inArray, isNull, ne, notInArray, sql, sum } from 'drizzle-orm'
 import { router, superAdminProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, funilMensal, vendas, inadimplenciaEmpresas } from '../db/schema.js'
+import { users, funilMensal, vendas, inadimplenciaEmpresas, ordens, ordemDetalhes, ordemHistorico } from '../db/schema.js'
 import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite, diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesReferenciaAtual } from '../lib/dataBr.js'
 import { buscarVendasAtonComCache } from '../lib/atonErp.js'
-import { buscarFaturamentoOdinCrmComCache } from '../lib/odinCrmApi.js'
 
 // Cards do Painel Financeiro. Cada card soma 1+ empresaId — a maioria é uma
 // empresa só, mas Odin Compressores e Comprefer aparecem como um único card
@@ -18,11 +17,11 @@ import { buscarFaturamentoOdinCrmComCache } from '../lib/odinCrmApi.js'
 // `origemExterna: 'aton'` marca os cards que não têm vendedor/funil no CRM
 // (venda acontece 100% no ERP Aton) — pra esses, vendas/faturamento vêm da
 // API da Aton em vez de somar `vendas`/`funil_mensal` local.
-const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[]; origemExterna?: 'aton'; somaOdinCrm?: boolean }[] = [
+const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[]; origemExterna?: 'aton'; somaOrdensOdin?: boolean }[] = [
   { cardKey: 'joitec-distribuidora', nome: 'Joitec Distribuidora de Peças', slugLogo: 'joitec', empresaIds: [1] },
   { cardKey: 'joitec-automacao', nome: 'Joitec Automação', slugLogo: 'joitec-automacao', empresaIds: [3] },
   { cardKey: 'odin-tubos', nome: 'Odin Tubos e Conexões', slugLogo: 'odin-tubos', empresaIds: [2] },
-  { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5], somaOdinCrm: true },
+  { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5], somaOrdensOdin: true },
   { cardKey: 'compretec-ecommerce', nome: 'Compretec E-commerce', slugLogo: 'compretec', empresaIds: [6], origemExterna: 'aton' },
   // Loja Física passou a usar venda rápida/Kanban dentro do próprio CRM
   // (pedido do João 2026-08-19) — desligado do Aton, agora soma vendas/
@@ -52,6 +51,81 @@ const CHAVE_ODIN_CRM_SENHA = 'odincrm_senha'
 // endpoint pra isso, a aproximação é descontar um % médio configurável.
 function chaveDescontoAton(cardKey: string): string {
   return `aton_desconto_pct_${cardKey}`
+}
+
+// Faturamento da Odin Compressores (empresaId 4) pedido do João 2026-08-31:
+// as 3 equipes de lá (Pedido de Peças/Bruna, Pedidos Máquina, e a equipe de
+// prospecção/leads) — só as 2 primeiras (que vivem no módulo Pedidos/
+// `ordens`, tipos 'peca' e 'maquina' juntos) compõem o faturamento de
+// verdade; a equipe de leads fica só na "Carteira" (funil/vendas local),
+// com métricas próprias de conversão, sem entrar nessa conta. Regra
+// acertada com o odincrm.duckdns.org em 2026-08-27 (ver memória
+// odin-faturamento-regra-migracao): conta pedido cuja etapa atual seja
+// Faturamento ou posterior, mês de referência = data em que ENTROU na
+// etapa Faturamento (ordemHistorico stage_change→faturamento), fallback
+// createdAt quando não há esse registro. Substitui a antiga soma via API
+// externa (buscarFaturamentoOdinCrmComCache) agora que a Odin Compressores
+// vende 100% dentro do próprio Joitec CRM.
+const STAGES_FATURAMENTO_OU_DEPOIS = ['faturamento', 'conferencia', 'coleta', 'rastreio', 'qualidade', 'concluido', 'pos_venda']
+
+async function calcularFaturamentoOrdensOdin(empresaId: number, mesAtual: string, hoje: string) {
+  const faturaveis = await db
+    .select({ id: ordens.id, valor: ordemDetalhes.valorPedido, createdAt: ordens.createdAt })
+    .from(ordens)
+    .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
+    .where(and(eq(ordens.empresaId, empresaId), inArray(ordens.stage, STAGES_FATURAMENTO_OU_DEPOIS), ne(ordens.status, 'cancelado')))
+
+  const ids = faturaveis.map((o) => o.id)
+  const entradas = ids.length
+    ? await db
+        .select({ ordemId: ordemHistorico.ordemId, entrouEm: sql<string>`MIN(${ordemHistorico.createdAt})`.as('entrou_em') })
+        .from(ordemHistorico)
+        .where(
+          and(
+            inArray(ordemHistorico.ordemId, ids),
+            eq(ordemHistorico.action, 'stage_change'),
+            eq(ordemHistorico.fieldName, 'stage'),
+            eq(ordemHistorico.newValue, 'faturamento')
+          )
+        )
+        .groupBy(ordemHistorico.ordemId)
+    : []
+  const entrouEmPorOrdem = new Map(entradas.map((e) => [e.ordemId, e.entrouEm]))
+
+  let vendasMesQtd = 0
+  let vendasMesValor = 0
+  let vendasHojeQtd = 0
+  let vendasHojeValor = 0
+  for (const o of faturaveis) {
+    const dataRef = entrouEmPorOrdem.get(o.id) ?? o.createdAt
+    const valor = o.valor ?? 0
+    if (dataRef.slice(0, 7) === mesAtual.slice(0, 7)) {
+      vendasMesQtd++
+      vendasMesValor += valor
+    }
+    if (dataRef.slice(0, 10) === hoje) {
+      vendasHojeQtd++
+      vendasHojeValor += valor
+    }
+  }
+
+  // "Valor a faturar" — pedidos ativos que ainda não chegaram em
+  // Faturamento (já entraram no processo, ainda em liberação financeira/
+  // cotação de frete/preparação etc.).
+  const emProcesso = await db
+    .select({ valor: ordemDetalhes.valorPedido })
+    .from(ordens)
+    .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
+    .where(and(eq(ordens.empresaId, empresaId), eq(ordens.status, 'ativo'), notInArray(ordens.stage, STAGES_FATURAMENTO_OU_DEPOIS)))
+
+  return {
+    vendasMesQtd,
+    vendasMesValor,
+    vendasHojeQtd,
+    vendasHojeValor,
+    qtdAFaturar: emProcesso.length,
+    valorAFaturar: emProcesso.reduce((s, o) => s + (o.valor ?? 0), 0),
+  }
 }
 
 export const financeiroRouter = router({
@@ -108,6 +182,43 @@ export const financeiroRouter = router({
             vendasMesQtd = mesAton?.quantidade ?? 0
             vendasMesValor = (mesAton?.valor ?? 0) * fatorLiquido
           }
+        } else if (card.somaOrdensOdin) {
+          const EMPRESA_ID_ODIN_COMPRESSORES = 4
+          const ordensCalc = await calcularFaturamentoOrdensOdin(EMPRESA_ID_ODIN_COMPRESSORES, mesAtual, hoje)
+          vendasMesQtd += ordensCalc.vendasMesQtd
+          vendasMesValor += ordensCalc.vendasMesValor
+          vendasHojeQtd += ordensCalc.vendasHojeQtd
+          vendasHojeValor += ordensCalc.vendasHojeValor
+          valorAFaturar = ordensCalc.valorAFaturar
+          qtdAFaturar = ordensCalc.qtdAFaturar
+
+          // Resto do card.empresaIds (Comprefer) não tem módulo de Pedidos —
+          // continua somando vendas/funil_mensal local, como antes.
+          const empresaIdsRestantes = card.empresaIds.filter((id) => id !== EMPRESA_ID_ODIN_COMPRESSORES)
+          if (empresaIdsRestantes.length) {
+            const vendedoresResto = await db.query.users.findMany({
+              where: inArray(users.empresaId, empresaIdsRestantes),
+              columns: { id: true },
+            })
+            const vendedorIdsResto = vendedoresResto.map((v) => v.id)
+            const filtroResto = vendedorIdsResto.length ? inArray(funilMensal.vendedorId, vendedorIdsResto) : sql`0`
+
+            const [{ qtd: qtdHojeResto, valor: valHojeResto }] = await db
+              .select({ qtd: count(), valor: sum(vendas.valorFechado).mapWith(Number) })
+              .from(vendas)
+              .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+              .where(and(between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt), filtroResto))
+            vendasHojeQtd += qtdHojeResto
+            vendasHojeValor += valHojeResto ?? 0
+
+            const [{ qtd: qtdMesResto, valor: valMesResto }] = await db
+              .select({ qtd: count(), valor: sum(vendas.valorFechado).mapWith(Number) })
+              .from(vendas)
+              .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+              .where(and(eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt), filtroResto))
+            vendasMesQtd += qtdMesResto
+            vendasMesValor += valMesResto ?? 0
+          }
         } else {
           const vendedores = await db.query.users.findMany({
             where: inArray(users.empresaId, card.empresaIds),
@@ -134,24 +245,11 @@ export const financeiroRouter = router({
           vendasMesQtd = qtdMes
           vendasMesValor = valMes ?? 0
 
-          if (card.somaOdinCrm) {
-            const [email, senha] = await Promise.all([getConfigTexto(CHAVE_ODIN_CRM_EMAIL), getConfigTexto(CHAVE_ODIN_CRM_SENHA)])
-            if (email && senha) {
-              const externo = await buscarFaturamentoOdinCrmComCache(email, senha, mesAtual.slice(0, 7))
-              if (externo) {
-                vendasMesQtd += externo.quantidade
-                vendasMesValor += externo.valor
-                valorAFaturar = externo.valorAFaturar
-                qtdAFaturar = externo.qtdAFaturar
-              }
-            }
-          } else {
-            const [{ valor: valorNegociacao }] = await db
-              .select({ valor: sum(funilMensal.valorOrcado).mapWith(Number) })
-              .from(funilMensal)
-              .where(and(eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt), filtroVendedor))
-            valorEmNegociacao = valorNegociacao ?? 0
-          }
+          const [{ valor: valorNegociacao }] = await db
+            .select({ valor: sum(funilMensal.valorOrcado).mapWith(Number) })
+            .from(funilMensal)
+            .where(and(eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt), filtroVendedor))
+          valorEmNegociacao = valorNegociacao ?? 0
         }
 
         // Soma a meta configurada de cada empresa que entra no card (0 se
