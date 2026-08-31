@@ -148,11 +148,21 @@ export const visitasRouter = router({
         propostaPagamento: z.string().optional(),
         propostaComissao: z.string().optional(),
         propostaRevenda: z.string().optional(),
+        // Localização capturada na hora de registrar a visita (botão
+        // "Capturar localização" do formulário) — pedido do João,
+        // 2026-08-31: quer marcar onde o vendedor está já no ato de
+        // registrar, não só depois via o botão de Check-in do card. Grava
+        // igual um check-in de verdade (mesmos campos), então o botão de
+        // Check-in some sozinho pra essa visita (checkinEm já preenchido).
+        lat: z.number().optional(),
+        lng: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaVisitas(ctx.empresaId)
-      const result = await db.insert(visitas).values({ empresaId: ctx.empresaId, vendedorId: ctx.user.id, ...input })
+      const { lat, lng, ...dados } = input
+      const comLocalizacao = lat != null && lng != null ? { checkinEm: agoraSqlite(), latCheckin: lat, lngCheckin: lng } : {}
+      const result = await db.insert(visitas).values({ empresaId: ctx.empresaId, vendedorId: ctx.user.id, ...dados, ...comLocalizacao })
       const visitaId = Number(result.lastInsertRowid)
       let propostaId: number | undefined
       if (input.resultado === 'gerar_proposta') {

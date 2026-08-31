@@ -230,7 +230,14 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
     onError: (e) => toast.error(e.message),
   })
 
-  function fechar() { setModalAberto(false); setEditando(null); setForm(VISITA_VAZIA) }
+  // Localização capturada no formulário de "Nova Visita" — pedido do João,
+  // 2026-08-31: marcar onde o vendedor está já no ato de registrar, não só
+  // depois pelo botão de Check-in do card (esse continua existindo, mas fica
+  // sem efeito pra essa visita porque ela já nasce com checkinEm/GPS).
+  const [gpsRegistro, setGpsRegistro] = useState<{ lat: number; lng: number } | null>(null)
+  const [capturandoGpsRegistro, setCapturandoGpsRegistro] = useState(false)
+
+  function fechar() { setModalAberto(false); setEditando(null); setForm(VISITA_VAZIA); setGpsRegistro(null) }
   function abrirEdicao(v: NonNullable<typeof visitasList>[number]) {
     setEditando(v.id)
     setForm({
@@ -251,9 +258,17 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
     })
     setModalAberto(true)
   }
+  function capturarGpsRegistro() {
+    setCapturandoGpsRegistro(true)
+    obterLocalizacao(
+      (lat, lng) => { setCapturandoGpsRegistro(false); setGpsRegistro({ lat, lng }); toast.success('Localização capturada') },
+      (motivo) => { setCapturandoGpsRegistro(false); toast.error(`Não foi possível pegar a localização: ${motivo}`) }
+    )
+  }
+
   function salvar() {
     if (!form.nomeEmpresa.trim() && !form.dataVisita) return
-    const payload = { ...form, clienteNome: form.nomeEmpresa }
+    const payload = { ...form, clienteNome: form.nomeEmpresa, ...(gpsRegistro && !editando ? gpsRegistro : {}) }
     if (editando) atualizarMut.mutate({ id: editando, ...payload })
     else criarMut.mutate(payload)
   }
@@ -419,6 +434,17 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
             <Input label="Data/Hora" type="datetime-local" value={form.dataVisita} onChange={(e) => setForm({ ...form, dataVisita: e.target.value })} />
             <Select label="Objetivo" value={form.objetivo} onChange={(e) => setForm({ ...form, objetivo: e.target.value })} placeholder="Selecione..." options={OBJETIVOS.map((o) => ({ value: o, label: o }))} />
           </div>
+
+          {!editando && (
+            <div className="flex items-center gap-2">
+              <Button type="button" variant="secondary" size="sm" disabled={capturandoGpsRegistro} onClick={capturarGpsRegistro}>
+                {capturandoGpsRegistro ? <LoaderCircle size={13} className="animate-spin mr-1" /> : <MapPin size={13} className="mr-1" />}
+                {capturandoGpsRegistro ? 'Obtendo localização...' : gpsRegistro ? 'Localização capturada' : 'Capturar localização'}
+              </Button>
+              {gpsRegistro && <span className="flex items-center gap-1 text-xs text-green-400"><MapPin size={12} /> GPS ok</span>}
+            </div>
+          )}
+
           <Input label="Empresa/Cliente" value={form.nomeEmpresa} onChange={(e) => setForm({ ...form, nomeEmpresa: e.target.value })} />
           <div className="grid grid-cols-2 gap-3">
             <Input label="Pessoa de contato" value={form.pessoaContato} onChange={(e) => setForm({ ...form, pessoaContato: e.target.value })} />
