@@ -38,7 +38,13 @@ export default function EtapaConferencia({ ordemId, isAdmin, readonly }: { ordem
   const { data: itens } = trpc.ordens.conferencia.listarItens.useQuery({ ordemId })
   const { data: anexos } = trpc.ordens.anexos.listar.useQuery({ ordemId, stage: 'conferencia' })
   const [enviandoId, setEnviandoId] = useState<number | null>(null)
-  const podeEditar = isAdmin && !readonly
+  // Uma vez confirmada, TUDO trava (checklist, "não aplicável", embalagem,
+  // desfazer) — igual ao sistema antigo (readonly || isConfirmed em cada
+  // controle). Antes só as observações travavam sozinhas, o resto continuava
+  // editável mesmo com a conferência já confirmada (achado do João,
+  // 2026-09-01 — "tá muito distante do que é de fato").
+  const jaConfirmada = !!(conf as { confirmado?: boolean } | null | undefined)?.confirmado
+  const podeEditar = isAdmin && !readonly && !jaConfirmada
 
   function invalidar() {
     utils.ordens.conferencia.obter.invalidate({ ordemId })

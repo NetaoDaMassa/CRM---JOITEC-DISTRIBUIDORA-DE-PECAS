@@ -98,6 +98,20 @@ export const ordensConferenciaRouter = router({
   listarItens: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
     await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+
+    // Cria o item de conferência que ainda não existe pra cada máquina já
+    // vinculada ao pedido (em Preparação) — sem isso a Conferência aparecia
+    // "sem máquina vinculada" mesmo com máquina de verdade no pedido, porque
+    // vincular na Preparação nunca criava a linha aqui (achado do João,
+    // 2026-09-01). Idempotente: só insere o que faltar.
+    const maquinasDoPedido = await db.query.ordemMaquinas.findMany({ where: eq(ordemMaquinas.ordemId, input.ordemId) })
+    const itensExistentes = await db.query.ordemConferenciaItens.findMany({ where: eq(ordemConferenciaItens.ordemId, input.ordemId) })
+    const maquinasComItem = new Set(itensExistentes.map((i) => i.maquinaId))
+    const faltando = maquinasDoPedido.filter((m) => !maquinasComItem.has(m.id))
+    if (faltando.length > 0) {
+      await db.insert(ordemConferenciaItens).values(faltando.map((m) => ({ ordemId: input.ordemId, maquinaId: m.id })))
+    }
+
     return db.query.ordemConferenciaItens.findMany({ where: eq(ordemConferenciaItens.ordemId, input.ordemId), with: { maquina: true } })
   }),
 
