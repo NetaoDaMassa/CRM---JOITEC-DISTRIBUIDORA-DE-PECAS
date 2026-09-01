@@ -225,6 +225,8 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
                       className="w-full text-left px-3 py-2 text-sm text-dark-200 hover:bg-dark-700 disabled:opacity-50"
                     >
                       {r.modelo ?? '—'} <span className="text-dark-500">{r.numeroSerie}</span>
+                      {r.voltagem && <span className="text-dark-600 text-xs"> · {r.voltagem}</span>}
+                      {r.pressaoBar && <span className="text-dark-600 text-xs"> · {r.pressaoBar} bar</span>}
                       {r.vaga && <span className="text-dark-600 text-xs"> · {r.vaga.portaPallet?.codigo} andar {r.vaga.andar}/{r.vaga.posicao}</span>}
                     </button>
                   ))}

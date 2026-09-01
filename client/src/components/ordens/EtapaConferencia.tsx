@@ -19,16 +19,43 @@ export default function EtapaConferencia({ ordemId, isAdmin, readonly }: { ordem
   const utils = trpc.useUtils()
   const { data: conf } = trpc.ordens.conferencia.obter.useQuery({ ordemId })
   const { data: itens } = trpc.ordens.conferencia.listarItens.useQuery({ ordemId })
+  const { data: anexos } = trpc.ordens.anexos.listar.useQuery({ ordemId, stage: 'conferencia' })
+  const [enviandoId, setEnviandoId] = useState<number | null>(null)
   const podeEditar = isAdmin && !readonly
 
   function invalidar() {
     utils.ordens.conferencia.obter.invalidate({ ordemId })
     utils.ordens.conferencia.listarItens.invalidate({ ordemId })
+    utils.ordens.anexos.listar.invalidate({ ordemId, stage: 'conferencia' })
   }
   const atualizarMut = trpc.ordens.conferencia.atualizar.useMutation({ onSuccess: () => invalidar(), onError: (e) => toast.error(e.message) })
   const salvarObsMut = trpc.ordens.conferencia.atualizar.useMutation({ onSuccess: () => { toast.success('Salvo'); invalidar() }, onError: (e) => toast.error(e.message) })
   const itemMut = trpc.ordens.conferencia.atualizarItem.useMutation({ onSuccess: () => invalidar(), onError: (e) => toast.error(e.message) })
   const confirmarMut = trpc.ordens.conferencia.confirmar.useMutation({ onSuccess: () => { toast.success('Conferência confirmada'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const registrarMut = trpc.ordens.anexos.registrar.useMutation({ onSuccess: () => invalidar(), onError: (e) => toast.error(e.message) })
+
+  function fotosAvariaDe(maquinaId: number) {
+    return (anexos ?? []).filter((a) => a.fileCategory === `avaria__${maquinaId}`)
+  }
+  async function handleUploadAvaria(e: React.ChangeEvent<HTMLInputElement>, maquinaId: number) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setEnviandoId(maquinaId)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const token = localStorage.getItem('odin_token')
+      const resp = await fetch('/upload/ordem-anexo', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+      const json = await resp.json()
+      if (!resp.ok) throw new Error(json.error ?? 'Falha no upload')
+      registrarMut.mutate({ ordemId, stage: 'conferencia', fileCategory: `avaria__${maquinaId}`, nomeOriginal: json.nome, nomeArmazenado: json.path.replace('/uploads/', ''), tipoArquivo: json.tipo, tamanhoBytes: json.tamanho })
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setEnviandoId(null)
+      e.target.value = ''
+    }
+  }
 
   const confAny = conf as { embalagemPor?: string | null; observacoes?: string | null; observacoesGerais?: string | null; obsTravadaEm?: string | null } | null | undefined
   const notasTravadas = !!confAny?.obsTravadaEm
@@ -93,7 +120,22 @@ export default function EtapaConferencia({ ordemId, isAdmin, readonly }: { ordem
                       <input type="radio" checked={item.inspecaoVisualAvaria === false} disabled={!podeEditar} onChange={() => itemMut.mutate({ ordemId, maquinaId: item.maquinaId, inspecaoVisualAvaria: false })} /> Sem avaria
                     </label>
                   </div>
-                  {item.inspecaoVisualAvaria && <p className="text-xs text-yellow-500">Anexe a foto da avaria em "Anexos" com categoria avaria__{item.maquinaId}</p>}
+                  {item.inspecaoVisualAvaria && (
+                    <div className="rounded-lg border border-yellow-700/40 bg-yellow-900/10 p-2 space-y-1.5">
+                      <p className="text-xs text-yellow-500">Foto da avaria (obrigatória pra confirmar a conferência)</p>
+                      <div className="flex flex-wrap gap-2">
+                        {fotosAvariaDe(item.maquinaId).map((f) => (
+                          <a key={f.id} href={`/uploads/${f.nomeArmazenado}`} target="_blank" rel="noreferrer" className="text-xs text-blue-400 hover:underline">{f.nomeOriginal}</a>
+                        ))}
+                      </div>
+                      {podeEditar && (
+                        <label className="inline-block text-xs text-gold-400 hover:text-gold-300 cursor-pointer">
+                          {enviandoId === item.maquinaId ? 'Enviando...' : 'Anexar foto da avaria'}
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadAvaria(e, item.maquinaId)} disabled={enviandoId === item.maquinaId} />
+                        </label>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </div>
