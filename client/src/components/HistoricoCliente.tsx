@@ -88,9 +88,29 @@ export default function HistoricoCliente({ clienteId }: { clienteId: number }) {
         </div>
       </div>
 
+      {data.itensMaisComprados.length > 0 && (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
+          <h2 className="text-sm font-semibold text-dark-100 mb-3">🏆 Itens que mais compra</h2>
+          <div className="divide-y divide-dark-700">
+            {data.itensMaisComprados.map((i, idx) => (
+              <div key={i.descricao} className="flex items-center justify-between py-2 text-sm gap-3">
+                <span className="text-dark-200 flex items-center gap-2 min-w-0">
+                  <span className="text-xs text-dark-500 font-mono shrink-0">{idx + 1}º</span>
+                  <span className="truncate">{i.descricao}</span>
+                </span>
+                <span className="text-xs text-dark-400 text-right shrink-0">
+                  {i.qtdPedidos} {i.qtdPedidos === 1 ? 'pedido' : 'pedidos'}
+                  {i.quantidadeTotal > 0 ? ` · ${i.quantidadeTotal} un.` : ''} · {formatarMoedaHist(i.valorTotal)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {data.itens.length > 0 && (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-          <h2 className="text-sm font-semibold text-dark-100 mb-3">📦 Itens comprados</h2>
+          <h2 className="text-sm font-semibold text-dark-100 mb-3">📦 Histórico de compras (detalhado)</h2>
           <div className="divide-y divide-dark-700">
             {data.itens.map((i) => (
               <div key={i.id} className="flex items-center justify-between py-2 text-sm">

@@ -195,6 +195,37 @@ export const clientesRouter = router({
         valorTotal: i.valorTotal,
         createdAt: i.createdAt,
       })),
+      // "Qual item ele mais compra" — agrupa por descrição normalizada
+      // (maiúsculas + espaços colapsados, pra "Filtro de óleo" e "FILTRO DE
+      // ÓLEO " contarem como o mesmo item) e ordena por nº de pedidos em que
+      // apareceu, não só quantidade total (1 pedido de 50un não deveria
+      // parecer "mais comprado" que o item que ele compra toda vez que fecha
+      // um pedido). Pedido do João, 2026-09-01.
+      itensMaisComprados: (() => {
+        const grupos = new Map<
+          string,
+          { descricao: string; qtdPedidos: number; quantidadeTotal: number; valorTotal: number; ultimaCompra: string }
+        >()
+        for (const i of itens) {
+          const chave = i.descricao.trim().toUpperCase().replace(/\s+/g, ' ')
+          const atual = grupos.get(chave)
+          if (atual) {
+            atual.qtdPedidos += 1
+            atual.quantidadeTotal += i.quantidade ?? 0
+            atual.valorTotal += i.valorTotal ?? 0
+            if (i.createdAt > atual.ultimaCompra) atual.ultimaCompra = i.createdAt
+          } else {
+            grupos.set(chave, {
+              descricao: i.descricao.trim(),
+              qtdPedidos: 1,
+              quantidadeTotal: i.quantidade ?? 0,
+              valorTotal: i.valorTotal ?? 0,
+              ultimaCompra: i.createdAt,
+            })
+          }
+        }
+        return Array.from(grupos.values()).sort((a, b) => b.qtdPedidos - a.qtdPedidos || b.quantidadeTotal - a.quantidadeTotal)
+      })(),
     }
   }),
 
