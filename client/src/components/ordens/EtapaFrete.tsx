@@ -22,7 +22,23 @@ type Cotacao = {
 
 const COTACAO_VAZIA = { numeroCotacaoTransportadora: '', transportadora: '', valor: '', peso: '', volume: '', prazo: '', observacoes: '', tipoFrete: 'FOB' as 'CIF' | 'FOB' }
 
-export default function EtapaFrete({ ordemId, isAdmin, readonly, vendedorWhatsapp }: { ordemId: number; isAdmin: boolean; readonly: boolean; vendedorWhatsapp?: string | null }) {
+function formatarMoeda(v: number | null): string {
+  return v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
+}
+
+export default function EtapaFrete({
+  ordemId,
+  isAdmin,
+  readonly,
+  vendedorWhatsapp,
+  clienteNome,
+}: {
+  ordemId: number
+  isAdmin: boolean
+  readonly: boolean
+  vendedorWhatsapp?: string | null
+  clienteNome?: string | null
+}) {
   const utils = trpc.useUtils()
   const { data: cotacoes } = trpc.ordens.frete.listarCotacoes.useQuery({ ordemId })
   const { data: aprovacao } = trpc.ordens.frete.obterAprovacao.useQuery({ ordemId })
@@ -80,10 +96,25 @@ export default function EtapaFrete({ ordemId, isAdmin, readonly, vendedorWhatsap
     else criarMut.mutate({ ordemId, ...values })
   }
 
+  // Texto pronto pra copiar/mandar no WhatsApp — pedido do João, 2026-09-01,
+  // pra ficar igual ao que a Odin Compressores já manda pro cliente hoje
+  // (cabeçalho com o cliente, opção numerada com o nº da cotação na
+  // transportadora, selo de melhor preço, campos com emoji cada um numa
+  // linha, observação só quando tem).
   function textoCotacoes() {
-    return lista
-      .map((c) => `#${c.numeroSequencial} ${c.transportadora ?? '—'} — R$ ${c.valor ?? '—'} · ${c.tipoFrete ?? ''} · Prazo: ${c.prazo ?? '—'}${c.peso ? ` · Peso: ${c.peso}kg` : ''}${c.volume ? ` · Volume: ${c.volume}` : ''}`)
-      .join('\n')
+    const linhas = [`ODIN Compressores — Cotações de Frete`, `Cliente: ${clienteNome ?? '—'}`, '']
+    lista.forEach((c, idx) => {
+      const isMelhorPreco = c.valor != null && c.valor === melhorPreco
+      linhas.push(`Opção ${idx + 1} — ${c.transportadora ?? '—'} [Nº ${c.numeroCotacaoTransportadora || '-'}]${isMelhorPreco ? ' ⭐ MELHOR PREÇO' : ''}`)
+      linhas.push(`💰 Valor: ${formatarMoeda(c.valor)}`)
+      linhas.push(`⏱️ Prazo: ${c.prazo ?? '—'}`)
+      linhas.push(`📦 Tipo: ${c.tipoFrete ?? '—'}`)
+      linhas.push(`⚖️ Peso: ${c.peso ? `${c.peso} kg` : '—'}`)
+      if (c.observacoes) linhas.push(`📝 Obs: ${c.observacoes}`)
+      linhas.push('')
+    })
+    linhas.push('Por favor, acesse o sistema para selecionar a opção desejada.')
+    return linhas.join('\n')
   }
   function copiarCotacoes() {
     navigator.clipboard.writeText(textoCotacoes())
@@ -91,7 +122,7 @@ export default function EtapaFrete({ ordemId, isAdmin, readonly, vendedorWhatsap
   }
   function enviarWhatsappVendedor() {
     if (!vendedorWhatsapp) { toast.error('Vendedor sem WhatsApp cadastrado'); return }
-    const texto = encodeURIComponent(`Cotações de frete do Pedido #${ordemId}:\n\n${textoCotacoes()}`)
+    const texto = encodeURIComponent(textoCotacoes())
     window.open(`https://wa.me/${vendedorWhatsapp.replace(/\D/g, '')}?text=${texto}`, '_blank')
   }
 

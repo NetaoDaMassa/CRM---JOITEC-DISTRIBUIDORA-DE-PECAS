@@ -55,7 +55,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
       // etapa visível pra máquina, é pré-requisito checado no gate seguinte).
       return (
         <div className="space-y-6">
-          <EtapaFrete ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} vendedorWhatsapp={vendedorWhatsapp} />
+          <EtapaFrete ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} vendedorWhatsapp={vendedorWhatsapp} clienteNome={clienteNome} />
           <div className="border-t border-dark-700 pt-4">
             <p className="text-xs font-semibold text-dark-500 uppercase tracking-wide mb-3">Preparação</p>
             <EtapaPreparacao ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} orderType={orderType} atualizadoEm={ordem.updatedAt} />
@@ -72,7 +72,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
         // finaliza tudo nesta única etapa.
         return (
           <div className="space-y-6">
-            <EtapaFrete ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} vendedorWhatsapp={vendedorWhatsapp} />
+            <EtapaFrete ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} vendedorWhatsapp={vendedorWhatsapp} clienteNome={clienteNome} />
             <EtapaFreteFinalizado ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} />
           </div>
         )
