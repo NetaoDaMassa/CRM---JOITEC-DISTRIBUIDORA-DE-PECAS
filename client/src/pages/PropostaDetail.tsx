@@ -21,6 +21,7 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
   const [modalConverterAberto, setModalConverterAberto] = useState(false)
   const [buscaCliente, setBuscaCliente] = useState('')
   const [clienteId, setClienteId] = useState('')
+  const [modalExcluirAberto, setModalExcluirAberto] = useState(false)
 
   const utils = trpc.useUtils()
   const { data: proposta, isLoading } = trpc.propostas.obterPorId.useQuery({ id: propostaId })
@@ -41,6 +42,10 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
     onError: (e) => toast.error(e.message),
   })
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
+  const excluirMut = trpc.propostas.excluir.useMutation({
+    onSuccess: () => { toast.success('Proposta excluída'); onClose(); utils.propostas.listar.invalidate() },
+    onError: (e) => toast.error(e.message),
+  })
 
   if (isLoading) return <div className="p-6 text-dark-400 text-sm">Carregando...</div>
   if (!proposta) return <div className="p-6 text-dark-400 text-sm">Proposta não encontrada</div>
@@ -100,6 +105,13 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
             </Button>
           </div>
         )}
+        {isAdmin && (
+          <div className="flex justify-end px-6 mt-2">
+            <button onClick={() => setModalExcluirAberto(true)} className="flex items-center gap-1 text-xs text-dark-500 hover:text-red-400 transition-colors">
+              <Trash2 size={12} /> Excluir proposta
+            </button>
+          </div>
+        )}
 
         <div className="p-6">
           <PropostaForm propostaId={propostaId} podeEditar={podeAgir} isAdmin={isAdmin} proposta={proposta} onClose={onClose} atualizarMut={atualizarMut} />
@@ -153,6 +165,16 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
           <Button className="w-full" disabled={!clienteId || converterMut.isPending} loading={converterMut.isPending} onClick={() => converterMut.mutate({ propostaId, clienteId: Number(clienteId) })}>
             Converter
           </Button>
+        </div>
+      </Modal>
+
+      <Modal open={modalExcluirAberto} onClose={() => setModalExcluirAberto(false)} title="Excluir proposta" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-dark-300">Excluir a proposta de "{proposta.clienteNome}"? Essa ação não pode ser desfeita — remove arquivos, feedbacks e histórico junto.</p>
+          <div className="flex gap-2">
+            <Button variant="secondary" className="flex-1" onClick={() => setModalExcluirAberto(false)}>Cancelar</Button>
+            <Button variant="danger" className="flex-1" loading={excluirMut.isPending} onClick={() => excluirMut.mutate({ id: propostaId })}>Excluir</Button>
+          </div>
         </div>
       </Modal>
     </div>
