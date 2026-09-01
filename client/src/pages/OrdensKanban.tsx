@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Plus, Download, RefreshCw, CalendarRange, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
@@ -8,6 +9,7 @@ import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import OrdensBoard from '../components/OrdensBoard'
+import OrdensDetail from './OrdensDetail'
 import { ORDER_TYPE_VALUES, ORDER_TYPE_LABELS, STAGE_LABELS, type OrderType, type Stage } from '../lib/ordensShared'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
@@ -38,6 +40,8 @@ export default function OrdensKanban() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const basePath = isAdmin ? '/admin/ordens' : '/vendedor/ordens'
+  const { id } = useParams()
+  const navigate = useNavigate()
 
   const [orderType, setOrderType] = useState<OrderType>('maquina')
   const [modalAberto, setModalAberto] = useState(false)
@@ -213,6 +217,8 @@ export default function OrdensKanban() {
           </Button>
         </div>
       </Modal>
+
+      {id && <OrdensDetail ordemId={Number(id)} onClose={() => navigate(basePath)} />}
     </div>
   )
 }

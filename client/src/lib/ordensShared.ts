@@ -50,6 +50,13 @@ export function getStageSequence(orderType: OrderType): readonly Stage[] {
   return orderType === 'maquina' ? STAGE_SEQUENCE_MAQUINA : STAGE_SEQUENCE_PECA
 }
 
+export function formatarDataHora(dt: string | null | undefined): string {
+  if (!dt) return '—'
+  const [data, hora] = dt.split(' ')
+  const [ano, mes, dia] = data.split('-')
+  return hora ? `${dia}/${mes}/${ano} ${hora.slice(0, 5)}` : `${dia}/${mes}/${ano}`
+}
+
 // Mesmas cores por etapa do Kanban original (odincrm.duckdns.org,
 // STAGE_COLORS em types/index.ts) — badge/borda pro nosso tema escuro,
 // mais o "dot" sólido igual ao indicador da coluna de lá.

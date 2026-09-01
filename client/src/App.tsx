@@ -56,7 +56,6 @@ import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
 import Devolucoes from './pages/Devolucoes'
 import OrdensKanban from './pages/OrdensKanban'
-import OrdensDetail from './pages/OrdensDetail'
 import PropostasKanban from './pages/PropostasKanban'
 import PropostaDetail from './pages/PropostaDetail'
 import Revendas from './pages/Revendas'
@@ -220,8 +219,7 @@ export default function App() {
           <Route path="admin/devolucoes-relatorios" element={<AdminGuard><FeatureGuard feature="devolucoes"><DevolucaoRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/dashboard-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><DashboardOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/calendario-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><CalendarioOdin /></FeatureGuard></AdminGuard>} />
-          <Route path="admin/ordens" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
-          <Route path="admin/ordens/:id" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensDetail /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/ordens/:id?" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/propostas" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostasKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/propostas/:id" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostaDetail /></FeatureGuard></AdminGuard>} />
           <Route path="admin/revendas" element={<AdminGuard><FeatureGuard feature="revendas_odin"><Revendas /></FeatureGuard></AdminGuard>} />
@@ -252,8 +250,7 @@ export default function App() {
           <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
           <Route path="vendedor/dashboard-odin" element={<DashboardOdin />} />
           <Route path="vendedor/calendario-odin" element={<CalendarioOdin />} />
-          <Route path="vendedor/ordens" element={<OrdensKanban />} />
-          <Route path="vendedor/ordens/:id" element={<OrdensDetail />} />
+          <Route path="vendedor/ordens/:id?" element={<OrdensKanban />} />
           <Route path="vendedor/propostas" element={<PropostasKanban />} />
           <Route path="vendedor/propostas/:id" element={<PropostaDetail />} />
           <Route path="vendedor/revendas" element={<Revendas />} />

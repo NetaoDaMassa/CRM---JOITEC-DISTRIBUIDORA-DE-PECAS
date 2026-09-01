@@ -115,7 +115,7 @@ export const ordensCoreRouter = router({
     await assertEmpresaOrdens(ctx.empresaId)
     const ordem = await db.query.ordens.findFirst({
       where: and(eq(ordens.id, input.id), eq(ordens.empresaId, ctx.empresaId)),
-      with: { cliente: true, vendedor: { columns: { id: true, name: true } }, maquinas: true },
+      with: { cliente: true, vendedor: { columns: { id: true, name: true, whatsapp: true } }, maquinas: true },
     })
     if (!ordem) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
     return ordem
