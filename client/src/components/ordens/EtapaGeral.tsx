@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
 import { Input } from '../ui/Input'
+import { formatDateTime } from '../../lib/utils'
 
 function Campo({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -30,8 +31,8 @@ export default function EtapaGeral({ ordemId }: { ordemId: number }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 text-sm">
-        <Campo label="Criado em"><span className="text-dark-200">{ordem.createdAt}</span></Campo>
-        <Campo label="Atualizado em"><span className="text-dark-200">{ordem.updatedAt}</span></Campo>
+        <Campo label="Criado em"><span className="text-dark-200">{formatDateTime(ordem.createdAt)}</span></Campo>
+        <Campo label="Atualizado em"><span className="text-dark-200">{formatDateTime(ordem.updatedAt)}</span></Campo>
       </div>
       <h3 className="text-sm font-semibold text-dark-200 mt-4">Endereço de entrega</h3>
       <div className="grid grid-cols-2 gap-3">

@@ -9,13 +9,7 @@ import { Input, Textarea } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, type PropostaStage } from '../lib/propostasShared'
 import ProductSelector from '../components/ProductSelector'
-
-function formatarDataHora(dt: string | null | undefined): string {
-  if (!dt) return '—'
-  const [data, hora] = dt.split(' ')
-  const [ano, mes, dia] = data.split('-')
-  return hora ? `${dia}/${mes}/${ano} ${hora.slice(0, 5)}` : `${dia}/${mes}/${ano}`
-}
+import { formatDateTime } from '../lib/utils'
 
 export default function PropostaDetail({ propostaId, onClose }: { propostaId: number; onClose: () => void }) {
   const { user } = useAuth()
@@ -63,7 +57,7 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
             <h1 className="font-heading text-xl text-dark-50 font-bold">{proposta.clienteNome}</h1>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dark-400">
               <span>Proposta #{proposta.id} · <span className="text-dark-200">{proposta.vendedor?.name ?? '—'}</span></span>
-              <span>Criada em <span className="text-dark-200">{formatarDataHora(proposta.createdAt)}</span></span>
+              <span>Criada em <span className="text-dark-200">{formatDateTime(proposta.createdAt)}</span></span>
             </div>
             <div className="flex items-center gap-2 mt-2">
               <Badge className="text-gold-400 bg-gold-900/20 border-gold-700/40">{PROPOSTA_STAGE_LABELS[stage]}</Badge>
@@ -405,7 +399,7 @@ function PropostaForm({
             <div key={a.id} className="rounded-lg bg-amber-900/10 border border-amber-800/40 px-3 py-2.5">
               <div className="flex items-center gap-2 mb-1">
                 <span className="rounded-full bg-amber-800/60 px-2 py-0.5 text-[10px] font-bold text-amber-300">Alteração {idx + 1}</span>
-                <span className="text-[10px] text-dark-500">{a.solicitante?.name ?? '—'} · {a.createdAt}</span>
+                <span className="text-[10px] text-dark-500">{a.solicitante?.name ?? '—'} · {formatDateTime(a.createdAt)}</span>
               </div>
               <p className="text-sm text-dark-300 whitespace-pre-line">{a.conteudo}</p>
             </div>
@@ -426,7 +420,7 @@ function PropostaForm({
               <div key={f.id} className="rounded-lg bg-orange-900/10 border border-orange-800/40 px-3 py-2.5">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="rounded-full bg-orange-800/60 px-2 py-0.5 text-[10px] font-bold text-orange-300">Feedback {idx + 1}</span>
-                  <span className="text-[10px] text-dark-500">{f.vendedor?.name ?? '—'} · {f.createdAt}</span>
+                  <span className="text-[10px] text-dark-500">{f.vendedor?.name ?? '—'} · {formatDateTime(f.createdAt)}</span>
                 </div>
                 <p className="text-sm text-dark-300 whitespace-pre-line">{f.conteudo}</p>
               </div>

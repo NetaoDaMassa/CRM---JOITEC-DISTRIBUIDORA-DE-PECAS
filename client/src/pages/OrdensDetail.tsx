@@ -8,7 +8,8 @@ import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
-import { getStageSequence, STAGE_LABELS, STAGE_COLORS, ORDER_TYPE_LABELS, formatarDataHora, type Stage, type OrderType } from '../lib/ordensShared'
+import { getStageSequence, STAGE_LABELS, STAGE_COLORS, ORDER_TYPE_LABELS, type Stage, type OrderType } from '../lib/ordensShared'
+import { formatDateTime } from '../lib/utils'
 import { renderEtapa } from '../components/ordens/renderEtapa'
 import EtapaGeral from '../components/ordens/EtapaGeral'
 import EtapaAnexos from '../components/ordens/EtapaAnexos'
@@ -83,8 +84,8 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
             </h1>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dark-400">
               {ordem.vendedor && <span>Vendedor: <span className="text-dark-200">{ordem.vendedor.name}</span></span>}
-              <span>Criado: <span className="text-dark-200">{formatarDataHora(ordem.createdAt)}</span></span>
-              <span>Nesta etapa desde: <span className="text-dark-200">{formatarDataHora(ordem.updatedAt)}</span></span>
+              <span>Criado: <span className="text-dark-200">{formatDateTime(ordem.createdAt)}</span></span>
+              <span>Nesta etapa desde: <span className="text-dark-200">{formatDateTime(ordem.updatedAt)}</span></span>
               {ordem.cliente?.codigo && <span>Código: <span className="text-dark-200">{ordem.cliente.codigo}</span></span>}
               {ordem.cliente?.cnpj && <span>CNPJ: <span className="text-dark-200">{ordem.cliente.cnpj}</span></span>}
             </div>

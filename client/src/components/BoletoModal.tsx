@@ -6,12 +6,7 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
 import ClientePicker from './ClientePicker'
-
-function formatarDataHora(d: string): string {
-  const [data, hora] = d.replace(' ', 'T').split('T')
-  const [ano, mes, dia] = data.split('-')
-  return `${dia}/${mes}/${ano}${hora ? ` ${hora.slice(0, 5)}` : ''}`
-}
+import { formatDateTime } from '../lib/utils'
 
 const TIPO_LABEL: Record<string, string> = { criacao: 'Boleto criado', valor: 'Valor alterado', vencimento: 'Vencimento alterado', status: 'Status alterado' }
 
@@ -199,7 +194,7 @@ export default function BoletoModal({ open, onClose, boletoId }: { open: boolean
                     )}
                   </p>
                   <p className="text-[10px] text-dark-500 mt-1">
-                    {h.alteradoPor.name} · {formatarDataHora(h.createdAt)}
+                    {h.alteradoPor.name} · {formatDateTime(h.createdAt)}
                   </p>
                 </div>
               ))}

@@ -4,7 +4,8 @@ import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Badge } from '../ui/Badge'
-import { formatarDataHora, type OrderType } from '../../lib/ordensShared'
+import { type OrderType } from '../../lib/ordensShared'
+import { formatDateTime } from '../../lib/utils'
 
 // Mesma regra de server/src/router/ordens/preparacao.ts (categoriasObrigatorias)
 // — duplicada aqui só pra desenhar o checklist, a validação real é sempre no
@@ -144,7 +145,7 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
 
       <div>
         <Input
-          label={`Observações da preparação${travada ? ` 🔒 travada em ${formatarDataHora(prepAny?.obsTravadaEm)}` : ''}`}
+          label={`Observações da preparação${travada ? ` 🔒 travada em ${formatDateTime(prepAny?.obsTravadaEm)}` : ''}`}
           value={travada ? (prepAny?.observacoes ?? '') : obs}
           defaultValue={travada ? undefined : (prepAny?.observacoes ?? '')}
           onChange={(e) => setObs(e.target.value)}
@@ -161,7 +162,7 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
 
       {prepAny?.operadorFinalizou ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-green-700/40 bg-green-900/10 px-3 py-2.5 text-sm">
-          <span className="text-green-400 font-medium">✅ Preparação finalizada{prepAny.operadorFinalizouEm ? ` em ${formatarDataHora(prepAny.operadorFinalizouEm)}` : ''}</span>
+          <span className="text-green-400 font-medium">✅ Preparação finalizada{prepAny.operadorFinalizouEm ? ` em ${formatDateTime(prepAny.operadorFinalizouEm)}` : ''}</span>
           {!readonly && <button onClick={() => finalizarMut.mutate({ ordemId, finalizado: false })} className="text-xs font-semibold text-green-400 underline hover:no-underline">desfazer</button>}
         </div>
       ) : (

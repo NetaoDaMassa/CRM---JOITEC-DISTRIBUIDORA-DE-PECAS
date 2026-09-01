@@ -5,7 +5,7 @@ import Button from '../ui/Button'
 import { Input } from '../ui/Input'
 import Select from '../ui/Select'
 import { Badge } from '../ui/Badge'
-import { formatarDataHora } from '../../lib/ordensShared'
+import { formatDateTime } from '../../lib/utils'
 
 type Cotacao = {
   id: number
@@ -99,7 +99,7 @@ export default function EtapaFrete({ ordemId, isAdmin, readonly, vendedorWhatsap
     <div className="space-y-5">
       {aprovacao?.cotacaoFinalizada ? (
         <div className="flex items-center justify-between gap-3 rounded-lg border border-green-700/40 bg-green-900/10 px-3 py-2.5 text-sm">
-          <span className="text-green-400 font-medium">✅ Cotação finalizada{aprovacao.cotacaoFinalizadaEm ? ` em ${formatarDataHora(aprovacao.cotacaoFinalizadaEm)}` : ''}</span>
+          <span className="text-green-400 font-medium">✅ Cotação finalizada{aprovacao.cotacaoFinalizadaEm ? ` em ${formatDateTime(aprovacao.cotacaoFinalizadaEm)}` : ''}</span>
           {podeEditar && <button onClick={() => finalizarCotacaoMut.mutate({ ordemId, finalizado: false })} className="text-xs font-semibold text-green-400 underline hover:no-underline">desfazer</button>}
         </div>
       ) : (

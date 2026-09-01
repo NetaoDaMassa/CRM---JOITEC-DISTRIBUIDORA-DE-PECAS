@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Pencil, Check, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { getStageSequence, STAGE_LABELS, type Stage, type OrderType } from '../../lib/ordensShared'
+import { formatDateTime } from '../../lib/utils'
 import { renderEtapa, type OrdemParaEtapa } from './renderEtapa'
 
 export default function HistoricoAccordion({ ordemId, isAdmin, ordem }: { ordemId: number; isAdmin: boolean; ordem: OrdemParaEtapa & { orderType: string } }) {
@@ -90,7 +91,7 @@ function HistoricoLinha({ ordemId, historicoId, description, userName, createdAt
     <div className="flex items-start justify-between gap-2 text-sm">
       <div>
         <div className="text-dark-200">{description}</div>
-        <div className="text-dark-500 text-xs mt-0.5">{userName ?? 'sistema'} · {createdAt}</div>
+        <div className="text-dark-500 text-xs mt-0.5">{userName ?? 'sistema'} · {formatDateTime(createdAt)}</div>
       </div>
       {isAdmin && <button onClick={() => setEditando(true)} className="text-dark-500 hover:text-gold-400 shrink-0"><Pencil size={12} /></button>}
     </div>

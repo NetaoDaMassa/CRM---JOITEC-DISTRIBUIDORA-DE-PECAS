@@ -5,7 +5,7 @@ import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Badge } from '../ui/Badge'
-import { formatarDataHora } from '../../lib/ordensShared'
+import { formatDateTime } from '../../lib/utils'
 
 type Cliente = { razaoSocial?: string | null; cnpj?: string | null; nomeContato?: string | null; telefoneWhatsapp?: string | null; email?: string | null; endereco?: string | null; cidade?: string | null; estado?: string | null } | null | undefined
 
@@ -118,7 +118,7 @@ function EtapaFinanceiroForm({
         <Input label="Data prevista" defaultValue={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} disabled={!podeEditar} />
       </div>
       <div>
-        <Input label={`Observações${travada ? ` 🔒 travada em ${formatarDataHora(data?.obsTravadaEm)}` : ''}`} value={obs} onChange={(e) => setObs(e.target.value)} disabled={!podeEditar || travada} />
+        <Input label={`Observações${travada ? ` 🔒 travada em ${formatDateTime(data?.obsTravadaEm)}` : ''}`} value={obs} onChange={(e) => setObs(e.target.value)} disabled={!podeEditar || travada} />
         {podeEditar && (
           travada ? (
             <button onClick={() => salvarMut.mutate({ ordemId, travar: false })} className="mt-1.5 text-xs font-semibold text-gold-400 hover:text-gold-300">Editar observação</button>

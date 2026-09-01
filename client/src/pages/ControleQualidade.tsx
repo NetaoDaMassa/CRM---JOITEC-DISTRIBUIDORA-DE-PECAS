@@ -5,6 +5,7 @@ import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
 import { STAGE_LABELS, type Stage } from '../lib/ordensShared'
+import { formatDateTime } from '../lib/utils'
 
 const STATUS_LABEL: Record<string, string> = { ativo: 'Ativo', concluido: 'Concluído', cancelado: 'Cancelado' }
 const STATUS_COLOR: Record<string, string> = { ativo: 'text-amber-400', concluido: 'text-green-400', cancelado: 'text-red-400' }
@@ -151,7 +152,7 @@ export default function ControleQualidade() {
                               <div>
                                 <span className="font-medium text-dark-300">{h.user?.name ?? 'Sistema'}</span>
                                 <span className="text-dark-500"> — {h.description || h.action}</span>
-                                <p className="text-xs text-dark-600">{h.createdAt}</p>
+                                <p className="text-xs text-dark-600">{formatDateTime(h.createdAt)}</p>
                               </div>
                             </div>
                           ))}
