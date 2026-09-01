@@ -420,6 +420,7 @@ export default function FunilBoard({
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
     utils.funil.funilPorVendedor.invalidate()
+    utils.funil.coberturaContatos.invalidate()
       utils.funil.funilFaturamentoGeral.invalidate()
   }
 
@@ -509,9 +510,12 @@ export default function FunilBoard({
   // Cobertura vem do backend (carteira inteira do vendedor, qualquer tipo de
   // contato, CNPJ vinculado do mesmo vendedor conta) — não é mais calculada
   // pelos cards deste mês.
+  // Atualiza sozinho a cada 10s — pedido do João, 2026-09-01: vendedor
+  // reclamando que o número "não bate" na hora (na real a conta bate com o
+  // que está registrado, só não atualizava sem dar F5).
   const { data: cobertura } = trpc.funil.coberturaContatos.useQuery(
     { vendedorId: coberturaVendedorId, mesReferencia: coberturaMes },
-    { enabled: !!coberturaMes },
+    { enabled: !!coberturaMes, refetchInterval: 10_000 },
   )
   const percentualContatados = cobertura?.percentual ?? 0
   const corCobertura = percentualContatados >= 70 ? 'bg-green-500' : percentualContatados >= 40 ? 'bg-amber-500' : 'bg-red-500'
@@ -944,6 +948,7 @@ function CardModal({
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
     utils.funil.funilPorVendedor.invalidate()
+    utils.funil.coberturaContatos.invalidate()
       utils.funil.funilFaturamentoGeral.invalidate()
     utils.compromissos.listar.invalidate()
   }
