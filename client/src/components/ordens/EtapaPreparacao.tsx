@@ -38,10 +38,12 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
   const { data: prep } = trpc.ordens.preparacao.obterPreparacao.useQuery({ ordemId })
   const { data: maquinas } = trpc.ordens.preparacao.listarMaquinas.useQuery({ ordemId })
   const { data: anexos } = trpc.ordens.anexos.listar.useQuery({ ordemId, stage: 'preparacao' })
-  const [modelo, setModelo] = useState('')
-  const [serie, setSerie] = useState('')
+  const [buscaEstoque, setBuscaEstoque] = useState('')
+  const { data: resultadosEstoque } = trpc.estoque.listarMaquinas.useQuery({ q: buscaEstoque, status: 'estoque' }, { enabled: isAdmin && buscaEstoque.trim().length >= 2, retry: false })
+  const { data: estoqueDaOrdem } = trpc.estoque.listarMaquinas.useQuery({ status: 'alocada' }, { enabled: isAdmin, retry: false })
   const [obs, setObs] = useState('')
   const [enviandoId, setEnviandoId] = useState<string | null>(null)
+  const [vinculando, setVinculando] = useState(false)
   const prepAny = prep as { observacoes?: string | null; obsTravadaEm?: string | null; operadorFinalizou?: boolean; operadorFinalizouEm?: string | null } | null | undefined
   const travada = !!prepAny?.obsTravadaEm
   const podeEditar = isAdmin && !readonly
@@ -52,13 +54,50 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
     utils.ordens.preparacao.listarMaquinas.invalidate({ ordemId })
     utils.ordens.anexos.listar.invalidate({ ordemId, stage: 'preparacao' })
     utils.ordens.core.obterPorId.invalidate({ id: ordemId })
+    utils.estoque.listarMaquinas.invalidate()
   }
-  const criarMaquinaMut = trpc.ordens.preparacao.criarMaquina.useMutation({ onSuccess: () => { toast.success('Máquina adicionada'); invalidar(); setModelo(''); setSerie('') }, onError: (e) => toast.error(e.message) })
-  const excluirMaquinaMut = trpc.ordens.preparacao.excluirMaquina.useMutation({ onSuccess: () => { toast.success('Removida'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const criarMaquinaMut = trpc.ordens.preparacao.criarMaquina.useMutation()
+  const excluirMaquinaMut = trpc.ordens.preparacao.excluirMaquina.useMutation()
+  const alocarOrdemMut = trpc.estoque.alocarOrdem.useMutation()
   const aprovarMut = trpc.ordens.preparacao.aprovarPreparacao.useMutation({ onSuccess: () => { toast.success('Preparação aprovada'); invalidar() }, onError: (e) => toast.error(e.message) })
   const salvarObsMut = trpc.ordens.preparacao.atualizarPreparacao.useMutation({ onSuccess: () => { toast.success('Salvo'); invalidar() }, onError: (e) => toast.error(e.message) })
   const finalizarMut = trpc.ordens.preparacao.finalizarPreparacao.useMutation({ onSuccess: () => { toast.success('Atualizado'); invalidar() }, onError: (e) => toast.error(e.message) })
   const registrarMut = trpc.ordens.anexos.registrar.useMutation({ onSuccess: () => invalidar(), onError: (e) => toast.error(e.message) })
+
+  const maquinasEstoqueDaOrdem = (estoqueDaOrdem ?? []).filter((e) => e.ordem?.id === ordemId)
+
+  // Puxa a máquina direto do Almoxarifado — igual ao sistema antigo: nada de
+  // digitar modelo/série na mão, sempre vinculado a um item real do estoque
+  // (achado do João, 2026-09-01 — a versão anterior deixava criar máquina
+  // "solta" sem ligação nenhuma com o estoque real).
+  async function vincularMaquina(m: NonNullable<typeof resultadosEstoque>[number]) {
+    setVinculando(true)
+    try {
+      await alocarOrdemMut.mutateAsync({ id: m.id, ordemId })
+      await criarMaquinaMut.mutateAsync({ ordemId, modelo: m.modelo ?? m.numeroSerie, numeroSerie: m.numeroSerie })
+      toast.success('Máquina vinculada')
+      setBuscaEstoque('')
+      invalidar()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setVinculando(false)
+    }
+  }
+  async function desvincularMaquina(ordemMaquinaId: number, numeroSerie: string | null) {
+    setVinculando(true)
+    try {
+      const doEstoque = maquinasEstoqueDaOrdem.find((e) => e.numeroSerie === numeroSerie)
+      if (doEstoque) await alocarOrdemMut.mutateAsync({ id: doEstoque.id, ordemId: null })
+      await excluirMaquinaMut.mutateAsync({ id: ordemMaquinaId, ordemId })
+      toast.success('Máquina removida (voltou pro estoque)')
+      invalidar()
+    } catch (err: any) {
+      toast.error(err.message)
+    } finally {
+      setVinculando(false)
+    }
+  }
 
   const diasParado = atualizadoEm ? Math.floor((Date.now() - new Date(atualizadoEm.replace(' ', 'T') + 'Z').getTime()) / 86400000) : 0
 
@@ -135,11 +174,20 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
           <div className="space-y-3">
             {listaMaquinas.map((m) => {
               const categorias = categoriasObrigatorias(m.modelo)
+              const doEstoque = maquinasEstoqueDaOrdem.find((e) => e.numeroSerie === m.numeroSerie)
               return (
                 <div key={m.id} className="p-3 rounded-lg border border-dark-600 bg-dark-800 text-sm space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-dark-100">{m.modelo} <span className="text-dark-500">{m.numeroSerie ?? 's/ nº série'}</span></span>
-                    {podeEditar && <button onClick={() => excluirMaquinaMut.mutate({ id: m.id, ordemId })} className="text-red-400 text-xs hover:underline">remover</button>}
+                    <div>
+                      <span className="text-dark-100">{m.modelo} <span className="text-dark-500">{m.numeroSerie ?? 's/ nº série'}</span></span>
+                      {doEstoque && (
+                        <span className="text-dark-500 text-xs block">
+                          {doEstoque.voltagem && `${doEstoque.voltagem} · `}{doEstoque.pressaoBar && `${doEstoque.pressaoBar} bar · `}
+                          {doEstoque.vaga ? `${doEstoque.vaga.portaPallet?.codigo ?? ''} andar ${doEstoque.vaga.andar}/${doEstoque.vaga.posicao}` : 'sem vaga'}
+                        </span>
+                      )}
+                    </div>
+                    {podeEditar && <button onClick={() => desvincularMaquina(m.id, m.numeroSerie)} disabled={vinculando} className="text-red-400 text-xs hover:underline shrink-0">remover</button>}
                   </div>
                   {categorias.length === 0 && <p className="text-xs text-yellow-500">Prefixo do modelo não reconhecido (esperado OD*, SEC* ou SEP*)</p>}
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -162,12 +210,27 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
                 </div>
               )
             })}
+            {listaMaquinas.length === 0 && <p className="text-dark-500 text-xs">Nenhuma máquina vinculada ainda</p>}
           </div>
           {podeEditar && (
-            <div className="flex gap-2 mt-3">
-              <Input placeholder="Modelo (ex: OD-100, SEC-50)" value={modelo} onChange={(e) => setModelo(e.target.value)} />
-              <Input placeholder="Nº de série" value={serie} onChange={(e) => setSerie(e.target.value)} />
-              <Button size="sm" loading={criarMaquinaMut.isPending} onClick={() => criarMaquinaMut.mutate({ ordemId, modelo, numeroSerie: serie || undefined })}>Adicionar</Button>
+            <div className="mt-3">
+              <Input placeholder="Buscar máquina no Almoxarifado por modelo ou nº de série..." value={buscaEstoque} onChange={(e) => setBuscaEstoque(e.target.value)} />
+              {buscaEstoque.trim().length >= 2 && (
+                <div className="mt-1 max-h-48 overflow-y-auto border border-dark-600 rounded-lg bg-dark-800 divide-y divide-dark-700">
+                  {(resultadosEstoque ?? []).map((r) => (
+                    <button
+                      key={r.id}
+                      disabled={vinculando}
+                      onClick={() => vincularMaquina(r)}
+                      className="w-full text-left px-3 py-2 text-sm text-dark-200 hover:bg-dark-700 disabled:opacity-50"
+                    >
+                      {r.modelo ?? '—'} <span className="text-dark-500">{r.numeroSerie}</span>
+                      {r.vaga && <span className="text-dark-600 text-xs"> · {r.vaga.portaPallet?.codigo} andar {r.vaga.andar}/{r.vaga.posicao}</span>}
+                    </button>
+                  ))}
+                  {(!resultadosEstoque || resultadosEstoque.length === 0) && <p className="px-3 py-2 text-xs text-dark-500">Nenhuma máquina disponível em estoque com esse nome/série</p>}
+                </div>
+              )}
             </div>
           )}
         </div>

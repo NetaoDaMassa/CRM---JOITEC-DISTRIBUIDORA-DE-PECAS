@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ArrowRight, Ban, Pause, Play, X, Building2, Phone, Mail, MapPin, User } from 'lucide-react'
+import { ArrowRight, Ban, Pause, Play, X } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
@@ -126,68 +126,6 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
             <Button size="sm" variant="danger" onClick={() => setModalCancelar(true)}>
               <Ban size={14} className="mr-1" /> Cancelar
             </Button>
-          </div>
-        )}
-
-        {ordem.cliente && (
-          <div className="mx-6 mt-4 bg-dark-900/60 border border-dark-700 rounded-xl p-4">
-            <p className="text-[11px] font-bold uppercase tracking-wide text-dark-500 mb-3">Dados do Cliente</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-sm">
-              <div className="flex items-start gap-2 sm:col-span-2">
-                <Building2 size={14} className="text-dark-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-dark-500 text-[11px]">Empresa</p>
-                  <p className="text-dark-100 font-medium">{ordem.cliente.razaoSocial}</p>
-                </div>
-              </div>
-              {ordem.cliente.cnpj && (
-                <div className="flex items-start gap-2">
-                  <span className="w-[14px] shrink-0" />
-                  <div>
-                    <p className="text-dark-500 text-[11px]">CNPJ</p>
-                    <p className="text-dark-200">{ordem.cliente.cnpj}</p>
-                  </div>
-                </div>
-              )}
-              {ordem.cliente.nomeContato && (
-                <div className="flex items-start gap-2">
-                  <User size={14} className="text-dark-500 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-dark-500 text-[11px]">Contato</p>
-                    <p className="text-dark-200">{ordem.cliente.nomeContato}</p>
-                  </div>
-                </div>
-              )}
-              {ordem.cliente.telefoneWhatsapp && (
-                <div className="flex items-start gap-2">
-                  <Phone size={14} className="text-dark-500 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-dark-500 text-[11px]">Telefone</p>
-                    <p className="text-dark-200">{ordem.cliente.telefoneWhatsapp}</p>
-                  </div>
-                </div>
-              )}
-              {ordem.cliente.email && (
-                <div className="flex items-start gap-2">
-                  <Mail size={14} className="text-dark-500 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-dark-500 text-[11px]">E-mail</p>
-                    <p className="text-dark-200">{ordem.cliente.email}</p>
-                  </div>
-                </div>
-              )}
-              {(ordem.cliente.endereco || ordem.cliente.cidade) && (
-                <div className="flex items-start gap-2 sm:col-span-2">
-                  <MapPin size={14} className="text-dark-500 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-dark-500 text-[11px]">Endereço do cliente</p>
-                    <p className="text-dark-200">
-                      {[ordem.cliente.endereco, ordem.cliente.cidade, ordem.cliente.estado].filter(Boolean).join(' — ')}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
         )}
 

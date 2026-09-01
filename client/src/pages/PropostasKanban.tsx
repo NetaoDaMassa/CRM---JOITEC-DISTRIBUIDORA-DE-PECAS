@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
@@ -9,6 +10,7 @@ import Select from '../components/ui/Select'
 import { Input, Textarea } from '../components/ui/Input'
 import ProductSelector from '../components/ProductSelector'
 import PropostasBoard from '../components/PropostasBoard'
+import PropostaDetail from './PropostaDetail'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
@@ -39,6 +41,8 @@ export default function PropostasKanban() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const basePath = isAdmin ? '/admin/propostas' : '/vendedor/propostas'
+  const { id } = useParams()
+  const navigate = useNavigate()
 
   const [modalAberto, setModalAberto] = useState(false)
   const [semProposta, setSemProposta] = useState(false)
@@ -309,6 +313,8 @@ export default function PropostasKanban() {
           </Button>
         </div>
       </Modal>
+
+      {id && <PropostaDetail propostaId={Number(id)} onClose={() => navigate(basePath)} />}
     </div>
   )
 }

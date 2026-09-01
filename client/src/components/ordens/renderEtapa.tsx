@@ -21,7 +21,16 @@ export type OrdemParaEtapa = {
   orderType: string
   status: string
   cancelMotivo?: string | null
-  cliente?: { razaoSocial?: string | null; telefoneWhatsapp?: string | null; email?: string | null } | null
+  cliente?: {
+    razaoSocial?: string | null
+    telefoneWhatsapp?: string | null
+    email?: string | null
+    cnpj?: string | null
+    nomeContato?: string | null
+    endereco?: string | null
+    cidade?: string | null
+    estado?: string | null
+  } | null
   vendedor?: { whatsapp?: string | null } | null
   updatedAt?: string
 }
@@ -38,7 +47,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
     case 'cadastro':
       return <EtapaCadastro />
     case 'liberacao_financeira':
-      return <EtapaFinanceiro ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} />
+      return <EtapaFinanceiro ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} cliente={ordem.cliente} />
     case 'pedido':
       return <EtapaPedido ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} orderType={orderType} />
     case 'cotacao_frete':

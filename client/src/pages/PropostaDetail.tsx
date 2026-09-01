@@ -1,19 +1,14 @@
 import { useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ArrowRight, XCircle, RefreshCcw, X } from 'lucide-react'
+import { ArrowRight, XCircle, RefreshCcw, X, Paperclip, Trash2, MessageCircle, Send, AlertCircle } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
-import { Input } from '../components/ui/Input'
-import Select from '../components/ui/Select'
+import { Input, Textarea } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, type PropostaStage } from '../lib/propostasShared'
 import ProductSelector from '../components/ProductSelector'
-
-type TabKey = 'geral' | 'arquivos' | 'feedbacks' | 'alteracoes' | 'historico'
-const TAB_LABELS: Record<TabKey, string> = { geral: 'Visão Geral', arquivos: 'Arquivos', feedbacks: 'Feedbacks', alteracoes: 'Alterações', historico: 'Histórico' }
 
 function formatarDataHora(dt: string | null | undefined): string {
   if (!dt) return '—'
@@ -22,13 +17,9 @@ function formatarDataHora(dt: string | null | undefined): string {
   return hora ? `${dia}/${mes}/${ano} ${hora.slice(0, 5)}` : `${dia}/${mes}/${ano}`
 }
 
-export default function PropostaDetail() {
-  const { id } = useParams()
-  const propostaId = Number(id)
-  const navigate = useNavigate()
+export default function PropostaDetail({ propostaId, onClose }: { propostaId: number; onClose: () => void }) {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [tab, setTab] = useState<TabKey>('geral')
   const [modalPerdaAberto, setModalPerdaAberto] = useState(false)
   const [motivoPerda, setMotivoPerda] = useState('')
   const [modalChamarDepoisAberto, setModalChamarDepoisAberto] = useState(false)
@@ -43,7 +34,6 @@ export default function PropostaDetail() {
   function invalidarTudo() {
     utils.propostas.obterPorId.invalidate({ id: propostaId })
     utils.propostas.listar.invalidate()
-    utils.propostas.historico.invalidate({ id: propostaId })
   }
 
   const moverMut = trpc.propostas.moverEtapa.useMutation({ onSuccess: () => { toast.success('Etapa alterada'); invalidarTudo() }, onError: (e) => toast.error(e.message) })
@@ -53,7 +43,7 @@ export default function PropostaDetail() {
     onError: (e) => toast.error(e.message),
   })
   const converterMut = trpc.propostas.converter.useMutation({
-    onSuccess: (r) => { toast.success('Convertida em pedido!'); setModalConverterAberto(false); navigate(isAdmin ? `/admin/ordens/${r.ordemId}` : `/vendedor/ordens/${r.ordemId}`) },
+    onSuccess: (r) => { toast.success('Convertida em pedido!'); setModalConverterAberto(false); onClose(); window.location.assign(isAdmin ? `/admin/ordens/${r.ordemId}` : `/vendedor/ordens/${r.ordemId}`) },
     onError: (e) => toast.error(e.message),
   })
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
@@ -67,7 +57,7 @@ export default function PropostaDetail() {
 
   return (
     <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto p-4 md:p-8 bg-dark-950/80 backdrop-blur-sm">
-      <div className="w-full max-w-4xl bg-dark-800 border border-dark-600 rounded-2xl shadow-2xl shadow-black/50 my-4">
+      <div className="w-full max-w-2xl bg-dark-800 border border-dark-600 rounded-2xl shadow-2xl shadow-black/50 my-4">
         <div className="flex items-start justify-between gap-3 px-6 pt-5">
           <div>
             <h1 className="font-heading text-xl text-dark-50 font-bold">{proposta.clienteNome}</h1>
@@ -80,7 +70,7 @@ export default function PropostaDetail() {
               {proposta.prioridade === 'urgente' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">🔴 Urgente</Badge>}
             </div>
           </div>
-          <button onClick={() => navigate(-1)} className="text-dark-400 hover:text-dark-100 transition-colors p-1.5 rounded-lg hover:bg-dark-700 shrink-0">
+          <button onClick={onClose} className="text-dark-400 hover:text-dark-100 transition-colors p-1.5 rounded-lg hover:bg-dark-700 shrink-0">
             <X size={18} />
           </button>
         </div>
@@ -111,30 +101,14 @@ export default function PropostaDetail() {
         )}
         {stage === 'convertido' && proposta.convertidoParaOrdemId && (
           <div className="px-6 mt-4">
-            <Button size="sm" variant="secondary" onClick={() => navigate(isAdmin ? `/admin/ordens/${proposta.convertidoParaOrdemId}` : `/vendedor/ordens/${proposta.convertidoParaOrdemId}`)}>
+            <Button size="sm" variant="secondary" onClick={() => window.location.assign(isAdmin ? `/admin/ordens/${proposta.convertidoParaOrdemId}` : `/vendedor/ordens/${proposta.convertidoParaOrdemId}`)}>
               Ver Pedido #{proposta.convertidoParaOrdemId}
             </Button>
           </div>
         )}
 
-        <div className="flex gap-1 border-b border-dark-700 mt-4 mx-6 overflow-x-auto">
-          {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
-            >
-              {TAB_LABELS[t]}
-            </button>
-          ))}
-        </div>
-
         <div className="p-6">
-          {tab === 'geral' && <AbaGeral propostaId={propostaId} podeEditar={podeAgir} isAdmin={isAdmin} />}
-          {tab === 'arquivos' && <AbaArquivos propostaId={propostaId} podeEditar={podeAgir} />}
-          {tab === 'feedbacks' && <AbaFeedbacks propostaId={propostaId} />}
-          {tab === 'alteracoes' && <AbaAlteracoes propostaId={propostaId} />}
-          {tab === 'historico' && <AbaHistorico propostaId={propostaId} />}
+          <PropostaForm propostaId={propostaId} podeEditar={podeAgir} isAdmin={isAdmin} proposta={proposta} onClose={onClose} atualizarMut={atualizarMut} />
         </div>
       </div>
 
@@ -191,29 +165,25 @@ export default function PropostaDetail() {
   )
 }
 
-// AbaGeralForm só monta depois que a proposta já carregou (guard abaixo) —
-// senão o useState que pré-preenche cada campo roda antes da query voltar
-// e trava vazio pra sempre, mesmo o servidor já tendo o valor certo (bug
-// real, achado testando a conversão Proposta→Pedido — mesma correção
-// aplicada nas abas equivalentes de OrdensDetail.tsx).
-function AbaGeral({ propostaId, podeEditar, isAdmin }: { propostaId: number; podeEditar: boolean; isAdmin: boolean }) {
-  const { data: proposta, isLoading } = trpc.propostas.obterPorId.useQuery({ id: propostaId })
-  if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
-  if (!proposta) return null
-  return <AbaGeralForm propostaId={propostaId} podeEditar={podeEditar} isAdmin={isAdmin} proposta={proposta} />
-}
-
-function AbaGeralForm({
+// Formulário único (sem abas) — porte direto do PropostaModal.tsx do
+// sistema antigo: tudo numa rolagem só (dados principais, PDF, alterações,
+// feedbacks, compartilhar por WhatsApp), não dividido em abas separadas
+// como a versão anterior desta tela (achado do João, 2026-09-01 — "tem que
+// ser idêntico ao outro sistema").
+function PropostaForm({
   propostaId,
   podeEditar,
   isAdmin,
   proposta,
+  onClose,
+  atualizarMut,
 }: {
   propostaId: number
   podeEditar: boolean
   isAdmin: boolean
   proposta: {
     stage: string
+    clienteNome: string
     clienteWhatsapp: string | null
     produtosDescricao: string | null
     produtosItens: string | null
@@ -223,109 +193,67 @@ function AbaGeralForm({
     observacoes: string | null
     prioridade: string
     motivoUrgencia: string | null
+    vendedor?: { name: string; whatsapp: string | null } | null
   }
+  onClose: () => void
+  atualizarMut: ReturnType<typeof trpc.propostas.atualizar.useMutation>
 }) {
   const utils = trpc.useUtils()
-  const [clienteWhatsapp, setClienteWhatsapp] = useState(proposta?.clienteWhatsapp ?? '')
-  const [produtosDescricao, setProdutosDescricao] = useState(proposta?.produtosDescricao ?? '')
-  const [produtosItens, setProdutosItens] = useState(proposta?.produtosItens ?? '')
-  const [comissao, setComissao] = useState(proposta?.comissao ?? '')
-  const [revenda, setRevenda] = useState(proposta?.revenda ?? '')
-  const [formaPagamento, setFormaPagamento] = useState(proposta?.formaPagamento ?? '')
-  const [observacoes, setObservacoes] = useState(proposta?.observacoes ?? '')
-  const [prioridade, setPrioridade] = useState(proposta?.prioridade ?? 'normal')
-  const [motivoUrgencia, setMotivoUrgencia] = useState(proposta?.motivoUrgencia ?? '')
+  const [clienteNome, setClienteNome] = useState(proposta.clienteNome)
+  const [clienteWhatsapp, setClienteWhatsapp] = useState(proposta.clienteWhatsapp ?? '')
+  const [produtosDescricao, setProdutosDescricao] = useState(proposta.produtosDescricao ?? '')
+  const [produtosItens, setProdutosItens] = useState(proposta.produtosItens ?? '')
+  const [comissao, setComissao] = useState(proposta.comissao ?? '')
+  const [revenda, setRevenda] = useState(proposta.revenda ?? '')
+  const [formaPagamento, setFormaPagamento] = useState(proposta.formaPagamento ?? '')
+  const [observacoes, setObservacoes] = useState(proposta.observacoes ?? '')
+  const [prioridade, setPrioridade] = useState(proposta.prioridade ?? 'normal')
+  const [motivoUrgencia, setMotivoUrgencia] = useState(proposta.motivoUrgencia ?? '')
+  const [enviandoPdf, setEnviandoPdf] = useState(false)
+  const [enviandoCad, setEnviandoCad] = useState(false)
+  const [novaAlteracao, setNovaAlteracao] = useState('')
+  const [novoFeedback, setNovoFeedback] = useState('')
+
+  const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { retry: false })
+  const { data: condicoes } = trpc.configuracoesOdin.listarCondicoes.useQuery(undefined, { retry: false })
+  const { data: arquivos } = trpc.propostas.listarArquivos.useQuery({ propostaId })
+  const { data: alteracoes } = trpc.propostas.listarAlteracoes.useQuery({ propostaId })
+  const { data: feedbacks } = trpc.propostas.listarFeedbacks.useQuery({ propostaId })
 
   const salvarMut = trpc.propostas.atualizar.useMutation({
-    onSuccess: () => { toast.success('Salvo'); utils.propostas.obterPorId.invalidate({ id: propostaId }) },
+    onSuccess: () => { toast.success('Salvo'); utils.propostas.obterPorId.invalidate({ id: propostaId }); utils.propostas.listar.invalidate() },
     onError: (e) => toast.error(e.message),
   })
-
-  // Campo trava pro vendedor fora da etapa "proposta" — mesma regra do backend.
-  const produtosTravado = !isAdmin && proposta.stage !== 'proposta'
-
-  return (
-    <div className="space-y-4">
-      <div>
-        <label className="text-xs text-dark-400 mb-1.5 block">Prioridade</label>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            disabled={!podeEditar}
-            onClick={() => { setPrioridade('normal'); setMotivoUrgencia('') }}
-            className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
-              prioridade === 'normal' ? 'border-green-500 bg-green-900/20 text-green-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
-            }`}
-          >
-            ✅ Normal
-          </button>
-          <button
-            type="button"
-            disabled={!podeEditar}
-            onClick={() => setPrioridade('urgente')}
-            className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
-              prioridade === 'urgente' ? 'border-red-500 bg-red-900/20 text-red-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
-            }`}
-          >
-            🔴 Urgente
-          </button>
-        </div>
-        {prioridade === 'urgente' && (
-          <div className="mt-2">
-            <Input
-              label="Motivo da urgência"
-              placeholder="Ex: Prazo de entrega do cliente, concorrência..."
-              defaultValue={motivoUrgencia}
-              onChange={(e) => setMotivoUrgencia(e.target.value)}
-              disabled={!podeEditar}
-            />
-          </div>
-        )}
-      </div>
-      <Input label="WhatsApp do cliente" defaultValue={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} disabled={!podeEditar} />
-      <div>
-        <label className="text-xs text-dark-400 mb-1.5 block">Produtos/Serviços</label>
-        <ProductSelector value={produtosDescricao} onChange={setProdutosDescricao} itensJson={produtosItens} onItensChange={setProdutosItens} disabled={!podeEditar || produtosTravado} />
-        {produtosTravado && <p className="text-xs text-yellow-500 mt-1">Travado após o envio — use a aba "Alterações" pra pedir mudança.</p>}
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Input label="Comissão" defaultValue={comissao} onChange={(e) => setComissao(e.target.value)} disabled={!podeEditar} />
-        <Input label="Revenda" defaultValue={revenda} onChange={(e) => setRevenda(e.target.value)} disabled={!podeEditar} />
-        <Input label="Forma de pagamento" defaultValue={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} disabled={!podeEditar} />
-      </div>
-      <Input label="Observações" defaultValue={observacoes} onChange={(e) => setObservacoes(e.target.value)} disabled={!podeEditar} />
-      {podeEditar && (
-        <Button
-          size="sm"
-          loading={salvarMut.isPending}
-          onClick={() => salvarMut.mutate({ id: propostaId, clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })}
-        >
-          Salvar
-        </Button>
-      )}
-    </div>
-  )
-}
-
-function AbaArquivos({ propostaId, podeEditar }: { propostaId: number; podeEditar: boolean }) {
-  const utils = trpc.useUtils()
-  const { data: arquivos } = trpc.propostas.listarArquivos.useQuery({ propostaId })
-  const [categoria, setCategoria] = useState('proposta_pdf')
-  const [enviando, setEnviando] = useState(false)
-
-  const registrarMut = trpc.propostas.registrarArquivo.useMutation({
-    onSuccess: () => { toast.success('Anexo salvo'); utils.propostas.listarArquivos.invalidate({ propostaId }); utils.propostas.listar.invalidate() },
+  const registrarArquivoMut = trpc.propostas.registrarArquivo.useMutation({
+    onSuccess: () => { utils.propostas.listarArquivos.invalidate({ propostaId }); utils.propostas.listar.invalidate() },
     onError: (e) => toast.error(e.message),
   })
-  const excluirMut = trpc.propostas.excluirArquivo.useMutation({
+  const excluirArquivoMut = trpc.propostas.excluirArquivo.useMutation({
     onSuccess: () => { toast.success('Removido'); utils.propostas.listarArquivos.invalidate({ propostaId }); utils.propostas.listar.invalidate() },
     onError: (e) => toast.error(e.message),
   })
+  const solicitarAlteracaoMut = trpc.propostas.solicitarAlteracao.useMutation({
+    onSuccess: () => {
+      toast.success('Alteração solicitada — proposta voltou pra "Proposta"')
+      setNovaAlteracao('')
+      utils.propostas.listarAlteracoes.invalidate({ propostaId })
+      utils.propostas.obterPorId.invalidate({ id: propostaId })
+      utils.propostas.listar.invalidate()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  const feedbackMut = trpc.propostas.adicionarFeedback.useMutation({
+    onSuccess: () => { setNovoFeedback(''); utils.propostas.listarFeedbacks.invalidate({ propostaId }) },
+    onError: (e) => toast.error(e.message),
+  })
 
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setEnviando(true)
+  const produtosTravado = !isAdmin && proposta.stage !== 'proposta'
+  const pdfFiles = (arquivos ?? []).filter((a) => a.fileCategory === 'proposta_pdf')
+  const cadFiles = (arquivos ?? []).filter((a) => a.fileCategory === 'dados_cadastrais')
+  const hasPdf = pdfFiles.length > 0
+
+  async function handleUpload(file: File, categoria: 'proposta_pdf' | 'dados_cadastrais') {
+    categoria === 'proposta_pdf' ? setEnviandoPdf(true) : setEnviandoCad(true)
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -333,119 +261,204 @@ function AbaArquivos({ propostaId, podeEditar }: { propostaId: number; podeEdita
       const resp = await fetch('/upload/proposta-anexo', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
       const json = await resp.json()
       if (!resp.ok) throw new Error(json.error ?? 'Falha no upload')
-      registrarMut.mutate({ propostaId, fileCategory: categoria || undefined, nomeOriginal: json.nome, nomeArmazenado: json.path.replace('/uploads/', ''), tipoArquivo: json.tipo, tamanhoBytes: json.tamanho })
+      await registrarArquivoMut.mutateAsync({ propostaId, fileCategory: categoria, nomeOriginal: json.nome, nomeArmazenado: json.path.replace('/uploads/', ''), tipoArquivo: json.tipo, tamanhoBytes: json.tamanho })
     } catch (err: any) {
       toast.error(err.message)
     } finally {
-      setEnviando(false)
-      e.target.value = ''
+      setEnviandoPdf(false)
+      setEnviandoCad(false)
     }
   }
 
+  function salvarTudo() {
+    salvarMut.mutate({ id: propostaId, clienteNome, clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })
+  }
+
+  function compartilharWhatsapp() {
+    const linhas = [
+      'Olá! Segue o resumo da proposta:',
+      '',
+      `Cliente: ${clienteNome}`,
+      produtosDescricao ? `Produtos/Serviços: ${produtosDescricao}` : null,
+      formaPagamento ? `Forma de pagamento: ${formaPagamento}` : null,
+      comissao ? `Comissão: ${comissao}` : null,
+      revenda ? `Revenda: ${revenda}` : null,
+      observacoes ? `\nInformações para cadastro: ${observacoes}` : null,
+      pdfFiles[0] ? `\n📄 PDF da proposta:\n${window.location.origin}/uploads/${pdfFiles[0].nomeArmazenado}` : null,
+      '',
+      proposta.vendedor?.name ? `Vendedor: ${proposta.vendedor.name}` : null,
+    ].filter((l) => l !== null)
+    window.open(`https://wa.me/?text=${encodeURIComponent(linhas.join('\n'))}`, '_blank')
+  }
+
   return (
-    <div className="space-y-4">
-      {podeEditar && (
-        <div className="flex gap-2 items-end">
-          <Select label="Categoria" value={categoria} onChange={(e) => setCategoria(e.target.value)} options={[{ value: 'proposta_pdf', label: 'PDF da proposta' }, { value: 'dados_cadastrais', label: 'Dados cadastrais' }]} className="w-56" />
-          <label className="px-4 py-2 text-sm rounded-lg bg-dark-700 hover:bg-dark-600 text-dark-100 border border-dark-600 cursor-pointer">
-            {enviando ? 'Enviando...' : 'Escolher arquivo'}
-            <input type="file" className="hidden" onChange={handleUpload} disabled={enviando} />
-          </label>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 gap-4">
+        <Input label="Cliente *" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} disabled={!podeEditar} />
+
+        <div>
+          <label className="text-xs text-dark-400 mb-1.5 block">Prioridade</label>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={!podeEditar}
+              onClick={() => { setPrioridade('normal'); setMotivoUrgencia('') }}
+              className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                prioridade === 'normal' ? 'border-green-500 bg-green-900/20 text-green-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
+              }`}
+            >
+              ✅ Normal
+            </button>
+            <button
+              type="button"
+              disabled={!podeEditar}
+              onClick={() => setPrioridade('urgente')}
+              className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                prioridade === 'urgente' ? 'border-red-500 bg-red-900/20 text-red-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
+              }`}
+            >
+              🔴 Urgente
+            </button>
+          </div>
+          {prioridade === 'urgente' && (
+            <div className="mt-2">
+              <Input label="Motivo da urgência" placeholder="Ex: Prazo de entrega do cliente, concorrência..." defaultValue={motivoUrgencia} onChange={(e) => setMotivoUrgencia(e.target.value)} disabled={!podeEditar} />
+            </div>
+          )}
+        </div>
+
+        <div>
+          <label className="text-xs text-dark-400 mb-1.5 block">Produtos/Serviços</label>
+          <ProductSelector value={produtosDescricao} onChange={setProdutosDescricao} itensJson={produtosItens} onItensChange={setProdutosItens} disabled={!podeEditar || produtosTravado} />
+          {produtosTravado && <p className="text-xs text-yellow-500 mt-1">Travado após o envio — peça uma alteração na seção "Alterações" mais abaixo.</p>}
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Comissão" defaultValue={comissao} onChange={(e) => setComissao(e.target.value)} disabled={!podeEditar} />
+          <div>
+            <Input label="Revenda" list="revendas-proposta" defaultValue={revenda} onChange={(e) => setRevenda(e.target.value)} disabled={!podeEditar} />
+            <datalist id="revendas-proposta">{(revendas ?? []).map((r) => <option key={r.id} value={r.nome} />)}</datalist>
+          </div>
+        </div>
+        <div>
+          <Input label="Forma de pagamento" list="condicoes-proposta" defaultValue={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} disabled={!podeEditar} placeholder="Ex: 30/60/90 dias" />
+          <datalist id="condicoes-proposta">{(condicoes ?? []).map((c) => <option key={c.id} value={c.nome} />)}</datalist>
+        </div>
+
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-dark-400 block">Informações para Cadastro</label>
+            {podeEditar && (
+              <label className="flex items-center gap-1 text-xs text-dark-400 hover:text-gold-400 cursor-pointer">
+                <Paperclip size={12} /> {enviandoCad ? 'Enviando...' : 'Anexar'}
+                <input type="file" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f, 'dados_cadastrais'); e.target.value = '' }} disabled={enviandoCad} />
+              </label>
+            )}
+          </div>
+          <Textarea defaultValue={observacoes} onChange={(e) => setObservacoes(e.target.value)} disabled={!podeEditar} className="h-16" />
+          {cadFiles.length > 0 && (
+            <div className="mt-1.5 space-y-1">
+              {cadFiles.map((f) => (
+                <div key={f.id} className="flex items-center gap-2 rounded-lg bg-dark-900 px-2.5 py-1.5">
+                  <Paperclip size={11} className="text-blue-400 shrink-0" />
+                  <a href={`/uploads/${f.nomeArmazenado}`} target="_blank" rel="noreferrer" className="flex-1 text-xs text-blue-400 hover:underline truncate">{f.nomeOriginal}</a>
+                  {podeEditar && <button onClick={() => excluirArquivoMut.mutate({ id: f.id, propostaId })} className="text-dark-500 hover:text-red-400 shrink-0"><Trash2 size={11} /></button>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-dark-600 p-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide">
+            PDF da Proposta {proposta.stage === 'proposta' && <span className="text-red-400 ml-1">*obrigatório para avançar</span>}
+          </p>
+          {podeEditar && (
+            <label className="flex items-center gap-1.5 rounded-lg bg-gold-600 hover:bg-gold-500 px-3 py-1.5 text-xs font-semibold text-dark-950 cursor-pointer">
+              {enviandoPdf ? 'Enviando...' : 'Anexar PDF'}
+              <input type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f, 'proposta_pdf'); e.target.value = '' }} disabled={enviandoPdf} />
+            </label>
+          )}
+        </div>
+        {pdfFiles.length === 0 ? (
+          <p className="text-xs text-dark-500 text-center py-2">Nenhum PDF anexado</p>
+        ) : (
+          <div className="space-y-1">
+            {pdfFiles.map((f) => (
+              <div key={f.id} className="flex items-center gap-2 rounded-lg bg-dark-900 px-3 py-2">
+                <span className="flex-1 min-w-0 text-xs text-blue-400 truncate"><a href={`/uploads/${f.nomeArmazenado}`} target="_blank" rel="noreferrer" className="hover:underline">{f.nomeOriginal}</a></span>
+                {podeEditar && <button onClick={() => excluirArquivoMut.mutate({ id: f.id, propostaId })} className="text-dark-500 hover:text-red-400 shrink-0"><Trash2 size={13} /></button>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-amber-700/40 p-4 space-y-3">
+        <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide flex items-center gap-1.5">
+          <AlertCircle size={13} /> Alterações{(alteracoes?.length ?? 0) > 0 ? ` (${alteracoes!.length})` : ''}
+        </p>
+        <div className="space-y-2">
+          {(alteracoes ?? []).map((a: any, idx: number) => (
+            <div key={a.id} className="rounded-lg bg-amber-900/10 border border-amber-800/40 px-3 py-2.5">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="rounded-full bg-amber-800/60 px-2 py-0.5 text-[10px] font-bold text-amber-300">Alteração {idx + 1}</span>
+                <span className="text-[10px] text-dark-500">{a.solicitante?.name ?? '—'} · {a.createdAt}</span>
+              </div>
+              <p className="text-sm text-dark-300 whitespace-pre-line">{a.conteudo}</p>
+            </div>
+          ))}
+          {(!alteracoes || alteracoes.length === 0) && <p className="text-xs text-dark-500 text-center py-1">Nenhuma alteração solicitada ainda</p>}
+        </div>
+        <div className="flex gap-2">
+          <Input value={novaAlteracao} onChange={(e) => setNovaAlteracao(e.target.value)} placeholder="O que precisa mudar?" className="flex-1" />
+          <Button size="sm" variant="secondary" disabled={!novaAlteracao} loading={solicitarAlteracaoMut.isPending} onClick={() => solicitarAlteracaoMut.mutate({ propostaId, conteudo: novaAlteracao })}>Solicitar</Button>
+        </div>
+      </div>
+
+      {proposta.stage === 'negociacao' && (
+        <div className="rounded-xl border border-orange-700/40 p-4 space-y-3">
+          <p className="text-xs font-semibold text-orange-400 uppercase tracking-wide">Acompanhamento da Negociação</p>
+          <div className="space-y-2">
+            {(feedbacks ?? []).map((f: any, idx: number) => (
+              <div key={f.id} className="rounded-lg bg-orange-900/10 border border-orange-800/40 px-3 py-2.5">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="rounded-full bg-orange-800/60 px-2 py-0.5 text-[10px] font-bold text-orange-300">Feedback {idx + 1}</span>
+                  <span className="text-[10px] text-dark-500">{f.vendedor?.name ?? '—'} · {f.createdAt}</span>
+                </div>
+                <p className="text-sm text-dark-300 whitespace-pre-line">{f.conteudo}</p>
+              </div>
+            ))}
+            {(!feedbacks || feedbacks.length === 0) && <p className="text-xs text-dark-500 text-center py-1">Nenhum feedback registrado ainda</p>}
+          </div>
+          <div className="flex gap-2">
+            <Textarea value={novoFeedback} onChange={(e) => setNovoFeedback(e.target.value)} placeholder="Registre como está a negociação, objeções do cliente, próximos passos..." className="flex-1 h-16" />
+            <Button size="sm" variant="secondary" disabled={!novoFeedback.trim() || feedbackMut.isPending} loading={feedbackMut.isPending} onClick={() => feedbackMut.mutate({ propostaId, conteudo: novoFeedback })}>
+              <Send size={14} />
+            </Button>
+          </div>
         </div>
       )}
-      <div className="space-y-2">
-        {(arquivos ?? []).map((a) => (
-          <div key={a.id} className="flex items-center justify-between p-2.5 rounded-lg border border-dark-600 bg-dark-800 text-sm">
-            <a href={`/uploads/${a.nomeArmazenado}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline truncate">
-              {a.nomeOriginal} {a.fileCategory && <span className="text-dark-500">({a.fileCategory})</span>}
-            </a>
-            {podeEditar && <button onClick={() => excluirMut.mutate({ id: a.id, propostaId })} className="text-red-400 text-xs hover:underline shrink-0 ml-2">excluir</button>}
-          </div>
-        ))}
-        {(!arquivos || arquivos.length === 0) && <p className="text-dark-500 text-sm">Nenhum anexo ainda</p>}
-      </div>
-    </div>
-  )
-}
 
-function AbaFeedbacks({ propostaId }: { propostaId: number }) {
-  const utils = trpc.useUtils()
-  const { data: feedbacks } = trpc.propostas.listarFeedbacks.useQuery({ propostaId })
-  const [conteudo, setConteudo] = useState('')
+      <button onClick={compartilharWhatsapp} className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 hover:bg-green-500 py-3 text-sm font-bold text-white transition-colors">
+        <MessageCircle size={16} /> Compartilhar Proposta via WhatsApp
+        {proposta.vendedor?.whatsapp && <span className="text-xs font-normal opacity-80">({proposta.vendedor.whatsapp})</span>}
+      </button>
 
-  const enviarMut = trpc.propostas.adicionarFeedback.useMutation({
-    onSuccess: () => { setConteudo(''); utils.propostas.listarFeedbacks.invalidate({ propostaId }) },
-    onError: (e) => toast.error(e.message),
-  })
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        <Input value={conteudo} onChange={(e) => setConteudo(e.target.value)} placeholder="Escrever um feedback..." className="flex-1" />
-        <Button size="sm" disabled={!conteudo} loading={enviarMut.isPending} onClick={() => enviarMut.mutate({ propostaId, conteudo })}>Enviar</Button>
-      </div>
-      <div className="space-y-2">
-        {(feedbacks ?? []).map((f: any) => (
-          <div key={f.id} className="p-2.5 rounded-lg border border-dark-700 bg-dark-800/50 text-sm">
-            <div className="text-dark-200">{f.conteudo}</div>
-            <div className="text-dark-500 text-xs mt-0.5">{f.vendedor?.name ?? '—'} · {f.createdAt}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function AbaAlteracoes({ propostaId }: { propostaId: number }) {
-  const utils = trpc.useUtils()
-  const { data: alteracoes } = trpc.propostas.listarAlteracoes.useQuery({ propostaId })
-  const [conteudo, setConteudo] = useState('')
-
-  const enviarMut = trpc.propostas.solicitarAlteracao.useMutation({
-    onSuccess: () => {
-      toast.success('Alteração solicitada — proposta voltou pra "Proposta"')
-      setConteudo('')
-      utils.propostas.listarAlteracoes.invalidate({ propostaId })
-      utils.propostas.obterPorId.invalidate({ id: propostaId })
-      utils.propostas.listar.invalidate()
-    },
-    onError: (e) => toast.error(e.message),
-  })
-
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        <Input value={conteudo} onChange={(e) => setConteudo(e.target.value)} placeholder="O que precisa mudar?" className="flex-1" />
-        <Button size="sm" disabled={!conteudo} loading={enviarMut.isPending} onClick={() => enviarMut.mutate({ propostaId, conteudo })}>Solicitar</Button>
-      </div>
-      <div className="space-y-2">
-        {(alteracoes ?? []).map((a: any) => (
-          <div key={a.id} className="p-2.5 rounded-lg border border-dark-700 bg-dark-800/50 text-sm">
-            <div className="text-dark-200">{a.conteudo}</div>
-            <div className="text-dark-500 text-xs mt-0.5">{a.solicitante?.name ?? '—'} · {a.createdAt}</div>
-          </div>
-        ))}
-        {(!alteracoes || alteracoes.length === 0) && <p className="text-dark-500 text-sm">Nenhuma alteração solicitada ainda</p>}
-      </div>
-    </div>
-  )
-}
-
-function AbaHistorico({ propostaId }: { propostaId: number }) {
-  const { data } = trpc.propostas.historico.useQuery({ id: propostaId })
-  return (
-    <div className="space-y-2">
-      {(data ?? []).map((h: any) => (
-        <div key={h.id} className="p-2.5 rounded-lg border border-dark-700 bg-dark-800/50 text-sm">
-          <div className="text-dark-200">
-            {h.etapaAnterior ? `${PROPOSTA_STAGE_LABELS[h.etapaAnterior as PropostaStage] ?? h.etapaAnterior} → ` : ''}
-            {PROPOSTA_STAGE_LABELS[h.etapaNova as PropostaStage] ?? h.etapaNova}
-            {h.nota && <span className="text-dark-400"> — {h.nota}</span>}
-          </div>
-          <div className="text-dark-500 text-xs mt-0.5">{h.user?.name ?? 'sistema'} · {h.createdAt}</div>
+      {proposta.stage === 'proposta' && !hasPdf && (
+        <div className="rounded-lg border border-amber-700/40 bg-amber-900/10 px-4 py-3 text-xs text-amber-400">
+          ⚠️ Anexe o PDF da proposta antes de avançar para Negociação.
         </div>
-      ))}
-      {(!data || data.length === 0) && <p className="text-dark-500 text-sm">Sem histórico ainda</p>}
+      )}
+
+      {podeEditar && (
+        <div className="flex gap-3 pt-2 border-t border-dark-700">
+          <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
+          <Button className="flex-1" loading={salvarMut.isPending} onClick={salvarTudo}>Salvar</Button>
+        </div>
+      )}
     </div>
   )
 }
