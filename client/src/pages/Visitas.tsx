@@ -173,12 +173,26 @@ const VISITA_VAZIA: VisitaForm = {
   propostaItens: '', propostaPagamento: '', propostaComissao: '', propostaRevenda: '',
 }
 
+// "Hoje" precisa ser a data de hoje no fuso do Brasil (UTC-3), não a do
+// navegador em UTC — `new Date().toISOString()` sempre devolve UTC
+// independente do fuso do aparelho, então depois das 21h no Brasil "hoje"
+// virava amanhã e nenhuma visita do dia batia mais (achado do João, 2026-08-31).
+function hojeBrString(): string {
+  return new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString().slice(0, 10)
+}
+
 function filtrarPorPeriodo<T extends { dataVisita: string | null }>(lista: T[], periodo: 'hoje' | 'semana' | 'todas'): T[] {
   if (periodo === 'todas') return lista
-  const hojeStr = new Date().toISOString().slice(0, 10)
+  const hojeStr = hojeBrString()
   if (periodo === 'hoje') return lista.filter((v) => (v.dataVisita ?? '').slice(0, 10) === hojeStr)
-  const inicioSemana = new Date()
-  inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay())
+  // Semana começa na segunda-feira (mesma convenção do resto do sistema —
+  // ver inicioSemanaBrString() no backend — domingo conta como fim da
+  // semana anterior, não início da atual), pro card "Semana" e a lista
+  // desta aba mostrarem sempre o mesmo período.
+  const inicioSemana = new Date(`${hojeStr}T00:00:00Z`)
+  const diaSemana = inicioSemana.getUTCDay()
+  const diasDesdeSegunda = diaSemana === 0 ? 6 : diaSemana - 1
+  inicioSemana.setUTCDate(inicioSemana.getUTCDate() - diasDesdeSegunda)
   const inicioSemanaStr = inicioSemana.toISOString().slice(0, 10)
   return lista.filter((v) => (v.dataVisita ?? '').slice(0, 10) >= inicioSemanaStr)
 }

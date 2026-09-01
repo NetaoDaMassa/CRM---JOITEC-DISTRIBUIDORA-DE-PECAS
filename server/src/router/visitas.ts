@@ -8,7 +8,7 @@ import { TRPCError } from '@trpc/server'
 import { router, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, visitasClientes, visitas, propostas } from '../db/schema.js'
-import { agoraSqlite } from '../lib/dataBr.js'
+import { agoraSqlite, hojeBrString, inicioSemanaBrString } from '../lib/dataBr.js'
 import { notificarGestores } from '../lib/propostasGates.js'
 
 const SLUG_VISITAS = 'odin-compressores'
@@ -267,10 +267,12 @@ export const visitasRouter = router({
       with: { propostaConvertida: { columns: { id: true, convertidoParaOrdemId: true } } },
     })
 
-    const hojeStr = new Date().toISOString().slice(0, 10)
-    const inicioSemana = new Date()
-    inicioSemana.setDate(inicioSemana.getDate() - inicioSemana.getDay())
-    const inicioSemanaStr = inicioSemana.toISOString().slice(0, 10)
+    // Precisa ser a data de hoje no fuso do Brasil (UTC-3), não a do
+    // servidor (UTC) — usar `new Date()` puro faz "hoje" virar amanhã assim
+    // que passa das 21h no Brasil, e nenhuma visita registrada à noite bate
+    // mais com o filtro (achado do João, 2026-08-31).
+    const hojeStr = hojeBrString()
+    const inicioSemanaStr = inicioSemanaBrString()
     const inicioMesStr = hojeStr.slice(0, 8) + '01'
 
     let hoje = 0
