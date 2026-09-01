@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lte, like, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, publicProcedure, adminProcedure, adminOrFeatureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import {
@@ -19,6 +19,7 @@ import {
   devolucaoDemonstracaoItens,
   empresas,
   users,
+  clientes,
 } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
@@ -260,6 +261,52 @@ export const devolucoesRouter = router({
       return { ...chamado, analise: await sanitizarAnalise(chamado.analise, ctx.user.id, ctx.user.role, ctx.user.superAdmin) }
     }),
 
+  // Busca cliente já cadastrado (carteira OU banco de clientes — é a mesma
+  // tabela, só filtro diferente) por nome ou CNPJ, pra vincular ao abrir um
+  // chamado novo. Sem a trava de "só os clientes do vendedor logado" que
+  // `clientes.list` tem — devolução pode vir de um cliente de qualquer
+  // vendedor, ou nem atribuído ainda (achado do João, 2026-09-01).
+  buscarClienteParaVinculo: adminOrFeatureProcedure('devolucoes')
+    .input(z.object({ q: z.string().min(2) }))
+    .query(async ({ ctx, input }) => {
+      const termo = input.q.trim()
+      const like_ = `%${termo}%`
+      const termoDigitos = termo.replace(/\D/g, '')
+      const condicoes = [like(clientes.razaoSocial, like_), like(clientes.codigo, like_)]
+      if (termoDigitos.length >= 4) condicoes.push(like(clientes.cnpj, `%${termoDigitos}%`))
+
+      return db.query.clientes.findMany({
+        where: and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt), or(...condicoes)),
+        columns: { id: true, razaoSocial: true, cnpj: true, telefoneWhatsapp: true, email: true, codigo: true, vendedorAtualId: true },
+        orderBy: [clientes.razaoSocial],
+        limit: 10,
+      })
+    }),
+
+  // Histórico de devoluções anteriores desse CNPJ — cruza as empresas que o
+  // usuário alcança (empresasAlcancaveis: só a própria, ou as 4 do grupo pra
+  // quem tem 'devolucoes_visao_global'). CNPJ é o único jeito de cruzar
+  // cliente entre empresas aqui, já que cada empresa tem seu próprio
+  // cadastro de clientes — não dá pra usar clienteId nesse caso.
+  historicoPorCnpj: adminOrFeatureProcedure('devolucoes')
+    .input(z.object({ cnpj: z.string(), ignorarChamadoId: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      const digitos = input.cnpj.replace(/\D/g, '')
+      if (digitos.length < 8) return []
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+
+      const rows = await db.query.devolucaoChamados.findMany({
+        where: and(
+          inArray(devolucaoChamados.empresaId, alcancaveis),
+          sql`replace(replace(replace(replace(${devolucaoChamados.clienteCnpj},'.',''),'/',''),'-',''),' ','') = ${digitos}`
+        ),
+        columns: { id: true, protocolo: true, status: true, descricao: true, createdAt: true },
+        with: { empresa: { columns: { nome: true } } },
+        orderBy: (c, { desc }) => [desc(c.createdAt)],
+      })
+      return rows.filter((r) => r.id !== input.ignorarChamadoId)
+    }),
+
   criar: adminOrFeatureProcedure('devolucoes')
     .input(
       z.object({
@@ -268,6 +315,7 @@ export const devolucoesRouter = router({
         clienteWhatsapp: z.string().optional(),
         clienteEmail: z.string().optional(),
         clienteCodigo: z.string().optional(),
+        clienteId: z.number().optional(),
         numeroNotaFiscal: z.string().optional(),
         numeroNotaFiscalVenda: z.string().optional(),
         numeroPedidoVenda: z.string().optional(),
@@ -304,6 +352,7 @@ export const devolucoesRouter = router({
         clienteWhatsapp: input.clienteWhatsapp,
         clienteEmail: input.clienteEmail,
         clienteCodigo: input.clienteCodigo,
+        clienteId: input.clienteId,
         numeroNotaFiscal: input.numeroNotaFiscal,
         numeroNotaFiscalVenda: input.numeroNotaFiscalVenda,
         numeroPedidoVenda: input.numeroPedidoVenda,

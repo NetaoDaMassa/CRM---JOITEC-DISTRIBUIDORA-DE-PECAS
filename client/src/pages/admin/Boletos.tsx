@@ -30,11 +30,20 @@ const ABAS = [
 ] as const
 type Aba = (typeof ABAS)[number]['id']
 
+// Rótulos pedidos pelo João, 2026-09-01 — valores do banco continuam
+// lancado/em_execucao/concluido (não é preciso migrar dado nenhum pra
+// trocar só o texto exibido).
 const STATUS_PEDIDO = [
-  { value: 'lancado', label: 'Lançado', cor: 'text-dark-400 bg-dark-700/40 border-dark-600' },
-  { value: 'em_execucao', label: 'Em execução', cor: 'text-orange-400 bg-orange-900/20 border-orange-700/40' },
-  { value: 'concluido', label: 'Concluído', cor: 'text-green-400 bg-green-900/20 border-green-700/40' },
+  { value: 'lancado', label: 'Pendente', cor: 'text-dark-400 bg-dark-700/40 border-dark-600' },
+  { value: 'em_execucao', label: 'Em processo', cor: 'text-orange-400 bg-orange-900/20 border-orange-700/40' },
+  { value: 'concluido', label: 'Finalizado', cor: 'text-green-400 bg-green-900/20 border-green-700/40' },
 ]
+
+const TIPO_ALTERACAO_LABEL: Record<string, string> = {
+  data: 'Alteração de data',
+  valor: 'Alteração de valor',
+  cancelamento: 'Boleto cancelado',
+}
 
 function SeletorAba({ aba, onChange }: { aba: Aba; onChange: (a: Aba) => void }) {
   return (
@@ -63,14 +72,12 @@ function AbaPedidosAlteracao() {
   const [modalAberto, setModalAberto] = useState(false)
   const utils = trpc.useUtils()
 
-  const statusMut = trpc.boletos.pedidosAtualizarStatus.useMutation({
-    onSuccess: () => utils.boletos.pedidosListar.invalidate(),
-    onError: (e) => toast.error(e.message),
-  })
-  const excluirMut = trpc.boletos.pedidosExcluir.useMutation({
-    onSuccess: () => utils.boletos.pedidosListar.invalidate(),
-    onError: (e) => toast.error(e.message),
-  })
+  function invalidar() {
+    utils.boletos.pedidosListar.invalidate()
+  }
+  const statusMut = trpc.boletos.pedidosAtualizarStatus.useMutation({ onSuccess: invalidar, onError: (e) => toast.error(e.message) })
+  const dataTrocaMut = trpc.boletos.pedidosAtualizarDataTroca.useMutation({ onSuccess: invalidar, onError: (e) => toast.error(e.message) })
+  const excluirMut = trpc.boletos.pedidosExcluir.useMutation({ onSuccess: invalidar, onError: (e) => toast.error(e.message) })
 
   function exportarCsv() {
     if (!data) return
@@ -78,15 +85,25 @@ function AbaPedidosAlteracao() {
       'pedidos_alteracao_boleto.csv',
       paraCsv(
         [
-          { chave: 'data', rotulo: 'Data' },
           { chave: 'cliente', rotulo: 'Cliente' },
-          { chave: 'pedido', rotulo: 'O que foi pedido' },
+          { chave: 'vendedor', rotulo: 'Vendedor' },
+          { chave: 'numeroBoleto', rotulo: 'Nº Boleto' },
+          { chave: 'valor', rotulo: 'Valor' },
+          { chave: 'tipo', rotulo: 'O que foi alterado' },
+          { chave: 'observacoes', rotulo: 'Observações' },
+          { chave: 'dataCriacao', rotulo: 'Data de criação' },
+          { chave: 'dataTroca', rotulo: 'Data da troca' },
           { chave: 'status', rotulo: 'Status' },
         ],
         data.map((p) => ({
-          data: formatarData(p.createdAt),
           cliente: p.cliente.razaoSocial,
-          pedido: p.descricao,
+          vendedor: p.vendedor.name,
+          numeroBoleto: p.numeroBoleto ?? '',
+          valor: p.valor ?? '',
+          tipo: TIPO_ALTERACAO_LABEL[p.tipoAlteracao] ?? p.tipoAlteracao,
+          observacoes: p.descricao ?? '',
+          dataCriacao: formatarData(p.createdAt),
+          dataTroca: p.dataTroca ? formatarData(p.dataTroca) : '',
           status: STATUS_PEDIDO.find((s) => s.value === p.status)?.label ?? p.status,
         }))
       )
@@ -110,19 +127,37 @@ function AbaPedidosAlteracao() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-dark-700 text-left text-xs text-dark-500 uppercase tracking-wide">
-                <th className="px-4 py-3 font-medium">Data</th>
                 <th className="px-4 py-3 font-medium">Cliente</th>
-                <th className="px-4 py-3 font-medium">O que foi pedido</th>
+                <th className="px-4 py-3 font-medium">Vendedor</th>
+                <th className="px-4 py-3 font-medium">Nº Boleto</th>
+                <th className="px-4 py-3 font-medium">Valor</th>
+                <th className="px-4 py-3 font-medium">O que foi alterado</th>
+                <th className="px-4 py-3 font-medium">Criado em</th>
+                <th className="px-4 py-3 font-medium">Data da troca</th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
             </thead>
             <tbody>
               {data.map((p) => (
-                <tr key={p.id} className="border-b border-dark-700 last:border-0 hover:bg-dark-700/40">
+                <tr key={p.id} className="border-b border-dark-700 last:border-0 hover:bg-dark-700/40 align-top">
+                  <td className="px-4 py-3">
+                    <p className="text-dark-100 font-medium">{p.cliente.razaoSocial}</p>
+                    {p.descricao && <p className="text-xs text-dark-500 mt-0.5 max-w-[220px]">{p.descricao}</p>}
+                  </td>
+                  <td className="px-4 py-3 text-dark-300 whitespace-nowrap">{p.vendedor.name}</td>
+                  <td className="px-4 py-3 text-dark-400 font-mono whitespace-nowrap">{p.numeroBoleto ?? '—'}</td>
+                  <td className="px-4 py-3 text-dark-100 font-mono whitespace-nowrap">{p.valor != null ? formatarMoeda(p.valor) : '—'}</td>
+                  <td className="px-4 py-3 text-dark-300 whitespace-nowrap">{TIPO_ALTERACAO_LABEL[p.tipoAlteracao] ?? p.tipoAlteracao}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono whitespace-nowrap">{formatarData(p.createdAt)}</td>
-                  <td className="px-4 py-3 text-dark-100 font-medium">{p.cliente.razaoSocial}</td>
-                  <td className="px-4 py-3 text-dark-300">{p.descricao}</td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="date"
+                      value={p.dataTroca?.slice(0, 10) ?? ''}
+                      onChange={(e) => dataTrocaMut.mutate({ id: p.id, dataTroca: e.target.value || null })}
+                      className="bg-transparent text-dark-300 font-mono text-xs border border-dark-700 rounded-lg px-2 py-1 focus:outline-none focus:border-gold-600 w-[130px]"
+                    />
+                  </td>
                   <td className="px-4 py-3">
                     <select
                       value={p.status}
@@ -147,7 +182,7 @@ function AbaPedidosAlteracao() {
               ))}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-dark-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-dark-500">
                     Nenhum pedido registrado ainda.
                   </td>
                 </tr>

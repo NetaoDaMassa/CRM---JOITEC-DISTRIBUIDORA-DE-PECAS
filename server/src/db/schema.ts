@@ -911,14 +911,22 @@ export const boletoAlteracoes = sqliteTable('boleto_alteracoes', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
-// Fila de pedidos de alteração de boleto (mudar vencimento/valor) — o
-// cliente liga/manda mensagem pedindo, fica registrado aqui e o Financeiro
-// acompanha até executar (diferente de `boletoAlteracoes`, que é o histórico
-// do que já foi de fato alterado num boleto específico).
+// Fila de pedidos de alteração de boleto (mudar vencimento/valor/cancelar) —
+// cliente ou vendedor pede, fica registrado aqui como uma planilha e o
+// Financeiro acompanha até executar (diferente de `boletoAlteracoes`, que é
+// o histórico do que já foi de fato alterado num boleto específico). Pedido
+// do João, 2026-09-01: virou uma planilha de verdade — número do boleto,
+// valor e tipo de alteração pedida, com data de criação e data em que a
+// troca foi efetivamente feita. `criadoPorId` é quem lançou o pedido
+// (normalmente o vendedor, mostrado como "Vendedor" na tela).
 export const boletoPedidosAlteracao = sqliteTable('boleto_pedidos_alteracao', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   clienteId: integer('cliente_id').notNull().references(() => clientes.id),
-  descricao: text('descricao').notNull(),
+  numeroBoleto: text('numero_boleto'),
+  valor: real('valor'),
+  tipoAlteracao: text('tipo_alteracao', { enum: ['data', 'valor', 'cancelamento'] }).notNull(),
+  descricao: text('descricao'),
+  dataTroca: text('data_troca'),
   status: text('status', { enum: ['lancado', 'em_execucao', 'concluido'] }).notNull().default('lancado'),
   criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
@@ -1543,6 +1551,12 @@ export const devolucaoChamados = sqliteTable('devolucao_chamados', {
   clienteEmail: text('cliente_email'),
   clienteCodigo: text('cliente_codigo'),
   clienteNome: text('cliente_nome'),
+  // Link opcional pro cadastro de cliente de verdade (carteira ou banco de
+  // clientes) — nem todo chamado tem um match (cliente pode não estar
+  // cadastrado ainda), por isso nullable. Usado pra puxar o histórico de
+  // devoluções anteriores desse mesmo cliente ao abrir um chamado novo
+  // (pedido do João, 2026-09-01).
+  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
   numeroNotaFiscal: text('numero_nota_fiscal'),
   numeroNotaFiscalVenda: text('numero_nota_fiscal_venda'),
   numeroPedidoVenda: text('numero_pedido_venda'),
@@ -1877,6 +1891,7 @@ export const devolucaoChamadosRelations = relations(devolucaoChamados, ({ one, m
   empresa: one(empresas, { fields: [devolucaoChamados.empresaId], references: [empresas.id] }),
   criadoPor: one(users, { fields: [devolucaoChamados.criadoPorUserId], references: [users.id] }),
   vendedor: one(users, { fields: [devolucaoChamados.vendedorId], references: [users.id] }),
+  cliente: one(clientes, { fields: [devolucaoChamados.clienteId], references: [clientes.id] }),
   origemDemonstracao: one(devolucaoDemonstracoes, {
     fields: [devolucaoChamados.origemDemonstracaoId],
     references: [devolucaoDemonstracoes.id],
