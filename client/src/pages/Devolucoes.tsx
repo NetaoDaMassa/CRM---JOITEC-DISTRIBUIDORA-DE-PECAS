@@ -8,6 +8,7 @@ import Select from '../components/ui/Select'
 import { Input, Textarea } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import { buildClientContactWaLink, buildClientFeedbackWaLink, buildVendorNotificationWaLink } from '../lib/devolucaoWhatsapp'
+import { formatDateTime, timeAgo } from '../lib/utils'
 
 const STATUS_LABEL: Record<string, string> = {
   novo: 'Novo',
@@ -1271,6 +1272,8 @@ export default function Devolucoes() {
                     <p className="text-xs text-dark-400 truncate">{c.clienteNome}</p>
                     {(c as any).vendedor?.name && <p className="text-[10px] text-dark-500 mt-1">{(c as any).vendedor.name}</p>}
                     {(c as any).empresa?.nome && <p className="text-[10px] text-gold-500/70 mt-0.5">{(c as any).empresa.nome}</p>}
+                    <p className="text-[10px] text-dark-600 mt-1">Criado: {formatDateTime((c as any).createdAt)}</p>
+                    <p className="text-[10px] text-dark-600">Atualizado: {timeAgo((c as any).updatedAt)}</p>
                     <CardResumoBadges chamado={c} />
                   </button>
                 ))}
