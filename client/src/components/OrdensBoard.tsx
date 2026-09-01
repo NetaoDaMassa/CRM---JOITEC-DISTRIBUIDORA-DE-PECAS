@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, User, Building2, AlertTriangle, Clock, CheckCircle2, Truck } from 'lucide-react'
-import { timeAgo } from '../lib/utils'
+import { timeAgo, formatDateTime } from '../lib/utils'
 import { Badge } from './ui/Badge'
 import { getStageSequence, STAGE_LABELS, STAGE_COLORS, STAGE_DOT_COLORS, PRIORIDADE_CONFIG, type OrderType, type Stage } from '../lib/ordensShared'
 
@@ -10,6 +10,7 @@ type OrdemCard = {
   stage: string
   status: string
   orderType: string
+  createdAt: string
   updatedAt: string
   cliente: { id: number; razaoSocial: string } | null
   vendedor: { id: number; name: string } | null
@@ -136,6 +137,7 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                         {prioridadeLabel && <Badge className={prioridade!.badge}>{prioridadeLabel}</Badge>}
                         {metodoFrete && <Badge className={metodoFrete.cls}>{metodoFrete.label}</Badge>}
                       </div>
+                      <div className="text-[10px] text-dark-600 mt-1">Criado: {formatDateTime(ordem.createdAt)}</div>
 
                       {coletaPronta && (
                         <div className="mt-2 flex items-center gap-1 rounded-full bg-green-900/30 border border-green-700/40 px-2 py-0.5 w-fit">

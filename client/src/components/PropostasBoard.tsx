@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2, Copy, Upload, CheckCircle2 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
-import { timeAgo } from '../lib/utils'
+import { timeAgo, formatDateTime } from '../lib/utils'
 import { Badge } from './ui/Badge'
 import Button from './ui/Button'
 import Modal from './ui/Modal'
@@ -26,6 +26,7 @@ type PropostaCard = {
   formaPagamento: string | null
   semProposta?: boolean
   convertidoParaOrdemId?: number | null
+  createdAt: string
   updatedAt: string
   vendedor: { id: number; name: string; whatsapp: string | null } | null
   arquivos: { id: number; fileCategory: string | null; tipoArquivo: string | null; nomeArmazenado: string; createdAt: string }[]
@@ -309,6 +310,7 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                         </div>
                       )}
                       <div className="text-[10px] text-dark-600 mt-1.5">atualizado {timeAgo(p.updatedAt)}</div>
+                      <div className="text-[10px] text-dark-600">Criado: {formatDateTime(p.createdAt)}</div>
                     </div>
                   )
                 })}

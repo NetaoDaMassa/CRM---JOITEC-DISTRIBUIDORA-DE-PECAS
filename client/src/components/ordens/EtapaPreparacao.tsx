@@ -183,7 +183,7 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
                       <span className="text-dark-100">{m.modelo} <span className="text-dark-500">{m.numeroSerie ?? 's/ nº série'}</span></span>
                       {doEstoque && (
                         <span className="text-dark-500 text-xs block">
-                          {doEstoque.voltagem && `${doEstoque.voltagem} · `}{doEstoque.pressaoBar && `${doEstoque.pressaoBar} bar · `}
+                          {doEstoque.voltagem && `${doEstoque.voltagem} · `}{doEstoque.pressaoBar && `${doEstoque.pressaoBar} · `}
                           {doEstoque.vaga ? `${doEstoque.vaga.portaPallet?.codigo ?? ''} andar ${doEstoque.vaga.andar}/${doEstoque.vaga.posicao}` : 'sem vaga'}
                         </span>
                       )}
@@ -225,10 +225,10 @@ export default function EtapaPreparacao({ ordemId, isAdmin, readonly, orderType,
                       onClick={() => vincularMaquina(r)}
                       className="w-full text-left px-3 py-2 text-sm text-dark-200 hover:bg-dark-700 disabled:opacity-50"
                     >
-                      {r.modelo ?? '—'} <span className="text-dark-500">{r.numeroSerie}</span>
-                      {r.voltagem && <span className="text-dark-600 text-xs"> · {r.voltagem}</span>}
-                      {r.pressaoBar && <span className="text-dark-600 text-xs"> · {r.pressaoBar} bar</span>}
-                      {r.vaga && <span className="text-dark-600 text-xs"> · {r.vaga.portaPallet?.codigo} andar {r.vaga.andar}/{r.vaga.posicao}</span>}
+                      <div>{r.modelo ?? '—'} <span className="text-dark-500">{r.numeroSerie}</span></div>
+                      <div className="text-dark-500 text-xs">
+                        {[r.voltagem, r.pressaoBar, r.vaga ? `${r.vaga.portaPallet?.codigo ?? ''} andar ${r.vaga.andar}/${r.vaga.posicao}` : 'sem vaga'].filter(Boolean).join(' · ')}
+                      </div>
                     </button>
                   ))}
                   {(!resultadosEstoque || resultadosEstoque.length === 0) && <p className="px-3 py-2 text-xs text-dark-500">Nenhuma máquina disponível em estoque com esse nome/série</p>}
