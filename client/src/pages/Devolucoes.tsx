@@ -64,6 +64,8 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [clienteEmail, setClienteEmail] = useState('')
   const [clienteCodigo, setClienteCodigo] = useState('')
+  const [clienteId, setClienteId] = useState<number | null>(null)
+  const [buscaCliente, setBuscaCliente] = useState('')
   const [numeroNotaFiscal, setNumeroNotaFiscal] = useState('')
   const [numeroNotaFiscalVenda, setNumeroNotaFiscalVenda] = useState('')
   const [numeroPedidoVenda, setNumeroPedidoVenda] = useState('')
@@ -76,6 +78,33 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   ])
 
   const { data: vendedoresDisponiveis } = trpc.users.vendors.useQuery(undefined, { enabled: souAdmin })
+
+  // Busca cliente já cadastrado (carteira ou banco de clientes) por nome ou
+  // CNPJ, pra ligar o histórico de devoluções anteriores dele em vez de
+  // criar um cadastro "solto" toda vez (pedido do João, 2026-09-01).
+  const { data: resultadosCliente } = trpc.devolucoes.buscarClienteParaVinculo.useQuery(
+    { q: buscaCliente },
+    { enabled: buscaCliente.trim().length >= 2 && !clienteId, retry: false }
+  )
+  const cnpjDigitos = clienteCnpj.replace(/\D/g, '')
+  const { data: historicoCliente } = trpc.devolucoes.historicoPorCnpj.useQuery(
+    { cnpj: clienteCnpj },
+    { enabled: cnpjDigitos.length >= 8, retry: false }
+  )
+
+  function vincularCliente(c: NonNullable<typeof resultadosCliente>[number]) {
+    setClienteId(c.id)
+    setClienteNome(c.razaoSocial)
+    setClienteCnpj(c.cnpj ?? '')
+    setClienteWhatsapp(c.telefoneWhatsapp ?? '')
+    setClienteEmail(c.email ?? '')
+    setClienteCodigo(c.codigo ?? '')
+    setBuscaCliente('')
+  }
+  function desvincularCliente() {
+    setClienteId(null)
+    setBuscaCliente(clienteNome)
+  }
 
   const criarMut = trpc.devolucoes.criar.useMutation({
     onSuccess(data) {
@@ -106,6 +135,7 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
       clienteWhatsapp: clienteWhatsapp || undefined,
       clienteEmail: clienteEmail || undefined,
       clienteCodigo: clienteCodigo || undefined,
+      clienteId: clienteId ?? undefined,
       numeroNotaFiscal: numeroNotaFiscal || undefined,
       numeroNotaFiscalVenda: numeroNotaFiscalVenda || undefined,
       numeroPedidoVenda: numeroPedidoVenda || undefined,
@@ -120,11 +150,64 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   return (
     <Modal open onClose={onClose} title="Abrir chamado de devolução" size="lg">
       <div className="space-y-4">
-        <Input label="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} required />
+        {clienteId ? (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-green-700/40 bg-green-900/10 px-3 py-2.5">
+            <div>
+              <p className="text-sm text-green-300 font-medium">✓ {clienteNome}</p>
+              <p className="text-xs text-dark-400">Vinculado ao cadastro de cliente {clienteCnpj && `— ${clienteCnpj}`}</p>
+            </div>
+            <button type="button" onClick={desvincularCliente} className="text-xs text-dark-400 hover:text-dark-200 underline shrink-0">
+              trocar
+            </button>
+          </div>
+        ) : (
+          <div>
+            <Input
+              label="Nome do cliente"
+              value={buscaCliente || clienteNome}
+              onChange={(e) => {
+                setBuscaCliente(e.target.value)
+                setClienteNome(e.target.value)
+              }}
+              placeholder="Digite o nome ou CNPJ pra buscar no cadastro..."
+              required
+            />
+            {buscaCliente.trim().length >= 2 && (
+              <div className="mt-1 max-h-40 overflow-y-auto border border-dark-600 rounded-lg bg-dark-800 divide-y divide-dark-700">
+                {(resultadosCliente ?? []).map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => vincularCliente(c)}
+                    className="w-full text-left px-3 py-2 text-sm text-dark-200 hover:bg-dark-700"
+                  >
+                    {c.razaoSocial} {c.cnpj && <span className="text-dark-500 text-xs">{c.cnpj}</span>}
+                    {!c.vendedorAtualId && <span className="text-dark-600 text-[10px] ml-1">(Banco de Clientes)</span>}
+                  </button>
+                ))}
+                {(!resultadosCliente || resultadosCliente.length === 0) && (
+                  <p className="px-3 py-2 text-xs text-dark-500">Nenhum cliente cadastrado com esse nome/CNPJ — vai abrir com os dados digitados na mão</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
-          <Input label="CNPJ (se tiver)" value={clienteCnpj} onChange={(e) => setClienteCnpj(e.target.value)} />
-          <Input label="Código do cliente" value={clienteCodigo} onChange={(e) => setClienteCodigo(e.target.value)} />
+          <Input label="CNPJ (se tiver)" value={clienteCnpj} onChange={(e) => setClienteCnpj(e.target.value)} disabled={!!clienteId} />
+          <Input label="Código do cliente" value={clienteCodigo} onChange={(e) => setClienteCodigo(e.target.value)} disabled={!!clienteId} />
         </div>
+        {!!historicoCliente?.length && (
+          <div className="rounded-lg border border-amber-700/40 bg-amber-900/10 p-3">
+            <p className="text-xs font-semibold text-amber-400 mb-1.5">⚠️ Este cliente já teve {historicoCliente.length} devolução(ões) antes:</p>
+            <div className="space-y-1">
+              {historicoCliente.map((h) => (
+                <p key={h.id} className="text-xs text-dark-300">
+                  <span className="font-mono text-dark-400">{h.protocolo}</span> — {(h as any).empresa?.nome} — {STATUS_LABEL[h.status] ?? h.status} — {formatarData(h.createdAt)}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-4">
           <Input label="WhatsApp" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
           <Input label="E-mail" value={clienteEmail} onChange={(e) => setClienteEmail(e.target.value)} />
