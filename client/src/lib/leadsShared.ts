@@ -77,7 +77,7 @@ export const LEAD_REQUIRED_FIELDS_BY_STATUS: Record<LeadStatus, LeadStatusFieldK
   novo: [],
   abordagem: [],
   qualificado: [],
-  em_negociacao: ['codSap', 'orderValue'],
+  em_negociacao: ['codSap'],
   ganho: ['finalOrderValue', 'paymentMethod'],
   perdido: ['lossReason'],
   desqualificado: ['disqualifyReason'],

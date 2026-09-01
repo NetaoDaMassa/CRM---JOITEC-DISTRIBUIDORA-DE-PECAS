@@ -81,7 +81,7 @@ export const REQUIRED_FIELDS_BY_STATUS: Record<LeadStatus, StatusFieldKey[]> = {
   novo: [],
   abordagem: [],
   qualificado: [],
-  em_negociacao: ['codSap', 'orderValue'],
+  em_negociacao: ['codSap'],
   ganho: ['finalOrderValue', 'paymentMethod'],
   perdido: ['lossReason'],
   desqualificado: ['disqualifyReason'],
