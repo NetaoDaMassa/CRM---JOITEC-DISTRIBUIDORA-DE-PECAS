@@ -66,6 +66,20 @@ const ABORDAGEM_MAX_BUSINESS_DAYS = 4
 // 2026-08-31: libera já em "Em Negociação", não só em "Ganho".
 const ETAPAS_TRANSFERIVEIS_PROPOSTA = ['em_negociacao', 'ganho']
 
+// Mesmo critério de "atrasado" usado na exibição (getLeadContactUrgency em
+// leadsShared.ts — compara só a data, ignora hora). Usado pra não deixar o
+// lead preso "atrasado pra sempre": se ele já estava atrasado e o vendedor
+// registra outro contato sem marcar um novo próximo contato, o atraso
+// velho é limpo em vez de carregado adiante (achado do João, 2026-09-01).
+function isNextContactOverdue(nextContactAt: string | null): boolean {
+  if (!nextContactAt) return false
+  const data = new Date(nextContactAt.replace(' ', 'T'))
+  data.setHours(0, 0, 0, 0)
+  const hoje = new Date()
+  hoje.setHours(0, 0, 0, 0)
+  return data.getTime() < hoje.getTime()
+}
+
 function validateLeadNextContact(lead: { status: string }, nextContactAt: string | null | undefined): void {
   if (nextContactAt && lead.status === 'abordagem') {
     const error = validateNextContactLimit(nextContactAt, ABORDAGEM_MAX_BUSINESS_DAYS)
@@ -767,7 +781,7 @@ export const leadsRouter = router({
           lastContactStaleAlertSentAt: null,
           slaStatus: null,
           abordagem4hAlertSentAt: null,
-          nextContactAt: input.nextActionAt ?? lead.nextContactAt,
+          nextContactAt: input.nextActionAt ?? (isNextContactOverdue(lead.nextContactAt) ? null : lead.nextContactAt),
         })
         .where(eq(leads.id, input.leadId))
 
