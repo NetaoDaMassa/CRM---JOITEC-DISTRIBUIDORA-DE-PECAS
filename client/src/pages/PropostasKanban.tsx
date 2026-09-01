@@ -6,7 +6,8 @@ import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
-import { Input } from '../components/ui/Input'
+import { Input, Textarea } from '../components/ui/Input'
+import ProductSelector from '../components/ProductSelector'
 import PropostasBoard from '../components/PropostasBoard'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
@@ -44,6 +45,16 @@ export default function PropostasKanban() {
   const [clienteNome, setClienteNome] = useState('')
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [produtosDescricao, setProdutosDescricao] = useState('')
+  const [produtosItens, setProdutosItens] = useState('')
+  const [comissao, setComissao] = useState('')
+  const [revenda, setRevenda] = useState('')
+  const [formaPagamento, setFormaPagamento] = useState('')
+  const [observacoes, setObservacoes] = useState('')
+  const [prioridade, setPrioridade] = useState<'normal' | 'urgente'>('normal')
+  const [motivoUrgencia, setMotivoUrgencia] = useState('')
+  const [pdfFile, setPdfFile] = useState<File | null>(null)
+  const [docFiles, setDocFiles] = useState<File[]>([])
+  const [enviandoArquivos, setEnviandoArquivos] = useState(false)
   const [vendedorId, setVendedorId] = useState('')
   const [mes, setMes] = useState('')
   const [dataDe, setDataDe] = useState('')
@@ -52,6 +63,7 @@ export default function PropostasKanban() {
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
   const { data: propostasTodas, isLoading } = trpc.propostas.listar.useQuery({ vendedorId: vendedorId ? Number(vendedorId) : undefined })
+  const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { retry: false })
 
   const temFiltroData = !!(dataDe || dataAte)
   const propostas = temFiltroData
@@ -80,14 +92,33 @@ export default function PropostasKanban() {
     setMes('')
   }
 
+  const registrarArquivoMut = trpc.propostas.registrarArquivo.useMutation()
+
+  async function enviarArquivo(propostaId: number, file: File, fileCategory: string) {
+    const formData = new FormData()
+    formData.append('file', file)
+    const token = localStorage.getItem('odin_token')
+    const resp = await fetch('/upload/proposta-anexo', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: formData })
+    const json = await resp.json()
+    if (!resp.ok) throw new Error(json.error ?? 'Falha no upload')
+    await registrarArquivoMut.mutateAsync({ propostaId, fileCategory, nomeOriginal: json.nome, nomeArmazenado: json.path.replace('/uploads/', ''), tipoArquivo: json.tipo, tamanhoBytes: json.tamanho })
+  }
+
   const criarMut = trpc.propostas.criar.useMutation({
-    onSuccess() {
+    async onSuccess(result) {
+      try {
+        setEnviandoArquivos(true)
+        if (pdfFile) await enviarArquivo(result.id, pdfFile, 'proposta_pdf')
+        for (const f of docFiles) await enviarArquivo(result.id, f, 'dados_cadastrais')
+      } catch (err: any) {
+        toast.error(`Proposta criada, mas houve erro ao anexar arquivo: ${err.message}`)
+      } finally {
+        setEnviandoArquivos(false)
+      }
       toast.success(semProposta ? 'Fechamento registrado em Fechado' : 'Proposta criada')
       setModalAberto(false)
       setSemProposta(false)
-      setClienteNome('')
-      setClienteWhatsapp('')
-      setProdutosDescricao('')
+      limparFormulario()
       utils.propostas.listar.invalidate()
     },
     onError(err) {
@@ -95,11 +126,24 @@ export default function PropostasKanban() {
     },
   })
 
-  function abrirModal(sem: boolean) {
-    setSemProposta(sem)
+  function limparFormulario() {
     setClienteNome('')
     setClienteWhatsapp('')
     setProdutosDescricao('')
+    setProdutosItens('')
+    setComissao('')
+    setRevenda('')
+    setFormaPagamento('')
+    setObservacoes('')
+    setPrioridade('normal')
+    setMotivoUrgencia('')
+    setPdfFile(null)
+    setDocFiles([])
+  }
+
+  function abrirModal(sem: boolean) {
+    setSemProposta(sem)
+    limparFormulario()
     setModalAberto(true)
   }
 
@@ -169,23 +213,96 @@ export default function PropostasKanban() {
         <PropostasBoard propostas={propostas ?? []} basePath={basePath} mostrarVendedor={isAdmin} />
       )}
 
-      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title={semProposta ? 'Fechamento / Sem Proposta' : 'Nova Proposta'} size="sm">
+      <Modal open={modalAberto} onClose={() => setModalAberto(false)} title={semProposta ? 'Fechamento / Sem Proposta' : 'Nova Proposta'} size="md">
         <div className="p-5 space-y-4">
           {semProposta && (
             <p className="text-xs text-dark-400">Cria a proposta já em <span className="font-semibold text-dark-200">Fechado</span>, sem precisar anexar PDF. Complete os demais dados abrindo o card.</p>
           )}
           <Input label="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
           <Input label="WhatsApp do cliente" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
-          <Input label="Produtos/Serviços" value={produtosDescricao} onChange={(e) => setProdutosDescricao(e.target.value)} />
+
+          {!semProposta && (
+            <div>
+              <label className="text-xs text-dark-400 mb-1.5 block">Prioridade</label>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setPrioridade('normal'); setMotivoUrgencia('') }}
+                  className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors ${
+                    prioridade === 'normal' ? 'border-green-500 bg-green-900/20 text-green-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
+                  }`}
+                >
+                  ✅ Normal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPrioridade('urgente')}
+                  className={`flex-1 rounded-lg border-2 py-2 text-sm font-semibold transition-colors ${
+                    prioridade === 'urgente' ? 'border-red-500 bg-red-900/20 text-red-400' : 'border-dark-600 text-dark-400 hover:border-dark-500'
+                  }`}
+                >
+                  🔴 Urgente
+                </button>
+              </div>
+              {prioridade === 'urgente' && (
+                <div className="mt-2">
+                  <Input
+                    label="Motivo da urgência"
+                    placeholder="Ex: Prazo de entrega do cliente, concorrência..."
+                    value={motivoUrgencia}
+                    onChange={(e) => setMotivoUrgencia(e.target.value)}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <label className="text-xs text-dark-400 mb-1.5 block">Produtos/Serviços</label>
+            <ProductSelector value={produtosDescricao} onChange={setProdutosDescricao} itensJson={produtosItens} onItensChange={setProdutosItens} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Comissão" value={comissao} onChange={(e) => setComissao(e.target.value)} />
+            <div>
+              <Input label="Revenda" list="revendas-lista" value={revenda} onChange={(e) => setRevenda(e.target.value)} />
+              <datalist id="revendas-lista">
+                {(revendas ?? []).map((r) => <option key={r.id} value={r.nome} />)}
+              </datalist>
+            </div>
+            <Input label="Forma de pagamento" value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} />
+          </div>
+
+          <Textarea label="Informações para cadastro" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} />
+
+          {!semProposta && (
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-dark-400 mb-1.5 block">PDF da proposta</label>
+                <p className="text-[11px] text-dark-500 mb-1">Obrigatório pra avançar pra Negociação — pode anexar depois também.</p>
+                <input type="file" accept="application/pdf" onChange={(e) => setPdfFile(e.target.files?.[0] ?? null)} className="text-xs text-dark-300 w-full file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-dark-600 file:bg-dark-800 file:text-dark-200 file:text-xs" />
+              </div>
+              <div>
+                <label className="text-xs text-dark-400 mb-1.5 block">Outros documentos</label>
+                <input type="file" multiple onChange={(e) => setDocFiles(Array.from(e.target.files ?? []))} className="text-xs text-dark-300 w-full file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-dark-600 file:bg-dark-800 file:text-dark-200 file:text-xs" />
+              </div>
+            </div>
+          )}
+
           <Button
             className="w-full"
-            disabled={!clienteNome || criarMut.isPending}
-            loading={criarMut.isPending}
+            disabled={!clienteNome || criarMut.isPending || enviandoArquivos}
+            loading={criarMut.isPending || enviandoArquivos}
             onClick={() => criarMut.mutate({
               clienteNome,
               clienteWhatsapp: clienteWhatsapp || undefined,
               produtosDescricao: produtosDescricao || undefined,
-              ...(semProposta ? { stage: 'fechado' as const, semProposta: true } : {}),
+              produtosItens: produtosItens || undefined,
+              comissao: comissao || undefined,
+              revenda: revenda || undefined,
+              formaPagamento: formaPagamento || undefined,
+              observacoes: observacoes || undefined,
+              ...(semProposta ? { stage: 'fechado' as const, semProposta: true } : { prioridade, motivoUrgencia: motivoUrgencia || undefined }),
             })}
           >
             {semProposta ? 'Registrar fechamento' : 'Criar proposta'}
