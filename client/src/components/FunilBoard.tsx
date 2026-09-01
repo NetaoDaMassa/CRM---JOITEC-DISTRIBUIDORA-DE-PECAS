@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Paperclip } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -399,6 +400,7 @@ export default function FunilBoard({
   // exceto Faturamento/Consumidor Final, conforme as flags acima).
   apenasEtapas?: string[]
 }) {
+  const { user } = useAuth()
   const etapasVisiveis = apenasEtapas
     ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
     : ETAPAS.filter((e) => (e.value === 'faturamento' ? mostrarFaturamento : true)).filter((e) =>
@@ -677,6 +679,23 @@ export default function FunilBoard({
                             <p className="text-xs text-green-400">
                               Fechado: {formatarMoeda(card.valorFechadoTotal)}
                               {card.vendas.length > 1 && ` (${card.vendas.length} vendas)`}
+                            </p>
+                          )}
+                          {/* Odin Compressores (Carteira da Bruna) — cada venda vira um Pedido
+                              de verdade sozinha; link direto pra acompanhar lá. */}
+                          {card.vendas.some((v) => v.convertidoParaOrdemId) && (
+                            <p className="text-xs flex flex-wrap gap-x-2">
+                              {card.vendas
+                                .filter((v) => v.convertidoParaOrdemId)
+                                .map((v) => (
+                                  <Link
+                                    key={v.id}
+                                    to={`/${user?.role === 'admin' ? 'admin' : 'vendedor'}/ordens/${v.convertidoParaOrdemId}`}
+                                    className="text-blue-400 hover:underline"
+                                  >
+                                    Ver Pedido #{v.convertidoParaOrdemId}
+                                  </Link>
+                                ))}
                             </p>
                           )}
                         </div>

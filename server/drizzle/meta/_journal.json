@@ -526,6 +526,13 @@
       "when": 1788289814953,
       "tag": "0074_overrated_proemial_gods",
       "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "6",
+      "when": 1788290917323,
+      "tag": "0075_serious_corsair",
+      "breakpoints": true
     }
   ]
 }

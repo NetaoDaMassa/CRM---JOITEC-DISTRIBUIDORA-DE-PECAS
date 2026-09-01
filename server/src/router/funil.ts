@@ -9,6 +9,7 @@ import { executarResetMensal } from '../lib/resetMensal.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { SLUG_VENDA_RAPIDA } from './vendas.js'
+import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
 
 const ETAPA_VALUES = [
   'novo',
@@ -249,6 +250,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       tipoComprovante: v.tipoComprovante,
       faturado: v.faturado,
       numeroPedido: v.numeroPedido,
+      convertidoParaOrdemId: v.convertidoParaOrdemId,
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,
@@ -490,6 +492,18 @@ export const funilRouter = router({
           pdfPedidoPath: input.pdfPedidoPath,
         })
         const vendaId = Number(vendaResult.lastInsertRowid)
+
+        // Odin Compressores (Carteira da Bruna) — vira Pedido de verdade no
+        // módulo Pedidos, sem sair da Carteira (a única coisa que ela usa).
+        await criarOrdemPecaSeOdinCompressores({
+          empresaId: ctx.empresaId,
+          vendaId,
+          clienteId: clienteFaturamentoId,
+          vendedorId: funil.vendedorId,
+          criadoPorId: ctx.user.id,
+          valorFechado: input.valorFechado!,
+          numeroPedido: input.numeroPedido || null,
+        })
 
         // Mesma regra da venda rápida (ver `vendas.registrarVendaRapida`):
         // fechamento normal do Kanban em Dinheiro também soma no Caixa da

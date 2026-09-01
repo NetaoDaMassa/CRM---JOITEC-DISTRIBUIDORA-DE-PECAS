@@ -409,6 +409,12 @@ export const vendas = sqliteTable('vendas', {
   // vendedor já escolheu o tipo (só vira true quando confirma que saiu).
   tipoComprovante: text('tipo_comprovante', { enum: ['cupom_fiscal', 'nota_fiscal'] }),
   faturado: integer('faturado', { mode: 'boolean' }).notNull().default(false),
+  // Odin Compressores (Carteira da Bruna, "Pedido de Peças") — cada venda
+  // fechada aqui também vira um Pedido de verdade no módulo Pedidos
+  // (ordens, orderType='peca'), pra entrar no funil de faturamento que já
+  // conta só por `ordens` (ver server/src/router/financeiro.ts). Pedido do
+  // João, 2026-09-01. Nunca preenchido pra outras empresas.
+  convertidoParaOrdemId: integer('convertido_para_ordem_id').references(() => ordens.id, { onDelete: 'set null' }),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
 })

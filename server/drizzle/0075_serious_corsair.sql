@@ -1,0 +1,1 @@
+ALTER TABLE `vendas` ADD `convertido_para_ordem_id` integer REFERENCES ordens(id);

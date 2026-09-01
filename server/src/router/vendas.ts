@@ -6,6 +6,7 @@ import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas
 import { agoraSqlite, mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
+import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
 
 // Só a Compretec Loja Física usa o botão de venda rápida (venda de balcão,
 // consumidor final) — pedido do João depois de criar o Thiago/Marcos/Flavio
@@ -182,6 +183,18 @@ export const vendasRouter = router({
         pdfPedidoPath: input.pdfPedidoPath,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
+
+      // Odin Compressores (Carteira da Bruna) — mesma regra do fechamento
+      // normal (`funil.moverEtapa`): também vira Pedido de verdade.
+      await criarOrdemPecaSeOdinCompressores({
+        empresaId: ctx.empresaId,
+        vendaId,
+        clienteId: clienteFaturamentoId,
+        vendedorId: funil.vendedorId,
+        criadoPorId: ctx.user.id,
+        valorFechado: input.valorFechado,
+        numeroPedido: input.numeroPedido || null,
+      })
 
       // Mesma regra do fechamento normal (`funil.moverEtapa`) e da venda
       // rápida: venda adicional em Dinheiro também soma no Caixa da
