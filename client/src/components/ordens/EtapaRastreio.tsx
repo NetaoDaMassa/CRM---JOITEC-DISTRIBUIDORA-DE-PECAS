@@ -73,7 +73,7 @@ function EtapaRastreioForm({
   })
 
   function textoResumo() {
-    return `Rastreio do Pedido #${ordemId}\nTransportadora: ${transportadora || '—'}\nCódigo: ${codigo || '—'}\nLink: ${link || '—'}${obs ? `\nObs: ${obs}` : ''}`
+    return `Rastreio do Pedido #${ordemId}\nCliente: ${clienteNome || '—'}\nTransportadora: ${transportadora || '—'}\nCódigo: ${codigo || '—'}\nLink: ${link || '—'}${obs ? `\nObs: ${obs}` : ''}`
   }
   function copiarTudo() {
     navigator.clipboard.writeText(textoResumo())
