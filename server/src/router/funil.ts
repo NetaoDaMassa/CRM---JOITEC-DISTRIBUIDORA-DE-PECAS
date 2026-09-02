@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
@@ -10,6 +10,13 @@ import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { SLUG_VENDA_RAPIDA } from './vendas.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
+import { registrarHistoricoOrdem } from '../lib/ordensGates.js'
+
+// Etapas pra onde dá pra reabrir/reenviar um pedido cancelado a partir de
+// "Fechado" — mesma lista de ETAPAS_ABERTAS_SUGESTAO do front (reset
+// mensal) mais "Perdido" (o destino mais comum, mas não o único: às vezes o
+// vendedor quer só voltar a negociar, não desistir do cliente).
+const ETAPAS_CANCELAMENTO = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato', 'perdido'] as const
 
 const ETAPA_VALUES = [
   'novo',
@@ -600,6 +607,120 @@ export const funilRouter = router({
         dataEntradaEtapa: agoraSqlite(),
       })
       return { funilMensalId: Number(result.lastInsertRowid) }
+    }),
+
+  // "Cancelar pedido" — só a partir de "Fechado". Pedido do João, 2026-09-02:
+  // toda Carteira (todas as empresas) precisa disso pro vendedor conseguir
+  // desfazer um fechamento errado/cancelado pelo cliente, sem precisar pedir
+  // pro admin mexer no banco. Diferente de só mudar a etapa (que já era
+  // tecnicamente possível arrastando pra "Perdido" e não fazia nada com o
+  // dinheiro): aqui a(s) venda(s) do mês em aberto desse card são
+  // canceladas de verdade (deletedAt), então somem do faturamento/relatórios
+  // — junto com qualquer lançamento de Caixa que tenha nascido delas
+  // (Compretec Loja Física) e qualquer Pedido que tenha nascido delas
+  // (Odin Compressores, ver vendaParaOrdemPeca.ts).
+  cancelarPedidoFechado: protectedProcedure
+    .input(
+      z.object({
+        funilMensalId: z.number(),
+        versao: z.number(),
+        novaEtapa: z.enum(ETAPAS_CANCELAMENTO),
+        motivoCancelamento: z.string().min(1, 'Explique por que esse pedido está sendo cancelado.'),
+        motivoPerdaCategoria: z.enum(['estoque', 'financeiro', 'compras']).optional(),
+        motivoPerdaOpcao: z.string().optional(),
+        motivoPerdaItem: z.string().optional(),
+        motivoPerdaObservacao: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
+      if (!funil) throw new Error('Card não encontrado')
+      if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+      if (funil.etapa !== 'fechado') throw new Error('Só é possível cancelar um pedido que está na etapa "Fechado".')
+
+      if (input.novaEtapa === 'perdido' && (!input.motivoPerdaCategoria || !input.motivoPerdaObservacao)) {
+        throw new Error('Informe a categoria e a observação do motivo de perda.')
+      }
+
+      const vendasAbertas = await db.query.vendas.findMany({
+        where: and(eq(vendas.funilMensalId, funil.id), isNull(vendas.deletedAt)),
+      })
+      if (vendasAbertas.length === 0) throw new Error('Nenhuma venda em aberto encontrada nesse card pra cancelar.')
+
+      const agora = agoraSqlite()
+
+      for (const venda of vendasAbertas) {
+        await db.update(vendas).set({ deletedAt: agora }).where(eq(vendas.id, venda.id))
+        await registrarAuditoria({
+          tabela: 'vendas',
+          registroId: venda.id,
+          acao: 'excluir',
+          campo: 'deletedAt',
+          valorNovo: agora,
+          alteradoPor: ctx.user.id,
+        })
+
+        // Reverte a entrada de Caixa que essa venda tinha gerado sozinha
+        // (Compretec Loja Física, condição "Dinheiro") — senão o dinheiro
+        // continua contando lá mesmo com a venda cancelada.
+        await db
+          .update(caixaMovimentacoes)
+          .set({ deletedAt: agora })
+          .where(and(eq(caixaMovimentacoes.origemVendaId, venda.id), isNull(caixaMovimentacoes.deletedAt)))
+
+        // Cancela o Pedido que essa venda tinha gerado sozinha (Odin
+        // Compressores) — só se ele ainda estiver ativo (se já foi
+        // faturado/concluído, não desfaz sozinho, precisa de ação manual).
+        if (venda.convertidoParaOrdemId) {
+          const ordem = await db.query.ordens.findFirst({ where: eq(ordens.id, venda.convertidoParaOrdemId) })
+          if (ordem && ordem.status === 'ativo') {
+            await db
+              .update(ordens)
+              .set({ status: 'cancelado', cancelMotivo: `Venda cancelada na Carteira: ${input.motivoCancelamento}`, canceladoPor: ctx.user.id, canceladoEm: agora })
+              .where(eq(ordens.id, ordem.id))
+            await registrarHistoricoOrdem({
+              ordemId: ordem.id,
+              userId: ctx.user.id,
+              action: 'cancelled',
+              description: `Pedido cancelado automaticamente — venda cancelada na Carteira: ${input.motivoCancelamento}`,
+              stage: ordem.stage,
+            })
+          }
+        }
+      }
+
+      const updates: Record<string, unknown> = {
+        etapa: input.novaEtapa,
+        dataEntradaEtapa: agora,
+        updatedAt: agora,
+        versao: input.versao + 1,
+      }
+      if (input.novaEtapa === 'perdido') {
+        updates.motivoPerdaCategoria = input.motivoPerdaCategoria
+        updates.motivoPerdaOpcao = input.motivoPerdaOpcao ?? null
+        updates.motivoPerdaItem = input.motivoPerdaItem ?? null
+        updates.motivoPerdaObservacao = input.motivoPerdaObservacao
+      }
+
+      const updated = await db
+        .update(funilMensal)
+        .set(updates)
+        .where(and(eq(funilMensal.id, input.funilMensalId), eq(funilMensal.versao, input.versao)))
+      if (updated.rowsAffected === 0) {
+        throw new Error('Este card foi alterado por outra pessoa enquanto você editava. Recarregue a página e tente de novo.')
+      }
+
+      await registrarAuditoria({
+        tabela: 'funil_mensal',
+        registroId: input.funilMensalId,
+        acao: 'mudar_etapa',
+        campo: 'etapa',
+        valorAnterior: 'fechado',
+        valorNovo: `${input.novaEtapa} (pedido cancelado: ${input.motivoCancelamento})`,
+        alteradoPor: ctx.user.id,
+      })
+
+      return { success: true, vendasCanceladas: vendasAbertas.length }
     }),
 
   // Roda sozinho todo início de mês (scheduler.ts), mas o admin também pode

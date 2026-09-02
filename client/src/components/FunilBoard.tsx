@@ -186,6 +186,10 @@ export function corUrgencia(dias: number | null): string {
 
 const ETAPAS_ABERTAS_SUGESTAO = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 
+// Etapas pra onde dá pra reabrir um pedido cancelado a partir de "Fechado" —
+// mesma lista do servidor (funil.ts, ETAPAS_CANCELAMENTO).
+const ETAPAS_CANCELAMENTO = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato', 'perdido'] as const
+
 // Roteiro simples pro vendedor não ter que decidir sozinho "o que eu faço com
 // esse cliente agora": olha o resultado do último contato, quantas
 // tentativas já rolaram nesta etapa e há quantos dias está parado, e devolve
@@ -963,6 +967,11 @@ function CardModal({
   const [clienteIdFaturamento, setClienteIdFaturamento] = useState(card.clienteId)
   const [historicoAberto, setHistoricoAberto] = useState(false)
   const [mostrarRegistroManual, setMostrarRegistroManual] = useState(false)
+  const [cancelarAberto, setCancelarAberto] = useState(false)
+  const [cancelarNovaEtapa, setCancelarNovaEtapa] = useState<string>('perdido')
+  const [cancelarMotivo, setCancelarMotivo] = useState('')
+  const [cancelarMotivoCategoria, setCancelarMotivoCategoria] = useState('')
+  const [cancelarMotivoObs, setCancelarMotivoObs] = useState('')
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -992,6 +1001,34 @@ function CardModal({
       toast.error(err.message)
     },
   })
+
+  const cancelarPedidoMut = trpc.funil.cancelarPedidoFechado.useMutation({
+    onSuccess(r) {
+      toast.success(`Pedido cancelado (${r.vendasCanceladas} venda(s) removida(s) do faturamento).`)
+      setCancelarAberto(false)
+      invalidarTudo()
+      onChanged()
+      onClose()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function handleCancelarPedido() {
+    if (!cancelarMotivo.trim()) return toast.error('Explique por que esse pedido está sendo cancelado.')
+    if (cancelarNovaEtapa === 'perdido' && (!cancelarMotivoCategoria || !cancelarMotivoObs.trim())) {
+      return toast.error('Informe a categoria e a observação do motivo de perda.')
+    }
+    cancelarPedidoMut.mutate({
+      funilMensalId: card.funilMensalId,
+      versao: card.versao,
+      novaEtapa: cancelarNovaEtapa as any,
+      motivoCancelamento: cancelarMotivo.trim(),
+      motivoPerdaCategoria: cancelarNovaEtapa === 'perdido' ? (cancelarMotivoCategoria as any) : undefined,
+      motivoPerdaObservacao: cancelarNovaEtapa === 'perdido' ? cancelarMotivoObs.trim() : undefined,
+    })
+  }
 
   const criarOrcamentoMut = trpc.funil.criarOrcamento.useMutation({
     onSuccess() {
@@ -1571,6 +1608,67 @@ function CardModal({
                   </Button>
                 </div>
               </form>
+            ))}
+
+            {/* Cancelar pedido — só a partir de Fechado. Cancela a(s) venda(s)
+                em aberto de verdade (some do faturamento), não é só trocar a
+                etapa do card. Pedido do João, 2026-09-02. */}
+            {card.etapa === 'fechado' && (!cancelarAberto ? (
+              <button
+                type="button"
+                onClick={() => setCancelarAberto(true)}
+                className="text-xs font-semibold text-red-400 hover:text-red-300 transition-colors"
+              >
+                ✕ Cancelar pedido
+              </button>
+            ) : (
+              <div className="space-y-2 bg-red-950/20 border border-red-800/40 rounded-2xl p-3">
+                <p className="text-xs text-red-300 font-medium">
+                  Cancela a(s) venda(s) em aberto desse card (some do faturamento/relatórios) e move o cliente pra outra etapa.
+                </p>
+                <Select
+                  label="Mover cliente para"
+                  value={cancelarNovaEtapa}
+                  onChange={(e) => setCancelarNovaEtapa(e.target.value)}
+                  options={ETAPAS_CANCELAMENTO.map((v) => ({ value: v, label: ETAPA_LABEL[v] }))}
+                />
+                <Textarea
+                  label="Motivo do cancelamento — obrigatório"
+                  rows={2}
+                  value={cancelarMotivo}
+                  onChange={(e) => setCancelarMotivo(e.target.value)}
+                  placeholder="Ex: cliente desistiu, pedido duplicado, erro de lançamento..."
+                />
+                {cancelarNovaEtapa === 'perdido' && (
+                  <>
+                    <Select
+                      label="Categoria do motivo de perda — obrigatório"
+                      value={cancelarMotivoCategoria}
+                      onChange={(e) => setCancelarMotivoCategoria(e.target.value)}
+                      placeholder="Selecione..."
+                      options={[
+                        { value: 'estoque', label: 'Estoque' },
+                        { value: 'financeiro', label: 'Financeiro' },
+                        { value: 'compras', label: 'Compras' },
+                      ]}
+                    />
+                    <Textarea
+                      label="Observação do motivo de perda — obrigatória"
+                      rows={2}
+                      value={cancelarMotivoObs}
+                      onChange={(e) => setCancelarMotivoObs(e.target.value)}
+                    />
+                  </>
+                )}
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setCancelarAberto(false)}>
+                    Voltar
+                  </Button>
+                  <Button type="button" size="sm" variant="danger" loading={cancelarPedidoMut.isPending} onClick={handleCancelarPedido}>
+                    Confirmar cancelamento
+                  </Button>
+                </div>
+              </div>
             ))}
           </div>
         )}
