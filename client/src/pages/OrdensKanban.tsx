@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, Download, RefreshCw, CalendarRange, X } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -52,6 +52,7 @@ export default function OrdensKanban() {
   const [mes, setMes] = useState('')
   const [dataDe, setDataDe] = useState('')
   const [dataAte, setDataAte] = useState('')
+  const [busca, setBusca] = useState('')
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
@@ -64,7 +65,7 @@ export default function OrdensKanban() {
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
 
   const temFiltroData = !!(dataDe || dataAte)
-  const ordens = temFiltroData
+  const ordensPorData = temFiltroData
     ? (ordensTodas ?? []).filter((o) => {
         const dia = o.createdAt.slice(0, 10)
         if (dataDe && dia < dataDe) return false
@@ -72,6 +73,19 @@ export default function OrdensKanban() {
         return true
       })
     : ordensTodas
+
+  const termo = busca.trim().toLowerCase()
+  const termoDigitos = termo.replace(/\D/g, '')
+  const ordens = termo
+    ? (ordensPorData ?? []).filter(
+        (o) =>
+          String(o.id).includes(termo) ||
+          o.cliente?.razaoSocial.toLowerCase().includes(termo) ||
+          o.cliente?.codigo?.toLowerCase().includes(termo) ||
+          o.vendedor?.name.toLowerCase().includes(termo) ||
+          (termoDigitos && o.cliente?.telefoneWhatsapp?.replace(/\D/g, '').includes(termoDigitos))
+      )
+    : ordensPorData
 
   function aplicarMes(m: string) {
     setMes(m)
@@ -133,6 +147,15 @@ export default function OrdensKanban() {
 
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-dark-500" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar cliente, código, telefone ou #pedido..."
+              className="w-64 rounded-lg border border-dark-600 bg-dark-900 py-1.5 pl-8 pr-2 text-xs text-dark-100 placeholder-dark-500 focus:outline-none focus:border-gold-600"
+            />
+          </div>
           <div className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-2 py-1.5" title="Filtrar por data de criação do pedido">
             <CalendarRange size={13} className="text-dark-500 shrink-0" />
             <input

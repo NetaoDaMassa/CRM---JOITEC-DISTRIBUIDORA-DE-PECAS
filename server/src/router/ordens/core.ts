@@ -51,7 +51,7 @@ export const ordensCoreRouter = router({
     return db.query.ordens.findMany({
       where: and(...condicoes),
       with: {
-        cliente: { columns: { id: true, razaoSocial: true } },
+        cliente: { columns: { id: true, razaoSocial: true, codigo: true, telefoneWhatsapp: true } },
         vendedor: { columns: { id: true, name: true } },
         // Campos extras só pra deixar o card do Kanban tão informativo quanto o
         // do odincrm original (prioridade, badges de frete/preparação, rastreio).

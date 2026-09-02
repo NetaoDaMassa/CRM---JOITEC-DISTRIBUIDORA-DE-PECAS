@@ -12,7 +12,7 @@ type OrdemCard = {
   orderType: string
   createdAt: string
   updatedAt: string
-  cliente: { id: number; razaoSocial: string } | null
+  cliente: { id: number; razaoSocial: string; codigo: string | null; telefoneWhatsapp: string | null } | null
   vendedor: { id: number; name: string } | null
   detalhes: { prioridadeDespacho: string | null } | null
   aprovacaoFrete: { retiradaLocal: boolean; semFrete: boolean; cotacaoSelecionadaId: number | null; cotacaoFinalizada?: boolean } | null
