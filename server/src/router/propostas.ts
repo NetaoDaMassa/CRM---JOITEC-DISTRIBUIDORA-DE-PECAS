@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, propostaAlteracoes, propostaHistorico, ordens, ordemLiberacaoFinanceira, estoqueCatalogoModelos } from '../db/schema.js'
+import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, propostaAlteracoes, propostaHistorico, ordens, ordemLiberacaoFinanceira, estoqueCatalogoModelos, leads, visitas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { assertDonoOuGestor, mudarEtapaProposta, notificarGestores } from '../lib/propostasGates.js'
@@ -147,8 +147,15 @@ export const propostasRouter = router({
     const proposta = await assertPropostaAlcancavel(input.id, ctx.empresaId)
     assertDonoOuGestor(proposta, ctx.user.id, ctx.user.role)
 
-    // SQLite roda sem PRAGMA foreign_keys=ON aqui — precisa apagar as
-    // tabelas filhas na mão (mesmo motivo documentado em devolucoes.ts).
+    // Precisa apagar/desvincular as tabelas filhas na mão (mesmo motivo
+    // documentado em devolucoes.ts). As de baixo (propostaArquivos etc.) são
+    // 'cascade' de verdade; lead/visita que viraram esta proposta são
+    // 'set null' no schema, mas isso só é aplicado pelo SQLite se a
+    // constraint tiver sido criada assim — não estava, então tinha lead ou
+    // visita "órfã" que travava a exclusão com FOREIGN KEY constraint
+    // failed. Desvincula manualmente pra não depender disso.
+    await db.update(leads).set({ convertidoParaPropostaId: null }).where(eq(leads.convertidoParaPropostaId, input.id))
+    await db.update(visitas).set({ convertidoParaPropostaId: null }).where(eq(visitas.convertidoParaPropostaId, input.id))
     await db.delete(propostaArquivos).where(eq(propostaArquivos.propostaId, input.id))
     await db.delete(propostaFeedbacks).where(eq(propostaFeedbacks.propostaId, input.id))
     await db.delete(propostaAlteracoes).where(eq(propostaAlteracoes.propostaId, input.id))
