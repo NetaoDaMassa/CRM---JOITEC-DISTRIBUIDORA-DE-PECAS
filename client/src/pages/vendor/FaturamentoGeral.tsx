@@ -23,7 +23,9 @@ export default function FaturamentoGeral() {
       </div>
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
-      {!isLoading && <FunilBoard cards={cards ?? []} mostrarFaturamento apenasEtapas={['fechado', 'faturamento']} />}
+      {!isLoading && (
+        <FunilBoard cards={cards ?? []} mostrarFaturamento apenasEtapas={['fechado', 'faturamento', 'consumidor_final_loja']} />
+      )}
     </div>
   )
 }

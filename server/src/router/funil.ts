@@ -289,7 +289,7 @@ async function buscarFaturamentoGeral(empresaId: number, ctxUserId: number, ctxI
   const clienteIds = clientesDaEmpresa.map((c) => c.id)
   if (!clienteIds.length) return []
   return buscarFunilComFiltro(
-    and(inArray(funilMensal.clienteId, clienteIds), inArray(funilMensal.etapa, ['fechado', 'faturamento']))!,
+    and(inArray(funilMensal.clienteId, clienteIds), inArray(funilMensal.etapa, ['fechado', 'faturamento', 'consumidor_final_loja']))!,
     ctxUserId,
     ctxIsAdmin,
     mesReferencia
@@ -388,10 +388,13 @@ export const funilRouter = router({
       if (!funil) throw new Error('Card não encontrado')
       if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) {
         // Único caso em que alguém sem ser dono do card pode mexer: mover
-        // Fechado → Faturamento, e só quem tem a feature 'faturamento_geral'
-        // (ex: Daniela, que processa faturamento de todos os vendedores).
+        // Fechado → Faturamento ou Fechado → Consumidor Final (loja), e só
+        // quem tem a feature 'faturamento_geral' (ex: Daniela, que processa
+        // faturamento de todos os vendedores).
         const podeMoverFaturamento =
-          funil.etapa === 'fechado' && input.etapa === 'faturamento' && (await temFeature(ctx.user.id, 'faturamento_geral'))
+          funil.etapa === 'fechado' &&
+          (input.etapa === 'faturamento' || input.etapa === 'consumidor_final_loja') &&
+          (await temFeature(ctx.user.id, 'faturamento_geral'))
         if (!podeMoverFaturamento) throw new Error('Acesso negado')
       }
 
