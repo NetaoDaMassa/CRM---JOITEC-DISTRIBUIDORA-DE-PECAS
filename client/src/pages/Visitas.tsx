@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, MapPin, MapPinOff, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, Users2, Download, RefreshCw, Search, LoaderCircle } from 'lucide-react'
+import { Plus, MapPin, MapPinOff, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, CalendarRange, Users2, Download, RefreshCw, Search, LoaderCircle, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -9,6 +9,14 @@ import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
+
+// Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, mesmo padrão
+// já usado em Pedidos/Propostas/Devolução/Qualidade.
+function monthToRange(mes: string): { from: string; to: string } {
+  const [ano, m] = mes.split('-').map(Number)
+  const ultimoDia = new Date(ano, m, 0).getDate()
+  return { from: `${mes}-01`, to: `${mes}-${String(ultimoDia).padStart(2, '0')}` }
+}
 
 function baixarCsvVisitas(visitas: { dataVisita: string | null; nomeEmpresa: string | null; clienteNome: string | null; vendedor: { name: string } | null; pessoaContato: string | null; telefoneContato: string | null; objetivo: string | null; resultado: string | null; proximoPasso: string | null }[]) {
   const linhas = ['Data,Vendedor,Empresa,Objetivo,Resultado,Contato,Telefone,Próximo passo']
@@ -62,9 +70,29 @@ export default function Visitas() {
   const isAdmin = user?.role === 'admin'
   const [tab, setTab] = useState<TabKey>('hoje')
   const [vendedorId, setVendedorId] = useState('')
+  const [mes, setMes] = useState('')
+  const [dataDe, setDataDe] = useState('')
+  const [dataAte, setDataAte] = useState('')
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
   const filtro = { vendedorId: vendedorId ? Number(vendedorId) : undefined }
   const { data: resumo } = trpc.visitas.resumo.useQuery(filtro)
+  function aplicarMes(m: string) {
+    setMes(m)
+    if (m) {
+      const { from, to } = monthToRange(m)
+      setDataDe(from)
+      setDataAte(to)
+    } else {
+      setDataDe('')
+      setDataAte('')
+    }
+  }
+  function alterarData(campo: 'de' | 'ate', valor: string) {
+    if (campo === 'de') setDataDe(valor)
+    else setDataAte(valor)
+    setMes('')
+  }
+  const temFiltroData = !!(dataDe || dataAte)
   const { data: todasParaCsv } = trpc.visitas.listar.useQuery({ vendedorId: filtro.vendedorId })
   const utils = trpc.useUtils()
 
@@ -100,17 +128,38 @@ export default function Visitas() {
         <StatCard label="Pedidos (mês)" value={resumo?.pedidosMes ?? 0} color="text-green-400" />
       </div>
 
-      {isAdmin && (
-        <div className="mb-5 max-w-xs">
-          <Select
-            label="Filtrar por vendedor"
-            value={vendedorId}
-            onChange={(e) => setVendedorId(e.target.value)}
-            placeholder="Todos"
-            options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
-          />
-        </div>
-      )}
+      <div className="flex items-end gap-3 flex-wrap mb-5">
+        {isAdmin && (
+          <div className="max-w-xs">
+            <Select
+              label="Filtrar por vendedor"
+              value={vendedorId}
+              onChange={(e) => setVendedorId(e.target.value)}
+              placeholder="Todos"
+              options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+            />
+          </div>
+        )}
+        {tab === 'todas' && (
+          <div className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-2 py-1.5" title="Filtrar por data da visita">
+            <CalendarRange size={13} className="text-dark-500 shrink-0" />
+            <input
+              type="month"
+              value={mes}
+              title="Atalho: preenche De/Até com o mês inteiro"
+              onChange={(e) => aplicarMes(e.target.value)}
+              className="bg-transparent text-xs py-0.5 px-1 w-[100px] text-dark-100 focus:outline-none"
+            />
+            <span className="text-dark-600">|</span>
+            <input type="date" value={dataDe} onChange={(e) => alterarData('de', e.target.value)} className="bg-transparent text-xs py-0.5 px-1 w-[110px] text-dark-100 focus:outline-none" />
+            <span className="text-dark-500 text-xs">até</span>
+            <input type="date" value={dataAte} onChange={(e) => alterarData('ate', e.target.value)} className="bg-transparent text-xs py-0.5 px-1 w-[110px] text-dark-100 focus:outline-none" />
+            {temFiltroData && (
+              <button onClick={() => aplicarMes('')} className="text-dark-500 hover:text-dark-300 shrink-0"><X size={12} /></button>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="flex gap-1 border-b border-dark-700 mb-5 overflow-x-auto">
         {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
@@ -125,7 +174,7 @@ export default function Visitas() {
 
       {tab === 'hoje' && <AbaVisitas periodo="hoje" vendedorId={filtro.vendedorId} />}
       {tab === 'semana' && <AbaVisitas periodo="semana" vendedorId={filtro.vendedorId} />}
-      {tab === 'todas' && <AbaVisitas periodo="todas" vendedorId={filtro.vendedorId} />}
+      {tab === 'todas' && <AbaVisitas periodo="todas" vendedorId={filtro.vendedorId} dataDe={dataDe} dataAte={dataAte} />}
       {tab === 'clientes' && <AbaClientes />}
       {tab === 'equipe' && <AbaEquipe />}
     </div>
@@ -197,7 +246,7 @@ function filtrarPorPeriodo<T extends { dataVisita: string | null }>(lista: T[], 
   return lista.filter((v) => (v.dataVisita ?? '').slice(0, 10) >= inicioSemanaStr)
 }
 
-function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'todas'; vendedorId?: number }) {
+function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' | 'semana' | 'todas'; vendedorId?: number; dataDe?: string; dataAte?: string }) {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
   const [modalAberto, setModalAberto] = useState(false)
@@ -209,15 +258,24 @@ function AbaVisitas({ periodo, vendedorId }: { periodo: 'hoje' | 'semana' | 'tod
   const utils = trpc.useUtils()
   const { data: visitasTodas, isLoading } = trpc.visitas.listar.useQuery({ vendedorId })
   const visitasPeriodo = filtrarPorPeriodo(visitasTodas ?? [], periodo)
+  const visitasNaData =
+    periodo === 'todas' && (dataDe || dataAte)
+      ? visitasPeriodo.filter((v) => {
+          const dia = (v.dataVisita ?? '').slice(0, 10)
+          if (dataDe && dia < dataDe) return false
+          if (dataAte && dia > dataAte) return false
+          return true
+        })
+      : visitasPeriodo
   const buscaLC = busca.trim().toLowerCase()
   const visitasList =
     periodo === 'todas' && buscaLC
-      ? visitasPeriodo.filter((v) =>
+      ? visitasNaData.filter((v) =>
           [v.nomeEmpresa, v.clienteNome, v.pessoaContato, v.endereco]
             .filter((c): c is string => !!c)
             .some((c) => c.toLowerCase().includes(buscaLC)),
         )
-      : visitasPeriodo
+      : visitasNaData
 
   function invalidar() { utils.visitas.listar.invalidate() }
   const criarMut = trpc.visitas.criar.useMutation({
