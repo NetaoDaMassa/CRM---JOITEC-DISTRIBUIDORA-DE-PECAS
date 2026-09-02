@@ -200,14 +200,21 @@ export const leadsRouter = router({
         )
       }
 
-      if (dateFrom) {
-        const from = new Date(dateFrom)
-        filtered = filtered.filter((l) => new Date(getLeadEffectiveDate(l)) >= from)
-      }
-      if (dateTo) {
-        const to = new Date(dateTo)
-        to.setHours(23, 59, 59)
-        filtered = filtered.filter((l) => new Date(getLeadEffectiveDate(l)) <= to)
+      // Busca ignora o filtro de data de propósito — pedido do João
+      // (2026-09-03): "De/Até" esquecido ligado de uma consulta anterior
+      // fazia parecer que a busca não achava um lead que só tava fora do
+      // intervalo. Quem digita um nome/telefone quer achar, não importa
+      // quando o lead entrou.
+      if (!search) {
+        if (dateFrom) {
+          const from = new Date(dateFrom)
+          filtered = filtered.filter((l) => new Date(getLeadEffectiveDate(l)) >= from)
+        }
+        if (dateTo) {
+          const to = new Date(dateTo)
+          to.setHours(23, 59, 59)
+          filtered = filtered.filter((l) => new Date(getLeadEffectiveDate(l)) <= to)
+        }
       }
 
       const total = filtered.length

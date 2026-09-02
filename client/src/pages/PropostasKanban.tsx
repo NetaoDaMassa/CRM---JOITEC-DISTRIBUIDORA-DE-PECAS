@@ -82,8 +82,12 @@ export default function PropostasKanban() {
 
   const termo = busca.trim().toLowerCase()
   const termoDigitos = termo.replace(/\D/g, '')
+  // Busca ignora o filtro de data de propósito — pedido do João (2026-09-03):
+  // gente deixava um "mês" filtrado de antes, buscava um cliente de outro mês
+  // e não achava nada, achando que a busca tava quebrada. Quem procura um
+  // cliente específico quer achar não importa quando foi criado.
   const propostas = termo
-    ? (propostasPorData ?? []).filter(
+    ? (propostasTodas ?? []).filter(
         (p) =>
           String(p.id).includes(termo) ||
           p.clienteNome.toLowerCase().includes(termo) ||

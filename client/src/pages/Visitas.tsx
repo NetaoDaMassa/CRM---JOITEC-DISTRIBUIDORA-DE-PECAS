@@ -268,9 +268,12 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
         })
       : visitasPeriodo
   const buscaLC = busca.trim().toLowerCase()
+  // Busca ignora o filtro de data de propósito — mesmo motivo do Propostas
+  // (ver PropostasKanban.tsx): filtro de mês/período esquecido ligado fazia
+  // parecer que a busca não achava um cliente que só tava fora do intervalo.
   const visitasList =
     periodo === 'todas' && buscaLC
-      ? visitasNaData.filter((v) =>
+      ? visitasPeriodo.filter((v) =>
           [v.nomeEmpresa, v.clienteNome, v.pessoaContato, v.endereco]
             .filter((c): c is string => !!c)
             .some((c) => c.toLowerCase().includes(buscaLC)),
