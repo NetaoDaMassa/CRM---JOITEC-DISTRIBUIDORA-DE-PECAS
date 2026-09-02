@@ -551,7 +551,13 @@ export const clientesRouter = router({
       throw new Error('Esse banco de clientes não está liberado pra você')
     }
 
-    await transferirCliente(input.clienteId, ctx.user.id, ctx.user.id)
+    // `seAindaSemVendedor: true` fecha a corrida entre vendedores clicando
+    // em "pegar" o mesmo cliente ao mesmo tempo — ver comentário completo em
+    // carteira.ts (transferirCliente). Achado do João, 2026-09-02.
+    const resultado = await transferirCliente(input.clienteId, ctx.user.id, ctx.user.id, { seAindaSemVendedor: true })
+    if (!resultado.ok) {
+      throw new Error('Esse cliente acabou de ser pego por outro vendedor — escolha outro cliente do banco.')
+    }
     return { success: true }
   }),
 

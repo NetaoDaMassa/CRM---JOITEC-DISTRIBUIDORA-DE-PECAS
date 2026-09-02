@@ -12,9 +12,31 @@ export async function validarVendedorDaEmpresa(vendedorId: number, empresaId: nu
   if (!vendedor || vendedor.empresaId !== empresaId) throw new Error('Vendedor inválido')
 }
 
-export async function transferirCliente(clienteId: number, novoVendedorId: number, alteradoPor: number) {
+// `seAindaSemVendedor` faz a troca ser atômica — usada pelo autoatribuir do
+// Banco de Clientes (clientes.bancoAutoAtribuir): sem isso, dois vendedores
+// clicando em "pegar" o mesmo cliente quase ao mesmo tempo os dois passavam
+// pela checagem de "ainda tá livre?" (feita antes, numa consulta separada)
+// e os dois escreviam por cima um do outro — o segundo ganhava o cliente
+// sem avisar ninguém, e o primeiro achava que tinha conseguido (recebia
+// "sucesso") mas na real tinha perdido. Corrigido movendo a checagem pra
+// dentro do próprio UPDATE (WHERE vendedor_atual_id IS NULL) — só um dos
+// dois cliques consegue de verdade, o outro recebe `ok: false` e sabe na
+// hora que precisa escolher outro cliente. Os outros chamadores (admin
+// transferindo manualmente) não passam essa opção — comportamento
+// inalterado pra eles, inclusive quando o cliente JÁ tem vendedor (é
+// exatamente o caso de uso deles, transferir de um vendedor pra outro).
+export async function transferirCliente(
+  clienteId: number,
+  novoVendedorId: number,
+  alteradoPor: number,
+  opts?: { seAindaSemVendedor?: boolean }
+): Promise<{ ok: boolean }> {
   const mesAtual = mesReferenciaAtual()
-  await db.update(clientes).set({ vendedorAtualId: novoVendedorId }).where(eq(clientes.id, clienteId))
+  const condicoesUpdate = [eq(clientes.id, clienteId)]
+  if (opts?.seAindaSemVendedor) condicoesUpdate.push(isNull(clientes.vendedorAtualId))
+  const resultado = await db.update(clientes).set({ vendedorAtualId: novoVendedorId }).where(and(...condicoesUpdate))
+  if (opts?.seAindaSemVendedor && resultado.rowsAffected === 0) return { ok: false }
+
   await db.insert(carteiraHistorico).values({ clienteId, vendedorId: novoVendedorId })
 
   // O card do mês precisa acompanhar a transferência — senão o cliente some
@@ -40,6 +62,7 @@ export async function transferirCliente(clienteId: number, novoVendedorId: numbe
     valorNovo: String(novoVendedorId),
     alteradoPor,
   })
+  return { ok: true }
 }
 
 // Tira o cliente da carteira de quem for (sem escolher destino) — volta pro
