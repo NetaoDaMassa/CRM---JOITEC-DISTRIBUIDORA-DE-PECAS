@@ -690,6 +690,29 @@ export const clienteVinculos = sqliteTable('cliente_vinculos', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Controla quem enxerga/pega cada "banco" (grupo `clientes.origemBanco`) na
+// tela Banco de Clientes — pedido do João, 2026-09-02: antes qualquer
+// vendedor com a feature 'banco_clientes' via TODOS os bancos misturados;
+// agora um banco só aparece pro vendedor se tiver uma linha aqui liberando.
+// SEM linha nenhuma pra um banco = ninguém vê (nem quem já via antes —
+// decisão explícita do João, "tudo passa a valer a regra nova"). Admin
+// nunca é afetado (sempre vê tudo, igual já era).
+// `origemBanco` guarda o mesmo texto de `clientes.origemBanco` — usa a
+// constante SEM_ORIGEM (router/clientes.ts) pro grupo dos sem-rótulo.
+export const bancoClientesLiberacoes = sqliteTable(
+  'banco_clientes_liberacoes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    origemBanco: text('origem_banco').notNull(),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    parUnico: unique().on(t.empresaId, t.origemBanco, t.vendedorId),
+  }),
+)
+
 // Pedido do vendedor pra descartar (excluir) ou transferir um cliente da
 // própria carteira — fica pendente até o admin aprovar ou recusar na aba de
 // Aprovações. Se aprovado, a ação (exclusão ou transferência) é aplicada de

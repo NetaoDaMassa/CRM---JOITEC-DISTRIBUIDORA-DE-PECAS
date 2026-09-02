@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, asc, count, desc, eq, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, inArray, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes } from '../db/schema.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
@@ -446,10 +446,13 @@ export const clientesRouter = router({
   // definida", ex: cadastro manual sem vendedor). O admin distribui pra
   // carteira de alguém usando `carteira.transferirIndividual`, que já existe.
   bancoResumo: adminOrFeatureProcedure('banco_clientes').query(async ({ ctx }) => {
+    const origensLiberadas = await origensLiberadasPara(ctx)
+    const filtros = [eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)]
+    aplicarFiltroLiberacao(filtros, origensLiberadas)
     const linhas = await db
       .select({ origemBanco: sql<string>`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`, quantidade: count() })
       .from(clientes)
-      .where(and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)))
+      .where(and(...filtros))
       .groupBy(sql`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`)
       .orderBy(desc(count()))
     return linhas
@@ -459,18 +462,15 @@ export const clientesRouter = router({
   // filtro de estado na tela, só com opções que realmente existem no banco
   // agora (não a lista fixa de 27 UFs, a maioria ficaria vazia).
   bancoEstados: adminOrFeatureProcedure('banco_clientes').query(async ({ ctx }) => {
-    const linhas = await db
-      .selectDistinct({ estado: clientes.estado })
-      .from(clientes)
-      .where(
-        and(
-          eq(clientes.empresaId, ctx.empresaId),
-          isNull(clientes.vendedorAtualId),
-          isNull(clientes.deletedAt),
-          isNotNull(clientes.estado)
-        )
-      )
-      .orderBy(asc(clientes.estado))
+    const origensLiberadas = await origensLiberadasPara(ctx)
+    const filtros = [
+      eq(clientes.empresaId, ctx.empresaId),
+      isNull(clientes.vendedorAtualId),
+      isNull(clientes.deletedAt),
+      isNotNull(clientes.estado),
+    ]
+    aplicarFiltroLiberacao(filtros, origensLiberadas)
+    const linhas = await db.selectDistinct({ estado: clientes.estado }).from(clientes).where(and(...filtros)).orderBy(asc(clientes.estado))
     return linhas.map((l) => l.estado).filter((e): e is string => !!e)
   }),
 
@@ -484,7 +484,9 @@ export const clientesRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
+      const origensLiberadas = await origensLiberadasPara(ctx)
       const filtros = bancoFiltros(ctx.empresaId, input)
+      aplicarFiltroLiberacao(filtros, origensLiberadas)
       const where = and(...filtros)
       const [{ total }] = await db.select({ total: count() }).from(clientes).where(where)
       const items = await db.query.clientes.findMany({
@@ -509,9 +511,11 @@ export const clientesRouter = router({
       })
     )
     .query(async ({ ctx, input }) => {
-      const where = and(...bancoFiltros(ctx.empresaId, input))
+      const origensLiberadas = await origensLiberadasPara(ctx)
+      const filtros = bancoFiltros(ctx.empresaId, input)
+      aplicarFiltroLiberacao(filtros, origensLiberadas)
       return db.query.clientes.findMany({
-        where,
+        where: and(...filtros),
         orderBy: [asc(clientes.razaoSocial)],
         columns: {
           codigo: true,
@@ -533,15 +537,64 @@ export const clientesRouter = router({
   // nunca aceita um vendedorId vindo do client — é assim que um vendedor
   // com a feature 'banco_clientes' consegue "pegar" um cliente do banco pra
   // própria carteira sem ganhar o poder de mexer na carteira de outro.
+  // Confere de novo se o banco desse cliente está liberado pra ele — a tela
+  // já filtra, mas essa é a trava de verdade (não dá pra "pegar" um cliente
+  // de um banco que não apareceu na lista chamando o id na mão).
   bancoAutoAtribuir: adminOrFeatureProcedure('banco_clientes').input(z.object({ clienteId: z.number() })).mutation(async ({ ctx, input }) => {
     const cliente = await db.query.clientes.findFirst({
       where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId)),
     })
     if (!cliente) throw new Error('Cliente não encontrado no banco')
 
+    const origensLiberadas = await origensLiberadasPara(ctx)
+    if (origensLiberadas !== null && !origensLiberadas.includes(cliente.origemBanco ?? SEM_ORIGEM)) {
+      throw new Error('Esse banco de clientes não está liberado pra você')
+    }
+
     await transferirCliente(input.clienteId, ctx.user.id, ctx.user.id)
     return { success: true }
   }),
+
+  // ── Gerenciar liberação de bancos (só admin) ────────────────────────────
+
+  // Cada banco que existe hoje (mesmo agrupamento de bancoResumo) + quais
+  // vendedores já têm acesso liberado a ele.
+  bancoLiberacoesListar: adminProcedure.query(async ({ ctx }) => {
+    const bancos = await db
+      .select({ origemBanco: sql<string>`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`, quantidade: count() })
+      .from(clientes)
+      .where(and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)))
+      .groupBy(sql`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`)
+      .orderBy(desc(count()))
+
+    const liberacoes = await db.query.bancoClientesLiberacoes.findMany({
+      where: eq(bancoClientesLiberacoes.empresaId, ctx.empresaId),
+      columns: { origemBanco: true, vendedorId: true },
+    })
+    const vendedoresPorBanco = new Map<string, number[]>()
+    for (const l of liberacoes) {
+      const lista = vendedoresPorBanco.get(l.origemBanco) ?? []
+      lista.push(l.vendedorId)
+      vendedoresPorBanco.set(l.origemBanco, lista)
+    }
+
+    return bancos.map((b) => ({ ...b, vendedorIds: vendedoresPorBanco.get(b.origemBanco) ?? [] }))
+  }),
+
+  // Substitui (não soma) a lista de vendedores liberados pra um banco.
+  bancoDefinirLiberacao: adminProcedure
+    .input(z.object({ origemBanco: z.string().min(1), vendedorIds: z.array(z.number()) }))
+    .mutation(async ({ ctx, input }) => {
+      await db
+        .delete(bancoClientesLiberacoes)
+        .where(and(eq(bancoClientesLiberacoes.empresaId, ctx.empresaId), eq(bancoClientesLiberacoes.origemBanco, input.origemBanco)))
+      if (input.vendedorIds.length) {
+        await db.insert(bancoClientesLiberacoes).values(
+          input.vendedorIds.map((vendedorId) => ({ empresaId: ctx.empresaId, origemBanco: input.origemBanco, vendedorId }))
+        )
+      }
+      return { success: true }
+    }),
 })
 
 function listFiltros(
@@ -600,6 +653,27 @@ function listFiltros(
     filtros.push(or(...condicoes)!)
   }
   return filtros
+}
+
+// Bancos (grupos `clientes.origemBanco`) liberados pro usuário logado —
+// null = sem restrição (admin, sempre vê tudo). Array (pode ser []) = só
+// esses bancos, já usando SEM_ORIGEM pro grupo dos clientes sem rótulo.
+async function origensLiberadasPara(ctx: { empresaId: number; user: { role: string; id: number } }): Promise<string[] | null> {
+  if (ctx.user.role === 'admin') return null
+  const linhas = await db.query.bancoClientesLiberacoes.findMany({
+    where: and(eq(bancoClientesLiberacoes.empresaId, ctx.empresaId), eq(bancoClientesLiberacoes.vendedorId, ctx.user.id)),
+    columns: { origemBanco: true },
+  })
+  return linhas.map((l) => l.origemBanco)
+}
+
+// Acrescenta o filtro de liberação a uma lista de filtros já montada (in
+// place). `[] ` liberado vira um filtro que não bate com nada — não usar
+// inArray com array vazio direto (comportamento inconsistente entre bancos).
+function aplicarFiltroLiberacao(filtros: unknown[], origensLiberadas: string[] | null): void {
+  if (origensLiberadas === null) return
+  const alvo = origensLiberadas.length ? origensLiberadas : ['__nenhum_banco_liberado__']
+  filtros.push(inArray(sql`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`, alvo))
 }
 
 function bancoFiltros(

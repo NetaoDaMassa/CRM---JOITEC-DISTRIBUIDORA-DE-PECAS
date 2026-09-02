@@ -5,7 +5,101 @@ import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
+import Modal from '../../components/ui/Modal'
 import { paraCsv, baixarCsv } from '../../lib/csv'
+
+// Cada banco (grupo `origemBanco`) só aparece pro vendedor se tiver sido
+// liberado explicitamente aqui pelo admin — pedido do João, 2026-09-02. Sem
+// liberação nenhuma, o banco fica invisível pra todo vendedor (mesmo os que
+// já existiam antes dessa tela). Admin sempre vê tudo, sem restrição.
+function GerenciarLiberacoes({ onClose, vendorOptions }: { onClose: () => void; vendorOptions: { value: number; label: string }[] }) {
+  const utils = trpc.useUtils()
+  const { data: bancos, isLoading } = trpc.clientes.bancoLiberacoesListar.useQuery()
+  const [bancoAberto, setBancoAberto] = useState<string | null>(null)
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
+
+  const salvarMut = trpc.clientes.bancoDefinirLiberacao.useMutation({
+    onSuccess() {
+      toast.success('Acesso atualizado')
+      utils.clientes.bancoLiberacoesListar.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+      setBancoAberto(null)
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function abrir(origemBanco: string, vendedorIds: number[]) {
+    setBancoAberto(origemBanco)
+    setSelecionados(new Set(vendedorIds))
+  }
+
+  function alternar(id: number) {
+    setSelecionados((prev) => {
+      const novo = new Set(prev)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Gerenciar acesso aos bancos" size="lg">
+      <div className="space-y-4">
+        <p className="text-xs text-dark-400">
+          Um banco só aparece pro vendedor se você liberar aqui — sem liberação, fica invisível pra todo mundo.
+        </p>
+        {isLoading && <p className="text-sm text-dark-500">Carregando...</p>}
+        <div className="divide-y divide-dark-700 border border-dark-700 rounded-xl">
+          {bancos?.map((b) => (
+            <div key={b.origemBanco} className="p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-dark-100 font-medium">{b.origemBanco}</p>
+                  <p className="text-xs text-dark-500">
+                    {b.quantidade} cliente(s) ·{' '}
+                    {b.vendedorIds.length ? `liberado pra ${b.vendedorIds.length} vendedor(es)` : 'ninguém tem acesso ainda'}
+                  </p>
+                </div>
+                {bancoAberto !== b.origemBanco && (
+                  <Button size="sm" variant="secondary" onClick={() => abrir(b.origemBanco, b.vendedorIds)}>
+                    Editar acesso
+                  </Button>
+                )}
+              </div>
+
+              {bancoAberto === b.origemBanco && (
+                <div className="mt-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-1.5 max-h-56 overflow-y-auto">
+                    {vendorOptions.map((v) => (
+                      <label key={v.value} className="flex items-center gap-1.5 text-sm text-dark-200">
+                        <input type="checkbox" checked={selecionados.has(v.value)} onChange={() => alternar(v.value)} />
+                        {v.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button size="sm" variant="secondary" onClick={() => setBancoAberto(null)}>
+                      Cancelar
+                    </Button>
+                    <Button
+                      size="sm"
+                      loading={salvarMut.isPending}
+                      onClick={() => salvarMut.mutate({ origemBanco: b.origemBanco, vendedorIds: [...selecionados] })}
+                    >
+                      Salvar
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </Modal>
+  )
+}
 
 // Clientes que entraram na importação em massa sem vendedor (planilha trazia
 // "Banco de Clientes X" / "-Nenhum vendedor-") — aqui o admin distribui um a
@@ -19,6 +113,7 @@ export default function BancoClientes() {
   const [pagina, setPagina] = useState(1)
   const [exportando, setExportando] = useState(false)
   const [vendedorPorLinha, setVendedorPorLinha] = useState<Record<number, string>>({})
+  const [gerenciando, setGerenciando] = useState(false)
   const utils = trpc.useUtils()
 
   const { data: vendors } = trpc.users.vendors.useQuery()
@@ -105,10 +200,19 @@ export default function BancoClientes() {
             {user?.role === 'vendor' ? 'pegue um cliente pra sua carteira.' : 'escolha um vendedor e atribua pra carteira.'}
           </p>
         </div>
-        <Button variant="secondary" size="sm" loading={exportando} onClick={exportarCsv} className="shrink-0">
-          Exportar planilha
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {user?.role === 'admin' && (
+            <Button variant="secondary" size="sm" onClick={() => setGerenciando(true)}>
+              Gerenciar acesso
+            </Button>
+          )}
+          <Button variant="secondary" size="sm" loading={exportando} onClick={exportarCsv}>
+            Exportar planilha
+          </Button>
+        </div>
       </div>
+
+      {gerenciando && <GerenciarLiberacoes onClose={() => setGerenciando(false)} vendorOptions={vendorOptions} />}
 
       <div className="flex flex-wrap gap-2">
         <button
