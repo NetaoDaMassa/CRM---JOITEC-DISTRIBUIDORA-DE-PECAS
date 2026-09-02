@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Building2, Calendar, ChevronRight, AlertCircle, Repeat2, Phone } from 'lucide-react'
 import { formatElapsed, timeAgo } from '../lib/utils'
 import { WhatsappButton } from './ui/ContatoButtons'
@@ -35,6 +35,7 @@ type LeadCard = {
   finalConsumerReason: string | null
   vendor?: { name: string } | null
   fromSite?: boolean
+  convertidoParaPropostaId?: number | null
   reassignedFrom?: { name: string; type: 'rodizio' | 'transferencia'; at: string; stage: string | null } | null
 }
 
@@ -51,6 +52,11 @@ export default function LeadKanbanBoard({
 }) {
   const navigate = useNavigate()
   const colunas = LEAD_STATUS_VALUES.filter((s) => isLeadStatusAllowedForEmpresa(s, empresaSlug))
+  // Lead "Ganho" da Odin Compressores vira Proposta (ver TransferirParaPropostasModal) —
+  // pedido do João (2026-09-03): o lead continua aparecendo aqui normalmente, mas
+  // com um link direto pra proposta gerada, pra quem tá procurando não precisar ir
+  // catar na busca do board de Propostas.
+  const propostasBasePath = basePath.replace('/leads', '/propostas')
 
   // Scrollbar superior sincronizada com a do board — sem isso, um board largo
   // (muitas colunas) esconde a barra de rolagem lá embaixo, fora da vista.
@@ -136,6 +142,20 @@ export default function LeadKanbanBoard({
                       {lead.fromSite && (
                         <div className="mb-2">
                           <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                        </div>
+                      )}
+
+                      {lead.convertidoParaPropostaId && (
+                        <div className="mb-2">
+                          <Link
+                            to={`${propostasBasePath}/${lead.convertidoParaPropostaId}`}
+                            onClick={(e) => e.stopPropagation()}
+                            title="Ver proposta gerada por este lead"
+                          >
+                            <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40 hover:bg-purple-900/40 cursor-pointer">
+                              → Proposta #{lead.convertidoParaPropostaId}
+                            </Badge>
+                          </Link>
                         </div>
                       )}
 

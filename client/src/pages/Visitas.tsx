@@ -428,7 +428,17 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                       <span className="font-semibold text-dark-100 truncate">{v.nomeEmpresa || v.clienteNome || v.cliente?.nome || 'Cliente não informado'}</span>
                       <Badge className={RESULTADO_CORES[v.resultado ?? '']}>{RESULTADO_LABELS[v.resultado ?? ''] ?? v.resultado}</Badge>
                       {v.planejada && <Badge className="text-indigo-400 bg-indigo-900/20 border-indigo-700/40">Planejada</Badge>}
-                      {v.convertidoParaPropostaId && <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40">Proposta #{v.convertidoParaPropostaId}</Badge>}
+                      {v.convertidoParaPropostaId && (
+                        <Link
+                          to={`${isAdmin ? '/admin' : '/vendedor'}/propostas/${v.convertidoParaPropostaId}`}
+                          onClick={(e) => e.stopPropagation()}
+                          title="Ver proposta gerada por esta visita"
+                        >
+                          <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40 hover:bg-purple-900/40 cursor-pointer">
+                            → Proposta #{v.convertidoParaPropostaId}
+                          </Badge>
+                        </Link>
+                      )}
                     </div>
 
                     {isAdmin && v.vendedor && <p className="text-xs text-dark-500 mt-0.5">{v.vendedor.name}</p>}

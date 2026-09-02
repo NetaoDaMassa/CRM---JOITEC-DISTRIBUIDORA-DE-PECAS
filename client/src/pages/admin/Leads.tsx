@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
@@ -252,6 +252,15 @@ export default function Leads() {
                         {lead.fromSite && (
                           <div className="mt-1">
                             <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                          </div>
+                        )}
+                        {lead.convertidoParaPropostaId && (
+                          <div className="mt-1" onClick={(e) => e.stopPropagation()}>
+                            <Link to={`${basePath.replace('/leads', '/propostas')}/${lead.convertidoParaPropostaId}`} title="Ver proposta gerada por este lead">
+                              <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40 hover:bg-purple-900/40 cursor-pointer">
+                                → Proposta #{lead.convertidoParaPropostaId}
+                              </Badge>
+                            </Link>
                           </div>
                         )}
                       </td>
