@@ -540,6 +540,13 @@
       "when": 1788353319041,
       "tag": "0076_stiff_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "6",
+      "when": 1788359928835,
+      "tag": "0077_pale_leader",
+      "breakpoints": true
     }
   ]
 }

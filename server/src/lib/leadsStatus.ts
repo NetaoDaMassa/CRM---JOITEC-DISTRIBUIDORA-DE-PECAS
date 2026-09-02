@@ -48,7 +48,7 @@ export function getLeadEffectiveDate(lead: { status: string; createdAt: string; 
 
 export const SEGMENT_VALUES = ['assistente_tecnico', 'instalador', 'revendedor_lojista', 'outros'] as const
 export const CHANNEL_VALUES = ['ligacao', 'whatsapp', 'email'] as const
-export const RESULT_VALUES = ['sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'] as const
+export const RESULT_VALUES = ['confirmado', 'sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'] as const
 export const PAYMENT_METHOD_VALUES = ['avista', 'boleto', 'boleto_entrada', 'cartao_credito'] as const
 export type PaymentMethod = (typeof PAYMENT_METHOD_VALUES)[number]
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

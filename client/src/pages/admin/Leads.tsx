@@ -9,7 +9,7 @@ import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { Badge } from '../../components/ui/Badge'
-import { WhatsappButton } from '../../components/ui/ContatoButtons'
+import { LeadWhatsappButton, LeadLigarButton } from '../../components/ui/LeadContatoButtons'
 import EmailButton from '../../components/ui/EmailButton'
 import { timeAgo, formatElapsed } from '../../lib/utils'
 import QuickLeadCreate from '../../components/QuickLeadCreate'
@@ -271,7 +271,8 @@ export default function Leads() {
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          <WhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} size="sm" />
+                          <LeadLigarButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
+                          <LeadWhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
                         </div>
                       </td>
                       {isAdmin && (

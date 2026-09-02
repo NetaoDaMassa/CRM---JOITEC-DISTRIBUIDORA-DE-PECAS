@@ -824,6 +824,88 @@ export const leadsRouter = router({
       return { success: true }
     }),
 
+  // Chamado quando o botão de Ligar/WhatsApp é clicado (abre o tel:/wa.me em
+  // paralelo) — registra a tentativa com resultado pendente (null), pra
+  // depois o vendedor confirmar na ficha do lead se ligou/mandou de verdade.
+  // Mesmo esquema da Carteira (contatos.registrarWhatsapp), estendido aqui
+  // pra também cobrir ligação — ver `confirmarContato` abaixo, que é onde
+  // isso de fato passa a contar. Pedido do João, 2026-09-02.
+  registrarContatoPendente: protectedProcedure
+    .input(z.object({ leadId: z.number(), channel: z.enum(['whatsapp', 'ligacao']) }))
+    .mutation(async ({ ctx, input }) => {
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
+      if (!lead) throw new Error('Lead não encontrado')
+      if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+
+      const result = await db.insert(leadContactAttempts).values({
+        leadId: input.leadId,
+        userId: ctx.user.id,
+        channel: input.channel,
+        result: null,
+      })
+      return { id: Number(result.lastInsertRowid) }
+    }),
+
+  // Botão "Confirmar" da tentativa pendente — só aqui a tentativa passa a
+  // contar de verdade: soma no attemptCount do lead (o que o motor de SLA
+  // usa pra saber se já teve 1º contato) e vira o registro que a métrica de
+  // "tempo até 1º contato" enxerga (ver leadsRelatorios.ts, reportGeral —
+  // filtra por resultado preenchido). Se o lead ainda estiver em "Novo",
+  // confirmar já move ele pra "Abordagem" sozinho — pedido explícito do
+  // João, sem exigir os campos normais de mudar etapa (próximo contato etc,
+  // que são pro fluxo manual de mudança de etapa, não pra esse atalho).
+  confirmarContato: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    const attempt = await db.query.leadContactAttempts.findFirst({ where: eq(leadContactAttempts.id, input.id) })
+    if (!attempt) throw new Error('Tentativa não encontrada')
+    if (attempt.result !== null) throw new Error('Essa tentativa já foi confirmada')
+
+    const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attempt.leadId), isNull(leads.deletedAt)) })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+
+    const now = new Date().toISOString()
+
+    await db.update(leadContactAttempts).set({ result: 'confirmado' }).where(eq(leadContactAttempts.id, input.id))
+
+    const movedToAbordagem = lead.status === 'novo'
+    await db
+      .update(leads)
+      .set({
+        lastContactAt: now,
+        updatedAt: sql`(datetime('now'))`,
+        attemptCount: (lead.attemptCount ?? 0) + 1,
+        idleAlertSentAt: null,
+        slaStatus: null,
+        abordagem4hAlertSentAt: null,
+        lastContactStaleAlertSentAt: null,
+        ...(movedToAbordagem ? { status: 'abordagem' as const, statusChangedAt: now } : {}),
+      })
+      .where(eq(leads.id, attempt.leadId))
+
+    await db.insert(leadHistory).values({
+      empresaId: ctx.empresaId,
+      leadId: attempt.leadId,
+      userId: ctx.user.id,
+      action: 'tentativa_contato',
+      details: `Contato confirmado via ${attempt.channel === 'whatsapp' ? 'WhatsApp' : 'ligação'}`,
+    })
+    if (movedToAbordagem) {
+      await db.insert(leadHistory).values({
+        empresaId: ctx.empresaId,
+        leadId: attempt.leadId,
+        userId: ctx.user.id,
+        action: 'status_alterado',
+        fromStatus: 'novo',
+        toStatus: 'abordagem',
+        details: 'Movido automaticamente para Abordagem ao confirmar o 1º contato',
+      })
+    }
+
+    return { success: true, movedToAbordagem }
+  }),
+
   // Anexo já foi enviado por multipart pra /upload/lead-attachment (tRPC não
   // suporta multipart) — aqui só grava os metadados retornados por aquele
   // endpoint. Mesmo padrão de Cliente/Devolução no resto do CRM.

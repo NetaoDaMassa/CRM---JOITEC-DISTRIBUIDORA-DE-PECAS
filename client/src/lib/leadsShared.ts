@@ -53,8 +53,9 @@ export const LEAD_SEGMENT_LABELS: Record<string, string> = {
 export const LEAD_CHANNEL_VALUES = ['ligacao', 'whatsapp', 'email'] as const
 export const LEAD_CHANNEL_LABELS: Record<string, string> = { ligacao: 'Ligação', whatsapp: 'WhatsApp', email: 'E-mail' }
 
-export const LEAD_RESULT_VALUES = ['sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'] as const
+export const LEAD_RESULT_VALUES = ['confirmado', 'sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'] as const
 export const LEAD_RESULT_LABELS: Record<string, string> = {
+  confirmado: 'Confirmado',
   sem_resposta: 'Sem resposta',
   nao_atendeu: 'Não atendeu',
   reagendou: 'Reagendou',

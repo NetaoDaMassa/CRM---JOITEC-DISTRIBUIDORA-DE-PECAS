@@ -9,7 +9,9 @@ import EmailButton from './EmailButton'
 // só um número BR completo com DDI (12-13 dígitos) começando em "55" pode ser
 // o DDI duplicado — um DDD 55 (Rio Grande do Sul) sozinho tem 10-11 dígitos e
 // não deve ser mexido.
-function soDigitos(v: string): string {
+// Exportado pra client/src/components/ui/LeadContatoButtons.tsx reaproveitar
+// (mesmo tratamento de número, achados de bug documentados abaixo).
+export function soDigitos(v: string): string {
   let digitos = v.replace(/\D/g, '')
   if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {
     digitos = digitos.slice(2)

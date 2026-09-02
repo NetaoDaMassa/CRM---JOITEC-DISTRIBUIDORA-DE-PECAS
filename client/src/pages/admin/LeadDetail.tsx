@@ -11,8 +11,7 @@ import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { Input, Textarea } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
-import ContatoButtons from '../../components/ui/ContatoButtons'
-import { WhatsappButton } from '../../components/ui/ContatoButtons'
+import LeadContatoButtons, { LeadWhatsappButton } from '../../components/ui/LeadContatoButtons'
 import EmailButton from '../../components/ui/EmailButton'
 import { Badge } from '../../components/ui/Badge'
 import { timeAgo, formatElapsed } from '../../lib/utils'
@@ -81,7 +80,7 @@ function InfoRow({ icon: Icon, label, children }: { icon: typeof Phone; label: s
   )
 }
 
-function MessageTemplateMenu({ phone, email }: { phone: string; email: string | null }) {
+function MessageTemplateMenu({ phone, email, leadId }: { phone: string; email: string | null; leadId: number }) {
   const [open, setOpen] = useState(false)
   const { data: templates } = trpc.messageTemplates.list.useQuery()
 
@@ -104,7 +103,7 @@ function MessageTemplateMenu({ phone, email }: { phone: string; email: string | 
                 <span className="text-xs text-dark-200 truncate">{t.label}</span>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {email && <EmailButton email={email} subject={t.emailSubject} body={t.emailBody} size="sm" />}
-                  <WhatsappButton telefone={phone} mensagem={t.whatsappText} size="sm" />
+                  <LeadWhatsappButton telefone={phone} leadId={leadId} mensagem={t.whatsappText} size="sm" />
                 </div>
               </div>
             ))}
@@ -208,6 +207,17 @@ export default function LeadDetail() {
     },
   })
 
+  const confirmarContatoMut = trpc.leads.confirmarContato.useMutation({
+    onSuccess(r) {
+      toast.success(r.movedToAbordagem ? 'Contato confirmado — lead movido pra Abordagem!' : 'Contato confirmado')
+      utils.leads.get.invalidate({ id: leadId })
+      utils.leads.list.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -272,9 +282,9 @@ export default function LeadDetail() {
           </div>
           <div className="flex items-center gap-2">
             {lead.status === 'abordagem' && (
-              <MessageTemplateMenu phone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} />
+              <MessageTemplateMenu phone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} leadId={lead.id} />
             )}
-            <ContatoButtons telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} size="md" />
+            <LeadContatoButtons telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} leadId={lead.id} size="md" />
           </div>
         </div>
 
@@ -448,13 +458,26 @@ export default function LeadDetail() {
               <p className="text-xs text-dark-500">Nenhuma tentativa registrada.</p>
             ) : (
               lead.contactAttempts.map((a) => (
-                <div key={a.id} className="text-xs bg-dark-900/60 rounded-lg px-3 py-2">
+                <div
+                  key={a.id}
+                  className={`text-xs rounded-lg px-3 py-2 ${a.result === null ? 'bg-amber-900/20 border border-amber-700/40' : 'bg-dark-900/60'}`}
+                >
                   <p className="text-dark-200">
-                    {LEAD_CHANNEL_LABELS[a.channel]} · {LEAD_RESULT_LABELS[a.result]}
+                    {LEAD_CHANNEL_LABELS[a.channel]} · {a.result ? LEAD_RESULT_LABELS[a.result] : 'Aguardando confirmação'}
                   </p>
                   <p className="text-dark-500 mt-0.5">
                     {a.user?.name ?? '—'} · {timeAgo(a.createdAt)}
                   </p>
+                  {a.result === null && isOwner && (
+                    <button
+                      type="button"
+                      onClick={() => confirmarContatoMut.mutate({ id: a.id })}
+                      disabled={confirmarContatoMut.isPending}
+                      className="mt-1.5 text-[11px] font-semibold text-amber-400 hover:text-amber-300 disabled:opacity-60"
+                    >
+                      ✓ Confirmar que {a.channel === 'whatsapp' ? 'enviou a mensagem' : 'fez a ligação'}
+                    </button>
+                  )}
                 </div>
               ))
             )}

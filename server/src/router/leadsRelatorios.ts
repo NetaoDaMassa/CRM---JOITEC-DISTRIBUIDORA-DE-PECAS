@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull, gte, lte } from 'drizzle-orm'
+import { and, eq, inArray, isNull, isNotNull, gte, lte } from 'drizzle-orm'
 import * as XLSX from 'xlsx'
 import { router, featureProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
@@ -155,6 +155,10 @@ export const leadsRelatoriosRouter = router({
   // vendedor de fato tentou contato) — mais preciso que usar a mudança de
   // status pra "abordagem", que pode acontecer sem nenhuma tentativa
   // registrada ainda. Leads sem nenhuma tentativa não entram nessa média.
+  // Só conta tentativa CONFIRMADA (result preenchido) — clicar em Ligar/
+  // WhatsApp sozinho cria uma tentativa pendente (result null) que ainda não
+  // prova que o contato aconteceu de verdade; só quando o vendedor confirma
+  // é que ela passa a contar aqui (pedido do João, 2026-09-02).
   reportGeral: featureProcedure('leads')
     .input(z.object({ dataInicio: z.string().optional(), dataFim: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
@@ -165,7 +169,7 @@ export const leadsRelatoriosRouter = router({
       const todosLeads = await db.query.leads.findMany({ where: and(...filtros) })
 
       const primeirasTentativas = await db.query.leadContactAttempts.findMany({
-        where: inArray(leadContactAttempts.leadId, todosLeads.map((l) => l.id)),
+        where: and(inArray(leadContactAttempts.leadId, todosLeads.map((l) => l.id)), isNotNull(leadContactAttempts.result)),
         orderBy: (c, { asc }) => [asc(c.createdAt)],
       })
       const primeiraTentativaPorLead = new Map<number, string>()

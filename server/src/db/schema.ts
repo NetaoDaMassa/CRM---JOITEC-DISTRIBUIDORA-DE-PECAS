@@ -1363,9 +1363,16 @@ export const leadContactAttempts = sqliteTable('lead_contact_attempts', {
   leadId: integer('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
   userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   channel: text('channel', { enum: ['ligacao', 'whatsapp', 'email'] }).notNull(),
+  // Null = pendente (mesmo esquema da Carteira: clicar em Ligar/WhatsApp já
+  // abre o app e registra a tentativa como pendente; só vira 'confirmado'
+  // quando o vendedor volta e confirma que ligou/mandou de verdade — só aí
+  // conta pra métrica de "tempo até 1º contato" e pro attemptCount do lead.
+  // Pedido do João, 2026-09-02. As demais opções continuam existindo pro
+  // registro manual completo (LeadContactAttemptForm), que já grava com
+  // resultado certo na hora, sem passar pelo pendente.
   result: text('result', {
-    enum: ['sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'],
-  }).notNull(),
+    enum: ['confirmado', 'sem_resposta', 'nao_atendeu', 'reagendou', 'recusou', 'avancou'],
+  }),
   nextActionAt: text('next_action_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
