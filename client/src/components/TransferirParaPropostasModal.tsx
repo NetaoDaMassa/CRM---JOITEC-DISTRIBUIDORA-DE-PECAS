@@ -4,6 +4,7 @@ import { trpc } from '../lib/trpc'
 import Modal from './ui/Modal'
 import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
+import ProductSelector from './ProductSelector'
 
 // Lead "Ganho" da Odin Compressores vira Proposta (não Carteira — essa
 // empresa não usa) — diferente da "Nova Proposta" comum (só exige nome),
@@ -22,6 +23,7 @@ export default function TransferirParaPropostasModal({
 }) {
   const utils = trpc.useUtils()
   const [produtosDescricao, setProdutosDescricao] = useState('')
+  const [produtosItens, setProdutosItens] = useState('')
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
   const [observacoes, setObservacoes] = useState('')
@@ -47,6 +49,7 @@ export default function TransferirParaPropostasModal({
     mut.mutate({
       leadId,
       produtosDescricao,
+      produtosItens: produtosItens || undefined,
       clienteWhatsapp: clienteWhatsapp || undefined,
       formaPagamento: formaPagamento || undefined,
       observacoes: observacoes || undefined,
@@ -57,7 +60,15 @@ export default function TransferirParaPropostasModal({
     <Modal open={open} onClose={onClose} title="Transferir pra Propostas">
       <form onSubmit={handleSubmit} className="space-y-4">
         <p className="text-xs text-dark-500">Diz o que está sendo proposto antes de virar um card em Propostas — o resto (PDF, negociação) segue o fluxo normal de lá.</p>
-        <Input label="Produtos/Serviços *" value={produtosDescricao} onChange={(e) => setProdutosDescricao(e.target.value)} placeholder="Ex: 2x compressor OD-100" />
+        <div>
+          <label className="text-xs text-dark-400 mb-1 block">Produtos/Serviços *</label>
+          <ProductSelector
+            value={produtosDescricao}
+            onChange={setProdutosDescricao}
+            itensJson={produtosItens}
+            onItensChange={setProdutosItens}
+          />
+        </div>
         <Input label="WhatsApp do cliente" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
         <Input label="Forma de pagamento (opcional)" value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} />
         <Textarea label="Observações (opcional)" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={2} />

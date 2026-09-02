@@ -1267,6 +1267,7 @@ export const leadsRouter = router({
       z.object({
         leadId: z.number(),
         produtosDescricao: z.string().min(1, 'Descreva o que está sendo proposto'),
+        produtosItens: z.string().optional(),
         clienteWhatsapp: z.string().optional(),
         formaPagamento: z.string().optional(),
         observacoes: z.string().optional(),
@@ -1297,6 +1298,7 @@ export const leadsRouter = router({
         clienteNome: lead.name,
         clienteWhatsapp: input.clienteWhatsapp || `${lead.ddd}${lead.phone}`,
         produtosDescricao: input.produtosDescricao,
+        produtosItens: input.produtosItens || undefined,
         formaPagamento: input.formaPagamento || undefined,
         observacoes: input.observacoes || undefined,
         stage: 'proposta',
