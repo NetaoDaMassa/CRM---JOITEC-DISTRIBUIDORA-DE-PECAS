@@ -28,7 +28,11 @@ const UPLOADS_DIR = process.env.UPLOADS_DIR ?? './uploads'
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 
-app.use(express.json())
+// Limite default do express.json() é 100kb — currículo em base64 (até 5MB,
+// ver RESUME_MAX_SIZE_BYTES em routes/careers.ts) estourava isso e o body
+// parser rejeitava com 413 antes da rota rodar, sem chegar na validação de
+// tamanho própria da rota. Elevado pra caber o maior payload esperado.
+app.use(express.json({ limit: '10mb' }))
 
 // API pública de vagas (Trabalhe Conosco dos sites do grupo) — cross-origin
 // de propósito (`origin: true`, não o CLIENT_URL restrito de baixo), já que
