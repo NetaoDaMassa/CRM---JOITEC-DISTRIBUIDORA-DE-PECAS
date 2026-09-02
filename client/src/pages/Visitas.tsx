@@ -338,14 +338,13 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
     )
   }
 
-  // GPS obrigatório pra registrar visita nova (não pra editar) — pedido do
-  // João, 2026-08-31: prova que o vendedor está de verdade no local. Gestor
-  // fica de fora (pode lançar visita retroativa/de relatório em papel).
-  const gpsObrigatorioFaltando = !editando && !isAdmin && !gpsRegistro
-
+  // GPS voltou a ser OPCIONAL (era obrigatório pra visita nova desde
+  // 2026-08-31 — revertido 2026-09-02, pedido do João: nem sempre dá pra
+  // capturar no local certo, travava o vendedor sem conseguir registrar
+  // nada). O botão "Capturar localização" continua disponível, só não
+  // bloqueia mais o registro se não conseguir.
   function salvar() {
     if (!form.nomeEmpresa.trim() && !form.dataVisita) return
-    if (gpsObrigatorioFaltando) { toast.error('Capture sua localização antes de registrar a visita'); return }
     const payload = { ...form, clienteNome: form.nomeEmpresa, ...(gpsRegistro && !editando ? gpsRegistro : {}) }
     if (editando) atualizarMut.mutate({ id: editando, ...payload })
     else criarMut.mutate(payload)
@@ -543,12 +542,8 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
 
           <Input label="Próximo passo" value={form.proximoPasso} onChange={(e) => setForm({ ...form, proximoPasso: e.target.value })} />
           <Input label="Observações" value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} />
-          {gpsObrigatorioFaltando && (
-            <p className="text-xs text-amber-400 text-center">Capture sua localização acima pra poder registrar a visita.</p>
-          )}
           <Button
             className="w-full"
-            disabled={gpsObrigatorioFaltando}
             loading={criarMut.isPending || atualizarMut.isPending}
             onClick={salvar}
           >
