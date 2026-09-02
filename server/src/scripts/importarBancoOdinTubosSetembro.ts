@@ -25,7 +25,7 @@
 import { config } from 'dotenv'
 config()
 
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes } from '../db/schema.js'
 import { normalizarBr } from '../lib/whatsapp/telefone.js'
@@ -33,6 +33,7 @@ import { REGISTROS_BANCO_ODINTC, type RegistroBancoOdintc } from './dataBancoOdi
 
 const EMPRESA_ID = 2 // Odin Tubos e Conexões
 const DATA_IMPORTACAO = '02/09/2026'
+const TAMANHO_LOTE = 200 // linhas por INSERT — poucos statements grandes em vez de milhares de pequenos
 
 const REGIAO_LABEL: Record<string, string> = {
   norte: 'Norte',
@@ -53,60 +54,74 @@ function montarObservacao(r: RegistroBancoOdintc): string | undefined {
   return partes.length ? partes.join(' · ') : undefined
 }
 
+function paraLinha(r: RegistroBancoOdintc, codigo: string) {
+  return {
+    empresaId: EMPRESA_ID,
+    razaoSocial: r.nome,
+    codigo,
+    regiao: r.regiao,
+    cidade: r.cidade ?? undefined,
+    estado: r.uf ?? undefined,
+    telefoneWhatsapp: r.telefone ? normalizarBr(r.telefone) : undefined,
+    email: r.email ?? undefined,
+    nomeContato: r.contato ?? undefined,
+    origemBanco: `Banco de Clientes ${REGIAO_LABEL[r.regiao]} - ${DATA_IMPORTACAO}`,
+    observacoes: montarObservacao(r),
+    vendedorAtualId: null,
+  }
+}
+
 async function run() {
   const registros = REGISTROS_BANCO_ODINTC
-
   console.log(`[importar-banco-odintc] ${dryRun ? 'DRY RUN — nada será gravado' : 'gravando'} | ${registros.length} registro(s) na origem\n`)
 
-  let inseridos = 0
-  let jaExistiam = 0
-  let falhas = 0
-  const porRegiao: Record<string, number> = {}
+  // O servidor (backend rodando) segura o mesmo arquivo SQLite — esse
+  // processo é uma conexão separada. Sem isso, qualquer disputa de lock
+  // derruba a importação na hora (SQLITE_BUSY) em vez de só esperar.
+  await db.run(sql`PRAGMA busy_timeout = 15000`)
+
+  // 1 consulta só (em vez de 1 por registro) pra saber quem já foi importado.
+  const existentes = await db.query.clientes.findMany({
+    where: and(eq(clientes.empresaId, EMPRESA_ID), sql`${clientes.codigo} LIKE 'TF-%'`),
+    columns: { codigo: true },
+  })
+  const codigosExistentes = new Set(existentes.map((c) => c.codigo))
+
+  const novos: ReturnType<typeof paraLinha>[] = []
   const avisosRegiaoDesconhecida: string[] = []
+  let jaExistiam = 0
 
   for (const r of registros) {
     const codigo = `TF-${r.codigo}`
-
-    const existente = await db.query.clientes.findFirst({
-      where: and(eq(clientes.empresaId, EMPRESA_ID), eq(clientes.codigo, codigo)),
-      columns: { id: true },
-    })
-    if (existente) {
+    if (codigosExistentes.has(codigo)) {
       jaExistiam++
       continue
     }
-
     if (r.regiaoDesconhecida) avisosRegiaoDesconhecida.push(`${r.codigo} — ${r.nome}`)
+    novos.push(paraLinha(r, codigo))
+  }
 
-    const origemBanco = `Banco de Clientes ${REGIAO_LABEL[r.regiao]} - ${DATA_IMPORTACAO}`
+  const porRegiao: Record<string, number> = {}
+  for (const n of novos) porRegiao[n.regiao] = (porRegiao[n.regiao] ?? 0) + 1
 
-    if (dryRun) {
-      inseridos++
-      porRegiao[r.regiao] = (porRegiao[r.regiao] ?? 0) + 1
-      continue
+  let inseridos = 0
+  let falhas = 0
+
+  if (!dryRun) {
+    for (let i = 0; i < novos.length; i += TAMANHO_LOTE) {
+      const lote = novos.slice(i, i + TAMANHO_LOTE)
+      try {
+        await db.insert(clientes).values(lote)
+        inseridos += lote.length
+        process.stdout.write(`\r  gravando... ${Math.min(i + TAMANHO_LOTE, novos.length)}/${novos.length}`)
+      } catch (err) {
+        falhas += lote.length
+        console.error(`\n[importar-banco-odintc] falha no lote ${i}-${i + lote.length}:`, err instanceof Error ? err.message : err)
+      }
     }
-
-    try {
-      await db.insert(clientes).values({
-        empresaId: EMPRESA_ID,
-        razaoSocial: r.nome,
-        codigo,
-        regiao: r.regiao,
-        cidade: r.cidade ?? undefined,
-        estado: r.uf ?? undefined,
-        telefoneWhatsapp: r.telefone ? normalizarBr(r.telefone) : undefined,
-        email: r.email ?? undefined,
-        nomeContato: r.contato ?? undefined,
-        origemBanco,
-        observacoes: montarObservacao(r),
-        vendedorAtualId: null,
-      })
-      inseridos++
-      porRegiao[r.regiao] = (porRegiao[r.regiao] ?? 0) + 1
-    } catch (err) {
-      falhas++
-      console.error(`[importar-banco-odintc] falha em "${r.nome}" (código ${r.codigo}):`, err instanceof Error ? err.message : err)
-    }
+    console.log()
+  } else {
+    inseridos = novos.length
   }
 
   console.log(`\n[importar-banco-odintc] ${dryRun ? 'seriam inseridos' : 'inseridos'}: ${inseridos} | já existiam (pulados): ${jaExistiam} | falhas: ${falhas}`)
