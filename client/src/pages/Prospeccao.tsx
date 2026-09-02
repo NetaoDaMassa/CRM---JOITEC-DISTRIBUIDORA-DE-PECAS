@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -7,6 +8,7 @@ import { Input, Textarea } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
 import ContatoButtons from '../components/ui/ContatoButtons'
+import { timeAgo } from '../lib/utils'
 
 const CANAL_LABELS: Record<string, string> = {
   google: 'Google',
@@ -16,6 +18,79 @@ const CANAL_LABELS: Record<string, string> = {
   outro: 'Outro',
 }
 const CANAL_OPTIONS = Object.entries(CANAL_LABELS).map(([value, label]) => ({ value, label }))
+
+const TIPO_REGISTRO_LABELS: Record<string, string> = {
+  ligacao: 'Ligação',
+  whatsapp: 'WhatsApp',
+  email: 'E-mail',
+  visita: 'Visita',
+  nota: 'Anotação',
+}
+const TIPO_REGISTRO_ICONE: Record<string, string> = { ligacao: '📞', whatsapp: '💬', email: '📧', visita: '🚗', nota: '📝' }
+const TIPO_REGISTRO_OPTIONS = Object.entries(TIPO_REGISTRO_LABELS).map(([value, label]) => ({ value, label }))
+
+// Linha do tempo de contatos/informações de um prospect específico —
+// registrar o que já foi feito (ligou, mandou mensagem, visitou, ou só uma
+// anotação solta) direto na tela de Prospecção, sem precisar mandar pra
+// carteira só pra ter onde anotar. Pedido do João, 2026-09-02.
+function HistoricoProspect({ clienteId }: { clienteId: number }) {
+  const utils = trpc.useUtils()
+  const { data: registros, isLoading } = trpc.prospeccao.listarRegistros.useQuery({ clienteId })
+  const [tipo, setTipo] = useState('nota')
+  const [observacao, setObservacao] = useState('')
+
+  const registrarMut = trpc.prospeccao.registrarContato.useMutation({
+    onSuccess() {
+      toast.success('Registrado')
+      setObservacao('')
+      utils.prospeccao.listarRegistros.invalidate({ clienteId })
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!observacao.trim()) return toast.error('Escreva o que aconteceu.')
+    registrarMut.mutate({ clienteId, tipo: tipo as any, observacao: observacao.trim() })
+  }
+
+  return (
+    <div className="border-t border-dark-700 bg-dark-900/40 px-4 py-3 space-y-3">
+      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-2">
+        <div className="sm:w-40 shrink-0">
+          <Select value={tipo} onChange={(e) => setTipo(e.target.value)} options={TIPO_REGISTRO_OPTIONS} />
+        </div>
+        <Textarea
+          value={observacao}
+          onChange={(e) => setObservacao(e.target.value)}
+          rows={1}
+          placeholder="O que aconteceu com esse prospect..."
+          className="flex-1"
+        />
+        <Button type="submit" size="sm" loading={registrarMut.isPending} className="shrink-0">
+          Registrar
+        </Button>
+      </form>
+
+      <div className="space-y-1.5 max-h-56 overflow-y-auto">
+        {isLoading && <p className="text-xs text-dark-500">Carregando...</p>}
+        {!isLoading && !registros?.length && <p className="text-xs text-dark-500">Nenhum registro ainda.</p>}
+        {registros?.map((r) => (
+          <div key={r.id} className="text-xs bg-dark-800 rounded-lg px-3 py-2">
+            <p className="text-dark-200">
+              {TIPO_REGISTRO_ICONE[r.tipo]} {r.observacao}
+            </p>
+            <p className="text-dark-500 mt-0.5">
+              {r.registradoPor?.name ?? '—'} · {timeAgo(r.createdAt)}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 // Prospects que o próprio vendedor caçou (Google, indicação, porta a porta...)
 // — cadastro rápido (só nome + telefone), fora do Kanban/funil normal até o
@@ -47,6 +122,7 @@ export default function Prospeccao() {
   const [observacoes, setObservacoes] = useState('')
   const [canalOrigem, setCanalOrigem] = useState('')
   const [mostrarForm, setMostrarForm] = useState(false)
+  const [expandidoId, setExpandidoId] = useState<number | null>(null)
 
   function invalidar() {
     utils.prospeccao.listar.invalidate()
@@ -148,40 +224,52 @@ export default function Prospeccao() {
       <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
         {isLoading && <p className="p-4 text-dark-400 text-sm">Carregando...</p>}
         {!isLoading && !prospects?.length && <p className="p-4 text-dark-400 text-sm">Nenhum prospect cadastrado ainda.</p>}
-        {prospects?.map((p) => (
-          <div key={p.id} className="flex items-center justify-between px-4 py-3 gap-3">
-            <div className="min-w-0">
-              <p className="font-medium text-dark-100 truncate">
-                {p.razaoSocial}
-                {p.canalOrigem && (
-                  <span className="ml-2 text-xs font-normal text-gold-400 bg-gold-600/10 border border-gold-600/30 rounded px-1.5 py-0.5">
-                    {CANAL_LABELS[p.canalOrigem]}
+        {prospects?.map((p) => {
+          const expandido = expandidoId === p.id
+          return (
+            <div key={p.id}>
+              <div className="flex items-center justify-between px-4 py-3 gap-3">
+                <button
+                  onClick={() => setExpandidoId(expandido ? null : p.id)}
+                  className="min-w-0 flex-1 text-left flex items-center gap-2"
+                >
+                  {expandido ? <ChevronUp size={14} className="shrink-0 text-dark-500" /> : <ChevronDown size={14} className="shrink-0 text-dark-500" />}
+                  <span className="min-w-0">
+                    <p className="font-medium text-dark-100 truncate">
+                      {p.razaoSocial}
+                      {p.canalOrigem && (
+                        <span className="ml-2 text-xs font-normal text-gold-400 bg-gold-600/10 border border-gold-600/30 rounded px-1.5 py-0.5">
+                          {CANAL_LABELS[p.canalOrigem]}
+                        </span>
+                      )}
+                    </p>
+                    {p.observacoes && <p className="text-xs text-dark-400 truncate">{p.observacoes}</p>}
                   </span>
-                )}
-              </p>
-              {p.observacoes && <p className="text-xs text-dark-400 truncate">{p.observacoes}</p>}
+                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Sem clienteId: prospect ainda não tem funil aberto (só existe depois de
+                      "Enviar pra carteira"), então não dá pra registrar tentativa de contato aqui. */}
+                  <ContatoButtons telefone={p.telefoneWhatsapp} telefonesExtras={p.telefonesExtras} size="sm" />
+                  <Button size="sm" variant="secondary" onClick={() => enviarMut.mutate({ id: p.id })} loading={enviarMut.isPending}>
+                    Enviar pra carteira
+                  </Button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Descartar o prospect "${p.razaoSocial}"?`)) descartarMut.mutate({ id: p.id })
+                    }}
+                    className="text-red-400 hover:text-red-300 text-xs"
+                  >
+                    Descartar
+                  </button>
+                  <Link to={`${basePath}/clientes/${p.id}`} className="text-xs text-gold-400 hover:underline">
+                    Editar
+                  </Link>
+                </div>
+              </div>
+              {expandido && <HistoricoProspect clienteId={p.id} />}
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {/* Sem clienteId: prospect ainda não tem funil aberto (só existe depois de
-                  "Enviar pra carteira"), então não dá pra registrar tentativa de contato aqui. */}
-              <ContatoButtons telefone={p.telefoneWhatsapp} telefonesExtras={p.telefonesExtras} size="sm" />
-              <Button size="sm" variant="secondary" onClick={() => enviarMut.mutate({ id: p.id })} loading={enviarMut.isPending}>
-                Enviar pra carteira
-              </Button>
-              <button
-                onClick={() => {
-                  if (confirm(`Descartar o prospect "${p.razaoSocial}"?`)) descartarMut.mutate({ id: p.id })
-                }}
-                className="text-red-400 hover:text-red-300 text-xs"
-              >
-                Descartar
-              </button>
-              <Link to={`${basePath}/clientes/${p.id}`} className="text-xs text-gold-400 hover:underline">
-                Editar
-              </Link>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )

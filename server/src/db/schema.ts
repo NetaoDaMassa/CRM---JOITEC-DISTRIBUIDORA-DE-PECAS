@@ -319,6 +319,24 @@ export const clienteEmails = sqliteTable('cliente_emails', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Linha do tempo de contatos/informações de um prospect (aba Prospecção) —
+// prospect não tem `funilMensal` aberto (só nasce quando "enviar pra
+// carteira"), então não dá pra reaproveitar `registroContato` (que exige
+// funilMensalId) — esse é o equivalente pra quem ainda tá em prospecção.
+// Uma linha só serve tanto pra registrar um contato (ligação/whatsapp/
+// email/visita) quanto uma informação solta sobre o prospect (tipo='nota')
+// — mesma lista, ordem cronológica, sem separar em duas telas. Pedido do
+// João, 2026-09-02: "atualização dinâmica" pra registrar o que tá
+// rolando com cada prospecção, pra todas as empresas que usam esse módulo.
+export const prospeccaoRegistros = sqliteTable('prospeccao_registros', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+  tipo: text('tipo', { enum: ['ligacao', 'whatsapp', 'email', 'visita', 'nota'] }).notNull(),
+  observacao: text('observacao').notNull(),
+  registradoPorId: integer('registrado_por_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
 // Histórico de carteira — todo cliente que já teve vendedor responsável,
 // preservado mesmo após transferência (a venda fica creditada a quem estava
 // na carteira no momento do fechamento — ver funilMensal.vendedorId).
@@ -1854,6 +1872,11 @@ export const maquinaManutencaoStatusRelations = relations(maquinaManutencaoStatu
 export const carteiraHistoricoRelations = relations(carteiraHistorico, ({ one }) => ({
   cliente: one(clientes, { fields: [carteiraHistorico.clienteId], references: [clientes.id] }),
   vendedor: one(users, { fields: [carteiraHistorico.vendedorId], references: [users.id] }),
+}))
+
+export const prospeccaoRegistrosRelations = relations(prospeccaoRegistros, ({ one }) => ({
+  cliente: one(clientes, { fields: [prospeccaoRegistros.clienteId], references: [clientes.id] }),
+  registradoPor: one(users, { fields: [prospeccaoRegistros.registradoPorId], references: [users.id] }),
 }))
 
 export const funilMensalRelations = relations(funilMensal, ({ one, many }) => ({

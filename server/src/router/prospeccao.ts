@@ -2,10 +2,17 @@ import { z } from 'zod'
 import { and, desc, eq, isNull } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, users } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, users, prospeccaoRegistros } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { CANAL_ORIGEM_VALUES } from '../lib/canalOrigem.js'
+
+async function assertProspectAlcancavel(clienteId: number, empresaId: number, userId: number, role: 'admin' | 'vendor') {
+  const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, clienteId), eq(clientes.empresaId, empresaId)) })
+  if (!cliente) throw new Error('Prospect não encontrado')
+  if (role !== 'admin' && cliente.vendedorAtualId !== userId) throw new Error('Acesso negado')
+  return cliente
+}
 
 // Prospects que o próprio vendedor caçou (Google, indicação etc.) — cadastro
 // rápido (só nome + telefone), ficam fora do Kanban/funil normal até o
@@ -105,4 +112,38 @@ export const prospeccaoRouter = router({
     await db.update(clientes).set({ deletedAt: agoraSqlite() }).where(eq(clientes.id, input.id))
     return { success: true }
   }),
+
+  // ── Linha do tempo de contatos/informações (aba Prospecção) ──────────────
+  // Prospect não tem funilMensal aberto, então não reaproveita
+  // `registroContato` — essa é a versão equivalente pra quem ainda tá em
+  // prospecção. Pedido do João, 2026-09-02: registrar o que tá rolando com
+  // cada prospect (ligação, whatsapp, e-mail, visita ou só uma nota solta),
+  // pra todas as empresas que usam esse módulo.
+  listarRegistros: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
+    await assertProspectAlcancavel(input.clienteId, ctx.empresaId, ctx.user.id, ctx.user.role)
+    return db.query.prospeccaoRegistros.findMany({
+      where: eq(prospeccaoRegistros.clienteId, input.clienteId),
+      with: { registradoPor: { columns: { id: true, name: true } } },
+      orderBy: [desc(prospeccaoRegistros.createdAt)],
+    })
+  }),
+
+  registrarContato: protectedProcedure
+    .input(
+      z.object({
+        clienteId: z.number(),
+        tipo: z.enum(['ligacao', 'whatsapp', 'email', 'visita', 'nota']),
+        observacao: z.string().min(1, 'Escreva o que aconteceu.'),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertProspectAlcancavel(input.clienteId, ctx.empresaId, ctx.user.id, ctx.user.role)
+      await db.insert(prospeccaoRegistros).values({
+        clienteId: input.clienteId,
+        tipo: input.tipo,
+        observacao: input.observacao.trim(),
+        registradoPorId: ctx.user.id,
+      })
+      return { success: true }
+    }),
 })
