@@ -10,7 +10,8 @@
     "seed": "tsx src/db/seed.ts",
     "avisar-leads": "tsx src/scripts/avisarLeadsNovos.ts",
     "wa:seed-joitec": "tsx src/scripts/seedWhatsappVendedoresJoitec.ts",
-    "limpar-prospects-vazados": "tsx src/scripts/limparProspectsVazados.ts"
+    "limpar-prospects-vazados": "tsx src/scripts/limparProspectsVazados.ts",
+    "importar-banco-odintc": "tsx src/scripts/importarBancoOdinTubosSetembro.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
