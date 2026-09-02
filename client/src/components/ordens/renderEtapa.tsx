@@ -22,6 +22,8 @@ export type OrdemParaEtapa = {
   status: string
   cancelMotivo?: string | null
   cliente?: {
+    id: number
+    versao: number
     razaoSocial?: string | null
     telefoneWhatsapp?: string | null
     email?: string | null
@@ -45,7 +47,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
 
   switch (stage) {
     case 'cadastro':
-      return <EtapaCadastro />
+      return <EtapaCadastro cliente={ordem.cliente} isAdmin={isAdmin} readonly={readonly} />
     case 'liberacao_financeira':
       return <EtapaFinanceiro ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} cliente={ordem.cliente} />
     case 'pedido':

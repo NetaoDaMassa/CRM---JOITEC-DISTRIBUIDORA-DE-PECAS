@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { Building2, Phone, Mail, MapPin, User } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
-import { Input } from '../ui/Input'
+import { Input, Textarea } from '../ui/Input'
 import { Badge } from '../ui/Badge'
 import { formatDateTime } from '../../lib/utils'
 
@@ -118,7 +118,13 @@ function EtapaFinanceiroForm({
         <Input label="Data prevista" defaultValue={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} disabled={!podeEditar} />
       </div>
       <div>
-        <Input label={`Observações${travada ? ` 🔒 travada em ${formatDateTime(data?.obsTravadaEm)}` : ''}`} value={obs} onChange={(e) => setObs(e.target.value)} disabled={!podeEditar || travada} />
+        <Textarea
+          label={`Observações${travada ? ` 🔒 travada em ${formatDateTime(data?.obsTravadaEm)}` : ''}`}
+          rows={5}
+          value={obs}
+          onChange={(e) => setObs(e.target.value)}
+          disabled={!podeEditar || travada}
+        />
         {podeEditar && (
           travada ? (
             <button onClick={() => salvarMut.mutate({ ordemId, travar: false })} className="mt-1.5 text-xs font-semibold text-gold-400 hover:text-gold-300">Editar observação</button>

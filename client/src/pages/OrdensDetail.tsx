@@ -64,6 +64,13 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
     onSuccess: () => { toast.success('Etapa alterada'); invalidarTudo() },
     onError: (e) => toast.error(e.message),
   })
+  const atualizarVendedorMut = trpc.ordens.core.atualizarVendedor.useMutation({
+    onSuccess: () => { toast.success('Vendedor alterado'); invalidarTudo() },
+    onError: (e) => toast.error(e.message),
+  })
+  // Lista só carrega quando é admin (mesma régua de outros dropdowns
+  // administrativos) — vendedor não pode reatribuir pedido pra si/outro.
+  const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
 
   if (isLoading) return <div className="p-6 text-dark-400 text-sm">Carregando...</div>
   if (!ordem) return <div className="p-6 text-dark-400 text-sm">Pedido não encontrado</div>
@@ -83,7 +90,19 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
               Pedido #{ordem.id} <span className="text-dark-500 text-base font-normal">— {ordem.cliente?.razaoSocial ?? ORDER_TYPE_LABELS[orderType]}</span>
             </h1>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dark-400">
-              {ordem.vendedor && <span>Vendedor: <span className="text-dark-200">{ordem.vendedor.name}</span></span>}
+              {isAdmin && ordem.status === 'ativo' ? (
+                <span className="flex items-center gap-1.5">
+                  Vendedor:
+                  <Select
+                    className="w-auto py-0.5 text-xs"
+                    value={ordem.vendedorId ? String(ordem.vendedorId) : ''}
+                    onChange={(e) => e.target.value && atualizarVendedorMut.mutate({ id: ordemId, vendedorId: Number(e.target.value) })}
+                    options={(vendedores ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
+                  />
+                </span>
+              ) : (
+                ordem.vendedor && <span>Vendedor: <span className="text-dark-200">{ordem.vendedor.name}</span></span>
+              )}
               <span>Criado: <span className="text-dark-200">{formatDateTime(ordem.createdAt)}</span></span>
               <span>Nesta etapa desde: <span className="text-dark-200">{formatDateTime(ordem.updatedAt)}</span></span>
               {ordem.cliente?.codigo && <span>Código: <span className="text-dark-200">{ordem.cliente.codigo}</span></span>}

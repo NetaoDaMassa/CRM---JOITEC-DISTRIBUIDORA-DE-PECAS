@@ -327,6 +327,7 @@ export const clientesRouter = router({
         inscricaoEstadual: z.string().optional(),
         estado: z.string().optional(),
         cidade: z.string().optional(),
+        endereco: z.string().optional(),
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
         nomeContato: z.string().optional(),

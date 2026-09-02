@@ -181,6 +181,32 @@ export const ordensCoreRouter = router({
     return { ok: true }
   }),
 
+  // Reatribuir vendedor do pedido — pedido do João (2026-09-02), pra corrigir
+  // pedido lançado pro vendedor errado sem precisar cancelar e recriar tudo.
+  // Só admin (não usa adminOrFeatureProcedure) porque é uma reatribuição de
+  // "dono" do pedido, mesma régua de outras ações administrativas do módulo
+  // (cancelar/pausar/mover já são adminProcedure puro).
+  atualizarVendedor: adminProcedure
+    .input(z.object({ id: z.number(), vendedorId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaOrdens(ctx.empresaId)
+      const ordem = await db.query.ordens.findFirst({ where: and(eq(ordens.id, input.id), eq(ordens.empresaId, ctx.empresaId)) })
+      if (!ordem) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
+      const vendedor = await db.query.users.findFirst({ where: and(eq(users.id, input.vendedorId), eq(users.empresaId, ctx.empresaId)) })
+      if (!vendedor || !vendedor.isActive) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Vendedor inválido' })
+      await db.update(ordens).set({ vendedorId: input.vendedorId, updatedAt: agoraSqlite() }).where(eq(ordens.id, input.id))
+      await registrarAuditoria({
+        tabela: 'ordens',
+        registroId: input.id,
+        acao: 'transferir_carteira',
+        campo: 'vendedorId',
+        valorAnterior: String(ordem.vendedorId ?? ''),
+        valorNovo: String(input.vendedorId),
+        alteradoPor: ctx.user.id,
+      })
+      return { ok: true }
+    }),
+
   atualizarEndereco: adminOrFeatureProcedure('pedidos_odin')
     .input(
       z.object({
