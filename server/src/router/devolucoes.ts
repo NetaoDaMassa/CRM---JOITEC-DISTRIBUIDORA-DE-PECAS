@@ -321,6 +321,10 @@ export const devolucoesRouter = router({
         numeroPedidoVenda: z.string().optional(),
         descricao: z.string().min(1),
         observacao: z.string().optional(),
+        // Data em que as tratativas com o cliente começaram de verdade — nem
+        // sempre é o mesmo dia em que o chamado é digitado no sistema
+        // (pedido do João, 2026-09-02).
+        dataInicioTratamento: z.string().optional(),
         vendedorId: z.number().optional(),
         ocorrencias: z.array(z.object({ tipo: z.enum(OCORRENCIA_VALUES), rotuloCustom: z.string().optional() })).min(1),
         materiais: z
@@ -358,6 +362,7 @@ export const devolucoesRouter = router({
         numeroPedidoVenda: input.numeroPedidoVenda,
         descricao: input.descricao,
         observacao: input.observacao,
+        dataInicioTratamento: input.dataInicioTratamento,
       })
       const chamadoId = Number(result.lastInsertRowid)
 

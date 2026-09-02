@@ -47,6 +47,15 @@ function formatarData(v: string | null | undefined): string {
   return new Date(v.replace(' ', 'T')).toLocaleString('pt-BR')
 }
 
+// Só a data (sem hora), formatada direto da string "YYYY-MM-DD" — evita o
+// bug clássico de `new Date('2026-09-02')` virar meia-noite UTC e mostrar
+// o dia anterior em fuso Brasil.
+function formatarSoData(v: string | null | undefined): string {
+  if (!v) return '—'
+  const [ano, mes, dia] = v.slice(0, 10).split('-')
+  return dia && mes && ano ? `${dia}/${mes}/${ano}` : v
+}
+
 async function uploadAnexo(file: File): Promise<{ path: string; nome: string; tipo: string }> {
   const token = localStorage.getItem('odin_token')
   const form = new FormData()
@@ -71,6 +80,7 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   const [numeroPedidoVenda, setNumeroPedidoVenda] = useState('')
   const [descricao, setDescricao] = useState('')
   const [observacao, setObservacao] = useState('')
+  const [dataInicioTratamento, setDataInicioTratamento] = useState('')
   const [vendedorId, setVendedorId] = useState('')
   const [ocorrencias, setOcorrencias] = useState<string[]>([])
   const [materiais, setMateriais] = useState([
@@ -141,6 +151,7 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
       numeroPedidoVenda: numeroPedidoVenda || undefined,
       descricao,
       observacao: observacao || undefined,
+      dataInicioTratamento: dataInicioTratamento || undefined,
       vendedorId: souAdmin && vendedorId ? Number(vendedorId) : undefined,
       ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
       materiais: materiais.filter((m) => m.descricaoItem.trim()),
@@ -217,6 +228,13 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
           <Input label="Nota fiscal de venda" value={numeroNotaFiscalVenda} onChange={(e) => setNumeroNotaFiscalVenda(e.target.value)} />
           <Input label="Pedido de venda" value={numeroPedidoVenda} onChange={(e) => setNumeroPedidoVenda(e.target.value)} />
         </div>
+        <Input
+          label="Início das tratativas"
+          type="date"
+          value={dataInicioTratamento}
+          onChange={(e) => setDataInicioTratamento(e.target.value)}
+          title="Dia em que o atendimento com o cliente realmente começou, se for diferente de hoje"
+        />
         {souAdmin && (
           <Select
             label="Vendedor responsável"
@@ -887,6 +905,10 @@ function DetalheChamadoModal({
           <div>
             <p className="text-dark-500 text-xs uppercase tracking-wide">Empresa</p>
             <p className="text-dark-100">{(chamado as any).empresa?.nome ?? '—'}</p>
+          </div>
+          <div>
+            <p className="text-dark-500 text-xs uppercase tracking-wide">Início das tratativas</p>
+            <p className="text-dark-100">{formatarSoData((chamado as any).dataInicioTratamento)}</p>
           </div>
         </div>
 
