@@ -37,7 +37,7 @@ async function upsertDetalhes(ordemId: number, values: Record<string, unknown>) 
 export const ordensFinanceiroRouter = router({
   obterLiberacao: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemLiberacaoFinanceira.findFirst({ where: eq(ordemLiberacaoFinanceira.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -54,7 +54,7 @@ export const ordensFinanceiroRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const atual = await db.query.ordemLiberacaoFinanceira.findFirst({ where: eq(ordemLiberacaoFinanceira.ordemId, input.ordemId) })
       const { ordemId, travar, ...values } = input
       const obsMudou = values.observacoes !== undefined && values.observacoes !== (atual?.observacoes ?? null)
@@ -73,7 +73,7 @@ export const ordensFinanceiroRouter = router({
 
   aprovarLiberacao: adminProcedure.input(z.object({ ordemId: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     await upsertLiberacao(input.ordemId, { aprovado: true, aprovadoPor: ctx.user.id, aprovadoEm: agoraSqlite() })
     await registrarHistoricoOrdem({ ordemId: input.ordemId, userId: ctx.user.id, action: 'approval', description: 'Liberação financeira aprovada', stage: ordem.stage })
     return { ok: true }
@@ -81,7 +81,7 @@ export const ordensFinanceiroRouter = router({
 
   obterDetalhes: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemDetalhes.findFirst({ where: eq(ordemDetalhes.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -98,7 +98,7 @@ export const ordensFinanceiroRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, ...values } = input
       await upsertDetalhes(ordemId, values)
       await registrarHistoricoOrdem({ ordemId, userId: ctx.user.id, action: 'update', description: 'Dados do pedido atualizados', stage: ordem.stage })

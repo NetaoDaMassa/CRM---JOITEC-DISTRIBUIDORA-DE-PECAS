@@ -22,17 +22,32 @@ async function assertEmpresaOrdens(empresaId: number) {
   if (empresa?.slug !== SLUG_ORDENS) throw new TRPCError({ code: 'FORBIDDEN', message: 'Módulo disponível só pra Odin Compressores' })
 }
 
-async function assertOrdemAlcancavel(ordemId: number, empresaId: number) {
+// Vendedor só alcança pedido próprio (vendedorId = ele mesmo) — admin
+// alcança qualquer um da empresa. Correção urgente, 2026-09-02: até aqui
+// isso NÃO era checado em lugar nenhum do módulo (só empresaId), então
+// qualquer vendedor com a feature 'pedidos_odin' via Kanban/detalhe via
+// URL/pra qualquer sub-etapa via ordemId, mesmo de pedido de outro
+// vendedor. `assertOrdemAlcancavel` é chamada por TODOS os sub-routers de
+// Pedidos (anexos/faturamento/conferencia/financeiro/frete/pos/
+// preparacao), então corrigir aqui já fecha o buraco no módulo inteiro de
+// uma vez, sem precisar duplicar a checagem em cada arquivo.
+async function assertOrdemAlcancavel(ordemId: number, empresaId: number, userId: number, role: 'admin' | 'vendor') {
   const ordem = await db.query.ordens.findFirst({ where: and(eq(ordens.id, ordemId), eq(ordens.empresaId, empresaId)) })
   if (!ordem) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
+  if (role !== 'admin' && ordem.vendedorId !== userId) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' })
   return ordem
 }
 
 export const ordensCoreRouter = router({
   listarKanban: adminOrFeatureProcedure('pedidos_odin').input(z.object({ orderType: z.enum(ORDER_TYPE_VALUES), vendedorId: z.number().optional() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
+    // Vendedor só vê os pedidos dele — ignora completamente o vendedorId que
+    // o cliente mandar (só admin escolhe de quem quer ver). Correção
+    // urgente, 2026-09-02: antes o Kanban mostrava TODOS os pedidos da
+    // empresa pra qualquer vendedor, sem filtro nenhum.
+    const filtroVendedor = ctx.user.role === 'admin' ? input.vendedorId : ctx.user.id
     const condicoes = [eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, input.orderType)]
-    if (input.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
+    if (filtroVendedor) condicoes.push(eq(ordens.vendedorId, filtroVendedor))
     return db.query.ordens.findMany({
       where: and(...condicoes),
       with: {
@@ -53,10 +68,9 @@ export const ordensCoreRouter = router({
 
   contarAtivos: adminOrFeatureProcedure('pedidos_odin').query(async ({ ctx }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const rows = await db.query.ordens.findMany({
-      where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.status, 'ativo')),
-      columns: { id: true },
-    })
+    const condicoes = [eq(ordens.empresaId, ctx.empresaId), eq(ordens.status, 'ativo')]
+    if (ctx.user.role !== 'admin') condicoes.push(eq(ordens.vendedorId, ctx.user.id))
+    const rows = await db.query.ordens.findMany({ where: and(...condicoes), columns: { id: true } })
     return rows.length
   }),
 
@@ -68,13 +82,14 @@ export const ordensCoreRouter = router({
   // tem essa etapa (começa direto em "pedido"), então usa "pedido" mesmo.
   contarEtapaInicial: adminOrFeatureProcedure('pedidos_odin').query(async ({ ctx }) => {
     await assertEmpresaOrdens(ctx.empresaId)
+    const filtroVendedor = ctx.user.role !== 'admin' ? [eq(ordens.vendedorId, ctx.user.id)] : []
     const [maquina, peca] = await Promise.all([
       db.query.ordens.findMany({
-        where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, 'maquina'), eq(ordens.status, 'ativo'), eq(ordens.stage, 'liberacao_financeira')),
+        where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, 'maquina'), eq(ordens.status, 'ativo'), eq(ordens.stage, 'liberacao_financeira'), ...filtroVendedor),
         columns: { id: true },
       }),
       db.query.ordens.findMany({
-        where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, 'peca'), eq(ordens.status, 'ativo'), eq(ordens.stage, 'pedido')),
+        where: and(eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, 'peca'), eq(ordens.status, 'ativo'), eq(ordens.stage, 'pedido'), ...filtroVendedor),
         columns: { id: true },
       }),
     ])
@@ -118,6 +133,9 @@ export const ordensCoreRouter = router({
       with: { cliente: true, vendedor: { columns: { id: true, name: true, whatsapp: true } }, maquinas: true },
     })
     if (!ordem) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
+    // Vendedor só abre pedido próprio, mesmo sabendo o id/link direto —
+    // correção urgente, 2026-09-02 (ver assertOrdemAlcancavel acima).
+    if (ctx.user.role !== 'admin' && ordem.vendedorId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' })
     return ordem
   }),
 
@@ -133,7 +151,7 @@ export const ordensCoreRouter = router({
 
   cancelar: adminProcedure.input(z.object({ id: z.number(), motivo: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
     if (ordem.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido não está ativo' })
 
     await db
@@ -147,7 +165,7 @@ export const ordensCoreRouter = router({
 
   pausar: adminProcedure.input(z.object({ id: z.number(), motivo: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
     if (ordem.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido não está ativo' })
 
     await db.update(ordens).set({ pausadoMotivo: input.motivo, pausadoPor: ctx.user.id, pausadoEm: agoraSqlite() }).where(eq(ordens.id, input.id))
@@ -157,7 +175,7 @@ export const ordensCoreRouter = router({
 
   retomar: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
     await db.update(ordens).set({ pausadoMotivo: null, pausadoPor: null, pausadoEm: null }).where(eq(ordens.id, input.id))
     await registrarHistoricoOrdem({ ordemId: input.id, userId: ctx.user.id, action: 'update', description: 'Pedido retomado', stage: ordem.stage })
     return { ok: true }
@@ -175,7 +193,7 @@ export const ordensCoreRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.id, ctx.empresaId)
+      await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
       await db
         .update(ordens)
         .set({
@@ -191,7 +209,7 @@ export const ordensCoreRouter = router({
 
   historico: adminOrFeatureProcedure('pedidos_odin').input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.id, ctx.empresaId)
+    await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemHistorico.findMany({
       where: eq(ordemHistorico.ordemId, input.id),
       with: { user: { columns: { id: true, name: true } } },

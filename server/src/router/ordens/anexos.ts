@@ -18,7 +18,7 @@ const UPLOADS_DIR = process.env.UPLOADS_DIR ?? './uploads'
 export const ordensAnexosRouter = router({
   listar: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number(), stage: z.string().optional() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemAnexos.findMany({
       where: input.stage ? and(eq(ordemAnexos.ordemId, input.ordemId), eq(ordemAnexos.stage, input.stage)) : eq(ordemAnexos.ordemId, input.ordemId),
       orderBy: (a, { desc }) => [desc(a.createdAt)],
@@ -39,7 +39,7 @@ export const ordensAnexosRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const result = await db.insert(ordemAnexos).values({ ...input, enviadoPor: ctx.user.id })
       await registrarHistoricoOrdem({
         ordemId: input.ordemId,
@@ -53,7 +53,7 @@ export const ordensAnexosRouter = router({
 
   excluir: adminProcedure.input(z.object({ id: z.number(), ordemId: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     const anexo = await db.query.ordemAnexos.findFirst({ where: and(eq(ordemAnexos.id, input.id), eq(ordemAnexos.ordemId, input.ordemId)) })
     if (!anexo) throw new TRPCError({ code: 'NOT_FOUND', message: 'Anexo não encontrado' })
 

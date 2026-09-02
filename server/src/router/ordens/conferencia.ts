@@ -15,7 +15,7 @@ import { diffObs } from './financeiro.js'
 export const ordensConferenciaRouter = router({
   obter: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemConferencia.findFirst({ where: eq(ordemConferencia.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -39,7 +39,7 @@ export const ordensConferenciaRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, embalagemOk, travar, ...resto } = input
       const existente = await db.query.ordemConferencia.findFirst({ where: eq(ordemConferencia.ordemId, ordemId) })
       const values: Record<string, unknown> = { ...resto }
@@ -70,7 +70,7 @@ export const ordensConferenciaRouter = router({
 
   confirmar: adminProcedure.input(z.object({ ordemId: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
 
     const conf = await db.query.ordemConferencia.findFirst({ where: eq(ordemConferencia.ordemId, input.ordemId) })
     if (!conf?.embalagemOk) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Marque a embalagem como OK antes de confirmar' })
@@ -97,7 +97,7 @@ export const ordensConferenciaRouter = router({
 
   listarItens: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
 
     // Cria o item de conferência que ainda não existe pra cada máquina já
     // vinculada ao pedido (em Preparação) — sem isso a Conferência aparecia
@@ -131,7 +131,7 @@ export const ordensConferenciaRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, maquinaId, ...values } = input
       const existente = await db.query.ordemConferenciaItens.findFirst({ where: and(eq(ordemConferenciaItens.ordemId, ordemId), eq(ordemConferenciaItens.maquinaId, maquinaId)) })
       if (existente) await db.update(ordemConferenciaItens).set(values).where(and(eq(ordemConferenciaItens.ordemId, ordemId), eq(ordemConferenciaItens.maquinaId, maquinaId)))

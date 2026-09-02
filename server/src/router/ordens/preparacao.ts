@@ -25,7 +25,7 @@ function categoriasObrigatorias(modelo: string): string[] {
 export const ordensPreparacaoRouter = router({
   obterPreparacao: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemPreparacao.findFirst({ where: eq(ordemPreparacao.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -33,7 +33,7 @@ export const ordensPreparacaoRouter = router({
     .input(z.object({ ordemId: z.number(), dataEntradaEstoque: z.string().optional(), observacoes: z.string().optional(), travar: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, travar, ...values } = input
       const existente = await db.query.ordemPreparacao.findFirst({ where: eq(ordemPreparacao.ordemId, ordemId) })
       const obsMudou = values.observacoes !== undefined && values.observacoes !== (existente?.observacoes ?? null)
@@ -56,7 +56,7 @@ export const ordensPreparacaoRouter = router({
     .input(z.object({ ordemId: z.number(), finalizado: z.boolean().default(true) }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const existente = await db.query.ordemPreparacao.findFirst({ where: eq(ordemPreparacao.ordemId, input.ordemId) })
       const values = {
         operadorFinalizou: input.finalizado,
@@ -71,7 +71,7 @@ export const ordensPreparacaoRouter = router({
 
   aprovarPreparacao: adminProcedure.input(z.object({ ordemId: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
 
     if (ordem.orderType === 'maquina') {
       const maquinas = await db.query.ordemMaquinas.findMany({ where: eq(ordemMaquinas.ordemId, input.ordemId) })
@@ -98,13 +98,13 @@ export const ordensPreparacaoRouter = router({
 
   listarMaquinas: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemMaquinas.findMany({ where: eq(ordemMaquinas.ordemId, input.ordemId) })
   }),
 
   criarMaquina: adminProcedure.input(z.object({ ordemId: z.number(), modelo: z.string().min(1), numeroSerie: z.string().optional() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     const result = await db.insert(ordemMaquinas).values(input)
     return { id: Number(result.lastInsertRowid) }
   }),
@@ -113,7 +113,7 @@ export const ordensPreparacaoRouter = router({
     .input(z.object({ id: z.number(), ordemId: z.number(), modelo: z.string().min(1).optional(), numeroSerie: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { id, ordemId, ...values } = input
       await db.update(ordemMaquinas).set(values).where(and(eq(ordemMaquinas.id, id), eq(ordemMaquinas.ordemId, ordemId)))
       return { ok: true }
@@ -121,7 +121,7 @@ export const ordensPreparacaoRouter = router({
 
   excluirMaquina: adminProcedure.input(z.object({ id: z.number(), ordemId: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     await db.delete(ordemMaquinas).where(and(eq(ordemMaquinas.id, input.id), eq(ordemMaquinas.ordemId, input.ordemId)))
     return { ok: true }
   }),

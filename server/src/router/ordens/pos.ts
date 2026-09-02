@@ -14,7 +14,7 @@ import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
 export const ordensPosRouter = router({
   obterColeta: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemColeta.findFirst({ where: eq(ordemColeta.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -31,7 +31,7 @@ export const ordensPosRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, ...values } = input
       const existente = await db.query.ordemColeta.findFirst({ where: eq(ordemColeta.ordemId, ordemId) })
       if (existente) await db.update(ordemColeta).set({ ...values, updatedAt: agoraSqlite() }).where(eq(ordemColeta.ordemId, ordemId))
@@ -41,7 +41,7 @@ export const ordensPosRouter = router({
 
   confirmarColeta: adminProcedure.input(z.object({ ordemId: z.number() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     const existente = await db.query.ordemColeta.findFirst({ where: eq(ordemColeta.ordemId, input.ordemId) })
     const values = { confirmado: true, confirmadoPor: ctx.user.id, confirmadoEm: agoraSqlite() }
     if (existente) await db.update(ordemColeta).set(values).where(eq(ordemColeta.ordemId, input.ordemId))
@@ -52,7 +52,7 @@ export const ordensPosRouter = router({
 
   obterRastreio: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemRastreio.findFirst({ where: eq(ordemRastreio.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -60,7 +60,7 @@ export const ordensPosRouter = router({
     .input(z.object({ ordemId: z.number(), transportadora: z.string().optional(), codigoRastreio: z.string().optional(), linkRastreio: z.string().optional(), observacoes: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, ...values } = input
       const existente = await db.query.ordemRastreio.findFirst({ where: eq(ordemRastreio.ordemId, ordemId) })
       if (existente) await db.update(ordemRastreio).set({ ...values, updatedAt: agoraSqlite() }).where(eq(ordemRastreio.ordemId, ordemId))
@@ -70,13 +70,13 @@ export const ordensPosRouter = router({
 
   obterQualidade: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemQualidade.findFirst({ where: eq(ordemQualidade.ordemId, input.ordemId) }) ?? null
   }),
 
   atualizarQualidade: adminProcedure.input(z.object({ ordemId: z.number(), observacoes: z.string().optional() })).mutation(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     const { ordemId, ...values } = input
     const existente = await db.query.ordemQualidade.findFirst({ where: eq(ordemQualidade.ordemId, ordemId) })
     if (existente) await db.update(ordemQualidade).set({ ...values, updatedAt: agoraSqlite() }).where(eq(ordemQualidade.ordemId, ordemId))
@@ -86,7 +86,7 @@ export const ordensPosRouter = router({
 
   obterPosVenda: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
-    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemPosVenda.findFirst({ where: eq(ordemPosVenda.ordemId, input.ordemId) }) ?? null
   }),
 
@@ -106,7 +106,7 @@ export const ordensPosRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
-      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId)
+      await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, ...values } = input
       const existente = await db.query.ordemPosVenda.findFirst({ where: eq(ordemPosVenda.ordemId, ordemId) })
       if (existente) await db.update(ordemPosVenda).set({ ...values, updatedAt: agoraSqlite() }).where(eq(ordemPosVenda.ordemId, ordemId))
