@@ -26,6 +26,7 @@ import {
   LEAD_STATUS_LABELS,
   LEAD_STATUS_COLORS,
   LEAD_SEGMENT_LABELS,
+  LEAD_SEGMENT_VALUES,
   LEAD_CHANNEL_LABELS,
   LEAD_RESULT_LABELS,
   LEAD_PAYMENT_METHOD_LABELS,
@@ -143,6 +144,7 @@ export default function LeadDetail() {
   const [pendingStatus, setPendingStatus] = useState<string | undefined>(undefined)
   const [reopenModalOpen, setReopenModalOpen] = useState(false)
   const [saleValuesOpen, setSaleValuesOpen] = useState(false)
+  const [editarInfoOpen, setEditarInfoOpen] = useState(false)
   const [transferirCarteiraOpen, setTransferirCarteiraOpen] = useState(false)
   const [transferirPropostasOpen, setTransferirPropostasOpen] = useState(false)
   const [noteContent, setNoteContent] = useState('')
@@ -319,6 +321,11 @@ export default function LeadDetail() {
           {isAdmin && lead.status === 'desqualificado' && (
             <Button size="sm" variant="secondary" onClick={() => setReopenModalOpen(true)}>
               <ShieldAlert size={14} /> Reabrir
+            </Button>
+          )}
+          {isAdmin && (
+            <Button size="sm" variant="secondary" onClick={() => setEditarInfoOpen(true)}>
+              <Pencil size={14} /> Editar informações
             </Button>
           )}
           {isAdmin && (
@@ -708,7 +715,86 @@ export default function LeadDetail() {
         telefoneSugerido={leadTelefoneCompleto(lead.ddd, lead.phone)}
       />
       <SaleValuesModal lead={lead} open={saleValuesOpen} onClose={() => setSaleValuesOpen(false)} />
+      <EditarInfoModal lead={lead} open={editarInfoOpen} onClose={() => setEditarInfoOpen(false)} />
     </div>
+  )
+}
+
+function EditarInfoModal({ lead, open, onClose }: { lead: any; open: boolean; onClose: () => void }) {
+  const utils = trpc.useUtils()
+  const [name, setName] = useState(lead.name ?? '')
+  const [ddd, setDdd] = useState(lead.ddd?.toString() ?? '')
+  const [phone, setPhone] = useState(lead.phone ?? '')
+  const [email, setEmail] = useState(lead.email ?? '')
+  const [company, setCompany] = useState(lead.company ?? '')
+  const [city, setCity] = useState(lead.city ?? '')
+  const [segment, setSegment] = useState(lead.segment ?? '')
+  const [source, setSource] = useState(lead.source ?? '')
+  const [observations, setObservations] = useState(lead.observations ?? '')
+
+  const mut = trpc.leads.update.useMutation({
+    onSuccess() {
+      toast.success('Informações atualizadas')
+      utils.leads.get.invalidate({ id: lead.id })
+      utils.leads.list.invalidate()
+      onClose()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title="Editar informações do lead" size="md">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          mut.mutate({
+            id: lead.id,
+            name,
+            ddd: ddd ? Number(ddd) : undefined,
+            phone,
+            email,
+            company,
+            city,
+            segment: (segment || undefined) as any,
+            source,
+            observations,
+          })
+        }}
+        className="space-y-4"
+      >
+        <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
+        <div className="grid grid-cols-[80px_1fr] gap-3">
+          <Input label="DDD" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />
+          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        </div>
+        <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
+          <Input label="Cidade" value={city} onChange={(e) => setCity(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Select
+            label="Segmento"
+            value={segment}
+            onChange={(e) => setSegment(e.target.value)}
+            placeholder="—"
+            options={LEAD_SEGMENT_VALUES.map((s) => ({ value: s, label: LEAD_SEGMENT_LABELS[s] }))}
+          />
+          <Input label="Origem" value={source} onChange={(e) => setSource(e.target.value)} placeholder="Ex: Instagram, indicação..." />
+        </div>
+        <Textarea label="Observações" value={observations} onChange={(e) => setObservations(e.target.value)} rows={3} />
+        <div className="flex gap-3 pt-2">
+          <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button type="submit" className="flex-1" loading={mut.isPending}>
+            Salvar
+          </Button>
+        </div>
+      </form>
+    </Modal>
   )
 }
 

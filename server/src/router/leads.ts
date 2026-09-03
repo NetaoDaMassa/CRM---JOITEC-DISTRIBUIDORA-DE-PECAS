@@ -395,6 +395,7 @@ export const leadsRouter = router({
         id: z.number(),
         name: z.string().min(2).optional(),
         phone: z.string().optional(),
+        ddd: z.number().optional(),
         email: z.string().optional(),
         company: z.string().optional(),
         city: z.string().optional(),
