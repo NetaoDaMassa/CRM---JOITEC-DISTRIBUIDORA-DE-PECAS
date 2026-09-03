@@ -6,7 +6,7 @@ import { and, eq } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, propostaAlteracoes, propostaHistorico, ordens, ordemLiberacaoFinanceira, estoqueCatalogoModelos, leads, visitas } from '../db/schema.js'
+import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, propostaAlteracoes, propostaHistorico, ordens, ordemLiberacaoFinanceira, ordemDetalhes, estoqueCatalogoModelos, leads, visitas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { assertDonoOuGestor, mudarEtapaProposta, notificarGestores } from '../lib/propostasGates.js'
@@ -264,9 +264,11 @@ export const propostasRouter = router({
       criadoPor: proposta.vendedorId,
       orderType: 'maquina',
       stage: 'liberacao_financeira',
+      codSap: proposta.codSap || undefined,
     })
     const ordemId = Number(result.lastInsertRowid)
     await db.insert(ordemLiberacaoFinanceira).values({ ordemId, formaPagamento: proposta.formaPagamento, observacoes: partes.join('\n') || undefined })
+    if (proposta.revenda) await db.insert(ordemDetalhes).values({ ordemId, revenda: proposta.revenda })
 
     await db.update(propostas).set({ convertidoParaOrdemId: ordemId, stage: 'convertido', updatedAt: agoraSqlite() }).where(eq(propostas.id, input.propostaId))
     await db.insert(propostaHistorico).values({ propostaId: input.propostaId, userId: ctx.user.id, etapaAnterior: proposta.stage, etapaNova: 'convertido', nota: `Convertida em Pedido #${ordemId}` })

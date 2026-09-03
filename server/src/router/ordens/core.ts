@@ -207,6 +207,20 @@ export const ordensCoreRouter = router({
       return { ok: true }
     }),
 
+  // Cadastrar/corrigir o código SAP direto no pedido — normalmente ele já
+  // chega herdado do lead/proposta (ver leads.transferirParaPropostas e
+  // propostas.converter), mas pedido criado direto (sem passar por lead) ou
+  // corrigido depois precisa de um jeito de editar aqui também (pedido do
+  // João, 2026-09-03: "código do SAP durante todo o processo").
+  atualizarCodSap: adminProcedure
+    .input(z.object({ id: z.number(), codSap: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaOrdens(ctx.empresaId)
+      await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
+      await db.update(ordens).set({ codSap: input.codSap || null, updatedAt: agoraSqlite() }).where(eq(ordens.id, input.id))
+      return { ok: true }
+    }),
+
   atualizarEndereco: adminOrFeatureProcedure('pedidos_odin')
     .input(
       z.object({

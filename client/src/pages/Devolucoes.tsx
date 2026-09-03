@@ -86,6 +86,12 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   const [materiais, setMateriais] = useState([
     { codigoItem: '', descricaoItem: '', quantidade: 1, codigoItemCorreto: '', descricaoItemCorreto: '' },
   ])
+  // Fotos/vídeos/documentos anexados já na abertura do chamado — antes só
+  // dava pra anexar depois, no chamado já criado (pedido do João,
+  // 2026-09-03). Sobem de verdade só depois que o chamado é criado (a
+  // rota de anexo exige chamadoId), ver `enviar` abaixo.
+  const [arquivosPendentes, setArquivosPendentes] = useState<File[]>([])
+  const [enviandoArquivos, setEnviandoArquivos] = useState(false)
 
   const { data: vendedoresDisponiveis } = trpc.users.vendors.useQuery(undefined, { enabled: souAdmin })
 
@@ -117,15 +123,11 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   }
 
   const criarMut = trpc.devolucoes.criar.useMutation({
-    onSuccess(data) {
-      toast.success(`Chamado ${data.protocolo} aberto`)
-      utils.devolucoes.listar.invalidate()
-      onClose()
-    },
     onError(err) {
       toast.error(err.message)
     },
   })
+  const anexarMut = trpc.devolucoes.anexarArquivo.useMutation()
 
   function toggleOcorrencia(tipo: string) {
     setOcorrencias((prev) => (prev.includes(tipo) ? prev.filter((t) => t !== tipo) : [...prev, tipo]))
@@ -135,27 +137,46 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
     setMateriais((prev) => prev.map((m, idx) => (idx === i ? { ...m, [campo]: valor } : m)))
   }
 
-  function enviar() {
+  async function enviar() {
     if (!clienteNome.trim()) return toast.error('Informe o nome do cliente')
     if (!descricao.trim()) return toast.error('Descreva o que aconteceu')
     if (!ocorrencias.length) return toast.error('Marque ao menos um tipo de ocorrência')
-    criarMut.mutate({
-      clienteNome,
-      clienteCnpj: clienteCnpj || undefined,
-      clienteWhatsapp: clienteWhatsapp || undefined,
-      clienteEmail: clienteEmail || undefined,
-      clienteCodigo: clienteCodigo || undefined,
-      clienteId: clienteId ?? undefined,
-      numeroNotaFiscal: numeroNotaFiscal || undefined,
-      numeroNotaFiscalVenda: numeroNotaFiscalVenda || undefined,
-      numeroPedidoVenda: numeroPedidoVenda || undefined,
-      descricao,
-      observacao: observacao || undefined,
-      dataInicioTratamento: dataInicioTratamento || undefined,
-      vendedorId: souAdmin && vendedorId ? Number(vendedorId) : undefined,
-      ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
-      materiais: materiais.filter((m) => m.descricaoItem.trim()),
-    })
+    try {
+      const data = await criarMut.mutateAsync({
+        clienteNome,
+        clienteCnpj: clienteCnpj || undefined,
+        clienteWhatsapp: clienteWhatsapp || undefined,
+        clienteEmail: clienteEmail || undefined,
+        clienteCodigo: clienteCodigo || undefined,
+        clienteId: clienteId ?? undefined,
+        numeroNotaFiscal: numeroNotaFiscal || undefined,
+        numeroNotaFiscalVenda: numeroNotaFiscalVenda || undefined,
+        numeroPedidoVenda: numeroPedidoVenda || undefined,
+        descricao,
+        observacao: observacao || undefined,
+        dataInicioTratamento: dataInicioTratamento || undefined,
+        vendedorId: souAdmin && vendedorId ? Number(vendedorId) : undefined,
+        ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
+        materiais: materiais.filter((m) => m.descricaoItem.trim()),
+      })
+      if (arquivosPendentes.length) {
+        setEnviandoArquivos(true)
+        for (const file of arquivosPendentes) {
+          try {
+            const up = await uploadAnexo(file)
+            await anexarMut.mutateAsync({ chamadoId: data.id, contexto: 'abertura', urlArquivo: up.path, nomeArquivo: up.nome, tipoArquivo: up.tipo })
+          } catch (err: any) {
+            toast.error(`Falha ao anexar "${file.name}": ${err.message}`)
+          }
+        }
+        setEnviandoArquivos(false)
+      }
+      toast.success(`Chamado ${data.protocolo} aberto`)
+      utils.devolucoes.listar.invalidate()
+      onClose()
+    } catch (err: any) {
+      toast.error(err.message)
+    }
   }
 
   return (
@@ -302,12 +323,43 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
           </button>
         </div>
 
+        <div className="rounded-lg border-2 border-dashed border-gold-700/40 bg-gold-900/5 p-3">
+          <p className="text-sm text-gold-300 font-semibold mb-1">📎 Anexar fotos, vídeos ou documentos</p>
+          <p className="text-xs text-dark-400 mb-2">Anexe já na abertura o que o vendedor tiver em mãos (foto do produto, nota fiscal, vídeo do defeito etc.)</p>
+          <label className="inline-block px-4 py-2 text-sm rounded-lg bg-dark-700 hover:bg-dark-600 text-dark-100 border border-dark-600 cursor-pointer">
+            + Escolher arquivos
+            <input
+              type="file"
+              multiple
+              accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+              className="hidden"
+              onChange={(e) => {
+                const novos = Array.from(e.target.files ?? [])
+                if (novos.length) setArquivosPendentes((prev) => [...prev, ...novos])
+                e.target.value = ''
+              }}
+            />
+          </label>
+          {arquivosPendentes.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {arquivosPendentes.map((f, i) => (
+                <li key={i} className="flex items-center justify-between text-xs text-dark-300 bg-dark-800 rounded px-2 py-1">
+                  <span className="truncate">{f.name}</span>
+                  <button type="button" className="text-red-400 hover:text-red-300 ml-2 shrink-0" onClick={() => setArquivosPendentes((prev) => prev.filter((_, idx) => idx !== i))}>
+                    remover
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button loading={criarMut.isPending} onClick={enviar}>
-            Abrir chamado
+          <Button loading={criarMut.isPending || enviandoArquivos} onClick={enviar}>
+            {enviandoArquivos ? 'Enviando anexos...' : 'Abrir chamado'}
           </Button>
         </div>
       </div>
@@ -748,6 +800,9 @@ function DetalheChamadoModal({
   const [mostrarEnviarMecanica, setMostrarEnviarMecanica] = useState(false)
   const [mostrarFinalizar, setMostrarFinalizar] = useState(false)
   const [editandoMaterialId, setEditandoMaterialId] = useState<number | null>(null)
+  const [editandoNotas, setEditandoNotas] = useState(false)
+  const [nfVendaEdit, setNfVendaEdit] = useState('')
+  const [nfDevolucaoEdit, setNfDevolucaoEdit] = useState('')
 
   function invalidar() {
     utils.devolucoes.detalhe.invalidate({ id })
@@ -777,6 +832,17 @@ function DetalheChamadoModal({
   const anexarMut = trpc.devolucoes.anexarArquivo.useMutation({
     onSuccess() {
       toast.success('Arquivo anexado')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const notasMut = trpc.devolucoes.atualizarNotasFiscais.useMutation({
+    onSuccess() {
+      toast.success('Notas fiscais salvas')
+      setEditandoNotas(false)
       invalidar()
     },
     onError(err) {
@@ -884,8 +950,44 @@ function DetalheChamadoModal({
             <p className="text-dark-500 text-xs uppercase tracking-wide">CNPJ</p>
             <p className="text-dark-100">{chamado.clienteCnpj ?? '—'}</p>
           </div>
+          <div className="col-span-2">
+            <div className="flex items-center justify-between">
+              <p className="text-dark-500 text-xs uppercase tracking-wide">Nota fiscal de compra do cliente</p>
+              {souAdmin && !editandoNotas && (
+                <button
+                  type="button"
+                  className="text-xs text-gold-400 underline"
+                  onClick={() => {
+                    setNfVendaEdit(chamado.numeroNotaFiscalVenda ?? '')
+                    setNfDevolucaoEdit(chamado.numeroNotaFiscal ?? '')
+                    setEditandoNotas(true)
+                  }}
+                >
+                  {chamado.numeroNotaFiscalVenda ? 'editar' : 'cadastrar'}
+                </button>
+              )}
+            </div>
+            {editandoNotas ? (
+              <div className="mt-1 space-y-2">
+                <Input label="Nota fiscal de compra" value={nfVendaEdit} onChange={(e) => setNfVendaEdit(e.target.value)} />
+                <Input label="Nota fiscal (devolução)" value={nfDevolucaoEdit} onChange={(e) => setNfDevolucaoEdit(e.target.value)} />
+                <div className="flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => setEditandoNotas(false)}>Cancelar</Button>
+                  <Button
+                    size="sm"
+                    loading={notasMut.isPending}
+                    onClick={() => notasMut.mutate({ id: chamado.id, numeroNotaFiscalVenda: nfVendaEdit || undefined, numeroNotaFiscal: nfDevolucaoEdit || undefined })}
+                  >
+                    Salvar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-dark-100">{chamado.numeroNotaFiscalVenda ?? '—'}</p>
+            )}
+          </div>
           <div>
-            <p className="text-dark-500 text-xs uppercase tracking-wide">Nota fiscal</p>
+            <p className="text-dark-500 text-xs uppercase tracking-wide">Nota fiscal (devolução)</p>
             <p className="text-dark-100">{chamado.numeroNotaFiscal ?? '—'}</p>
           </div>
           <div>

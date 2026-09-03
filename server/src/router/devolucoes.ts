@@ -418,6 +418,27 @@ export const devolucoesRouter = router({
       return { ok: true }
     }),
 
+  // Cadastrar/corrigir as notas fiscais do chamado depois de aberto — o
+  // card do cliente precisa sempre mostrar a nota fiscal de compra (a nota
+  // original da venda, não a de devolução) e nem sempre ela é conhecida na
+  // abertura do chamado (pedido do João, 2026-09-03).
+  atualizarNotasFiscais: adminProcedure
+    .input(z.object({ id: z.number(), numeroNotaFiscal: z.string().optional(), numeroNotaFiscalVenda: z.string().optional(), numeroPedidoVenda: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const alcancaveis = await empresasAlcancaveis(ctx.user.id, ctx.empresaId, ctx.user.superAdmin)
+      await assertChamadoAlcancavel(input.id, alcancaveis)
+      await db
+        .update(devolucaoChamados)
+        .set({
+          numeroNotaFiscal: input.numeroNotaFiscal,
+          numeroNotaFiscalVenda: input.numeroNotaFiscalVenda,
+          numeroPedidoVenda: input.numeroPedidoVenda,
+        })
+        .where(eq(devolucaoChamados.id, input.id))
+      await registrarAuditoria({ tabela: 'devolucao_chamados', registroId: input.id, acao: 'editar', campo: 'notas_fiscais', alteradoPor: ctx.user.id })
+      return { ok: true }
+    }),
+
   // Mudar de etapa pulando a ordem normal — só quem tem o poder especial
   // concedido (equivalente à exceção da Andreia no sistema original,
   // Odin Compressores). Continua exigindo ser admin por baixo.

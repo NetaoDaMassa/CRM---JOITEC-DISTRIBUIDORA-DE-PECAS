@@ -2054,6 +2054,13 @@ export const ordens = sqliteTable(
     clienteId: integer('cliente_id').references(() => clientes.id),
     vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
     criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    // Código SAP do cliente/negociação — herdado do lead (leads.codSap) na
+    // hora de virar Proposta, e da Proposta na hora de virar Pedido, pra não
+    // se perder no meio do funil (pedido do João, 2026-09-03: sumia ao
+    // avançar do lead pra frente, e o time precisa dele visível o processo
+    // inteiro). Também editável direto aqui pelo admin (pedidos criados sem
+    // passar por lead/proposta não têm de onde herdar).
+    codSap: text('cod_sap'),
     orderType: text('order_type', { enum: ['maquina', 'peca'] }).notNull(),
     stage: text('stage').notNull().default('cadastro'),
     status: text('status', { enum: ['ativo', 'cancelado', 'concluido'] }).notNull().default('ativo'),
@@ -2105,6 +2112,12 @@ export const ordemDetalhes = sqliteTable('ordem_detalhes', {
   observacoes: text('observacoes'),
   prioridadeDespacho: text('prioridade_despacho', { enum: ['normal', 'urgente', 'lead', 'direto'] }),
   comissaoRevenda: text('comissao_revenda'),
+  // Nome da revenda responsável pelo pedido — existia como texto livre em
+  // Propostas (propostas.revenda) mas se perdia na conversão pra Pedido
+  // (só sobrevivia dentro do texto travado de Observações). Campo próprio
+  // aqui pra ficar selecionável/editável durante todo o processo do pedido,
+  // não só no Pós-venda (que já tem o seu próprio, ordemPosVenda.nomeRevenda).
+  revenda: text('revenda'),
   valorPedido: real('valor_pedido'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
@@ -2405,6 +2418,10 @@ export const propostas = sqliteTable(
     semProposta: integer('sem_proposta', { mode: 'boolean' }).notNull().default(false), // fechamento direto, criado já em "fechado"
     comissao: text('comissao'),
     revenda: text('revenda'),
+    // Herdado do lead (leads.codSap) quando a proposta nasce de uma
+    // transferência de lead — ver leads.transferirParaPropostas. Propostas
+    // criadas direto (sem lead) ficam sem, editável manualmente se preciso.
+    codSap: text('cod_sap'),
     formaPagamento: text('forma_pagamento'),
     observacoes: text('observacoes'),
     prioridade: text('prioridade', { enum: ['normal', 'urgente'] }).notNull().default('normal'),

@@ -27,7 +27,7 @@ function EtapaPedidoForm({
   isAdmin: boolean
   readonly: boolean
   orderType: OrderType
-  data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; comissaoRevenda: string | null; observacoes: string | null } | null
+  data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; comissaoRevenda: string | null; revenda: string | null; observacoes: string | null } | null
   anexos: { id: number; nomeOriginal: string; nomeArmazenado: string }[]
 }) {
   const utils = trpc.useUtils()
@@ -35,6 +35,8 @@ function EtapaPedidoForm({
   const [prioridade, setPrioridade] = useState(data?.prioridadeDespacho ?? 'normal')
   const [valor, setValor] = useState(data?.valorPedido?.toString() ?? '')
   const [comissaoRevenda, setComissaoRevenda] = useState(data?.comissaoRevenda ?? '')
+  const [revenda, setRevenda] = useState(data?.revenda ?? '')
+  const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { retry: false })
   const [obs, setObs] = useState(data?.observacoes ?? '')
   const [enviando, setEnviando] = useState(false)
   const podeEditar = isAdmin && !readonly
@@ -73,9 +75,11 @@ function EtapaPedidoForm({
   return (
     <div className="space-y-4">
       {!isPeca && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Input label="Número do pedido" defaultValue={numeroPedido} onChange={(e) => setNumeroPedido(e.target.value)} disabled={!podeEditar} />
           <Input label="Valor do pedido" type="number" defaultValue={valor} onChange={(e) => setValor(e.target.value)} disabled={!podeEditar} />
+          <Input label="Revenda responsável" list="revendas-pedido" defaultValue={revenda} onChange={(e) => setRevenda(e.target.value)} disabled={!podeEditar} />
+          <datalist id="revendas-pedido">{(revendas ?? []).map((r) => <option key={r.id} value={r.nome} />)}</datalist>
           <Input label="Comissão de revenda" defaultValue={comissaoRevenda} onChange={(e) => setComissaoRevenda(e.target.value)} disabled={!podeEditar} />
         </div>
       )}
@@ -111,7 +115,7 @@ function EtapaPedidoForm({
         <Button
           size="sm"
           loading={salvarMut.isPending}
-          onClick={() => salvarMut.mutate({ ordemId, numeroPedido, prioridadeDespacho: prioridade as any, valorPedido: valor ? Number(valor) : undefined, comissaoRevenda, observacoes: obs })}
+          onClick={() => salvarMut.mutate({ ordemId, numeroPedido, prioridadeDespacho: prioridade as any, valorPedido: valor ? Number(valor) : undefined, comissaoRevenda, revenda, observacoes: obs })}
         >
           Salvar
         </Button>

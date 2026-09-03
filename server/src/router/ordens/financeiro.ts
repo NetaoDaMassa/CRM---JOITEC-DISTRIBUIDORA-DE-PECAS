@@ -93,6 +93,7 @@ export const ordensFinanceiroRouter = router({
         observacoes: z.string().optional(),
         prioridadeDespacho: z.enum(['normal', 'urgente', 'lead', 'direto']).optional(),
         comissaoRevenda: z.string().optional(),
+        revenda: z.string().optional(),
         valorPedido: z.number().optional(),
       })
     )

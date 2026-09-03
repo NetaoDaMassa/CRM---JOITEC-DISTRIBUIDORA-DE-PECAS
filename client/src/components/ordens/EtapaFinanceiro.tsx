@@ -135,7 +135,26 @@ function EtapaFinanceiroForm({
       </div>
       {podeEditar && (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" loading={salvarMut.isPending} onClick={() => salvarMut.mutate({ ordemId, formaPagamento: forma, condicaoPagamento: condicao, dataPagamentoPrevista: dataPrevista })}>
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={salvarMut.isPending}
+            onClick={() =>
+              salvarMut.mutate({
+                ordemId,
+                formaPagamento: forma,
+                condicaoPagamento: condicao,
+                dataPagamentoPrevista: dataPrevista,
+                // Manda a observação junto mesmo nesse botão — senão, quem
+                // editava as observações e clicava só em "Salvar dados"
+                // (o botão mais visível) via os dados de pagamento salvarem
+                // e o texto da observação sumir sem aviso (pedido do João,
+                // 2026-09-03). Não trava (sem `travar`): só quem clica
+                // "Salvar observação" trava de propósito.
+                ...(travada ? {} : { observacoes: obs }),
+              })
+            }
+          >
             Salvar dados
           </Button>
           {!data?.aprovado && (

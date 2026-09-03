@@ -1308,6 +1308,7 @@ export const leadsRouter = router({
         produtosItens: input.produtosItens || undefined,
         formaPagamento: input.formaPagamento || undefined,
         observacoes: input.observacoes || undefined,
+        codSap: lead.codSap || undefined,
         stage: 'proposta',
       })
       const propostaId = Number(result.lastInsertRowid)

@@ -68,6 +68,11 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
     onSuccess: () => { toast.success('Vendedor alterado'); invalidarTudo() },
     onError: (e) => toast.error(e.message),
   })
+  const atualizarCodSapMut = trpc.ordens.core.atualizarCodSap.useMutation({
+    onSuccess: () => { toast.success('Código SAP salvo'); invalidarTudo() },
+    onError: (e) => toast.error(e.message),
+  })
+  const [sapInput, setSapInput] = useState<string | null>(null)
   // Lista só carrega quando é admin (mesma régua de outros dropdowns
   // administrativos) — vendedor não pode reatribuir pedido pra si/outro.
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
@@ -107,6 +112,24 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
               <span>Nesta etapa desde: <span className="text-dark-200">{formatDateTime(ordem.updatedAt)}</span></span>
               {ordem.cliente?.codigo && <span>Código: <span className="text-dark-200">{ordem.cliente.codigo}</span></span>}
               {ordem.cliente?.cnpj && <span>CNPJ: <span className="text-dark-200">{ordem.cliente.cnpj}</span></span>}
+              {isAdmin ? (
+                <span className="flex items-center gap-1.5">
+                  SAP:
+                  <input
+                    className="w-24 bg-dark-900 border border-dark-600 rounded px-1.5 py-0.5 text-xs text-dark-200 focus:outline-none focus:border-gold-500"
+                    value={sapInput ?? ordem.codSap ?? ''}
+                    placeholder="—"
+                    onChange={(e) => setSapInput(e.target.value)}
+                    onBlur={(e) => {
+                      const valor = e.target.value.trim()
+                      if (valor !== (ordem.codSap ?? '')) atualizarCodSapMut.mutate({ id: ordemId, codSap: valor })
+                      setSapInput(null)
+                    }}
+                  />
+                </span>
+              ) : (
+                ordem.codSap && <span>SAP: <span className="text-dark-200">{ordem.codSap}</span></span>
+              )}
             </div>
             <div className="flex items-center gap-2 mt-2">
               <Badge className={STAGE_COLORS[stageAtual] ?? 'text-gold-400 bg-gold-900/20 border-gold-700/40'}>{STAGE_LABELS[stageAtual] ?? ordem.stage}</Badge>
