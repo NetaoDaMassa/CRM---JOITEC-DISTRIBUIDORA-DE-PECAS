@@ -75,7 +75,13 @@ function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; n
           <video src={blobUrl} controls controlsList="nodownload" className="max-h-[70vh] max-w-full rounded-lg" />
         )}
         {blobUrl && arquivo?.tipoArquivo === 'application/pdf' && (
-          <iframe src={blobUrl} title={arquivo.nomeOriginal} className="w-full h-[70vh] rounded-lg border border-dark-700" />
+          // `#toolbar=0&navpanes=0` some com a barra do visualizador nativo
+          // de PDF do navegador — sem isso, o Chrome/Edge/Firefox desenham
+          // o próprio ícone de "baixar" em cima do PDF, furando a trava de
+          // visualização mesmo com o blob vindo da rota autenticada (achado
+          // do João, 2026-09-04: PDF continuava baixável mesmo marcado
+          // como "somente visualização").
+          <iframe src={`${blobUrl}#toolbar=0&navpanes=0`} title={arquivo.nomeOriginal} className="w-full h-[70vh] rounded-lg border border-dark-700" />
         )}
         {blobUrl && arquivo?.tipoArquivo && !arquivo.tipoArquivo.startsWith('image/') && !arquivo.tipoArquivo.startsWith('video/') && arquivo.tipoArquivo !== 'application/pdf' && (
           <p className="text-dark-400 text-sm">Esse tipo de arquivo não tem prévia — peça pro admin liberar o download.</p>
