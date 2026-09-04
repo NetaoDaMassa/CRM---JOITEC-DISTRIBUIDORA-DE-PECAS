@@ -1326,4 +1326,51 @@ export const leadsRouter = router({
 
       return { propostaId }
     }),
+
+  // Pedido do João, 2026-09-04: depois que o lead da Odin Compressores é
+  // transferido pra Propostas, `changeStatus` trava a etapa dele por
+  // completo (ver o bloqueio de `convertidoParaPropostaId` lá) — não dava
+  // pra marcar esse lead como "Ganho", mesmo a negociação tendo ido pra
+  // frente de verdade. Esse endpoint é a única exceção àquele bloqueio:
+  // só muda a etapa pra "Ganho", sem pedir valor final/forma de pagamento
+  // (REQUIRED_FIELDS_BY_STATUS de 'ganho' não se aplica aqui — esses
+  // números vivem na Proposta/Pedido, não no lead, pra essa empresa).
+  marcarGanhoPosProposta: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if (!lead.convertidoParaPropostaId) throw new Error('Só dá pra marcar como Ganho depois de transferir o lead pra Propostas')
+    if (lead.status === 'ganho') throw new Error('Este lead já está marcado como Ganho')
+
+    await db
+      .update(leads)
+      .set({
+        status: 'ganho',
+        statusChangedAt: sql`(datetime('now'))`,
+        updatedAt: sql`(datetime('now'))`,
+        nextContactAt: null,
+        idleAlertSentAt: null,
+        autoReassignedAt: null,
+        followUpCount: 0,
+        requiresAttachment: false,
+        attemptCount: 0,
+        slaStatus: null,
+        abordagem4hAlertSentAt: null,
+        lastContactStaleAlertSentAt: null,
+      })
+      .where(eq(leads.id, input.id))
+
+    await db.insert(leadHistory).values({
+      empresaId: ctx.empresaId,
+      leadId: input.id,
+      userId: ctx.user.id,
+      action: 'status_alterado',
+      fromStatus: lead.status,
+      toStatus: 'ganho',
+      details: `Marcado como Ganho por ${ctx.user.name} (já transferido pra Proposta #${lead.convertidoParaPropostaId})`,
+    })
+
+    return { success: true }
+  }),
 })

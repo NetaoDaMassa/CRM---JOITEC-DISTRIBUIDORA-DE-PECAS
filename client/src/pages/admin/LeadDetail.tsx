@@ -220,6 +220,17 @@ export default function LeadDetail() {
     },
   })
 
+  const marcarGanhoMut = trpc.leads.marcarGanhoPosProposta.useMutation({
+    onSuccess() {
+      toast.success('Lead marcado como Ganho')
+      utils.leads.get.invalidate({ id: leadId })
+      utils.leads.list.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -316,6 +327,11 @@ export default function LeadDetail() {
           {lead.convertidoParaProposta && (
             <Button size="sm" variant="secondary" onClick={() => navigate(`${isAdmin ? '/admin' : '/vendedor'}/propostas/${lead.convertidoParaProposta!.id}`)}>
               Ver Proposta
+            </Button>
+          )}
+          {(isAdmin || isOwner) && lead.convertidoParaProposta && lead.status !== 'ganho' && (
+            <Button size="sm" onClick={() => marcarGanhoMut.mutate({ id: lead.id })} disabled={marcarGanhoMut.isPending}>
+              Marcar como Ganho
             </Button>
           )}
           {isAdmin && lead.status === 'desqualificado' && (
