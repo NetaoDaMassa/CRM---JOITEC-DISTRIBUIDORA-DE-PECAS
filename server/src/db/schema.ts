@@ -2776,10 +2776,12 @@ export const modelosEmailOdin = sqliteTable('modelos_email_odin', {
 // ── Marketing: Arquivos/Mídia ───────────────────────────────────────────────
 // Biblioteca de arquivos (fotos/vídeos/PDFs) por empresa — pasta em árvore
 // (parentId nullable = raiz), só admin cria pasta/sobe arquivo (checado no
-// router), qualquer um com a feature 'arquivos' vê e baixa. Pedido do João,
-// 2026-09-04, pra centralizar material de marketing/mídia que hoje circula
-// solto por WhatsApp/e-mail. Nome do item na sidebar entra dentro do grupo
-// "Marketing" (grupo já existe, configurado em Grupos da Sidebar).
+// router); ver/listar/baixar é liberado pra QUALQUER usuário autenticado da
+// mesma empresa, sem passar por Permissões (ver FEATURES_SEMPRE_LIBERADAS
+// em client/src/components/Sidebar.tsx). Pedido do João, 2026-09-04, pra
+// centralizar material de marketing/mídia que hoje circula solto por
+// WhatsApp/e-mail. Nome do item na sidebar entra dentro do grupo "Marketing"
+// (grupo já existe, configurado em Grupos da Sidebar).
 export const marketingPastas = sqliteTable(
   'marketing_pastas',
   {

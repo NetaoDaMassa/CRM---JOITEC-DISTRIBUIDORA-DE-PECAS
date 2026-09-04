@@ -39,6 +39,16 @@ const SO_COMPRETEC_LOJA_FISICA = 'compretec-loja-fisica'
 // — só essas 3 empresas têm o tracker do CRM de marketing instalado no site.
 const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores']
 
+// Itens que aparecem pra QUALQUER admin/vendedor, sem precisar de permissão
+// concedida em Permissões — diferente do resto do menu, que é opt-in por
+// usuário. "Arquivos/Mídia" é assim de propósito (pedido do João,
+// 2026-09-05: liberado pra todo mundo, só respeitando a empresa de cada
+// um — que já é automático, cada usuário só enxerga o que é da própria
+// empresa). Usado tanto aqui (pula a checagem de `minhasFeatures`) quanto
+// em Permissoes.tsx (tira da lista de caixinhas — marcar/desmarcar não
+// faria diferença nenhuma pra esses itens).
+export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos'])
+
 // `feature` é a chave usada em permissoesAdmin/FEATURES_ADMIN (server) —
 // controla quem vê cada item pra admins não-superAdmin.
 export const ADMIN_LINKS = [
@@ -222,7 +232,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
       (!somenteEmpresas || somenteEmpresas.includes(empresaAtiva?.slug ?? '')) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
-      (user?.superAdmin || !!minhasFeatures?.includes(l.feature))
+      (user?.superAdmin || FEATURES_SEMPRE_LIBERADAS.has(l.feature) || !!minhasFeatures?.includes(l.feature))
     )
   })
 

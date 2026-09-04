@@ -11,7 +11,7 @@ import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
-import { adminEmpresasExtras, marketingArquivos, permissoesAdmin } from './db/schema.js'
+import { adminEmpresasExtras, marketingArquivos } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
@@ -312,15 +312,10 @@ app.get('/marketing-arquivo/:id/conteudo', async (req, res) => {
   const arquivo = await db.query.marketingArquivos.findFirst({ where: eq(marketingArquivos.id, Number(req.params.id)) })
   if (!arquivo) return res.status(404).json({ error: 'Arquivo não encontrado' })
 
+  // Qualquer usuário autenticado da mesma empresa pode ver — Arquivos/Mídia
+  // é liberado pra todo mundo, sem feature própria (ver marketing.ts).
   const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
   if (arquivo.empresaId !== empresaId) return res.status(403).json({ error: 'Sem permissão' })
-
-  if (user.role !== 'admin' && !user.superAdmin) {
-    const liberado = await db.query.permissoesAdmin.findFirst({
-      where: and(eq(permissoesAdmin.userId, user.id), eq(permissoesAdmin.feature, 'arquivos')),
-    })
-    if (!liberado) return res.status(403).json({ error: 'Sem permissão' })
-  }
 
   res.setHeader('Content-Disposition', 'inline')
   if (arquivo.tipoArquivo) res.setHeader('Content-Type', arquivo.tipoArquivo)

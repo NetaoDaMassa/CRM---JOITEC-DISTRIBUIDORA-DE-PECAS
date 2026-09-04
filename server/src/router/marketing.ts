@@ -1,18 +1,20 @@
 // Marketing: Arquivos/Mídia — biblioteca de pastas/arquivos por empresa.
-// Ver quem baixa (marketingArquivoDownloads) e listar é liberado pra
-// qualquer um com a feature 'arquivos' (admin sempre passa, vendedor
-// precisa da feature concedida em Permissões — mesmo padrão de
-// adminOrFeatureProcedure usado no resto do CRM). Criar pasta/subir
-// arquivo/excluir é admin-only de verdade (pedido do João, 2026-09-04).
+// Ver/listar/baixar é liberado pra QUALQUER usuário autenticado (admin ou
+// vendedor), sem precisar de permissão concedida em Permissões — pedido do
+// João, 2026-09-05: "disponibilizar pra todos os usuários, de acordo com a
+// empresa". O "de acordo com a empresa" já é automático: todo endpoint aqui
+// filtra por ctx.empresaId, então cada usuário só vê o que é da própria
+// empresa, nunca de outra. Criar pasta/subir arquivo/excluir continua
+// admin-only de verdade (pedido do João, 2026-09-04) — isso não mudou.
 import { z } from 'zod'
 import { and, eq, isNull, inArray } from 'drizzle-orm'
-import { router, adminProcedure, adminOrFeatureProcedure } from './_base.js'
+import { router, adminProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { marketingPastas, marketingArquivos, marketingArquivoDownloads } from '../db/schema.js'
 
 export const marketingRouter = router({
   // pastaId ausente = raiz da empresa.
-  listarPastas: adminOrFeatureProcedure('arquivos')
+  listarPastas: protectedProcedure
     .input(z.object({ pastaId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       return db.query.marketingPastas.findMany({
@@ -24,7 +26,7 @@ export const marketingRouter = router({
     }),
 
   // Trilha (breadcrumb) até a raiz — pra mostrar "Marketing > Campanha 2026 > Fotos".
-  caminhoPasta: adminOrFeatureProcedure('arquivos').input(z.object({ pastaId: z.number() })).query(async ({ ctx, input }) => {
+  caminhoPasta: protectedProcedure.input(z.object({ pastaId: z.number() })).query(async ({ ctx, input }) => {
     const trilha: { id: number; nome: string }[] = []
     let atualId: number | null = input.pastaId
     while (atualId) {
@@ -92,7 +94,7 @@ export const marketingRouter = router({
   }),
 
   // pastaId ausente = arquivos soltos na raiz da empresa.
-  listarArquivos: adminOrFeatureProcedure('arquivos')
+  listarArquivos: protectedProcedure
     .input(z.object({ pastaId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
       const arquivos = await db.query.marketingArquivos.findMany({
@@ -170,7 +172,7 @@ export const marketingRouter = router({
   // servido por /uploads). Recusa se o arquivo é "somente visualização" e
   // quem chamou não é admin — defesa a mais, o front nem deveria oferecer
   // o botão de baixar nesse caso.
-  registrarDownload: adminOrFeatureProcedure('arquivos').input(z.object({ arquivoId: z.number() })).mutation(async ({ ctx, input }) => {
+  registrarDownload: protectedProcedure.input(z.object({ arquivoId: z.number() })).mutation(async ({ ctx, input }) => {
     const arquivo = await db.query.marketingArquivos.findFirst({ where: and(eq(marketingArquivos.id, input.arquivoId), eq(marketingArquivos.empresaId, ctx.empresaId)) })
     if (!arquivo) return { ok: false }
     const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin

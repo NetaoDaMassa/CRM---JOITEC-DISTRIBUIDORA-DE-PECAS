@@ -5,16 +5,17 @@ import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
-import { ADMIN_LINKS, VENDOR_LINKS } from '../../components/Sidebar'
+import { ADMIN_LINKS, VENDOR_LINKS, FEATURES_SEMPRE_LIBERADAS } from '../../components/Sidebar'
 
 // Painel Financeiro e Painel de TV não são itens do menu comum (ADMIN_LINKS)
-// — mesma ressalva de Permissoes.tsx.
+// — mesma ressalva de Permissoes.tsx. Itens em FEATURES_SEMPRE_LIBERADAS
+// (ex: Arquivos/Mídia) ficam de fora — já são visíveis pra todo mundo.
 const FEATURES_ADMIN_UI = [
-  ...ADMIN_LINKS.map((l) => ({ feature: l.feature, label: l.label })),
+  ...ADMIN_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
 ]
-const FEATURES_VENDEDOR_UI = VENDOR_LINKS.map((l) => ({ feature: l.feature, label: l.label }))
+const FEATURES_VENDEDOR_UI = VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label }))
 const FEATURES_RELATORIOS_UI = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
   { feature: 'relatorio_contatos', label: 'Contatos & Ligações' },

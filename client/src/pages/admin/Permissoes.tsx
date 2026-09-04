@@ -2,19 +2,21 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
-import { ADMIN_LINKS, VENDOR_LINKS } from '../../components/Sidebar'
+import { ADMIN_LINKS, VENDOR_LINKS, FEATURES_SEMPRE_LIBERADAS } from '../../components/Sidebar'
 
 // Painel Financeiro e Painel de TV não são itens do menu comum (ADMIN_LINKS)
 // — são links à parte no Sidebar, renderizados fora do links.map(). Somados
-// aqui na mão pra aparecerem junto no checklist de permissões.
+// aqui na mão pra aparecerem junto no checklist de permissões. Itens em
+// FEATURES_SEMPRE_LIBERADAS (ex: Arquivos/Mídia) ficam de fora da lista —
+// já são visíveis pra todo mundo, marcar/desmarcar não faria diferença.
 const FEATURES = [
-  ...ADMIN_LINKS.map((l) => ({ feature: l.feature, label: l.label })),
+  ...ADMIN_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
 ]
 
-const FEATURES_VENDEDOR = VENDOR_LINKS.map((l) => ({ feature: l.feature, label: l.label }))
+const FEATURES_VENDEDOR = VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label }))
 
 const FEATURES_RELATORIOS = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
