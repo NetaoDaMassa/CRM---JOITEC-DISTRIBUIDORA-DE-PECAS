@@ -52,8 +52,9 @@ function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; n
     const token = localStorage.getItem('odin_token')
     fetch(`/marketing-arquivo/${arquivo.id}/conteudo`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
-        if (!res.ok) throw new Error('Não foi possível carregar o arquivo')
+        if (!res.ok) throw new Error(`Não foi possível carregar o arquivo (erro ${res.status})`)
         const blob = await res.blob()
+        if (blob.size === 0) throw new Error('O arquivo veio vazio do servidor')
         urlCriada = URL.createObjectURL(blob)
         setBlobUrl(urlCriada)
       })
@@ -68,23 +69,28 @@ function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; n
       <div className="flex items-center justify-center min-h-[300px]" onContextMenu={(e) => e.preventDefault()}>
         {erro && <p className="text-red-400 text-sm">{erro}</p>}
         {!erro && !blobUrl && <p className="text-dark-400 text-sm">Carregando...</p>}
-        {blobUrl && arquivo?.tipoArquivo?.startsWith('image/') && (
-          <img src={blobUrl} alt={arquivo.nomeOriginal} className="max-h-[70vh] max-w-full rounded-lg select-none" draggable={false} />
-        )}
-        {blobUrl && arquivo?.tipoArquivo?.startsWith('video/') && (
-          <video src={blobUrl} controls controlsList="nodownload" className="max-h-[70vh] max-w-full rounded-lg" />
-        )}
-        {blobUrl && arquivo?.tipoArquivo === 'application/pdf' && (
-          // `#toolbar=0&navpanes=0` some com a barra do visualizador nativo
-          // de PDF do navegador — sem isso, o Chrome/Edge/Firefox desenham
-          // o próprio ícone de "baixar" em cima do PDF, furando a trava de
-          // visualização mesmo com o blob vindo da rota autenticada (achado
-          // do João, 2026-09-04: PDF continuava baixável mesmo marcado
-          // como "somente visualização").
-          <iframe src={`${blobUrl}#toolbar=0&navpanes=0`} title={arquivo.nomeOriginal} className="w-full h-[70vh] rounded-lg border border-dark-700" />
-        )}
-        {blobUrl && arquivo?.tipoArquivo && !arquivo.tipoArquivo.startsWith('image/') && !arquivo.tipoArquivo.startsWith('video/') && arquivo.tipoArquivo !== 'application/pdf' && (
-          <p className="text-dark-400 text-sm">Esse tipo de arquivo não tem prévia — peça pro admin liberar o download.</p>
+        {/* Cadeia de ternários (em vez de blocos && separados) de propósito
+            — com && separados, um `tipoArquivo` vazio/nulo/inesperado não
+            batia em NENHUM bloco (nem no de "sem prévia", que também exigia
+            `tipoArquivo` truthy) e a prévia ficava simplesmente em branco,
+            sem nenhuma mensagem — achado do João, 2026-09-05. Assim sempre
+            cai em algum ramo quando `blobUrl` existe. */}
+        {blobUrl && (
+          arquivo?.tipoArquivo?.startsWith('image/') ? (
+            <img src={blobUrl} alt={arquivo.nomeOriginal} className="max-h-[70vh] max-w-full rounded-lg select-none" draggable={false} />
+          ) : arquivo?.tipoArquivo?.startsWith('video/') ? (
+            <video src={blobUrl} controls controlsList="nodownload" className="max-h-[70vh] max-w-full rounded-lg" />
+          ) : arquivo?.tipoArquivo === 'application/pdf' ? (
+            // `#toolbar=0&navpanes=0` some com a barra do visualizador nativo
+            // de PDF do navegador — sem isso, o Chrome/Edge/Firefox desenham
+            // o próprio ícone de "baixar" em cima do PDF, furando a trava de
+            // visualização mesmo com o blob vindo da rota autenticada (achado
+            // do João, 2026-09-04: PDF continuava baixável mesmo marcado
+            // como "somente visualização").
+            <iframe src={`${blobUrl}#toolbar=0&navpanes=0`} title={arquivo?.nomeOriginal} className="w-full h-[70vh] rounded-lg border border-dark-700" />
+          ) : (
+            <p className="text-dark-400 text-sm">Esse tipo de arquivo não tem prévia — peça pro admin liberar o download.</p>
+          )
         )}
       </div>
     </Modal>
