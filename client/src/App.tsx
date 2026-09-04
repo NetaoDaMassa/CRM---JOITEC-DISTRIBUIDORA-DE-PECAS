@@ -211,6 +211,7 @@ export default function App() {
           <Route path="admin/leads-relatorios" element={<AdminGuard><FeatureGuard feature="leads"><LeadsRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/campanhas" element={<AdminGuard><FeatureGuard feature="leads"><Campanhas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/arquivos" element={<AdminGuard><FeatureGuard feature="arquivos"><MarketingArquivos /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />

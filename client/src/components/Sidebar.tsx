@@ -102,6 +102,10 @@ export const ADMIN_LINKS = [
   { to: '/admin/campanhas', label: 'Campanhas', icon: Megaphone, feature: 'leads' },
   // Arquivos/Mídia (Marketing) — pastas/fotos/vídeos/PDFs, todas as empresas.
   { to: '/admin/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },
+  // "Solicitar Arte" pro admin — mesma tela de VENDOR_LINKS (trpc.design.*
+  // já é protectedProcedure, sem distinção de role), só precisava do link +
+  // rota. Concedido manualmente (não é livre igual 'arquivos').
+  { to: '/admin/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,

@@ -43,6 +43,11 @@ export const FEATURES_ADMIN = [
   'boletos',
   'negociacoes',
   'marketing_analytics',
+  // "Solicitar Arte" — mesma chave/tela de FEATURES_VENDEDOR. Por padrão só
+  // vendedor via essa tela (pedido pra marketing), mas admin sem carteira
+  // própria (ex: função Financeiro/Compras) às vezes também precisa pedir
+  // arte — concedido manualmente aqui, igual 'boletos'/'negociacoes'.
+  'solicitar_design',
   // Devolução (Grupo Odin) — 'devolucoes' já libera o Kanban de chamados
   // pra admin (que sempre passa por ser admin); as demais são poderes extra
   // que um admin normal não tem por padrão, precisam ser concedidos:
