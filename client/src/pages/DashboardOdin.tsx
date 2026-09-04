@@ -6,7 +6,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Package, Clock, CheckCircle2, XCircle, AlertTriangle, FileText, MapPin,
-  TrendingUp, RefreshCw, DollarSign, Wrench, Timer, Download, LayoutDashboard, CalendarRange,
+  TrendingUp, RefreshCw, DollarSign, Wrench, Timer, Download, LayoutDashboard, CalendarRange, Receipt,
 } from 'lucide-react'
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts'
 import { useAuth } from '../contexts/AuthContext'
@@ -36,6 +36,14 @@ function monthToRange(mes: string): { from: string; to: string } {
   return { from: `${mes}-01`, to: `${mes}-${String(ultimoDia).padStart(2, '0')}` }
 }
 
+// Mês corrente (AAAA-MM) — dashboard abre sempre nesse recorte por padrão
+// (pedido do João: ver sempre o mês atual primeiro, sem precisar filtrar
+// toda vez), com botão "Limpar" pra quem quiser olhar tudo.
+function mesAtualStr(): string {
+  const hoje = new Date()
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`
+}
+
 const STATUS_COLORS_HEX = ['#f59e0b', '#22c55e', '#ef4444']
 
 function StatCard({ label, value, sub, icon, colorClass }: { label: string; value: string | number; sub?: string; icon: React.ReactNode; colorClass: string }) {
@@ -60,6 +68,8 @@ function baixarCsv(resumo: NonNullable<ReturnType<typeof useResumo>['data']>) {
   linhas.push(`Concluídos,${resumo.pedidos.completed}`)
   linhas.push(`Cancelados,${resumo.pedidos.cancelled}`)
   linhas.push(`Pedidos Criados nos Últimos 30 Dias,${resumo.pedidos.recentes30d}`)
+  linhas.push(`Pedidos Faturados,${resumo.faturamento.qtd}`)
+  linhas.push(`Valor Faturado,${resumo.faturamento.valor}`)
   linhas.push(`Total de Propostas,${resumo.propostas.total}`)
   linhas.push(`Propostas Convertidas,${resumo.propostas.convertidas}`)
   linhas.push(`Total de Visitas,${resumo.visitas.total}`)
@@ -91,9 +101,9 @@ function useResumo(input: { dataDe?: string; dataAte?: string; vendedorId?: numb
 export default function DashboardOdin() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [mes, setMes] = useState('')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
+  const [mes, setMes] = useState(mesAtualStr)
+  const [dataDe, setDataDe] = useState(() => monthToRange(mesAtualStr()).from)
+  const [dataAte, setDataAte] = useState(() => monthToRange(mesAtualStr()).to)
   const [vendedorId, setVendedorId] = useState('')
 
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
@@ -202,9 +212,10 @@ export default function DashboardOdin() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard label="Total de Pedidos" value={data.pedidos.total} sub={`${data.pedidos.recentes30d} nos últimos 30 dias`} icon={<Package size={20} className="text-white" />} colorClass="bg-blue-600" />
         <StatCard label="Em Andamento" value={data.pedidos.active} icon={<Clock size={20} className="text-white" />} colorClass="bg-amber-500" />
+        <StatCard label="Faturado" value={money(data.faturamento.valor)} sub={`${data.faturamento.qtd} pedido(s)`} icon={<Receipt size={20} className="text-white" />} colorClass="bg-fuchsia-600" />
         <StatCard label="Concluídos" value={data.pedidos.completed} icon={<CheckCircle2 size={20} className="text-white" />} colorClass="bg-green-500" />
         <StatCard label="Cancelados" value={data.pedidos.cancelled} icon={<XCircle size={20} className="text-white" />} colorClass="bg-red-500" />
       </div>

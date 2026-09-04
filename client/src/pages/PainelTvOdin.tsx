@@ -17,11 +17,14 @@ type Equipe = PainelData['equipeCampo']
 // superfície escura dos cards em PainelTV.tsx; roxo (Pedidos) fecha o
 // degradê entre âmbar e verde sem colidir com nenhum dos dois. Verde
 // continua reservado pra etapa final (mesmo sentido de "sucesso" que o
-// resto do sistema usa).
+// resto do sistema usa). Pedido do João 2026-09-04: "Pedido" já É a venda
+// fechada do vendedor (proposta convertida em pedido = negócio ganho); a
+// 4ª etapa de verdade agora é "Faturado" (operacional/financeiro, não mede
+// o vendedor).
 const COR_TOPO = '#3987e5'
 const COR_PROPOSTAS = '#c2691a'
 const COR_PEDIDOS = '#8b6fd1'
-const COR_VENDAS = '#0ca30c'
+const COR_FATURADO = '#0ca30c'
 
 const SEGUNDOS_PADRAO = 25
 
@@ -61,7 +64,7 @@ function Funil({
   etapas: { nome: string; valor: number }[]
   conversoes: { de: string; para: string; percentual: number | null }[]
 }) {
-  const cores = [COR_TOPO, COR_PROPOSTAS, COR_PEDIDOS, COR_VENDAS]
+  const cores = [COR_TOPO, COR_PROPOSTAS, COR_PEDIDOS, COR_FATURADO]
   return (
     <div className="bg-dark-900 border border-dark-700 rounded-2xl p-6">
       <div className="flex items-center gap-2 mb-3">
@@ -111,36 +114,36 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
       <div className="grid grid-cols-4 gap-4">
         <TileGeral titulo="Leads no mês" valor={data.geral.leads} cor={COR_TOPO} />
         <TileGeral titulo="Propostas geradas" valor={data.geral.propostas} cor={COR_PROPOSTAS} />
-        <TileGeral titulo="Pedidos" valor={data.geral.pedidos} cor={COR_PEDIDOS} />
-        <TileGeral titulo="Vendas fechadas" valor={data.geral.vendas} cor={COR_VENDAS} />
+        <TileGeral titulo="Pedidos (vendas fechadas)" valor={data.geral.pedidos} cor={COR_PEDIDOS} />
+        <TileGeral titulo="Faturados" valor={data.geral.faturados} cor={COR_FATURADO} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <Funil
           icone={<MapPin size={20} className="text-dark-400" />}
           titulo="Equipe de Campo"
-          subtitulo="Visita → Proposta → Pedido → Venda"
+          subtitulo="Visita → Proposta → Pedido (venda) → Faturado"
           etapas={[
             { nome: 'Visitas', valor: data.equipeCampo.totais.visitas },
             { nome: 'Propostas', valor: data.equipeCampo.totais.propostas },
             { nome: 'Pedidos', valor: data.equipeCampo.totais.pedidos },
-            { nome: 'Vendas', valor: data.equipeCampo.totais.vendas },
+            { nome: 'Faturados', valor: data.equipeCampo.totais.faturados },
           ]}
           conversoes={[
             { de: 'Visita', para: 'Proposta', percentual: data.equipeCampo.totais.conversaoVisitaProposta },
             { de: 'Proposta', para: 'Pedido', percentual: data.equipeCampo.totais.conversaoPropostaPedido },
-            { de: 'Pedido', para: 'Venda', percentual: data.equipeCampo.totais.conversaoPedidoVenda },
+            { de: 'Pedido', para: 'Faturado', percentual: data.equipeCampo.totais.conversaoPedidoFaturado },
           ]}
         />
         <Funil
           icone={<UserPlus size={20} className="text-dark-400" />}
           titulo="Equipe de Leads"
-          subtitulo="Lead do site → Proposta → Pedido → Venda"
+          subtitulo="Lead do site → Proposta → Pedido (venda) → Faturado"
           etapas={[
             { nome: 'Leads', valor: data.equipeLeads.totais.leads },
             { nome: 'Propostas', valor: data.equipeLeads.totais.propostas },
             { nome: 'Pedidos', valor: data.equipeLeads.totais.pedidos },
-            { nome: 'Vendas', valor: data.equipeLeads.totais.vendas },
+            { nome: 'Faturados', valor: data.equipeLeads.totais.faturados },
           ]}
           conversoes={[
             {
@@ -149,7 +152,7 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
               percentual: data.equipeLeads.totais.leads ? Math.round((data.equipeLeads.totais.propostas / data.equipeLeads.totais.leads) * 1000) / 10 : null,
             },
             { de: 'Proposta', para: 'Pedido', percentual: data.equipeLeads.totais.conversaoPropostaPedido },
-            { de: 'Pedido', para: 'Venda', percentual: data.equipeLeads.totais.conversaoPedidoVenda },
+            { de: 'Pedido', para: 'Faturado', percentual: data.equipeLeads.totais.conversaoPedidoFaturado },
           ]}
         />
       </div>
@@ -178,7 +181,7 @@ function SlideEquipe({ equipe, tituloTopo, campoTopo }: { equipe: Equipe; titulo
       {!porVendedor.length && <p className="text-sm text-dark-500">Ninguém registrou nada esse mês ainda.</p>}
       {!!porVendedor.length && (
         <ResponsiveContainer width="100%" height={porVendedor.length * 34 + 10}>
-          <BarChart data={porVendedor.map((v) => ({ nome: v.nome, valor: v.vendas }))} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 0 }} barCategoryGap={8}>
+          <BarChart data={porVendedor.map((v) => ({ nome: v.nome, valor: v.pedidos }))} layout="vertical" margin={{ top: 0, right: 44, bottom: 0, left: 0 }} barCategoryGap={8}>
             <XAxis type="number" hide />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
             <Bar
@@ -187,12 +190,12 @@ function SlideEquipe({ equipe, tituloTopo, campoTopo }: { equipe: Equipe; titulo
               maxBarSize={20}
               isAnimationActive={false}
               label={(props: any) => <LabelFimDaBarra {...props} />}
-              fill={COR_VENDAS}
+              fill={COR_PEDIDOS}
             />
           </BarChart>
         </ResponsiveContainer>
       )}
-      <p className="text-[10px] text-dark-500 uppercase tracking-wide mt-1 mb-4">vendas fechadas no mês (barra) — funil completo de cada um abaixo</p>
+      <p className="text-[10px] text-dark-500 uppercase tracking-wide mt-1 mb-4">pedidos (vendas fechadas) no mês (barra) — funil completo de cada um abaixo</p>
 
       <div className="space-y-3">
         {porVendedor.map((v) => (
@@ -204,9 +207,9 @@ function SlideEquipe({ equipe, tituloTopo, campoTopo }: { equipe: Equipe; titulo
             </span>
             <span className="text-xs text-dark-500 font-mono w-20 text-right">Propostas {v.propostas}</span>
             <span className="text-xs text-dark-500 font-mono w-18 text-right">Pedidos {v.pedidos}</span>
-            <span className="text-xs text-dark-500 font-mono w-16 text-right">Vendas {v.vendas}</span>
+            <span className="text-xs text-dark-500 font-mono w-16 text-right">Faturados {v.faturados}</span>
             <span className="text-sm font-mono tabular-nums text-gold-400 w-14 text-right">
-              {v.conversaoPedidoVenda != null ? `${formatarPercentual(v.conversaoPedidoVenda)}%` : '—'}
+              {v.conversaoPedidoFaturado != null ? `${formatarPercentual(v.conversaoPedidoFaturado)}%` : '—'}
             </span>
           </div>
         ))}

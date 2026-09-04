@@ -12,6 +12,7 @@ import { TRPCError } from '@trpc/server'
 import { router, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas, users, leads } from '../db/schema.js'
+import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
 
 const SLUG_DASHBOARD = 'odin-compressores'
 
@@ -90,6 +91,21 @@ export const dashboardOdinRouter = router({
       return true
     }).length
 
+    // Faturamento — pedidos que já entraram na etapa Faturamento ou além,
+    // dentro do período filtrado (mesma regra do Painel Financeiro, ver
+    // lib/faturamentoOdin.ts). Fica separado de "Concluídos" acima (que só
+    // conta pos_venda, o fim de todo o funil): entrar em Faturamento já
+    // significa que a venda foi faturada, mesmo com entrega/pós-venda ainda
+    // em aberto.
+    const todasFaturadas = await buscarOrdensFaturadas(ctx.empresaId)
+    const faturadasFiltradas = todasFaturadas.filter((o) => {
+      if (vendedorId && o.vendedorId !== vendedorId) return false
+      if (input?.dataDe && o.dataRef.slice(0, 10) < input.dataDe) return false
+      if (input?.dataAte && o.dataRef.slice(0, 10) > input.dataAte) return false
+      return true
+    })
+    const faturamento = { qtd: faturadasFiltradas.length, valor: faturadasFiltradas.reduce((s, o) => s + o.valor, 0) }
+
     // Propostas
     const condProp = [eq(propostas.empresaId, ctx.empresaId)]
     if (vendedorId) condProp.push(eq(propostas.vendedorId, vendedorId))
@@ -151,6 +167,7 @@ export const dashboardOdinRouter = router({
 
     return {
       pedidos: { total: todasOrdens.length, active, completed, cancelled, byStage, recentes30d, ticketMedio, cicloMedioHoras, maquinasVendidas },
+      faturamento,
       propostas: { total: totalPropostas, convertidas: propostasConvertidas, taxaConversao: totalPropostas ? Math.round((propostasConvertidas / totalPropostas) * 1000) / 10 : 0 },
       visitas: { total: totalVisitas, mesAtual: visitasMes },
       alertas,
@@ -162,16 +179,20 @@ export const dashboardOdinRouter = router({
   // Painel de TV específico da Odin Compressores (pedido do João: repensar
   // o painel como um comercial estratégico) — dois funis de 4 etapas, mês
   // corrente:
-  //   Equipe de campo: visita → proposta → pedido → venda (visita não é
+  //   Equipe de campo: visita → proposta → pedido → faturado (visita não é
   //   obrigatória pra fechar negócio — nem toda proposta desse time nasce
   //   de uma visita registrada, então a conversão visita→proposta é só um
   //   indicador, não uma regra fechada).
   //   Equipe de leads (Emily/Rodrigo/Matheus e quem mais tiver `canalVenda:
-  //   'leads'` em Usuários): lead do site → proposta → pedido → venda.
-  // "Pedido" = qualquer `ordens` não cancelada criada no mês (entrou no
-  // processo); "Venda" = subconjunto que já completou todas as etapas
-  // (stage 'pos_venda') — mesma definição de "completed" que
-  // dashboardOdinRouter.resumo já usa pra essa empresa.
+  //   'leads'` em Usuários): lead do site → proposta → pedido → faturado.
+  // "Pedido" = qualquer `ordens` não cancelada criada no mês — pedido do
+  // João 2026-09-04: proposta convertida em pedido JÁ é venda fechada do
+  // vendedor (o trabalho comercial dele terminou ali), então "Pedido" aqui
+  // TAMBÉM é a venda — não existe mais uma 4ª etapa "Venda" separada
+  // esperando o fim do processo. "Faturado" é a 4ª etapa de verdade: o
+  // subconjunto de pedidos que já entrou na etapa Faturamento (ou além) —
+  // mesma regra do Painel Financeiro, ver lib/faturamentoOdin.ts — e mede o
+  // operacional (financeiro/logística), não a performance do vendedor.
   painelTv: adminOrFeatureProcedure('painel_tv_odin').query(async ({ ctx }) => {
     await assertEmpresa(ctx.empresaId)
 
@@ -182,7 +203,7 @@ export const dashboardOdinRouter = router({
       columns: { id: true, name: true, fotoUrl: true, canalVenda: true },
     })
 
-    const [todasVisitas, todasPropostas, todasOrdens, todosLeads] = await Promise.all([
+    const [todasVisitas, todasPropostas, todasOrdens, todosLeads, todasFaturadas] = await Promise.all([
       db.query.visitas.findMany({
         where: and(eq(visitas.empresaId, ctx.empresaId), gte(visitas.dataVisita, inicioMes)),
         columns: { id: true, vendedorId: true, convertidoParaPropostaId: true },
@@ -199,9 +220,14 @@ export const dashboardOdinRouter = router({
         where: and(eq(leads.empresaId, ctx.empresaId), gte(leads.createdAt, inicioMes)),
         columns: { id: true, vendorId: true },
       }),
+      buscarOrdensFaturadas(ctx.empresaId),
     ])
 
     const pedidosValidos = todasOrdens.filter((o) => o.status !== 'cancelado')
+    // "Faturado" usa a própria data em que entrou em Faturamento como
+    // referência de mês (não a data do pedido) — por isso filtra
+    // separadamente de `todasOrdens`, que já veio filtrada por createdAt.
+    const faturadasMes = todasFaturadas.filter((o) => o.dataRef >= inicioMes)
 
     function calcularEquipe(vendedoresDoTime: typeof vendedores) {
       const ids = new Set(vendedoresDoTime.map((v) => v.id))
@@ -209,17 +235,17 @@ export const dashboardOdinRouter = router({
       const propostasTime = todasPropostas.filter((p) => ids.has(p.vendedorId))
       const pedidosTime = pedidosValidos.filter((o) => o.vendedorId != null && ids.has(o.vendedorId))
       const leadsTime = todosLeads.filter((l) => l.vendorId != null && ids.has(l.vendorId))
+      const faturadasTime = faturadasMes.filter((o) => o.vendedorId != null && ids.has(o.vendedorId))
 
       const visitasConvertidas = visitasTime.filter((v) => v.convertidoParaPropostaId != null).length
       const propostasConvertidas = propostasTime.filter((p) => p.convertidoParaOrdemId != null).length
-      const vendasTime = pedidosTime.filter((o) => o.stage === 'pos_venda')
 
       const porVendedor = vendedoresDoTime
         .map((v) => {
           const visitasDele = visitasTime.filter((x) => x.vendedorId === v.id)
           const propostasDele = propostasTime.filter((x) => x.vendedorId === v.id)
           const pedidosDele = pedidosTime.filter((x) => x.vendedorId === v.id)
-          const vendasDele = pedidosDele.filter((x) => x.stage === 'pos_venda')
+          const faturadosDele = faturadasTime.filter((x) => x.vendedorId === v.id)
           const leadsDele = leadsTime.filter((x) => x.vendorId === v.id)
           const visitasConvDele = visitasDele.filter((x) => x.convertidoParaPropostaId != null).length
           const propostasConvDele = propostasDele.filter((x) => x.convertidoParaOrdemId != null).length
@@ -231,13 +257,13 @@ export const dashboardOdinRouter = router({
             leads: leadsDele.length,
             propostas: propostasDele.length,
             pedidos: pedidosDele.length,
-            vendas: vendasDele.length,
+            faturados: faturadosDele.length,
             conversaoVisitaProposta: visitasDele.length ? Math.round((visitasConvDele / visitasDele.length) * 1000) / 10 : null,
             conversaoPropostaPedido: propostasDele.length ? Math.round((propostasConvDele / propostasDele.length) * 1000) / 10 : null,
-            conversaoPedidoVenda: pedidosDele.length ? Math.round((vendasDele.length / pedidosDele.length) * 1000) / 10 : null,
+            conversaoPedidoFaturado: pedidosDele.length ? Math.round((faturadosDele.length / pedidosDele.length) * 1000) / 10 : null,
           }
         })
-        .sort((a, b) => b.vendas - a.vendas)
+        .sort((a, b) => b.pedidos - a.pedidos)
 
       return {
         porVendedor,
@@ -246,18 +272,16 @@ export const dashboardOdinRouter = router({
           leads: leadsTime.length,
           propostas: propostasTime.length,
           pedidos: pedidosTime.length,
-          vendas: vendasTime.length,
+          faturados: faturadasTime.length,
           conversaoVisitaProposta: visitasTime.length ? Math.round((visitasConvertidas / visitasTime.length) * 1000) / 10 : null,
           conversaoPropostaPedido: propostasTime.length ? Math.round((propostasConvertidas / propostasTime.length) * 1000) / 10 : null,
-          conversaoPedidoVenda: pedidosTime.length ? Math.round((vendasTime.length / pedidosTime.length) * 1000) / 10 : null,
+          conversaoPedidoFaturado: pedidosTime.length ? Math.round((faturadasTime.length / pedidosTime.length) * 1000) / 10 : null,
         },
       }
     }
 
     const equipeCampo = calcularEquipe(vendedores.filter((v) => v.canalVenda === 'visitas'))
     const equipeLeads = calcularEquipe(vendedores.filter((v) => v.canalVenda === 'leads'))
-
-    const vendasGeral = pedidosValidos.filter((o) => o.stage === 'pos_venda')
 
     return {
       mesReferencia: inicioMes.slice(0, 7),
@@ -267,7 +291,7 @@ export const dashboardOdinRouter = router({
         leads: todosLeads.length,
         propostas: todasPropostas.length,
         pedidos: pedidosValidos.length,
-        vendas: vendasGeral.length,
+        faturados: faturadasMes.length,
       },
     }
   }),

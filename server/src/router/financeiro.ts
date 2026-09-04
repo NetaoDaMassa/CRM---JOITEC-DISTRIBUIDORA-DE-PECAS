@@ -6,6 +6,7 @@ import { users, funilMensal, vendas, inadimplenciaEmpresas, ordens, ordemDetalhe
 import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite, diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesReferenciaAtual } from '../lib/dataBr.js'
 import { buscarVendasAtonComCache } from '../lib/atonErp.js'
+import { buscarOrdensFaturadas, STAGES_FATURAMENTO_OU_DEPOIS } from '../lib/faturamentoOdin.js'
 
 // Cards do Painel Financeiro. Cada card soma 1+ empresaId — a maioria é uma
 // empresa só, mas Odin Compressores e Comprefer aparecem como um único card
@@ -66,39 +67,16 @@ function chaveDescontoAton(cardKey: string): string {
 // createdAt quando não há esse registro. Substitui a antiga soma via API
 // externa (buscarFaturamentoOdinCrmComCache) agora que a Odin Compressores
 // vende 100% dentro do próprio Joitec CRM.
-const STAGES_FATURAMENTO_OU_DEPOIS = ['faturamento', 'conferencia', 'coleta', 'rastreio', 'qualidade', 'concluido', 'pos_venda']
-
 async function calcularFaturamentoOrdensOdin(empresaId: number, mesAtual: string, hoje: string) {
-  const faturaveis = await db
-    .select({ id: ordens.id, valor: ordemDetalhes.valorPedido, createdAt: ordens.createdAt })
-    .from(ordens)
-    .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
-    .where(and(eq(ordens.empresaId, empresaId), inArray(ordens.stage, STAGES_FATURAMENTO_OU_DEPOIS), ne(ordens.status, 'cancelado')))
-
-  const ids = faturaveis.map((o) => o.id)
-  const entradas = ids.length
-    ? await db
-        .select({ ordemId: ordemHistorico.ordemId, entrouEm: sql<string>`MIN(${ordemHistorico.createdAt})`.as('entrou_em') })
-        .from(ordemHistorico)
-        .where(
-          and(
-            inArray(ordemHistorico.ordemId, ids),
-            eq(ordemHistorico.action, 'stage_change'),
-            eq(ordemHistorico.fieldName, 'stage'),
-            eq(ordemHistorico.newValue, 'faturamento')
-          )
-        )
-        .groupBy(ordemHistorico.ordemId)
-    : []
-  const entrouEmPorOrdem = new Map(entradas.map((e) => [e.ordemId, e.entrouEm]))
+  const faturaveis = await buscarOrdensFaturadas(empresaId)
 
   let vendasMesQtd = 0
   let vendasMesValor = 0
   let vendasHojeQtd = 0
   let vendasHojeValor = 0
   for (const o of faturaveis) {
-    const dataRef = entrouEmPorOrdem.get(o.id) ?? o.createdAt
-    const valor = o.valor ?? 0
+    const dataRef = o.dataRef
+    const valor = o.valor
     if (dataRef.slice(0, 7) === mesAtual.slice(0, 7)) {
       vendasMesQtd++
       vendasMesValor += valor
