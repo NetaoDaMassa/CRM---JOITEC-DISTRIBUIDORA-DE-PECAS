@@ -268,6 +268,27 @@ app.post('/upload/demanda-anexo', uploadDemanda.single('file'), async (req, res)
   res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tamanho: req.file.size })
 })
 
+// Arquivos/Mídia de Marketing — fotos/vídeos/PDFs, qualquer tipo (como
+// demanda-anexo), limite bem maior por causa de vídeo (pedido do João,
+// 2026-09-04). Só admin sobe (checado aqui E de novo em
+// marketing.registrarArquivo, que é quem grava a linha no banco — esse
+// endpoint só grava o arquivo cru em disco).
+const storageMarketing = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `marketing-${randomUUID()}${ext}`)
+  },
+})
+const uploadMarketing = multer({ storage: storageMarketing, limits: { fileSize: 300 * 1024 * 1024, files: 10 } })
+app.post('/upload/marketing-arquivo', uploadMarketing.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (user.role !== 'admin') return res.status(403).json({ error: 'Só admin pode subir arquivo' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
 // Importação em massa de clientes (Excel/CSV) — em memória, não vai pro disco
 // de uploads (não é um anexo permanente, só processado e descartado).
 const uploadMemoria = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } })

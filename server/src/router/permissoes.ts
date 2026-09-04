@@ -101,6 +101,11 @@ export const FEATURES_ADMIN = [
   // Relatórios (propostas/pipeline/pós-venda/faturamento/máquinas/visitas)
   // — só Odin Compressores, gestor-only.
   'relatorios_odin',
+  // Arquivos/Mídia (Marketing) — biblioteca de pastas/fotos/vídeos/PDFs por
+  // empresa, em todas as empresas. Também existe em FEATURES_VENDEDOR (quem
+  // ganha a permissão pode ver/baixar); só admin cria pasta/sobe arquivo,
+  // checado no router (não é outra feature separada pra isso).
+  'arquivos',
 ] as const
 
 // Chaves fixas — 1:1 com VENDOR_LINKS em Sidebar.tsx. Repete de propósito
@@ -147,6 +152,8 @@ export const FEATURES_VENDEDOR = [
   'revendas_odin',
   // Visitas de campo — mesma chave de FEATURES_ADMIN acima.
   'visitas_odin',
+  // Arquivos/Mídia (Marketing) — mesma chave de FEATURES_ADMIN acima.
+  'arquivos',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima

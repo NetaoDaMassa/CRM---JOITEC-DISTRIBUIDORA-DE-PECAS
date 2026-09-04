@@ -55,6 +55,7 @@ import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
 import Devolucoes from './pages/Devolucoes'
+import MarketingArquivos from './pages/MarketingArquivos'
 import OrdensKanban from './pages/OrdensKanban'
 import PropostasKanban from './pages/PropostasKanban'
 import Revendas from './pages/Revendas'
@@ -209,6 +210,7 @@ export default function App() {
           <Route path="admin/leads-desqualificados" element={<AdminGuard><FeatureGuard feature="leads"><LeadsDesqualificados /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-relatorios" element={<AdminGuard><FeatureGuard feature="leads"><LeadsRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/campanhas" element={<AdminGuard><FeatureGuard feature="leads"><Campanhas /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/arquivos" element={<AdminGuard><FeatureGuard feature="arquivos"><MarketingArquivos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />
@@ -255,6 +257,7 @@ export default function App() {
           <Route path="vendedor/leads" element={<Leads />} />
           <Route path="vendedor/leads/kanban" element={<LeadsKanban />} />
           <Route path="vendedor/leads/:id" element={<LeadDetail />} />
+          <Route path="vendedor/arquivos" element={<MarketingArquivos />} />
 
           <Route
             index

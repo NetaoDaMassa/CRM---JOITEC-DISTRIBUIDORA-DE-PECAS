@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique, index } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Multi-empresa (adicionado quando a Odin Tubos e Conexões entrou no mesmo
@@ -2772,3 +2772,84 @@ export const modelosEmailOdin = sqliteTable('modelos_email_odin', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
+
+// ── Marketing: Arquivos/Mídia ───────────────────────────────────────────────
+// Biblioteca de arquivos (fotos/vídeos/PDFs) por empresa — pasta em árvore
+// (parentId nullable = raiz), só admin cria pasta/sobe arquivo (checado no
+// router), qualquer um com a feature 'arquivos' vê e baixa. Pedido do João,
+// 2026-09-04, pra centralizar material de marketing/mídia que hoje circula
+// solto por WhatsApp/e-mail. Nome do item na sidebar entra dentro do grupo
+// "Marketing" (grupo já existe, configurado em Grupos da Sidebar).
+export const marketingPastas = sqliteTable(
+  'marketing_pastas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    nome: text('nome').notNull(),
+    pastaPaiId: integer('pasta_pai_id').references((): AnySQLiteColumn => marketingPastas.id, { onDelete: 'cascade' }),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaPastaPaiIdx: index('marketing_pastas_empresa_pasta_pai_idx').on(t.empresaId, t.pastaPaiId),
+  })
+)
+
+// Nome randomizado em disco (uuid + extensão), nome original só no banco —
+// mesmo motivo de devolucaoAnexos/ordemAnexos: evita link adivinhável em
+// /uploads (servido sem login).
+export const marketingArquivos = sqliteTable(
+  'marketing_arquivos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    pastaId: integer('pasta_id').references(() => marketingPastas.id, { onDelete: 'cascade' }),
+    nomeOriginal: text('nome_original').notNull(),
+    nomeArmazenado: text('nome_armazenado').notNull(),
+    tipoArquivo: text('tipo_arquivo'),
+    tamanhoBytes: integer('tamanho_bytes'),
+    enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaPastaIdx: index('marketing_arquivos_empresa_pasta_idx').on(t.empresaId, t.pastaId),
+  })
+)
+
+// Um registro por (download), não por (usuário, arquivo) — o mesmo usuário
+// pode baixar de novo depois e o João quer ver "quando" cada baixada
+// aconteceu, não só "se já baixou alguma vez". Gravado quando o front chama
+// `marketing.registrarDownload` no clique do link de download (não é uma
+// trava de acesso, é só o registro — pedido veio com a ressalva "se
+// conseguir").
+export const marketingArquivoDownloads = sqliteTable(
+  'marketing_arquivo_downloads',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    arquivoId: integer('arquivo_id').notNull().references(() => marketingArquivos.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    baixadoEm: text('baixado_em').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    arquivoIdx: index('marketing_arquivo_downloads_arquivo_idx').on(t.arquivoId),
+  })
+)
+
+export const marketingPastasRelations = relations(marketingPastas, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [marketingPastas.empresaId], references: [empresas.id] }),
+  pastaPai: one(marketingPastas, { fields: [marketingPastas.pastaPaiId], references: [marketingPastas.id] }),
+  criadoPorUser: one(users, { fields: [marketingPastas.criadoPor], references: [users.id] }),
+  arquivos: many(marketingArquivos),
+}))
+
+export const marketingArquivosRelations = relations(marketingArquivos, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [marketingArquivos.empresaId], references: [empresas.id] }),
+  pasta: one(marketingPastas, { fields: [marketingArquivos.pastaId], references: [marketingPastas.id] }),
+  enviadoPorUser: one(users, { fields: [marketingArquivos.enviadoPor], references: [users.id] }),
+  downloads: many(marketingArquivoDownloads),
+}))
+
+export const marketingArquivoDownloadsRelations = relations(marketingArquivoDownloads, ({ one }) => ({
+  arquivo: one(marketingArquivos, { fields: [marketingArquivoDownloads.arquivoId], references: [marketingArquivos.id] }),
+  user: one(users, { fields: [marketingArquivoDownloads.userId], references: [users.id] }),
+}))

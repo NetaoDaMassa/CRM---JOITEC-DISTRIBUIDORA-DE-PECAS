@@ -90,6 +90,8 @@ export const ADMIN_LINKS = [
   { to: '/admin/leads-desqualificados', label: 'Revisão de Leads', icon: ShieldCheck, feature: 'leads' },
   { to: '/admin/leads-relatorios', label: 'Relatórios de Leads', icon: BarChart3, feature: 'leads' },
   { to: '/admin/campanhas', label: 'Campanhas', icon: Megaphone, feature: 'leads' },
+  // Arquivos/Mídia (Marketing) — pastas/fotos/vídeos/PDFs, todas as empresas.
+  { to: '/admin/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -130,6 +132,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, feature: 'devolucoes' },
   { to: '/vendedor/leads', label: 'Leads', icon: UserPlus, feature: 'leads' },
   { to: '/vendedor/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
+  { to: '/vendedor/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },
 ]
 
 // Uma linha da sidebar (link normal ou externo em nova aba) — usado tanto
