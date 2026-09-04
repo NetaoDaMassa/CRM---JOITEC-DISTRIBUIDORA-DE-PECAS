@@ -5,6 +5,7 @@ import { db } from '../db/client.js'
 import { metasMensais, users } from '../db/schema.js'
 import { mesReferenciaAtual } from '../lib/dataBr.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
+import { metasVigentesPorVendedor } from '../lib/metasVigentes.js'
 
 export const metasRouter = router({
   listaMesCorrente: adminProcedure.query(async ({ ctx }) => {
@@ -16,8 +17,10 @@ export const metasRouter = router({
       orderBy: (u, { asc }) => [asc(u.name)],
     })
 
-    const metas = await db.query.metasMensais.findMany({ where: eq(metasMensais.mesReferencia, mesAtual) })
-    const metaPorVendedor = new Map(metas.map((m) => [m.vendedorId, m]))
+    // Traz a meta vigente (a do mês, ou a mais recente de um mês anterior se
+    // ninguém redefiniu ainda). `meta.herdadaDe` != null = veio de mês
+    // passado, a tela mostra isso pro gestor.
+    const metaPorVendedor = await metasVigentesPorVendedor(mesAtual)
 
     return vendedores.map((v) => ({
       vendedorId: v.id,

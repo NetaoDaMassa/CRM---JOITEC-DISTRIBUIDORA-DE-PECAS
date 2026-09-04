@@ -9,6 +9,13 @@ function formatarMoeda(v: number | null | undefined): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 }
 
+// "2026-08-01" -> "agosto/2026"
+function nomeMes(mesRef: string): string {
+  const [ano, m] = mesRef.split('-').map(Number)
+  const nomes = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+  return `${nomes[m - 1] ?? mesRef}/${ano}`
+}
+
 export default function AdminMetas() {
   const { data, isLoading } = trpc.metas.listaMesCorrente.useQuery()
   const utils = trpc.useUtils()
@@ -51,6 +58,9 @@ export default function AdminMetas() {
                   {v.meta ? (
                     <>
                       {formatarMoeda(v.meta.metaFaturamento)} · {v.meta.metaLigacoesDia} ligações/dia
+                      {v.meta.herdadaDe && (
+                        <span className="ml-1.5 text-gold-500/80">(herdada de {nomeMes(v.meta.herdadaDe)})</span>
+                      )}
                     </>
                   ) : (
                     'Sem meta definida'

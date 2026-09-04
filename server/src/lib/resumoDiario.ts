@@ -1,8 +1,9 @@
 import { and, between, count, eq, gte, inArray, isNull, sum } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { users, registroContato, metasMensais, notifications, vendas, funilMensal } from '../db/schema.js'
+import { users, registroContato, notifications, vendas, funilMensal } from '../db/schema.js'
 import { diasUteisDecorridos, diasUteisNoMes, hojeBr, hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { passouDoFimDoExpediente } from './expediente.js'
+import { metasVigentesPorVendedor } from './metasVigentes.js'
 
 function formatarMoeda(v: number): string {
   return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -55,8 +56,9 @@ async function executarResumoDiarioParaEmpresa(empresaId: number, forcar: boolea
     if (jaEnviadoHoje) return 0
   }
 
-  const metas = await db.query.metasMensais.findMany({ where: eq(metasMensais.mesReferencia, mesAtual) })
-  const metaPorVendedor = new Map(metas.map((m) => [m.vendedorId, m]))
+  // Meta vigente: a do mês, ou a última de um mês anterior (metasVigentes.ts)
+  // — mesmo critério do dashboard e do Painel de TV.
+  const metaPorVendedor = await metasVigentesPorVendedor(mesAtual)
 
   let criadas = 0
   let totalVendasHoje = 0

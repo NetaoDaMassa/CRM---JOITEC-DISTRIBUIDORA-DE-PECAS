@@ -1,8 +1,9 @@
 import { and, between, count, desc, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, funilMensal, registroContato, metasMensais, clientes, vendas } from '../db/schema.js'
+import { users, funilMensal, registroContato, clientes, vendas } from '../db/schema.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
+import { metaVigente, metasVigentesPorVendedor } from '../lib/metasVigentes.js'
 import {
   diasDesde,
   diasUteisDecorridos,
@@ -74,8 +75,9 @@ export const painelRouter = router({
     const filtroFunilEmpresa = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
     const filtroContatoEmpresa = vendedorIds.length ? inArray(registroContato.vendedorId, vendedorIds) : sql`0`
 
-    const metas = await db.query.metasMensais.findMany({ where: eq(metasMensais.mesReferencia, mesAtual) })
-    const metaPorVendedor = new Map(metas.map((m) => [m.vendedorId, m]))
+    // Meta vigente: a do mês, ou a última definida num mês anterior (ver
+    // lib/metasVigentes.ts). Sem isso o painel zerava toda virada de mês.
+    const metaPorVendedor = await metasVigentesPorVendedor(mesAtual)
 
     const diasUteisMes = diasUteisNoMes(mesAtual)
     const diasUteisAteHoje = diasUteisDecorridos(mesAtual)
@@ -394,9 +396,10 @@ export const painelRouter = router({
     const mesAtual = mesReferenciaAtual()
     const vendedorId = ctx.user.id
 
-    const meta = await db.query.metasMensais.findFirst({
-      where: and(eq(metasMensais.vendedorId, vendedorId), eq(metasMensais.mesReferencia, mesAtual)),
-    })
+    // Meta vigente: a do mês, ou a última definida num mês anterior (ver
+    // lib/metasVigentes.ts). Sem isso o dashboard do vendedor mostrava
+    // "0% de R$ 0" no começo de todo mês.
+    const meta = await metaVigente(vendedorId, mesAtual)
 
     const [{ ligacoesHoje }] = await db
       .select({ ligacoesHoje: count() })
