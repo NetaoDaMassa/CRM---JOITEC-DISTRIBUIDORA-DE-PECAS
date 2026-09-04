@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ChevronRight, User, Building2, AlertTriangle, Clock, CheckCircle2, Truck } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { ChevronRight, ArrowLeft, User, Building2, AlertTriangle, Clock, CheckCircle2, Truck } from 'lucide-react'
 import { timeAgo, formatDateTime } from '../lib/utils'
+import { trpc } from '../lib/trpc'
+import { useAuth } from '../contexts/AuthContext'
 import { Badge } from './ui/Badge'
 import { getStageSequence, STAGE_LABELS, STAGE_COLORS, STAGE_DOT_COLORS, PRIORIDADE_CONFIG, type OrderType, type Stage } from '../lib/ordensShared'
 
@@ -34,7 +37,19 @@ function nivelAlerta(ordem: OrdemCard): 'vermelho' | 'laranja' | null {
 
 export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: OrdemCard[]; orderType: OrderType; basePath: string }) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const isAdmin = user?.role === 'admin'
+  const utils = trpc.useUtils()
   const colunas = getStageSequence(orderType)
+
+  // "Voltar" no card é só do gestor — o back-end (ordens.core.mover) já
+  // reseta as confirmações das etapas que ficaram pra frente. Avançar
+  // continua só no detalhe do pedido, onde dá pra ver os anexos/aprovações
+  // que destravam cada etapa.
+  const moverMut = trpc.ordens.core.mover.useMutation({
+    onSuccess: () => { toast.success('Pedido voltou de etapa'); utils.ordens.core.listarKanban.invalidate() },
+    onError: (e) => toast.error(e.message),
+  })
 
   const boardRef = useRef<HTMLDivElement>(null)
   const topScrollRef = useRef<HTMLDivElement>(null)
@@ -85,6 +100,8 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                         ? { label: '🚚 Cotação', cls: 'text-cyan-400 bg-cyan-900/20 border-cyan-700/40' }
                         : null
                   const mostrarPills = stage === 'cotacao_frete' || stage === 'preparacao'
+                  const idxStage = colunas.indexOf(stage)
+                  const etapaAnterior = isAdmin && idxStage > 0 ? colunas[idxStage - 1] : undefined
 
                   return (
                     <div
@@ -169,6 +186,19 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                           <span className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold border ${ordem.preparacao?.aprovadoGestor ? 'text-green-400 bg-green-900/20 border-green-700/40' : 'text-dark-500 bg-dark-700/30 border-dark-600'}`}>
                             {ordem.preparacao?.aprovadoGestor ? <CheckCircle2 size={10} /> : <Clock size={10} />} Prep
                           </span>
+                        </div>
+                      )}
+
+                      {etapaAnterior && (
+                        <div className="mt-2 pt-2 border-t border-dark-700/60" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => moverMut.mutate({ id: ordem.id, novaEtapa: etapaAnterior })}
+                            disabled={moverMut.isPending}
+                            className="flex items-center gap-1 text-[11px] font-semibold text-dark-400 hover:text-dark-200 transition-colors disabled:opacity-50"
+                            title={`Voltar para "${STAGE_LABELS[etapaAnterior]}"`}
+                          >
+                            <ArrowLeft size={11} /> Voltar pra "{STAGE_LABELS[etapaAnterior]}"
+                          </button>
                         </div>
                       )}
                     </div>

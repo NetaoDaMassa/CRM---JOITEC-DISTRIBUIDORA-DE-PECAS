@@ -45,6 +45,16 @@ export const PROPOSTA_STAGE_NEXT: Partial<Record<PropostaStage, PropostaStage>> 
   negociacao: 'fechado',
 }
 
+// Botão "Voltar" — só aparece pro gestor (admin), pra corrigir um card que
+// avançou/foi marcado errado sem precisar abrir o histórico. De perdido e
+// chamar_depois, volta pra "Proposta" (reativa o negócio).
+export const PROPOSTA_STAGE_PREV: Partial<Record<PropostaStage, PropostaStage>> = {
+  negociacao: 'proposta',
+  fechado: 'negociacao',
+  perdido: 'proposta',
+  chamar_depois: 'proposta',
+}
+
 export function isOverdue(dateStr: string): boolean {
   const d = new Date(dateStr)
   d.setHours(0, 0, 0, 0)

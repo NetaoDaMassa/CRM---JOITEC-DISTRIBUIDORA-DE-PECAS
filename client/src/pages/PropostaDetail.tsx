@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ArrowRight, XCircle, RefreshCcw, X, Paperclip, Trash2, MessageCircle, Send, AlertCircle } from 'lucide-react'
+import { ArrowRight, ArrowLeft, XCircle, RefreshCcw, X, Paperclip, Trash2, MessageCircle, Send, AlertCircle } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { Input, Textarea } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
-import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, type PropostaStage } from '../lib/propostasShared'
+import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, type PropostaStage } from '../lib/propostasShared'
 import ProductSelector from '../components/ProductSelector'
 import { formatDateTime } from '../lib/utils'
 
@@ -52,6 +52,7 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
 
   const stage = proposta.stage as PropostaStage
   const proximaEtapa = PROPOSTA_STAGE_NEXT[stage]
+  const etapaAnterior = isAdmin ? PROPOSTA_STAGE_PREV[stage] : undefined
   const podeAgir = isAdmin || proposta.vendedorId === user?.id
 
   return (
@@ -76,6 +77,11 @@ export default function PropostaDetail({ propostaId, onClose }: { propostaId: nu
 
         {podeAgir && stage !== 'convertido' && (
           <div className="flex items-center gap-2 flex-wrap px-6 mt-4">
+            {etapaAnterior && (
+              <Button size="sm" variant="secondary" loading={moverMut.isPending} onClick={() => moverMut.mutate({ id: propostaId, novaEtapa: etapaAnterior })}>
+                <ArrowLeft size={14} className="mr-1" /> Voltar pra "{PROPOSTA_STAGE_LABELS[etapaAnterior]}"
+              </Button>
+            )}
             {proximaEtapa && (
               <Button size="sm" loading={moverMut.isPending} onClick={() => moverMut.mutate({ id: propostaId, novaEtapa: proximaEtapa })}>
                 <ArrowRight size={14} className="mr-1" /> Avançar pra "{PROPOSTA_STAGE_LABELS[proximaEtapa]}"

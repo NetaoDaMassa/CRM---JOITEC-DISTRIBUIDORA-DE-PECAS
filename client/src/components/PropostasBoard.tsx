@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, RefreshCcw, Pencil, Trash2, Copy, Upload, CheckCircle2 } from 'lucide-react'
+import { ChevronRight, AlertCircle, MessageSquareWarning, Zap, FileText, MessageCircle, ArrowRight, ArrowLeft, RefreshCcw, Pencil, Trash2, Copy, Upload, CheckCircle2 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { timeAgo, formatDateTime } from '../lib/utils'
@@ -9,7 +9,7 @@ import { Badge } from './ui/Badge'
 import Button from './ui/Button'
 import Modal from './ui/Modal'
 import { Input } from './ui/Input'
-import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_COLORS, PROPOSTA_STAGE_DOT_COLORS, PROPOSTA_STAGE_NEXT, isOverdue, type PropostaStage } from '../lib/propostasShared'
+import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_COLORS, PROPOSTA_STAGE_DOT_COLORS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, isOverdue, type PropostaStage } from '../lib/propostasShared'
 
 type PropostaCard = {
   id: number
@@ -153,6 +153,8 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                   const temAlteracao = p.alteracoes.length > 0
                   const podeAgir = isAdmin || p.vendedorId === user?.id
                   const proximaEtapa = PROPOSTA_STAGE_NEXT[stage]
+                  // "Voltar" é só do gestor — corrige card que avançou errado.
+                  const etapaAnterior = isAdmin ? PROPOSTA_STAGE_PREV[stage] : undefined
                   return (
                     <div
                       key={p.id}
@@ -289,8 +291,17 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                         </div>
                       </div>
 
-                      {podeAgir && stage !== 'convertido' && (proximaEtapa || stage !== 'chamar_depois') && (
+                      {podeAgir && stage !== 'convertido' && (proximaEtapa || etapaAnterior || stage !== 'chamar_depois') && (
                         <div className="flex items-center gap-2 mt-2 pt-2 border-t border-dark-700/60">
+                          {etapaAnterior && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); moverMut.mutate({ id: p.id, novaEtapa: etapaAnterior }) }}
+                              className="flex items-center gap-1 text-[11px] font-semibold text-dark-400 hover:text-dark-200 transition-colors"
+                              title={`Voltar para "${PROPOSTA_STAGE_LABELS[etapaAnterior]}"`}
+                            >
+                              <ArrowLeft size={11} /> Voltar
+                            </button>
+                          )}
                           {proximaEtapa && (
                             <button
                               onClick={(e) => { e.stopPropagation(); moverMut.mutate({ id: p.id, novaEtapa: proximaEtapa }) }}
