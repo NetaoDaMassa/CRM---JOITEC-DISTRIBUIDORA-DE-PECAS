@@ -75,22 +75,7 @@ export const contatosRouter = router({
         })
         .where(eq(funilMensal.id, input.funilMensalId))
 
-      // Contato de verdade acabou de ser registrado — se o cliente tinha
-      // compromisso pendente já atrasado (badge vermelho no card), considera
-      // resolvido: o vendedor fez contato, só não bateu exatamente na hora
-      // marcada. Só os JÁ atrasados (dataHora no passado) — um lembrete
-      // futuro não deve fechar sozinho só porque teve outro contato hoje.
-      await db
-        .update(compromissos)
-        .set({ concluido: true, updatedAt: agoraSqlite() })
-        .where(
-          and(
-            eq(compromissos.clienteId, funil.clienteId),
-            eq(compromissos.concluido, false),
-            isNull(compromissos.deletedAt),
-            lte(compromissos.dataHora, agoraSqlite())
-          )
-        )
+      await fecharCompromissosAtrasados(funil.clienteId)
 
       return { success: true }
     }),
@@ -188,4 +173,30 @@ async function contarTentativaSePendente(funilMensalId: number): Promise<void> {
     .update(funilMensal)
     .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
     .where(eq(funilMensal.id, funilMensalId))
+
+  // Mesma regra de `registrar` abaixo — um automático que acabou de virar
+  // tentativa de verdade (confirmar/editar) também resolve o badge
+  // "Atrasado" do card, não só o registro 100% manual. Era esse o buraco:
+  // ligação automática do GoTo Connect confirmada não fechava o compromisso
+  // vencido (achado do João, 2026-09-04).
+  await fecharCompromissosAtrasados(funil.clienteId)
+}
+
+// Contato de verdade acabou de ser registrado/confirmado — se o cliente
+// tinha compromisso pendente já atrasado (badge vermelho no card), considera
+// resolvido: alguém fez contato, só não bateu exatamente na hora marcada.
+// Só os JÁ atrasados (dataHora no passado) — um lembrete futuro não deve
+// fechar sozinho só porque teve outro contato hoje.
+async function fecharCompromissosAtrasados(clienteId: number): Promise<void> {
+  await db
+    .update(compromissos)
+    .set({ concluido: true, updatedAt: agoraSqlite() })
+    .where(
+      and(
+        eq(compromissos.clienteId, clienteId),
+        eq(compromissos.concluido, false),
+        isNull(compromissos.deletedAt),
+        lte(compromissos.dataHora, agoraSqlite())
+      )
+    )
 }
