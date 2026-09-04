@@ -4,36 +4,19 @@ import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { sidebarGroups, sidebarGroupItems } from '../db/schema.js'
 
-// Cópia manual dos `to` de ADMIN_LINKS/VENDOR_LINKS (client/src/components/Sidebar.tsx)
-// + os 5 itens hardcoded que ficam soltos depois do loop lá (Painel de TV,
-// Permissões, Funções, Regiões de Leads, Painel Financeiro) — não dá pra
-// importar o array do client aqui, então valida contra esta lista fixa. Se
-// um item novo for adicionado no Sidebar.tsx, precisa ser adicionado aqui
-// também pra virar agrupável.
-const LINK_TO_VALIDOS = [
-  '/admin', '/admin/kanban', '/admin/pos-venda', '/admin/calendario', '/admin/clientes', '/admin/prospeccao',
-  '/admin/aprovacoes', '/admin/carteira', '/admin/banco-clientes', '/admin/importar', '/admin/relatorios',
-  '/admin/usuarios', '/admin/metas', '/admin/mensagens', '/admin/caixa', '/admin/compras', '/admin/lixeira',
-  '/admin/configuracoes', '/admin/backup', '/admin/devolucoes', '/admin/devolucoes-mecanica',
-  '/admin/devolucoes-demonstracao', '/admin/devolucoes-relatorios', '/admin/vagas', '/admin/candidatos',
-  '/admin/mensagens-rh', '/admin/analytics', '/admin/leads', '/admin/leads/kanban', '/admin/leads-desqualificados',
-  '/admin/leads-relatorios',
-  '/admin/campanhas',
-  '/admin/demandas', '/admin/dashboard-odin', '/admin/calendario-odin', '/admin/propostas', '/admin/ordens',
-  '/admin/revendas', '/admin/estoque', '/admin/visitas', '/admin/qualidade', '/admin/configuracoes-odin',
-  '/admin/relatorios-odin',
-  '/vendedor', '/vendedor/fila-hoje', '/vendedor/pos-venda', '/vendedor/kanban', '/vendedor/calendario',
-  '/vendedor/clientes', '/vendedor/prospeccao', '/vendedor/banco-clientes', '/vendedor/faturamento-geral',
-  '/vendedor/relatorios', '/vendedor/solicitar-design', '/vendedor/devolucoes', '/vendedor/devolucoes-mecanica',
-  '/vendedor/devolucoes-demonstracao', '/vendedor/devolucoes-relatorios', '/vendedor/leads', '/vendedor/leads/kanban',
-  '/vendedor/demandas', '/vendedor/dashboard-odin', '/vendedor/calendario-odin', '/vendedor/propostas',
-  '/vendedor/ordens', '/vendedor/revendas', '/vendedor/visitas',
-  '/painel-tv', '/admin/permissoes', '/admin/funcoes', '/admin/leads-regioes', '/painel-financeiro',
-  '/admin/automacoes',
-  '/admin/sidebar-grupos', '/admin/boletos', '/admin/negociacoes', '/painel-tv-odin',
-] as const
-
-const linkToSchema = z.enum(LINK_TO_VALIDOS)
+// Antes validava contra uma cópia manual dos `to` de ADMIN_LINKS/VENDOR_LINKS
+// (client/src/components/Sidebar.tsx) mantida solta aqui — toda tela nova
+// quebrava "Grupos da Sidebar" até alguém lembrar de atualizar essa lista
+// (aconteceu de novo com "Arquivos/Mídia", 2026-09-04: o item existia no
+// Sidebar.tsx mas faltava aqui, e o superAdmin tomou "invalid_enum_value" ao
+// tentar agrupar). Removida a lista: quem escolhe os itens em Grupos da
+// Sidebar (SidebarGrupos.tsx) já só oferece os `to` que existem de verdade
+// em ADMIN_LINKS/VENDOR_LINKS — nunca dá pra mandar um valor inventado por
+// essa tela, então validar de novo aqui só duplicava a lista sem duplicar
+// nenhuma segurança de verdade. Um `to` desatualizado que sobre num grupo
+// antigo (tela removida depois) também não quebra nada — o Sidebar.tsx já
+// filtra silenciosamente qualquer item que não bata com nenhum link atual.
+const linkToSchema = z.string().min(1)
 
 export const sidebarGruposRouter = router({
   // Todo mundo lê — é o que monta a sidebar de qualquer usuário (admin ou
