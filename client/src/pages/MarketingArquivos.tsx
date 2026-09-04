@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
-  Folder, FolderPlus, Upload, Download, Trash2, ChevronRight, Home,
+  Folder, FolderPlus, FolderUp, Upload, Download, Trash2, ChevronRight, Home,
   FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock,
 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
@@ -104,6 +104,16 @@ export default function MarketingArquivos() {
   const [renomeando, setRenomeando] = useState<{ id: number; nome: string } | null>(null)
   const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
   const [visualizando, setVisualizando] = useState<{ id: number; nomeOriginal: string; tipoArquivo: string | null } | null>(null)
+  const [progressoUpload, setProgressoUpload] = useState<{ atual: number; total: number } | null>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
+
+  // `webkitdirectory`/`directory` não são atributos reconhecidos pelo React
+  // (não fazem parte do HTML padrão, embora todo navegador grande os
+  // suporte) — por isso setados direto no elemento em vez de como prop JSX.
+  useEffect(() => {
+    folderInputRef.current?.setAttribute('webkitdirectory', '')
+    folderInputRef.current?.setAttribute('directory', '')
+  }, [])
 
   const argPasta = { pastaId: pastaAtualId ?? undefined }
   const { data: pastas, isLoading: carregandoPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
@@ -140,6 +150,7 @@ export default function MarketingArquivos() {
     onError: (e) => toast.error(e.message),
   })
   const registrarArquivoMut = trpc.marketing.registrarArquivo.useMutation()
+  const garantirCaminhoPastaMut = trpc.marketing.garantirCaminhoPasta.useMutation()
   const alternarVisualizacaoMut = trpc.marketing.alternarVisualizacao.useMutation({
     onSuccess() {
       invalidarLista()
@@ -163,7 +174,10 @@ export default function MarketingArquivos() {
     const arquivosSelecionados = Array.from(e.target.files ?? [])
     if (!arquivosSelecionados.length) return
     setEnviando(true)
-    for (const file of arquivosSelecionados) {
+    let falhas = 0
+    for (let i = 0; i < arquivosSelecionados.length; i++) {
+      const file = arquivosSelecionados[i]
+      setProgressoUpload({ atual: i + 1, total: arquivosSelecionados.length })
       try {
         const up = await uploadArquivoMarketing(file)
         await registrarArquivoMut.mutateAsync({
@@ -175,12 +189,68 @@ export default function MarketingArquivos() {
           somenteVisualizacao: somenteVisualizacaoUpload,
         })
       } catch (err: any) {
+        falhas++
         toast.error(`Falha ao enviar "${file.name}": ${err.message}`)
       }
     }
     setEnviando(false)
+    setProgressoUpload(null)
     e.target.value = ''
-    toast.success('Upload concluído')
+    if (falhas === 0) toast.success('Upload concluído')
+    else toast.error(`${falhas} de ${arquivosSelecionados.length} arquivo(s) falharam`)
+    invalidarLista()
+  }
+
+  // Envio de PASTA inteira — o navegador entrega os arquivos com
+  // `webkitRelativePath` tipo "Catálogo 2026/Fotos/produto1.jpg". Recria
+  // essa estrutura como pastas de verdade (reaproveitando pasta já
+  // existente com o mesmo nome, não duplica) e sobe cada arquivo dentro da
+  // pasta certa. Pastas vazias (sem nenhum arquivo dentro, em nenhum
+  // nível) não aparecem pro navegador — não tem como recriar essas, é uma
+  // limitação de toda ferramenta de upload de pasta na web, não só daqui.
+  async function handleUploadPasta(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivosSelecionados = Array.from(e.target.files ?? [])
+    if (!arquivosSelecionados.length) return
+    setEnviando(true)
+    const cachePastas = new Map<string, number>()
+    let falhas = 0
+    for (let i = 0; i < arquivosSelecionados.length; i++) {
+      const file = arquivosSelecionados[i]
+      setProgressoUpload({ atual: i + 1, total: arquivosSelecionados.length })
+      try {
+        const caminhoRelativo = (file as File & { webkitRelativePath?: string }).webkitRelativePath || file.name
+        const segmentos = caminhoRelativo.split('/').slice(0, -1) // tira o nome do arquivo, sobra só as pastas
+        let pastaIdAlvo = pastaAtualId ?? undefined
+        if (segmentos.length) {
+          const chave = segmentos.join('/')
+          const emCache = cachePastas.get(chave)
+          if (emCache !== undefined) {
+            pastaIdAlvo = emCache
+          } else {
+            const resultado = await garantirCaminhoPastaMut.mutateAsync({ caminho: segmentos, pastaPaiId: pastaAtualId ?? undefined })
+            pastaIdAlvo = resultado.pastaId
+            cachePastas.set(chave, resultado.pastaId)
+          }
+        }
+        const up = await uploadArquivoMarketing(file)
+        await registrarArquivoMut.mutateAsync({
+          pastaId: pastaIdAlvo,
+          nomeOriginal: up.nome,
+          nomeArmazenado: up.path.replace('/uploads/', ''),
+          tipoArquivo: up.tipo,
+          tamanhoBytes: up.tamanho,
+          somenteVisualizacao: somenteVisualizacaoUpload,
+        })
+      } catch (err: any) {
+        falhas++
+        toast.error(`Falha ao enviar "${file.name}": ${err.message}`)
+      }
+    }
+    setEnviando(false)
+    setProgressoUpload(null)
+    e.target.value = ''
+    if (falhas === 0) toast.success('Pasta enviada')
+    else toast.error(`${falhas} de ${arquivosSelecionados.length} arquivo(s) falharam`)
     invalidarLista()
   }
 
@@ -205,6 +275,10 @@ export default function MarketingArquivos() {
             <Button size="sm" variant="secondary" onClick={() => setModalNovaPasta(true)}>
               <FolderPlus size={14} className="mr-1" /> Nova pasta
             </Button>
+            <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-dark-700 hover:bg-dark-600 text-dark-100 border border-dark-600 font-medium cursor-pointer transition-colors">
+              <FolderUp size={14} /> {enviando ? 'Enviando...' : 'Enviar pasta'}
+              <input ref={folderInputRef} type="file" multiple className="hidden" onChange={handleUploadPasta} disabled={enviando} />
+            </label>
             <label className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gold-600 hover:bg-gold-700 text-dark-950 font-medium cursor-pointer transition-colors">
               <Upload size={14} /> {enviando ? 'Enviando...' : 'Enviar arquivo'}
               <input type="file" multiple className="hidden" onChange={handleUpload} disabled={enviando} />
@@ -212,6 +286,10 @@ export default function MarketingArquivos() {
           </div>
         )}
       </div>
+
+      {progressoUpload && (
+        <p className="text-xs text-dark-400 mb-3">Enviando arquivo {progressoUpload.atual} de {progressoUpload.total}...</p>
+      )}
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1.5 text-sm text-dark-400 mb-5 flex-wrap">

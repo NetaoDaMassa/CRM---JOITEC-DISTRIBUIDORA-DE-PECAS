@@ -96,13 +96,23 @@ app.use(
   })
 )
 
+// Nome de arquivo com acento (á, é, ç, ã...) chegava corrompido — o
+// navegador manda o nome em UTF-8 dentro do header multipart, mas o busboy
+// (usado pelo multer) decodifica esse header como latin1 por padrão, então
+// cada caractere multibyte virava 2 caracteres errados ("CATÁLOGO" virava
+// "CATÃLOGO" etc). Redecodificar de latin1 pra utf8 desfaz a leitura
+// errada. Achado do João, 2026-09-04.
+function corrigirNomeArquivo(nome: string): string {
+  return Buffer.from(nome, 'latin1').toString('utf8')
+}
+
 // Upload de arquivo (PDF do pedido/nota, planilha de importação) — separado do
 // tRPC porque ele não suporta multipart/form-data.
 const storage = multer.diskStorage({
   destination: UPLOADS_DIR,
   filename: (req, file, cb) => {
     const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    cb(null, `${unique}-${file.originalname}`)
+    cb(null, `${unique}-${corrigirNomeArquivo(file.originalname)}`)
   },
 })
 const upload = multer({ storage, limits: { fileSize: 20 * 1024 * 1024 } })
@@ -130,7 +140,7 @@ app.post('/upload/lead-attachment', upload.single('file'), async (req, res) => {
 
   res.json({
     path: req.file.filename,
-    originalName: req.file.originalname,
+    originalName: corrigirNomeArquivo(req.file.originalname),
     mimeType: req.file.mimetype,
     size: req.file.size,
   })
@@ -193,14 +203,14 @@ app.post('/upload/devolucao-anexo', uploadDevolucao.single('file'), async (req, 
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
-  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype })
 })
 
 // Formulário público do cliente (/solicitacao) — sem login, é o link que
 // vai ser compartilhado com clientes de fora.
 app.post('/upload/devolucao-anexo-publico', uploadDevolucao.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
-  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype })
 })
 
 // Anexos do módulo de Ordens (pós-venda Odin Compressores) — mesmo padrão
@@ -224,7 +234,7 @@ app.post('/upload/ordem-anexo', uploadOrdem.single('file'), async (req, res) => 
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
-  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype, tamanho: req.file.size })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
 // Anexos de Propostas (PDF da proposta, dados cadastrais etc.) — mesmo
@@ -247,7 +257,7 @@ app.post('/upload/proposta-anexo', uploadProposta.single('file'), async (req, re
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
-  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype, tamanho: req.file.size })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
 // Anexos de Demandas (board estilo Trello) — mesmo padrão de ordem-anexo/
@@ -265,7 +275,7 @@ app.post('/upload/demanda-anexo', uploadDemanda.single('file'), async (req, res)
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
-  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tamanho: req.file.size })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tamanho: req.file.size })
 })
 
 // Arquivos/Mídia de Marketing — fotos/vídeos/PDFs, qualquer tipo (como
@@ -286,7 +296,7 @@ app.post('/upload/marketing-arquivo', uploadMarketing.single('file'), async (req
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (user.role !== 'admin') return res.status(403).json({ error: 'Só admin pode subir arquivo' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
-  res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype, tamanho: req.file.size })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
 // Conteúdo de um arquivo de Marketing "somente visualização" — diferente do

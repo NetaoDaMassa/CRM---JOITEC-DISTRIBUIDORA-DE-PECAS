@@ -53,6 +53,32 @@ export const marketingRouter = router({
       return db.query.marketingPastas.findFirst({ where: eq(marketingPastas.id, Number(result.lastInsertRowid)) })
     }),
 
+  // Encontra (ou cria) a sequência de pastas de um caminho, nível por nível
+  // — usada pelo upload de PASTA inteira (o front manda o
+  // webkitRelativePath de cada arquivo quebrado em segmentos, uma vez por
+  // subpasta única). Reaproveita a pasta já existente com o mesmo nome no
+  // mesmo nível em vez de duplicar — subir a mesma pasta de novo cai dentro
+  // do que já tinha, não cria "Fotos (2)". Pedido do João, 2026-09-04.
+  garantirCaminhoPasta: adminProcedure
+    .input(z.object({ caminho: z.array(z.string().min(1)).min(1).max(20), pastaPaiId: z.number().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      let paiId: number | null = input.pastaPaiId ?? null
+      for (const nome of input.caminho) {
+        const existente = await db.query.marketingPastas.findFirst({
+          where: paiId
+            ? and(eq(marketingPastas.empresaId, ctx.empresaId), eq(marketingPastas.pastaPaiId, paiId), eq(marketingPastas.nome, nome))
+            : and(eq(marketingPastas.empresaId, ctx.empresaId), isNull(marketingPastas.pastaPaiId), eq(marketingPastas.nome, nome)),
+        })
+        if (existente) {
+          paiId = existente.id
+        } else {
+          const result = await db.insert(marketingPastas).values({ empresaId: ctx.empresaId, nome, pastaPaiId: paiId, criadoPor: ctx.user.id })
+          paiId = Number(result.lastInsertRowid)
+        }
+      }
+      return { pastaId: paiId as number }
+    }),
+
   renomearPasta: adminProcedure.input(z.object({ id: z.number(), nome: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await db.update(marketingPastas).set({ nome: input.nome }).where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
     return { ok: true }
