@@ -11,6 +11,63 @@ import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { formatDateTime } from '../lib/utils'
 
+// Renderiza cada página do PDF num <canvas> → vira <img> (PNG). Não usa o
+// visualizador nativo de PDF do navegador (iframe) de propósito: no celular
+// (principalmente iOS Safari) PDF dentro de iframe muitas vezes só fica em
+// branco ou nem carrega — funcionava no desktop mas não no celular, achado
+// do João, 2026-09-05. Desenhando a página como imagem funciona igual nos
+// dois, e de quebra não tem toolbar nativa nenhuma pra se preocupar em
+// esconder (era o problema anterior do botão de baixar embutido no PDF).
+//
+// `pdfjs-dist` (~600KB gzipado) é importado dinamicamente aqui dentro, não
+// no topo do arquivo — o app inteiro não tem code-splitting por rota, um
+// import estático pesaria no carregamento de TODAS as páginas do CRM pra
+// uma biblioteca que só serve pra essa prévia específica.
+function VisualizadorPdf({ blob }: { blob: Blob }) {
+  const [paginas, setPaginas] = useState<string[]>([])
+  const [erro, setErro] = useState<string | null>(null)
+  const [carregando, setCarregando] = useState(true)
+
+  useEffect(() => {
+    let cancelado = false
+    setPaginas([])
+    setErro(null)
+    setCarregando(true)
+    Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.mjs?url'), blob.arrayBuffer()])
+      .then(async ([pdfjsLib, workerUrlModule, buf]) => {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrlModule.default
+        const pdf = await pdfjsLib.getDocument({ data: buf }).promise
+        for (let i = 1; i <= pdf.numPages; i++) {
+          if (cancelado) return
+          const page = await pdf.getPage(i)
+          const viewport = page.getViewport({ scale: 1.5 })
+          const canvas = document.createElement('canvas')
+          canvas.width = viewport.width
+          canvas.height = viewport.height
+          const ctx = canvas.getContext('2d')
+          if (!ctx) continue
+          await page.render({ canvasContext: ctx, canvas, viewport }).promise
+          if (cancelado) return
+          const dataUrl = canvas.toDataURL('image/png')
+          setPaginas((prev) => [...prev, dataUrl])
+        }
+      })
+      .catch(() => { if (!cancelado) setErro('Não foi possível abrir esse PDF pra visualização') })
+      .finally(() => { if (!cancelado) setCarregando(false) })
+    return () => { cancelado = true }
+  }, [blob])
+
+  if (erro) return <p className="text-red-400 text-sm">{erro}</p>
+  return (
+    <div className="space-y-3 w-full max-h-[70vh] overflow-y-auto">
+      {paginas.map((src, i) => (
+        <img key={i} src={src} alt={`Página ${i + 1}`} className="w-full rounded-lg select-none" draggable={false} />
+      ))}
+      {carregando && <p className="text-dark-400 text-sm text-center py-2">Carregando página {paginas.length + 1}...</p>}
+    </div>
+  )
+}
+
 function formatarTamanho(bytes: number | null | undefined): string {
   if (!bytes) return '—'
   if (bytes < 1024) return `${bytes} B`
@@ -41,21 +98,24 @@ async function uploadArquivoMarketing(file: File): Promise<{ path: string; nome:
 // Não é uma trava perfeita: quem está vendo sempre pode tirar print ou
 // salvar pelo DevTools — só tira o "baixar com 1 clique".
 function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; nomeOriginal: string; tipoArquivo: string | null } | null; onClose: () => void }) {
+  const [blob, setBlob] = useState<Blob | null>(null)
   const [blobUrl, setBlobUrl] = useState<string | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   useEffect(() => {
     if (!arquivo) return
     let urlCriada: string | null = null
+    setBlob(null)
     setBlobUrl(null)
     setErro(null)
     const token = localStorage.getItem('odin_token')
     fetch(`/marketing-arquivo/${arquivo.id}/conteudo`, { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => {
         if (!res.ok) throw new Error(`Não foi possível carregar o arquivo (erro ${res.status})`)
-        const blob = await res.blob()
-        if (blob.size === 0) throw new Error('O arquivo veio vazio do servidor')
-        urlCriada = URL.createObjectURL(blob)
+        const b = await res.blob()
+        if (b.size === 0) throw new Error('O arquivo veio vazio do servidor')
+        setBlob(b)
+        urlCriada = URL.createObjectURL(b)
         setBlobUrl(urlCriada)
       })
       .catch((e) => setErro(e.message))
@@ -75,19 +135,13 @@ function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; n
             `tipoArquivo` truthy) e a prévia ficava simplesmente em branco,
             sem nenhuma mensagem — achado do João, 2026-09-05. Assim sempre
             cai em algum ramo quando `blobUrl` existe. */}
-        {blobUrl && (
+        {blobUrl && blob && (
           arquivo?.tipoArquivo?.startsWith('image/') ? (
             <img src={blobUrl} alt={arquivo.nomeOriginal} className="max-h-[70vh] max-w-full rounded-lg select-none" draggable={false} />
           ) : arquivo?.tipoArquivo?.startsWith('video/') ? (
-            <video src={blobUrl} controls controlsList="nodownload" className="max-h-[70vh] max-w-full rounded-lg" />
+            <video src={blobUrl} controls controlsList="nodownload" playsInline className="max-h-[70vh] max-w-full rounded-lg" />
           ) : arquivo?.tipoArquivo === 'application/pdf' ? (
-            // `#toolbar=0&navpanes=0` some com a barra do visualizador nativo
-            // de PDF do navegador — sem isso, o Chrome/Edge/Firefox desenham
-            // o próprio ícone de "baixar" em cima do PDF, furando a trava de
-            // visualização mesmo com o blob vindo da rota autenticada (achado
-            // do João, 2026-09-04: PDF continuava baixável mesmo marcado
-            // como "somente visualização").
-            <iframe src={`${blobUrl}#toolbar=0&navpanes=0`} title={arquivo?.nomeOriginal} className="w-full h-[70vh] rounded-lg border border-dark-700" />
+            <VisualizadorPdf blob={blob} />
           ) : (
             <p className="text-dark-400 text-sm">Esse tipo de arquivo não tem prévia — peça pro admin liberar o download.</p>
           )
