@@ -2808,6 +2808,13 @@ export const marketingArquivos = sqliteTable(
     nomeArmazenado: text('nome_armazenado').notNull(),
     tipoArquivo: text('tipo_arquivo'),
     tamanhoBytes: integer('tamanho_bytes'),
+    // Quando true, quem não é admin só visualiza (rota autenticada
+    // /marketing-arquivo/:id/conteudo, sem revelar o nome_armazenado real) —
+    // não tem botão de baixar e o caminho de /uploads não é mandado pro
+    // front. Admin sempre pode baixar de qualquer jeito, mesmo marcado.
+    // Pedido do João, 2026-09-04. Não é uma trava perfeita (print de tela
+    // sempre existe), é só tirar o download fácil pelo próprio sistema.
+    somenteVisualizacao: integer('somente_visualizacao', { mode: 'boolean' }).notNull().default(false),
     enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },

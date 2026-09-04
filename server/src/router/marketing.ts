@@ -83,7 +83,16 @@ export const marketingRouter = router({
         .where(inArray(marketingArquivoDownloads.arquivoId, arquivos.map((a) => a.id)))
       const contagemPorArquivo = new Map<number, number>()
       for (const c of contagens) contagemPorArquivo.set(c.arquivoId, (contagemPorArquivo.get(c.arquivoId) ?? 0) + 1)
-      return arquivos.map((a) => ({ ...a, totalDownloads: contagemPorArquivo.get(a.id) ?? 0 }))
+      const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+      return arquivos.map((a) => ({
+        ...a,
+        // Quem não é admin nunca recebe o nome real em disco de um arquivo
+        // "somente visualização" — sem isso, dava pra montar a URL de
+        // /uploads na mão e baixar mesmo sem o botão (ver preview.tsx, que
+        // busca o conteúdo pela rota autenticada /marketing-arquivo/:id/conteudo).
+        nomeArmazenado: !souAdmin && a.somenteVisualizacao ? null : a.nomeArmazenado,
+        totalDownloads: contagemPorArquivo.get(a.id) ?? 0,
+      }))
     }),
 
   // Chamado logo depois do upload cru em POST /upload/marketing-arquivo
@@ -97,6 +106,7 @@ export const marketingRouter = router({
         nomeArmazenado: z.string(),
         tipoArquivo: z.string().optional(),
         tamanhoBytes: z.number().optional(),
+        somenteVisualizacao: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -107,9 +117,21 @@ export const marketingRouter = router({
         nomeArmazenado: input.nomeArmazenado,
         tipoArquivo: input.tipoArquivo,
         tamanhoBytes: input.tamanhoBytes,
+        somenteVisualizacao: input.somenteVisualizacao ?? false,
         enviadoPor: ctx.user.id,
       })
       return db.query.marketingArquivos.findFirst({ where: eq(marketingArquivos.id, Number(result.lastInsertRowid)) })
+    }),
+
+  // Liga/desliga "somente visualização" num arquivo já existente.
+  alternarVisualizacao: adminProcedure
+    .input(z.object({ id: z.number(), somenteVisualizacao: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await db
+        .update(marketingArquivos)
+        .set({ somenteVisualizacao: input.somenteVisualizacao })
+        .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
+      return { ok: true }
     }),
 
   excluirArquivo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
@@ -118,11 +140,15 @@ export const marketingRouter = router({
   }),
 
   // Chamado pelo front no clique do botão/link de download — registro do
-  // clique, não é uma trava de acesso (o arquivo em si continua servido
-  // por /uploads, sem essa checagem no meio).
+  // clique, não é uma trava de acesso em si (o arquivo baixável continua
+  // servido por /uploads). Recusa se o arquivo é "somente visualização" e
+  // quem chamou não é admin — defesa a mais, o front nem deveria oferecer
+  // o botão de baixar nesse caso.
   registrarDownload: adminOrFeatureProcedure('arquivos').input(z.object({ arquivoId: z.number() })).mutation(async ({ ctx, input }) => {
     const arquivo = await db.query.marketingArquivos.findFirst({ where: and(eq(marketingArquivos.id, input.arquivoId), eq(marketingArquivos.empresaId, ctx.empresaId)) })
     if (!arquivo) return { ok: false }
+    const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+    if (arquivo.somenteVisualizacao && !souAdmin) return { ok: false }
     await db.insert(marketingArquivoDownloads).values({ arquivoId: input.arquivoId, userId: ctx.user.id })
     return { ok: true }
   }),

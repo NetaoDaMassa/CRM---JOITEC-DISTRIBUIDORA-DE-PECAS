@@ -1,0 +1,1 @@
+ALTER TABLE `marketing_arquivos` ADD `somente_visualizacao` integer DEFAULT false NOT NULL;

@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import {
   Folder, FolderPlus, Upload, Download, Trash2, ChevronRight, Home,
-  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil,
+  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock,
 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -35,6 +35,56 @@ async function uploadArquivoMarketing(file: File): Promise<{ path: string; nome:
   return { path: data.path, nome: data.nome, tipo: data.tipo, tamanho: data.tamanho }
 }
 
+// Modal de visualização — usada pra arquivo "somente visualização": busca o
+// conteúdo pela rota autenticada (o front nunca fica sabendo o nome real em
+// disco desse arquivo) e mostra sem oferecer link de download nenhum.
+// Não é uma trava perfeita: quem está vendo sempre pode tirar print ou
+// salvar pelo DevTools — só tira o "baixar com 1 clique".
+function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; nomeOriginal: string; tipoArquivo: string | null } | null; onClose: () => void }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [erro, setErro] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!arquivo) return
+    let urlCriada: string | null = null
+    setBlobUrl(null)
+    setErro(null)
+    const token = localStorage.getItem('odin_token')
+    fetch(`/marketing-arquivo/${arquivo.id}/conteudo`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Não foi possível carregar o arquivo')
+        const blob = await res.blob()
+        urlCriada = URL.createObjectURL(blob)
+        setBlobUrl(urlCriada)
+      })
+      .catch((e) => setErro(e.message))
+    return () => {
+      if (urlCriada) URL.revokeObjectURL(urlCriada)
+    }
+  }, [arquivo?.id])
+
+  return (
+    <Modal open={!!arquivo} onClose={onClose} title={arquivo?.nomeOriginal ?? ''} size="lg">
+      <div className="flex items-center justify-center min-h-[300px]" onContextMenu={(e) => e.preventDefault()}>
+        {erro && <p className="text-red-400 text-sm">{erro}</p>}
+        {!erro && !blobUrl && <p className="text-dark-400 text-sm">Carregando...</p>}
+        {blobUrl && arquivo?.tipoArquivo?.startsWith('image/') && (
+          <img src={blobUrl} alt={arquivo.nomeOriginal} className="max-h-[70vh] max-w-full rounded-lg select-none" draggable={false} />
+        )}
+        {blobUrl && arquivo?.tipoArquivo?.startsWith('video/') && (
+          <video src={blobUrl} controls controlsList="nodownload" className="max-h-[70vh] max-w-full rounded-lg" />
+        )}
+        {blobUrl && arquivo?.tipoArquivo === 'application/pdf' && (
+          <iframe src={blobUrl} title={arquivo.nomeOriginal} className="w-full h-[70vh] rounded-lg border border-dark-700" />
+        )}
+        {blobUrl && arquivo?.tipoArquivo && !arquivo.tipoArquivo.startsWith('image/') && !arquivo.tipoArquivo.startsWith('video/') && arquivo.tipoArquivo !== 'application/pdf' && (
+          <p className="text-dark-400 text-sm">Esse tipo de arquivo não tem prévia — peça pro admin liberar o download.</p>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 export default function MarketingArquivos() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
@@ -46,6 +96,8 @@ export default function MarketingArquivos() {
   const [enviando, setEnviando] = useState(false)
   const [verDownloadsDe, setVerDownloadsDe] = useState<{ id: number; nome: string } | null>(null)
   const [renomeando, setRenomeando] = useState<{ id: number; nome: string } | null>(null)
+  const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
+  const [visualizando, setVisualizando] = useState<{ id: number; nomeOriginal: string; tipoArquivo: string | null } | null>(null)
 
   const argPasta = { pastaId: pastaAtualId ?? undefined }
   const { data: pastas, isLoading: carregandoPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
@@ -82,6 +134,12 @@ export default function MarketingArquivos() {
     onError: (e) => toast.error(e.message),
   })
   const registrarArquivoMut = trpc.marketing.registrarArquivo.useMutation()
+  const alternarVisualizacaoMut = trpc.marketing.alternarVisualizacao.useMutation({
+    onSuccess() {
+      invalidarLista()
+    },
+    onError: (e) => toast.error(e.message),
+  })
   const excluirArquivoMut = trpc.marketing.excluirArquivo.useMutation({
     onSuccess() {
       toast.success('Arquivo excluído')
@@ -108,6 +166,7 @@ export default function MarketingArquivos() {
           nomeArmazenado: up.path.replace('/uploads/', ''),
           tipoArquivo: up.tipo,
           tamanhoBytes: up.tamanho,
+          somenteVisualizacao: somenteVisualizacaoUpload,
         })
       } catch (err: any) {
         toast.error(`Falha ao enviar "${file.name}": ${err.message}`)
@@ -119,7 +178,8 @@ export default function MarketingArquivos() {
     invalidarLista()
   }
 
-  function baixar(arquivo: { id: number; nomeArmazenado: string }) {
+  function baixar(arquivo: { id: number; nomeArmazenado: string | null }) {
+    if (!arquivo.nomeArmazenado) return
     registrarDownloadMut.mutate({ arquivoId: arquivo.id })
     window.open(`/uploads/${arquivo.nomeArmazenado}`, '_blank')
   }
@@ -131,7 +191,11 @@ export default function MarketingArquivos() {
       <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
         <h1 className="font-heading text-2xl text-dark-50 font-bold">Arquivos/Mídia</h1>
         {isAdmin && (
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 text-xs text-dark-400 cursor-pointer select-none" title="Quem não é admin só vai poder visualizar, sem botão de baixar">
+              <input type="checkbox" checked={somenteVisualizacaoUpload} onChange={(e) => setSomenteVisualizacaoUpload(e.target.checked)} className="accent-gold-600" />
+              Somente visualização
+            </label>
             <Button size="sm" variant="secondary" onClick={() => setModalNovaPasta(true)}>
               <FolderPlus size={14} className="mr-1" /> Nova pasta
             </Button>
@@ -200,11 +264,34 @@ export default function MarketingArquivos() {
               <p className="text-xs text-dark-500">
                 Enviado por {arquivo.enviadoPorUser?.name ?? '—'} · {formatDateTime(arquivo.createdAt)}
               </p>
+              {arquivo.somenteVisualizacao && (
+                <span className="flex items-center gap-1 text-[11px] text-amber-400 w-fit">
+                  <Lock size={11} /> Somente visualização
+                </span>
+              )}
               <div className="flex items-center justify-between gap-2 mt-1">
-                <button onClick={() => baixar(arquivo)} className="flex items-center gap-1 text-xs font-semibold text-gold-400 hover:text-gold-300">
-                  <Download size={13} /> Baixar
-                </button>
+                {arquivo.somenteVisualizacao && !isAdmin ? (
+                  <button
+                    onClick={() => setVisualizando({ id: arquivo.id, nomeOriginal: arquivo.nomeOriginal, tipoArquivo: arquivo.tipoArquivo })}
+                    className="flex items-center gap-1 text-xs font-semibold text-gold-400 hover:text-gold-300"
+                  >
+                    <Eye size={13} /> Visualizar
+                  </button>
+                ) : (
+                  <button onClick={() => baixar(arquivo)} className="flex items-center gap-1 text-xs font-semibold text-gold-400 hover:text-gold-300">
+                    <Download size={13} /> Baixar
+                  </button>
+                )}
                 <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <button
+                      onClick={() => alternarVisualizacaoMut.mutate({ id: arquivo.id, somenteVisualizacao: !arquivo.somenteVisualizacao })}
+                      className="text-dark-400 hover:text-amber-400"
+                      title={arquivo.somenteVisualizacao ? 'Liberar download' : 'Bloquear download (somente visualização)'}
+                    >
+                      {arquivo.somenteVisualizacao ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                  )}
                   {isAdmin && (
                     <button
                       onClick={() => setVerDownloadsDe({ id: arquivo.id, nome: arquivo.nomeOriginal })}
@@ -287,6 +374,8 @@ export default function MarketingArquivos() {
           )}
         </div>
       </Modal>
+
+      <ModalVisualizarArquivo arquivo={visualizando} onClose={() => setVisualizando(null)} />
     </div>
   )
 }

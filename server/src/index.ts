@@ -11,7 +11,7 @@ import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
-import { adminEmpresasExtras } from './db/schema.js'
+import { adminEmpresasExtras, marketingArquivos, permissoesAdmin } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
@@ -287,6 +287,34 @@ app.post('/upload/marketing-arquivo', uploadMarketing.single('file'), async (req
   if (user.role !== 'admin') return res.status(403).json({ error: 'Só admin pode subir arquivo' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
   res.json({ path: `/uploads/${req.file.filename}`, nome: req.file.originalname, tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
+// Conteúdo de um arquivo de Marketing "somente visualização" — diferente do
+// resto de /uploads (estático, sem login), essa rota exige token E confere
+// empresa/feature antes de servir os bytes, porque pra esse arquivo o front
+// nunca recebe o nome real em disco (ver marketing.listarArquivos). Sempre
+// `inline` (nunca `attachment`) — não é uma trava perfeita (a pessoa
+// logada sempre consegue tirar print ou salvar pelo DevTools), só tira o
+// "baixar com 1 clique" que o resto do sistema dá.
+app.get('/marketing-arquivo/:id/conteudo', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  const arquivo = await db.query.marketingArquivos.findFirst({ where: eq(marketingArquivos.id, Number(req.params.id)) })
+  if (!arquivo) return res.status(404).json({ error: 'Arquivo não encontrado' })
+
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  if (arquivo.empresaId !== empresaId) return res.status(403).json({ error: 'Sem permissão' })
+
+  if (user.role !== 'admin' && !user.superAdmin) {
+    const liberado = await db.query.permissoesAdmin.findFirst({
+      where: and(eq(permissoesAdmin.userId, user.id), eq(permissoesAdmin.feature, 'arquivos')),
+    })
+    if (!liberado) return res.status(403).json({ error: 'Sem permissão' })
+  }
+
+  res.setHeader('Content-Disposition', 'inline')
+  if (arquivo.tipoArquivo) res.setHeader('Content-Type', arquivo.tipoArquivo)
+  res.sendFile(path.resolve(UPLOADS_DIR, arquivo.nomeArmazenado))
 })
 
 // Importação em massa de clientes (Excel/CSV) — em memória, não vai pro disco
