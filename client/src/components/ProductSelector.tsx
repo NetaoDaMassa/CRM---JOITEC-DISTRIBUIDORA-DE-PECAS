@@ -13,10 +13,16 @@ type Item = { modelo: string; qtd: number; voltagem: string }
 const OUTROS_PREFIX = 'Outros:'
 const LEGACY_MODELS_PREFIX = 'Modelos selecionados:'
 
+// `.trim()` só pra TESTAR se tem conteúdo — nunca aplicado no texto que
+// volta pro campo, senão cada espaço digitado no fim do texto (ou seja,
+// todo espaço entre palavras, já que é sempre o último caractere no
+// momento em que é digitado) era cortado assim que o componente
+// re-renderizava, e dava a impressão de "não deixa dar espaço" (achado do
+// João, 2026-09-05).
 function renderText(itens: Item[], outros: string): string {
-  const linhas = itens.map((i) => `• ${i.modelo} — Qtd: ${i.qtd}${i.voltagem.trim() ? ` — ${i.voltagem.trim()}` : ''}`)
+  const linhas = itens.map((i) => `• ${i.modelo} — Qtd: ${i.qtd}${i.voltagem.trim() ? ` — ${i.voltagem}` : ''}`)
   const body = linhas.join('\n')
-  if (outros.trim()) return (body ? body + '\n' : '') + `${OUTROS_PREFIX}\n${outros.trim()}`
+  if (outros.trim()) return (body ? body + '\n' : '') + `${OUTROS_PREFIX}\n${outros}`
   return body
 }
 
@@ -55,7 +61,9 @@ function parseText(value: string): { itens: Item[]; outros: string } {
     }
     if (linha.trim()) outrosLinhas.push(linha)
   }
-  return { itens, outros: outrosLinhas.join('\n').trim() }
+  // Sem `.trim()` aqui também, pelo mesmo motivo de renderText acima — isso
+  // é lido de volta pro `value` do textarea a cada tecla digitada.
+  return { itens, outros: outrosLinhas.join('\n') }
 }
 
 function parseValue(value: string, itensJson?: string | null): { itens: Item[]; outros: string } {
