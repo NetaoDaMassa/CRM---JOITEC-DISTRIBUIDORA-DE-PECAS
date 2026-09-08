@@ -122,11 +122,10 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
     setBuscaCliente(clienteNome)
   }
 
-  const criarMut = trpc.devolucoes.criar.useMutation({
-    onError(err) {
-      toast.error(err.message)
-    },
-  })
+  // Sem onError aqui: `enviar` usa mutateAsync com try/catch e já mostra o
+  // toast de erro. Ter os dois fazia o mesmo erro aparecer 2x na tela
+  // (achado do João, 2026-09-08 — dois toasts idênticos de UNIQUE).
+  const criarMut = trpc.devolucoes.criar.useMutation()
   const anexarMut = trpc.devolucoes.anexarArquivo.useMutation()
 
   function toggleOcorrencia(tipo: string) {
