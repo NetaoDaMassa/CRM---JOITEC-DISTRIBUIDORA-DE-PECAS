@@ -20,6 +20,7 @@ import { empresasRouter } from './empresas.js'
 import { maquinasRouter } from './maquinas.js'
 import { telefonesRouter } from './telefones.js'
 import { prospeccaoRouter } from './prospeccao.js'
+import { prospeccaoOdinRouter } from './prospeccaoOdin.js'
 import { aprovacoesRouter } from './aprovacoes.js'
 import { designRouter } from './design.js'
 import { financeiroRouter } from './financeiro.js'
@@ -84,6 +85,7 @@ export const appRouter = router({
   maquinas: maquinasRouter,
   telefones: telefonesRouter,
   prospeccao: prospeccaoRouter,
+  prospeccaoOdin: prospeccaoOdinRouter,
   aprovacoes: aprovacoesRouter,
   design: designRouter,
   financeiro: financeiroRouter,

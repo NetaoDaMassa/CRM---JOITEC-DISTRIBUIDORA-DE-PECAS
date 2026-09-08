@@ -103,6 +103,11 @@ export const FEATURES_ADMIN = [
   // Visitas de campo — só Odin Compressores, portado do odincrm.duckdns.org.
   // Também existe em FEATURES_VENDEDOR (é a tela de uso diário do vendedor em campo).
   'visitas_odin',
+  // Prospecção Odin — esteira da Bruna (cadastra clientes que já compraram
+  // máquina, registra tentativas de contato, classifica Revenda/Consumidor
+  // Final e envia pra carteira). Só Odin Compressores; também em
+  // FEATURES_VENDEDOR (é tela de uso diário dela).
+  'prospeccao_odin',
   // Controle de Qualidade (resumo de anexos+histórico de Pedidos) — só Odin
   // Compressores, gestor-only, não existe em FEATURES_VENDEDOR.
   'qualidade_odin',
@@ -164,6 +169,8 @@ export const FEATURES_VENDEDOR = [
   'revendas_odin',
   // Visitas de campo — mesma chave de FEATURES_ADMIN acima.
   'visitas_odin',
+  // Prospecção Odin (esteira da Bruna) — mesma chave de FEATURES_ADMIN acima.
+  'prospeccao_odin',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima

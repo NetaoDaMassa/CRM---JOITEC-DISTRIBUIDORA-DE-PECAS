@@ -280,6 +280,18 @@ export const clientes = sqliteTable('clientes', {
   // Marcado manualmente no "Completar cadastro", pra dar pra medir depois o
   // retorno de vendas dos clientes de Marketing separado do resto.
   origemMarketing: integer('origem_marketing', { mode: 'boolean' }).notNull().default(false),
+  // Classificação comercial — Revenda (compra pra repassar/revender) ou
+  // Consumidor Final (usa a máquina). Hoje só a Prospecção Odin preenche
+  // (server/src/router/prospeccaoOdin.ts); é obrigatório na hora de enviar
+  // o prospect pra carteira. Fica no cliente pra sobreviver à ida pra
+  // carteira e servir de filtro depois.
+  classificacaoComercial: text('classificacao_comercial', { enum: ['revenda', 'consumidor_final'] }),
+  // Situação do prospect na esteira da Prospecção Odin (a Bruna liga pros
+  // clientes que já compraram máquina, registra o retorno e move a situação
+  // até "pronto pra carteira"). Só faz sentido enquanto emProspeccao=true.
+  prospeccaoSituacao: text('prospeccao_situacao', {
+    enum: ['novo', 'em_negociacao', 'sem_interesse', 'retornar_depois', 'pronto_carteira'],
+  }).notNull().default('novo'),
   versao: integer('versao').notNull().default(1),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
