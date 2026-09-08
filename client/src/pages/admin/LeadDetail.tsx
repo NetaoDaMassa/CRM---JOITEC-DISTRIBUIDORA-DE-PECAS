@@ -339,7 +339,10 @@ export default function LeadDetail() {
               <ShieldAlert size={14} /> Reabrir
             </Button>
           )}
-          {isAdmin && (
+          {/* Editar o cadastro do lead: sempre liberado pro admin. Na Odin
+              Compressores o vendedor dono do lead também edita — pedido do
+              João, 2026-09-08 (o backend leads.update já autoriza o dono). */}
+          {(isAdmin || (empresaSlug === 'odin-compressores' && isOwner)) && (
             <Button size="sm" variant="secondary" onClick={() => setEditarInfoOpen(true)}>
               <Pencil size={14} /> Editar informações
             </Button>
