@@ -216,10 +216,26 @@ type VisitaForm = {
   propostaComissao: string
   propostaRevenda: string
 }
-const VISITA_VAZIA: VisitaForm = {
-  dataVisita: new Date().toISOString().slice(0, 16),
-  nomeEmpresa: '', pessoaContato: '', telefoneContato: '', endereco: '', objetivo: '', resultado: '', proximoPasso: '', dataRetorno: '', observacoes: '',
-  propostaItens: '', propostaPagamento: '', propostaComissao: '', propostaRevenda: '',
+// O campo "Data/Hora" é um <input type="datetime-local">, que espera a hora
+// LOCAL de parede ("YYYY-MM-DDTHH:MM") — não UTC. `new Date().toISOString()`
+// devolve sempre UTC, então quando o vendedor não mexia no campo a visita
+// nascia com o horário 3h adiantado (e o resto do módulo lê dataVisita como
+// hora de Brasília, então aparecia errada no card, no "Hoje" e no CSV —
+// achado do João, 2026-09-08). getTimezoneOffset() é a diferença em minutos
+// pro fuso do aparelho (no Brasil, +180); subtrair alinha pro relógio local.
+function agoraParaInputLocal(): string {
+  const agora = new Date()
+  return new Date(agora.getTime() - agora.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+}
+
+// Fábrica (não const): o horário padrão precisa ser o de quando o formulário
+// abre, não o de quando a página carregou.
+function novaVisita(): VisitaForm {
+  return {
+    dataVisita: agoraParaInputLocal(),
+    nomeEmpresa: '', pessoaContato: '', telefoneContato: '', endereco: '', objetivo: '', resultado: '', proximoPasso: '', dataRetorno: '', observacoes: '',
+    propostaItens: '', propostaPagamento: '', propostaComissao: '', propostaRevenda: '',
+  }
 }
 
 // "Hoje" precisa ser a data de hoje no fuso do Brasil (UTC-3), não a do
@@ -251,7 +267,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
   const isAdmin = user?.role === 'admin'
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<number | null>(null)
-  const [form, setForm] = useState<VisitaForm>(VISITA_VAZIA)
+  const [form, setForm] = useState<VisitaForm>(novaVisita)
   const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
   const [busca, setBusca] = useState('')
 
@@ -312,11 +328,11 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
   const [gpsRegistro, setGpsRegistro] = useState<{ lat: number; lng: number } | null>(null)
   const [capturandoGpsRegistro, setCapturandoGpsRegistro] = useState(false)
 
-  function fechar() { setModalAberto(false); setEditando(null); setForm(VISITA_VAZIA); setGpsRegistro(null) }
+  function fechar() { setModalAberto(false); setEditando(null); setForm(novaVisita()); setGpsRegistro(null) }
   function abrirEdicao(v: NonNullable<typeof visitasList>[number]) {
     setEditando(v.id)
     setForm({
-      dataVisita: v.dataVisita?.slice(0, 16) ?? VISITA_VAZIA.dataVisita,
+      dataVisita: v.dataVisita?.slice(0, 16) ?? agoraParaInputLocal(),
       nomeEmpresa: v.nomeEmpresa ?? v.clienteNome ?? '',
       pessoaContato: v.pessoaContato ?? '',
       telefoneContato: v.telefoneContato ?? '',
@@ -421,8 +437,20 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
           )}
           {(visitasList ?? []).map((v) => {
             const podeEditar = isAdmin || v.vendedorId === user?.id
-            const duracaoMin = v.checkinEm && v.checkoutEm ? Math.round((new Date(v.checkoutEm.replace(' ', 'T')).getTime() - new Date(v.checkinEm.replace(' ', 'T')).getTime()) / 60000) : null
+            const duracaoMin = v.checkinEm && v.checkoutEm ? Math.round((new Date(v.checkoutEm.replace(' ', 'T') + 'Z').getTime() - new Date(v.checkinEm.replace(' ', 'T') + 'Z').getTime()) / 60000) : null
+            // dataVisita é gravada em hora de parede de Brasília (o que o
+            // vendedor digitou no datetime-local) — mostra o valor cru.
             const hora = (iso: string | null) => (iso ? iso.slice(11, 16) : null)
+            // checkinEm/checkoutEm vêm do agoraSqlite() do back, que grava em
+            // UTC — sem converter pro fuso de Brasília apareciam 3h adiantados.
+            const horaBr = (ts: string | null) =>
+              ts
+                ? new Date(ts.replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'America/Sao_Paulo',
+                  })
+                : null
             return (
               <div key={v.id} className="bg-dark-800 rounded-xl border border-dark-600 p-4 text-sm hover:shadow-lg hover:shadow-black/20 transition-shadow">
                 <div className="flex items-start justify-between gap-2">
@@ -449,8 +477,8 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                     <div className="flex items-center gap-4 mt-2 text-xs text-dark-400 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Clock size={12} />
-                        {hora(v.checkinEm) ?? hora(v.dataVisita) ?? v.dataVisita}
-                        {v.checkoutEm && <> – {hora(v.checkoutEm)}</>}
+                        {horaBr(v.checkinEm) ?? hora(v.dataVisita) ?? v.dataVisita}
+                        {v.checkoutEm && <> – {horaBr(v.checkoutEm)}</>}
                         {duracaoMin !== null && <span className="ml-1 text-[11px] text-dark-500">({duracaoMin}min)</span>}
                       </span>
                       {v.latCheckin ? (
