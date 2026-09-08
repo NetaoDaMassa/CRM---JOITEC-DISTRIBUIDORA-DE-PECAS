@@ -888,6 +888,13 @@ export const leadsRouter = router({
         slaStatus: null,
         abordagem4hAlertSentAt: null,
         lastContactStaleAlertSentAt: null,
+        // Mesma regra do `addContactAttempt`: confirmar o contato disparado
+        // pelo botão de Ligar/WhatsApp também resolve o badge "Atrasado". Se
+        // o lead já estava com o próximo contato vencido e ninguém marcou uma
+        // nova data, o atraso velho é limpo em vez de carregado adiante — o
+        // vendedor fez contato, só não bateu na hora marcada (pedido do João,
+        // 2026-09-08; antes só o registro manual de tentativa limpava).
+        nextContactAt: isNextContactOverdue(lead.nextContactAt) ? null : lead.nextContactAt,
         ...(movedToAbordagem ? { status: 'abordagem' as const, statusChangedAt: now } : {}),
       })
       .where(eq(leads.id, attempt.leadId))

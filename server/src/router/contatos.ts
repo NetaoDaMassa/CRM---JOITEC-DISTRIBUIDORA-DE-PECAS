@@ -101,7 +101,17 @@ export const contatosRouter = router({
 
     if (!contato.resultado) {
       await db.update(registroContato).set({ resultado: 'confirmado' }).where(eq(registroContato.id, input.id))
-      if (contato.origem !== 'manual') await contarTentativaSePendente(contato.funilMensalId)
+      if (contato.origem !== 'manual') {
+        // `contarTentativaSePendente` já resolve o badge "Atrasado" do card.
+        await contarTentativaSePendente(contato.funilMensalId)
+      } else {
+        // Registro manual que estava pendente e agora foi confirmado — não
+        // entra em `contarTentativaSePendente` (essa contagem é só pros
+        // automáticos), mas o contato foi feito do mesmo jeito, então
+        // também tira o "Atrasado" do card (pedido do João, 2026-09-08).
+        const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, contato.funilMensalId) })
+        if (funil) await fecharCompromissosAtrasados(funil.clienteId)
+      }
     }
     return { success: true }
   }),
@@ -138,8 +148,15 @@ export const contatosRouter = router({
       // Editar um registro automático ainda pendente e dar um resultado a
       // ele conta como a 1ª confirmação, igual clicar em "Confirmar" — ver
       // comentário lá.
-      if (eraPendente && input.resultado && contato.origem !== 'manual') {
-        await contarTentativaSePendente(contato.funilMensalId)
+      if (eraPendente && input.resultado) {
+        if (contato.origem !== 'manual') {
+          await contarTentativaSePendente(contato.funilMensalId)
+        } else {
+          // Manual pendente que ganhou resultado agora — o contato foi feito,
+          // então tira o "Atrasado" do card (pedido do João, 2026-09-08).
+          const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, contato.funilMensalId) })
+          if (funil) await fecharCompromissosAtrasados(funil.clienteId)
+        }
       }
       return { success: true }
     }),
