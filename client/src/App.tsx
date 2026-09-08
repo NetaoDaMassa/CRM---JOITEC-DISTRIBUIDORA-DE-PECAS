@@ -194,6 +194,7 @@ export default function App() {
           <Route path="admin/caixa" element={<AdminGuard><FeatureGuard feature="caixa"><AdminCaixa /></FeatureGuard></AdminGuard>} />
           <Route path="admin/boletos" element={<AdminGuard><FeatureGuard feature="boletos"><Boletos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/negociacoes" element={<AdminGuard><FeatureGuard feature="negociacoes"><Negociacoes /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/faturamento-geral" element={<AdminGuard><FeatureGuard feature="faturamento_geral"><FaturamentoGeral /></FeatureGuard></AdminGuard>} />
           <Route path="admin/compras" element={<AdminGuard><FeatureGuard feature="compras"><AdminCompras /></FeatureGuard></AdminGuard>} />
           <Route path="admin/backup" element={<AdminGuard><FeatureGuard feature="backup"><AdminBackup /></FeatureGuard></AdminGuard>} />
           <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />

@@ -42,6 +42,12 @@ export const FEATURES_ADMIN = [
   // diferente de 'demandas').
   'boletos',
   'negociacoes',
+  // Board "Faturamento Geral" da Compretec Loja Física — mesma chave/tela de
+  // FEATURES_VENDEDOR. Nasceu como tela só de vendedor (Daniela), mas quando
+  // essa pessoa vira admin (função Financeiro) o link some do menu, que é
+  // filtrado por ADMIN_LINKS. Ter a chave aqui deixa conceder em Permissões
+  // pro admin também (o link em ADMIN_LINKS + rota /admin/faturamento-geral).
+  'faturamento_geral',
   'marketing_analytics',
   // "Solicitar Arte" — mesma chave/tela de FEATURES_VENDEDOR. Por padrão só
   // vendedor via essa tela (pedido pra marketing), mas admin sem carteira

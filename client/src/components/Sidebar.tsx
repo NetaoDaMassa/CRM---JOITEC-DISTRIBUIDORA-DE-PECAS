@@ -70,6 +70,11 @@ export const ADMIN_LINKS = [
   { to: '/admin/caixa', label: 'Caixa', icon: Banknote, feature: 'caixa' },
   { to: '/admin/boletos', label: 'Boletos', icon: FileSpreadsheet, feature: 'boletos' },
   { to: '/admin/negociacoes', label: 'Negociações', icon: Handshake, feature: 'negociacoes' },
+  // Mesma tela/rota do VENDOR_LINKS abaixo — quem processa o faturamento da
+  // Compretec Loja Física (Daniela) virou admin (função Financeiro) mas
+  // continua precisando desse board. `funil.funilFaturamentoGeral` já é
+  // adminOrFeatureProcedure, então admin passa; só faltava o link + a rota.
+  { to: '/admin/faturamento-geral', label: 'Faturamento Geral', icon: Receipt, somenteEmpresa: SO_COMPRETEC_LOJA_FISICA, feature: 'faturamento_geral' },
   { to: '/admin/compras', label: 'Compras', icon: Ship, feature: 'compras' },
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
