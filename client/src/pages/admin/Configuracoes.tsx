@@ -440,7 +440,15 @@ export default function AdminConfiguracoes() {
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
         <input
-          type="text"
+          // type="search" + autoComplete/name esquisito: sem isso o Chrome
+          // enchia esse campo com o usuário salvo ("admin") ao abrir a
+          // página, e a busca filtrava tudo pra fora — parecia bug de tela
+          // em branco (reportado pelo João, 2026-09-09).
+          type="search"
+          name="busca-configuracoes-sem-autofill"
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
           placeholder="Buscar em Configurações..."
