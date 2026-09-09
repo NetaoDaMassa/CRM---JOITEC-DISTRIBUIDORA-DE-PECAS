@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { trpc } from './lib/trpc'
 import Layout from './components/Layout'
+import { FEATURES_SEMPRE_LIBERADAS } from './components/Sidebar'
 import Login from './pages/Login'
 import TrocarSenha from './pages/TrocarSenha'
 import Clientes from './pages/Clientes'
@@ -106,6 +107,11 @@ function FeatureGuard({ feature, children }: { feature: string; children: React.
   const { data: minhasFeatures, isLoading } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: !!user && user.role === 'admin' && !user.superAdmin,
   })
+  // Features liberadas pra todo mundo (ex: 'arquivos'/Arquivos-Mídia) não
+  // dependem de linha em Permissões — o Sidebar já mostra o link pra qualquer
+  // um, então a página tem que abrir igual, senão o admin não-superAdmin clica
+  // e leva "sem permissão". Mesma lista usada no Sidebar.
+  if (FEATURES_SEMPRE_LIBERADAS.has(feature)) return <>{children}</>
   if (!user || user.role !== 'admin' || user.superAdmin) return <>{children}</>
   if (isLoading) return null
   if (!minhasFeatures?.includes(feature)) {
