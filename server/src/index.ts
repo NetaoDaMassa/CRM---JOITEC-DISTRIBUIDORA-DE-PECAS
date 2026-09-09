@@ -11,7 +11,7 @@ import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
-import { adminEmpresasExtras, marketingArquivos } from './db/schema.js'
+import { adminEmpresasExtras, marketingArquivos, propostaArquivos } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
@@ -320,6 +320,41 @@ app.get('/marketing-arquivo/:id/conteudo', async (req, res) => {
   res.setHeader('Content-Disposition', 'inline')
   if (arquivo.tipoArquivo) res.setHeader('Content-Type', arquivo.tipoArquivo)
   res.sendFile(path.resolve(UPLOADS_DIR, arquivo.nomeArmazenado))
+})
+
+// Baixar o anexo de uma proposta com nome amigável ("Proposta - <cliente>.pdf")
+// em vez do nome cru em disco ("prop-<uuid>.pdf"). Público igual /uploads —
+// o que protege é o UUID no caminho ser impossível de adivinhar (mesmo
+// modelo de antes; o link vai pro cliente por WhatsApp, ele não tem login).
+// O front usa essa rota no lugar de /uploads/<nomeArmazenado> pros PDFs de
+// proposta (link de WhatsApp, "copiar link" e o botão de baixar no CRM).
+app.get('/proposta-arquivo/:nomeArmazenado', async (req, res) => {
+  const nomeArmazenado = req.params.nomeArmazenado
+  // Só o padrão gerado pelo upload (prop-<uuid>.<ext>) — barra path traversal
+  // e garante que é mesmo um anexo de proposta.
+  if (!/^prop-[0-9a-fA-F-]{36}\.[A-Za-z0-9]{2,5}$/.test(nomeArmazenado)) {
+    return res.status(400).send('Arquivo inválido')
+  }
+  const arq = await db.query.propostaArquivos.findFirst({
+    where: eq(propostaArquivos.nomeArmazenado, nomeArmazenado),
+    with: { proposta: { columns: { id: true, clienteNome: true, codSap: true } } },
+  })
+  if (!arq) return res.status(404).send('Arquivo não encontrado')
+
+  const ext = path.extname(nomeArmazenado) || '.pdf'
+  const cliente = (arq.proposta?.clienteNome ?? 'cliente')
+    .replace(/[\\/:*?"<>|\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const prefixo = arq.proposta?.codSap ? `${arq.proposta.codSap.replace(/[\\/:*?"<>|]+/g, '')} - ` : ''
+  const nomeAmigavel = `Proposta ${prefixo}${cliente}${ext}`.trim()
+
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${nomeAmigavel.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(nomeAmigavel)}`
+  )
+  if (arq.tipoArquivo) res.setHeader('Content-Type', arq.tipoArquivo)
+  res.sendFile(path.resolve(UPLOADS_DIR, nomeArmazenado))
 })
 
 // Importação em massa de clientes (Excel/CSV) — em memória, não vai pro disco

@@ -306,7 +306,7 @@ function PropostaForm({
       comissao ? `Comissão: ${comissao}` : null,
       revenda ? `Revenda: ${revenda}` : null,
       observacoes ? `\nInformações para cadastro: ${observacoes}` : null,
-      pdfFiles[0] ? `\n📄 PDF da proposta:\n${window.location.origin}/uploads/${pdfFiles[0].nomeArmazenado}` : null,
+      pdfFiles[0] ? `\n📄 PDF da proposta:\n${window.location.origin}/proposta-arquivo/${pdfFiles[0].nomeArmazenado}` : null,
       '',
       proposta.vendedor?.name ? `Vendedor: ${proposta.vendedor.name}` : null,
     ].filter((l) => l !== null)
@@ -410,7 +410,7 @@ function PropostaForm({
           <div className="space-y-1">
             {pdfFiles.map((f) => (
               <div key={f.id} className="flex items-center gap-2 rounded-lg bg-dark-900 px-3 py-2">
-                <span className="flex-1 min-w-0 text-xs text-blue-400 truncate"><a href={`/uploads/${f.nomeArmazenado}`} download={f.nomeOriginal} className="hover:underline">{f.nomeOriginal}</a></span>
+                <span className="flex-1 min-w-0 text-xs text-blue-400 truncate"><a href={`/proposta-arquivo/${f.nomeArmazenado}`} className="hover:underline">{f.nomeOriginal}</a></span>
                 {podeEditar && <button onClick={() => excluirArquivoMut.mutate({ id: f.id, propostaId })} className="text-dark-500 hover:text-red-400 shrink-0"><Trash2 size={13} /></button>}
               </div>
             ))}

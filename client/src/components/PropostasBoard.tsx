@@ -148,6 +148,11 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                     .filter((a) => a.fileCategory === 'proposta_pdf' || a.tipoArquivo?.includes('pdf'))
                     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))[0]
                   const pdfUrl = pdfArquivo ? `/uploads/${pdfArquivo.nomeArmazenado}` : null
+                  // Link pra baixar/compartilhar: serve o PDF com nome amigável
+                  // ("Proposta - <cliente>.pdf") em vez do "prop-<uuid>.pdf"
+                  // cru (reportado pelo João, 2026-09-09). "Abrir PDF" continua
+                  // no /uploads (abre no navegador, não baixa).
+                  const pdfBaixarUrl = pdfArquivo ? `/proposta-arquivo/${pdfArquivo.nomeArmazenado}` : null
                   const temPdf = !!pdfArquivo
                   const isUrgente = p.prioridade === 'urgente'
                   const temAlteracao = p.alteracoes.length > 0
@@ -218,13 +223,13 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                               <FileText size={11} /> Abrir PDF
                             </a>
                             <button
-                              onClick={() => compartilharWhatsApp(p, pdfUrl)}
+                              onClick={() => compartilharWhatsApp(p, pdfBaixarUrl)}
                               className="flex items-center gap-1 rounded-lg bg-green-600 hover:bg-green-500 px-2 py-1 text-[11px] font-semibold text-white transition-colors"
                             >
                               <MessageCircle size={11} /> WhatsApp
                             </button>
                             <button
-                              onClick={() => copiarLinkPdf(pdfUrl)}
+                              onClick={() => copiarLinkPdf(pdfBaixarUrl!)}
                               className="flex items-center gap-1 rounded-lg bg-dark-700 hover:bg-dark-600 px-2 py-1 text-[11px] font-medium text-dark-200 transition-colors"
                             >
                               <Copy size={11} /> Copiar link
