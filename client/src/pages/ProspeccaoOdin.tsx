@@ -38,6 +38,18 @@ const CLASSIFICACOES = [
 ]
 const CLASSIFICACAO_LABEL: Record<string, string> = Object.fromEntries(CLASSIFICACOES.map((c) => [c.value, c.label]))
 
+// A região aqui é a DO CLIENTE (onde ele fica), não a do vendedor — a Bruna
+// prospecta em todas as regiões, então escolhe por prospect. Se deixar em
+// branco, herda a região do vendedor responsável.
+const REGIOES = [
+  { value: 'norte', label: 'Norte' },
+  { value: 'nordeste', label: 'Nordeste' },
+  { value: 'centro_oeste', label: 'Centro-Oeste' },
+  { value: 'sudeste', label: 'Sudeste' },
+  { value: 'sul', label: 'Sul' },
+]
+const REGIAO_LABEL: Record<string, string> = Object.fromEntries(REGIOES.map((r) => [r.value, r.label]))
+
 const TIPO_REGISTRO = [
   { value: 'nota', label: 'Anotação' },
   { value: 'ligacao', label: 'Ligação' },
@@ -65,6 +77,7 @@ type ProspectRow = {
   email: string | null
   cidade: string | null
   estado: string | null
+  regiao: string | null
   observacoes: string | null
   classificacaoComercial: string | null
   prospeccaoSituacao: string
@@ -76,7 +89,7 @@ type ProspectRow = {
 }
 
 function baixarCsv(rows: ProspectRow[]) {
-  const head = ['Código', 'Nome', 'CNPJ', 'Contato', 'Telefone', 'Cidade/UF', 'Classificação', 'Situação', 'Tentativas', 'Último contato', 'Cadastrado em', 'Observações']
+  const head = ['Código', 'Nome', 'CNPJ', 'Contato', 'Telefone', 'Cidade/UF', 'Região', 'Classificação', 'Situação', 'Tentativas', 'Último contato', 'Cadastrado em', 'Observações']
   const limpar = (v: string | null | undefined) => (v ?? '').replace(/[\r\n,;]+/g, ' ').trim()
   const linhas = [head.join(',')]
   for (const r of rows) {
@@ -88,6 +101,7 @@ function baixarCsv(rows: ProspectRow[]) {
         limpar(r.nomeContato),
         limpar(r.telefoneWhatsapp),
         limpar([r.cidade, r.estado].filter(Boolean).join(' - ')),
+        REGIAO_LABEL[r.regiao ?? ''] ?? '',
         CLASSIFICACAO_LABEL[r.classificacaoComercial ?? ''] ?? '',
         SITUACAO_LABEL[r.prospeccaoSituacao] ?? r.prospeccaoSituacao,
         String(r.qtdTentativas),
@@ -117,13 +131,14 @@ type Form = {
   email: string
   cidade: string
   estado: string
+  regiao: string
   classificacaoComercial: string
   prospeccaoSituacao: string
   observacoes: string
 }
 const FORM_VAZIO: Form = {
   razaoSocial: '', cnpj: '', codigo: '', nomeContato: '', telefoneWhatsapp: '', email: '',
-  cidade: '', estado: '', classificacaoComercial: '', prospeccaoSituacao: 'novo', observacoes: '',
+  cidade: '', estado: '', regiao: '', classificacaoComercial: '', prospeccaoSituacao: 'novo', observacoes: '',
 }
 
 export default function ProspeccaoOdin() {
@@ -220,6 +235,7 @@ export default function ProspeccaoOdin() {
       email: p.email ?? '',
       cidade: p.cidade ?? '',
       estado: p.estado ?? '',
+      regiao: p.regiao ?? '',
       classificacaoComercial: p.classificacaoComercial ?? '',
       prospeccaoSituacao: p.prospeccaoSituacao ?? 'novo',
       observacoes: p.observacoes ?? '',
@@ -237,6 +253,7 @@ export default function ProspeccaoOdin() {
       email: form.email.trim() || undefined,
       cidade: form.cidade.trim() || undefined,
       estado: form.estado.trim() || undefined,
+      regiao: (form.regiao || undefined) as never,
       classificacaoComercial: (form.classificacaoComercial || undefined) as 'revenda' | 'consumidor_final' | undefined,
       prospeccaoSituacao: form.prospeccaoSituacao as never,
       observacoes: form.observacoes.trim() || undefined,
@@ -283,13 +300,12 @@ export default function ProspeccaoOdin() {
               value={vendedorId}
               onChange={(e) => setVendedorId(e.target.value)}
               placeholder="Todos"
-              // Inclui admin com carteira própria (tem região definida) — ex:
-              // a Bruna, que é admin da Odin mas também faz prospecção. Só o
-              // "admin puro" sem região fica de fora (evita poluir com contas
-              // administrativas que não vendem).
-              options={(vendedores ?? [])
-                .filter((v) => v.role === 'vendor' || !!v.regiao)
-                .map((v) => ({ value: v.id, label: v.name }))}
+              // Sem filtro por cargo: `users.vendors` já devolve só os
+              // ativos e não-superAdmin da empresa, e admin com carteira
+              // própria (ex: a Bruna, que faz prospecção na Odin) precisa
+              // aparecer aqui — a região agora vem do formulário, não do
+              // vendedor, então não dá pra filtrar por "tem região".
+              options={(vendedores ?? []).map((v) => ({ value: v.id, label: v.name }))}
             />
           </div>
         )}
@@ -423,7 +439,13 @@ export default function ProspeccaoOdin() {
             <Input label="Pessoa de contato" value={form.nomeContato} onChange={(e) => setForm({ ...form, nomeContato: e.target.value })} />
             <Input label="Telefone / WhatsApp" value={form.telefoneWhatsapp} onChange={(e) => setForm({ ...form, telefoneWhatsapp: e.target.value })} />
             <Input label="E-mail" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-            <div />
+            <Select
+              label="Região"
+              value={form.regiao}
+              onChange={(e) => setForm({ ...form, regiao: e.target.value })}
+              placeholder="Herda a do vendedor"
+              options={REGIOES}
+            />
             <Input label="Cidade" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
             <Input label="Estado (UF)" value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} maxLength={2} />
             <Select

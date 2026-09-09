@@ -26,6 +26,7 @@ const SLUG_ODIN = 'odin-compressores'
 
 const SITUACAO_VALUES = ['novo', 'em_negociacao', 'sem_interesse', 'retornar_depois', 'pronto_carteira'] as const
 const CLASSIFICACAO_VALUES = ['revenda', 'consumidor_final'] as const
+const REGIAO_VALUES = ['norte', 'nordeste', 'centro_oeste', 'sudeste', 'sul'] as const
 
 async function assertEmpresaOdin(empresaId: number) {
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId) })
@@ -67,6 +68,9 @@ const camposCliente = z.object({
   email: z.string().trim().optional(),
   cidade: z.string().trim().optional(),
   estado: z.string().trim().optional(),
+  // Região DO CLIENTE. Se não vier, herda a do vendedor responsável — a
+  // Bruna prospecta em todas as regiões, então escolhe por prospect.
+  regiao: z.enum(REGIAO_VALUES).optional(),
   classificacaoComercial: z.enum(CLASSIFICACAO_VALUES).optional(),
   prospeccaoSituacao: z.enum(SITUACAO_VALUES).optional(),
   observacoes: z.string().trim().optional(),
@@ -162,14 +166,15 @@ export const prospeccaoOdinRouter = router({
       await assertEmpresaOdin(ctx.empresaId)
       const vendedorAtualId = ctx.user.role === 'admin' && input.vendedorId ? input.vendedorId : ctx.user.id
 
-      // Região é obrigatória na tabela de clientes — herda a do vendedor
-      // responsável (todo vendedor real já tem uma configurada), igual o
-      // cadastro rápido da Prospecção genérica.
+      // Região é obrigatória na tabela de clientes. Vem do formulário (região
+      // DO CLIENTE — a Bruna prospecta em todas); se não vier, herda a do
+      // vendedor responsável. Só barra se não tiver nenhuma das duas.
       const vendedor = await db.query.users.findFirst({ where: eq(users.id, vendedorAtualId) })
-      if (!vendedor?.regiao) {
+      const regiao = input.regiao ?? vendedor?.regiao ?? null
+      if (!regiao) {
         throw new TRPCError({
           code: 'BAD_REQUEST',
-          message: 'Esse vendedor não tem região configurada — ajuste antes de cadastrar prospects pra ele.',
+          message: 'Escolha a região do cliente (o vendedor responsável também não tem uma configurada).',
         })
       }
 
@@ -179,7 +184,7 @@ export const prospeccaoOdinRouter = router({
           razaoSocial: input.razaoSocial,
           cnpj: input.cnpj || null,
           codigo: input.codigo || `P${Date.now()}`,
-          regiao: vendedor.regiao,
+          regiao,
           estado: input.estado || null,
           cidade: input.cidade || null,
           telefoneWhatsapp: input.telefoneWhatsapp || null,
@@ -211,6 +216,7 @@ export const prospeccaoOdinRouter = router({
       // verdade (campo vazio no formulário = "não mexe", nunca vira null).
       if (campos.razaoSocial) patch.razaoSocial = campos.razaoSocial
       if (campos.codigo) patch.codigo = campos.codigo
+      if (campos.regiao) patch.regiao = campos.regiao // NOT NULL — não zera
       if (campos.cnpj !== undefined) patch.cnpj = campos.cnpj || null
       if (campos.nomeContato !== undefined) patch.nomeContato = campos.nomeContato || null
       if (campos.telefoneWhatsapp !== undefined) patch.telefoneWhatsapp = campos.telefoneWhatsapp || null
