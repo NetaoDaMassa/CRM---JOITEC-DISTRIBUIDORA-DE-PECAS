@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { router, adminProcedure, protectedProcedure } from './_base.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
+import { LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO } from '../lib/businessHours.js'
 
 const CHAVES_NUMERICAS = {
   senha_max_tentativas_login: 5,
@@ -47,10 +48,20 @@ export const configuracoesRouter = router({
     // compartilhada, diferente do resto dessas configs), por isso fora do
     // loop genérico acima: a chave leva o empresaId embutido.
     const metaFaturamentoEmpresa = await getConfigNumero(`meta_faturamento_empresa_${ctx.empresaId}`, 0)
+    // Também por empresa (chave com empresaId embutido) — quantos dias úteis
+    // pra frente dá pra agendar o próximo contato de um lead em "Abordagem".
+    const leadsMaxDiasProximoContato = await getConfigNumero(
+      `leads_max_dias_proximo_contato_${ctx.empresaId}`,
+      LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO
+    )
     return {
       ...Object.fromEntries(entradas),
       meta_faturamento_empresa: metaFaturamentoEmpresa,
-    } as Record<keyof typeof CHAVES_NUMERICAS, number> & { meta_faturamento_empresa: number }
+      leads_max_dias_proximo_contato: leadsMaxDiasProximoContato,
+    } as Record<keyof typeof CHAVES_NUMERICAS, number> & {
+      meta_faturamento_empresa: number
+      leads_max_dias_proximo_contato: number
+    }
   }),
 
   set: adminProcedure
@@ -61,6 +72,7 @@ export const configuracoesRouter = router({
         meta_faturamento_padrao: z.number().min(0).optional(),
         meta_ligacoes_dia_padrao: z.number().min(0).optional(),
         meta_faturamento_empresa: z.number().min(0).optional(),
+        leads_max_dias_proximo_contato: z.number().int().min(1).max(90).optional(),
         dias_sem_contato_alerta: z.number().min(1).optional(),
         backup_retencao_dias: z.number().min(1).optional(),
         goto_duracao_minima_segundos: z.number().min(0).optional(),
@@ -81,9 +93,12 @@ export const configuracoesRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { meta_faturamento_empresa, ...resto } = input
+      const { meta_faturamento_empresa, leads_max_dias_proximo_contato, ...resto } = input
       if (meta_faturamento_empresa !== undefined) {
         await setConfig(`meta_faturamento_empresa_${ctx.empresaId}`, meta_faturamento_empresa)
+      }
+      if (leads_max_dias_proximo_contato !== undefined) {
+        await setConfig(`leads_max_dias_proximo_contato_${ctx.empresaId}`, leads_max_dias_proximo_contato)
       }
       for (const [chave, valor] of Object.entries(resto)) {
         if (valor !== undefined) await setConfig(chave, valor)

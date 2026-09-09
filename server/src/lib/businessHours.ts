@@ -60,6 +60,14 @@ export function addBusinessDays(fromISO: string, days: number): string {
   return new Date(ms + TZ_OFFSET_MS).toISOString()
 }
 
+// Padrão de quantos dias ÚTEIS pra frente dá pra agendar o próximo contato
+// de um lead na etapa "Abordagem". Cada empresa pode sobrescrever isso em
+// Configurações (chave `leads_max_dias_proximo_contato_<empresaId>`) — a
+// Odin Compressores, por exemplo, tem ciclo de venda mais longo. Sem config
+// própria, vale este número (ver server/src/router/leads.ts e
+// server/src/router/configuracoes.ts).
+export const LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO = 4
+
 // Valida o agendamento de próximo contato na etapa "Abordagem" de um lead:
 // não pode cair em sábado/domingo nem passar de `maxBusinessDays` dias úteis
 // de antecedência (ver server/src/router/leads.ts).

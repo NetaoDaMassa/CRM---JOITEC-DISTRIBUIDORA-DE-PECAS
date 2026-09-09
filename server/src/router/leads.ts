@@ -21,7 +21,8 @@ import {
   leadCampaigns,
 } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD, assignNextVendor } from '../lib/leadsRoundRobin.js'
-import { validateNextContactLimit } from '../lib/businessHours.js'
+import { validateNextContactLimit, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO } from '../lib/businessHours.js'
+import { getConfigNumero } from '../lib/configuracoes.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
@@ -59,7 +60,13 @@ import {
 //    ter mais de um admin, então prioriza o superAdmin "dono" da empresa (se existir) e
 //    cai pro primeiro admin comum encontrado.
 
-const ABORDAGEM_MAX_BUSINESS_DAYS = 4
+// Quantos dias úteis pra frente dá pra agendar o próximo contato de um lead
+// em "Abordagem". Por empresa (chave `leads_max_dias_proximo_contato_<id>`
+// em Configurações) — a Odin Compressores tem ciclo mais longo, pedido do
+// João 2026-09-09. Sem config própria, cai no padrão do businessHours.
+async function abordagemMaxDiasUteis(empresaId: number): Promise<number> {
+  return getConfigNumero(`leads_max_dias_proximo_contato_${empresaId}`, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO)
+}
 
 // Etapas a partir das quais dá pra transferir um lead da Odin Compressores
 // pra Propostas (ver transferirParaPropostas abaixo) — pedido do João,
@@ -80,9 +87,12 @@ function isNextContactOverdue(nextContactAt: string | null): boolean {
   return data.getTime() < hoje.getTime()
 }
 
-function validateLeadNextContact(lead: { status: string }, nextContactAt: string | null | undefined): void {
+async function validateLeadNextContact(
+  lead: { status: string; empresaId: number },
+  nextContactAt: string | null | undefined
+): Promise<void> {
   if (nextContactAt && lead.status === 'abordagem') {
-    const error = validateNextContactLimit(nextContactAt, ABORDAGEM_MAX_BUSINESS_DAYS)
+    const error = validateNextContactLimit(nextContactAt, await abordagemMaxDiasUteis(lead.empresaId))
     if (error) throw new Error(error)
   }
 }
@@ -420,7 +430,7 @@ export const leadsRouter = router({
           throw new Error('Todo lead ativo precisa manter uma data de próximo contato agendada')
         }
         if (nextContactAt !== null && existing.status === 'abordagem') {
-          const error = validateNextContactLimit(nextContactAt, ABORDAGEM_MAX_BUSINESS_DAYS)
+          const error = validateNextContactLimit(nextContactAt, await abordagemMaxDiasUteis(existing.empresaId))
           if (error) throw new Error(error)
         }
         updates.nextContactAt = nextContactAt
@@ -479,10 +489,9 @@ export const leadsRouter = router({
           if (!isTerminalStatus(input.status) && !input.nextContactAt) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['nextContactAt'], message: 'É necessário agendar o próximo contato para manter o lead ativo' })
           }
-          if (input.status === 'abordagem' && input.nextContactAt) {
-            const error = validateNextContactLimit(input.nextContactAt, ABORDAGEM_MAX_BUSINESS_DAYS)
-            if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['nextContactAt'], message: error })
-          }
+          // O limite de "quantos dias úteis pra frente" é por empresa, então
+          // depende de um getConfig (async) — não cabe no superRefine síncrono.
+          // Validado no corpo da mutation, logo abaixo.
         })
     )
     .mutation(async ({ ctx, input }) => {
@@ -503,6 +512,11 @@ export const leadsRouter = router({
       const slug = await empresaSlug(ctx.empresaId)
       if (!isStatusAllowedForCompany(input.status, slug)) {
         throw new Error('Essa etapa não está disponível para a sua empresa')
+      }
+
+      if (input.status === 'abordagem' && input.nextContactAt) {
+        const error = validateNextContactLimit(input.nextContactAt, await abordagemMaxDiasUteis(existing.empresaId))
+        if (error) throw new Error(error)
       }
 
       const now = new Date().toISOString()
@@ -705,7 +719,7 @@ export const leadsRouter = router({
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
-      if (input.type === 'lembrete') validateLeadNextContact(lead, input.nextContactAt)
+      if (input.type === 'lembrete') await validateLeadNextContact(lead, input.nextContactAt)
 
       await db.insert(leadNotes).values({
         leadId: input.leadId,
@@ -736,7 +750,7 @@ export const leadsRouter = router({
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
-      if (note.type === 'lembrete') validateLeadNextContact(lead, input.nextContactAt)
+      if (note.type === 'lembrete') await validateLeadNextContact(lead, input.nextContactAt)
 
       await db
         .update(leadNotes)
@@ -765,7 +779,7 @@ export const leadsRouter = router({
         throw new Error('Registrar uma tentativa requer uma data de próximo contato para leads ativos')
       }
       if (lead.status === 'abordagem' && input.nextActionAt) {
-        const error = validateNextContactLimit(input.nextActionAt, ABORDAGEM_MAX_BUSINESS_DAYS)
+        const error = validateNextContactLimit(input.nextActionAt, await abordagemMaxDiasUteis(lead.empresaId))
         if (error) throw new Error(error)
       }
 
@@ -815,7 +829,7 @@ export const leadsRouter = router({
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
-      validateLeadNextContact(lead, input.nextActionAt)
+      await validateLeadNextContact(lead, input.nextActionAt)
 
       await db
         .update(leadContactAttempts)

@@ -14,6 +14,7 @@ const TITULOS_SECOES_FORM = [
   'Meta geral da empresa',
   'Metas padrão (vendedor novo)',
   'Ligações automáticas (GoTo Connect)',
+  'Leads',
   'Notificações',
   'Horário de expediente (seg-sex)',
   'Painel de TV',
@@ -341,6 +342,7 @@ export default function AdminConfiguracoes() {
   const [metaFaturamentoEmpresa, setMetaFaturamentoEmpresa] = useState('')
   const [metaLigacoesDiaPadrao, setMetaLigacoesDiaPadrao] = useState('')
   const [diasSemContatoAlerta, setDiasSemContatoAlerta] = useState('')
+  const [leadsMaxDiasProximoContato, setLeadsMaxDiasProximoContato] = useState('')
   const [backupRetencaoDias, setBackupRetencaoDias] = useState('')
   const [gotoDuracaoMinima, setGotoDuracaoMinima] = useState('')
   const [painelTvSegundosPorSlide, setPainelTvSegundosPorSlide] = useState('')
@@ -379,6 +381,7 @@ export default function AdminConfiguracoes() {
       setMetaFaturamentoEmpresa(String(data.meta_faturamento_empresa))
       setMetaLigacoesDiaPadrao(String(data.meta_ligacoes_dia_padrao))
       setDiasSemContatoAlerta(String(data.dias_sem_contato_alerta))
+      setLeadsMaxDiasProximoContato(String(data.leads_max_dias_proximo_contato))
       setBackupRetencaoDias(String(data.backup_retencao_dias))
       setGotoDuracaoMinima(String(data.goto_duracao_minima_segundos))
       setPainelTvSegundosPorSlide(String(data.painel_tv_segundos_por_slide))
@@ -413,6 +416,7 @@ export default function AdminConfiguracoes() {
       meta_faturamento_empresa: Number(metaFaturamentoEmpresa),
       meta_ligacoes_dia_padrao: Number(metaLigacoesDiaPadrao),
       dias_sem_contato_alerta: Number(diasSemContatoAlerta),
+      leads_max_dias_proximo_contato: Number(leadsMaxDiasProximoContato),
       backup_retencao_dias: Number(backupRetencaoDias),
       goto_duracao_minima_segundos: Number(gotoDuracaoMinima),
       painel_tv_segundos_por_slide: Number(painelTvSegundosPorSlide),
@@ -517,6 +521,25 @@ export default function AdminConfiguracoes() {
             Ligações mais curtas que isso são marcadas automaticamente como "Não respondeu" (não deu tempo de
             conversar). Ligações mais longas que isso sempre ficam pendentes, pedindo pro vendedor confirmar se
             falou com o cliente ou caiu na caixa postal — a duração sozinha não prova que teve conversa de verdade.
+          </p>
+        </div>
+        )}
+
+        {bate('Leads') && (
+        <div>
+          <h2 className="text-sm font-semibold text-dark-100 mb-2">Leads</h2>
+          <Input
+            label="Agendar o próximo contato até quantos dias úteis pra frente (etapa Abordagem)"
+            type="number"
+            min="1"
+            max="90"
+            value={leadsMaxDiasProximoContato}
+            onChange={(e) => setLeadsMaxDiasProximoContato(e.target.value)}
+          />
+          <p className="text-xs text-dark-500 mt-1.5">
+            Vale só pra esta empresa. Na etapa "Abordagem", o próximo contato / lembrete não pode ser marcado
+            além desse limite de dias úteis (sábado e domingo nunca contam). Padrão do sistema: 4. Aumente pra
+            empresas de ciclo de venda mais longo (ex: Odin Compressores).
           </p>
         </div>
         )}
