@@ -283,7 +283,13 @@ export default function ProspeccaoOdin() {
               value={vendedorId}
               onChange={(e) => setVendedorId(e.target.value)}
               placeholder="Todos"
-              options={(vendedores ?? []).filter((v) => v.role === 'vendor').map((v) => ({ value: v.id, label: v.name }))}
+              // Inclui admin com carteira própria (tem região definida) — ex:
+              // a Bruna, que é admin da Odin mas também faz prospecção. Só o
+              // "admin puro" sem região fica de fora (evita poluir com contas
+              // administrativas que não vendem).
+              options={(vendedores ?? [])
+                .filter((v) => v.role === 'vendor' || !!v.regiao)
+                .map((v) => ({ value: v.id, label: v.name }))}
             />
           </div>
         )}
