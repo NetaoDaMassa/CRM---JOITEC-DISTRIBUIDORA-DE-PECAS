@@ -151,6 +151,17 @@ export const marketingRouter = router({
       return db.query.marketingArquivos.findFirst({ where: eq(marketingArquivos.id, Number(result.lastInsertRowid)) })
     }),
 
+  // Renomeia o arquivo — só o nome de exibição (nomeOriginal). O arquivo em
+  // disco (nomeArmazenado) e as URLs de /uploads não mudam. adminProcedure,
+  // igual renomearPasta.
+  renomearArquivo: adminProcedure.input(z.object({ id: z.number(), nome: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    await db
+      .update(marketingArquivos)
+      .set({ nomeOriginal: input.nome.trim() })
+      .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
+    return { ok: true }
+  }),
+
   // Liga/desliga "somente visualização" num arquivo já existente.
   alternarVisualizacao: adminProcedure
     .input(z.object({ id: z.number(), somenteVisualizacao: z.boolean() }))

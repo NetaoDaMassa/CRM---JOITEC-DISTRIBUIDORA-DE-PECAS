@@ -161,7 +161,7 @@ export default function MarketingArquivos() {
   const [nomeNovaPasta, setNomeNovaPasta] = useState('')
   const [enviando, setEnviando] = useState(false)
   const [verDownloadsDe, setVerDownloadsDe] = useState<{ id: number; nome: string } | null>(null)
-  const [renomeando, setRenomeando] = useState<{ id: number; nome: string } | null>(null)
+  const [renomeando, setRenomeando] = useState<{ tipo: 'pasta' | 'arquivo'; id: number; nome: string } | null>(null)
   const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
   const [visualizando, setVisualizando] = useState<{ id: number; nomeOriginal: string; tipoArquivo: string | null } | null>(null)
   const [progressoUpload, setProgressoUpload] = useState<{ atual: number; total: number } | null>(null)
@@ -197,6 +197,14 @@ export default function MarketingArquivos() {
   const renomearPastaMut = trpc.marketing.renomearPasta.useMutation({
     onSuccess() {
       toast.success('Pasta renomeada')
+      setRenomeando(null)
+      invalidarLista()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  const renomearArquivoMut = trpc.marketing.renomearArquivo.useMutation({
+    onSuccess() {
+      toast.success('Arquivo renomeado')
       setRenomeando(null)
       invalidarLista()
     },
@@ -380,7 +388,7 @@ export default function MarketingArquivos() {
               <span className="text-sm text-dark-100 font-medium truncate flex-1">{pasta.nome}</span>
               {isAdmin && (
                 <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
-                  <button onClick={() => setRenomeando({ id: pasta.id, nome: pasta.nome })} className="text-dark-400 hover:text-gold-400">
+                  <button onClick={() => setRenomeando({ tipo: 'pasta', id: pasta.id, nome: pasta.nome })} className="text-dark-400 hover:text-gold-400">
                     <Pencil size={14} />
                   </button>
                   <button
@@ -427,6 +435,15 @@ export default function MarketingArquivos() {
                   </button>
                 )}
                 <div className="flex items-center gap-2">
+                  {isAdmin && (
+                    <button
+                      onClick={() => setRenomeando({ tipo: 'arquivo', id: arquivo.id, nome: arquivo.nomeOriginal })}
+                      className="text-dark-400 hover:text-gold-400"
+                      title="Renomear arquivo"
+                    >
+                      <Pencil size={13} />
+                    </button>
+                  )}
                   {isAdmin && (
                     <button
                       onClick={() => alternarVisualizacaoMut.mutate({ id: arquivo.id, somenteVisualizacao: !arquivo.somenteVisualizacao })}
@@ -485,17 +502,26 @@ export default function MarketingArquivos() {
         </div>
       </Modal>
 
-      <Modal open={!!renomeando} onClose={() => setRenomeando(null)} title="Renomear pasta" size="sm">
+      <Modal open={!!renomeando} onClose={() => setRenomeando(null)} title={renomeando?.tipo === 'arquivo' ? 'Renomear arquivo' : 'Renomear pasta'} size="sm">
         {renomeando && (
           <div className="space-y-4">
-            <Input label="Nome da pasta" value={renomeando.nome} onChange={(e) => setRenomeando({ ...renomeando, nome: e.target.value })} autoFocus />
+            <Input
+              label={renomeando.tipo === 'arquivo' ? 'Nome do arquivo' : 'Nome da pasta'}
+              value={renomeando.nome}
+              onChange={(e) => setRenomeando({ ...renomeando, nome: e.target.value })}
+              autoFocus
+            />
             <div className="flex gap-3">
               <Button variant="secondary" className="flex-1" onClick={() => setRenomeando(null)}>Cancelar</Button>
               <Button
                 className="flex-1"
-                loading={renomearPastaMut.isPending}
+                loading={renomearPastaMut.isPending || renomearArquivoMut.isPending}
                 disabled={!renomeando.nome.trim()}
-                onClick={() => renomearPastaMut.mutate({ id: renomeando.id, nome: renomeando.nome.trim() })}
+                onClick={() =>
+                  renomeando.tipo === 'arquivo'
+                    ? renomearArquivoMut.mutate({ id: renomeando.id, nome: renomeando.nome.trim() })
+                    : renomearPastaMut.mutate({ id: renomeando.id, nome: renomeando.nome.trim() })
+                }
               >
                 Salvar
               </Button>
