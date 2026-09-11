@@ -812,15 +812,35 @@ function ControleFaturamento({ venda }: { venda: { id: number; tipoComprovante: 
 function ItensPedidoEditor({
   itens,
   onChange,
+  valorFechado,
 }: {
   itens: { descricao: string; quantidade: string; valorUnitario: string }[]
   onChange: (itens: { descricao: string; quantidade: string; valorUnitario: string }[]) => void
+  // Valor fechado da venda (mesmo campo do formulário, string ainda não
+  // convertida) — opcional só porque nem todo lugar que usa esse editor
+  // ainda tem o campo preenchido no momento da renderização.
+  valorFechado?: string
 }) {
   const { data: catalogo } = trpc.maquinas.listaCatalogoItens.useQuery()
 
   function atualizarItem(indice: number, campo: 'descricao' | 'quantidade' | 'valorUnitario', valor: string) {
     onChange(itens.map((item, i) => (i === indice ? { ...item, [campo]: valor } : item)))
   }
+
+  // Alerta cedo quando um item extraído do PDF (ou digitado errado) sai da
+  // escala — achado do João, 2026-09-11: um valor unitário mal lido pela IA
+  // inflou o total de um item pra R$ 781 mil no relatório "Itens mais
+  // comprados", sem ninguém perceber antes de salvar. Não bloqueia (frete,
+  // desconto e item sem PDF fazem a soma legitimamente não bater 100%), só
+  // avisa quando a diferença é grande demais pra ser só isso.
+  const somaItens = itens.reduce((acc, item) => {
+    const qtd = parseValorBr(item.quantidade)
+    const unit = parseValorBr(item.valorUnitario)
+    return acc + (Number.isNaN(qtd) ? 0 : qtd) * (Number.isNaN(unit) ? 0 : unit)
+  }, 0)
+  const valorFechadoNum = valorFechado ? parseValorBr(valorFechado) : NaN
+  const divergeMuito =
+    somaItens > 0 && !Number.isNaN(valorFechadoNum) && valorFechadoNum > 0 && Math.abs(somaItens - valorFechadoNum) / valorFechadoNum > 0.3
 
   return (
     <div className="space-y-2">
@@ -863,6 +883,12 @@ function ItensPedidoEditor({
       >
         + Adicionar item
       </Button>
+      {somaItens > 0 && (
+        <p className={`text-xs ${divergeMuito ? 'text-red-400 font-semibold' : 'text-dark-500'}`}>
+          Soma dos itens: {formatarMoeda(somaItens)}
+          {divergeMuito && ' ⚠️ muito diferente do valor fechado — confira se algum valor unitário foi lido/digitado errado antes de salvar.'}
+        </p>
+      )}
       <p className="text-xs text-dark-500">
         Não precisa listar tudo — os itens informados aqui alimentam o relatório de produtos mais vendidos.
         {!!catalogo?.length && ' Comece a digitar pra puxar do catálogo cadastrado.'}
@@ -1560,7 +1586,7 @@ function CardModal({
                     </Button>
                   )}
                 </div>
-                <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} />
+                <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} valorFechado={valorFechado} />
                 <div className="flex gap-2">
                   <Button type="button" size="sm" variant="secondary" onClick={() => setNovaVendaAberta(false)}>
                     Cancelar
@@ -1799,7 +1825,7 @@ function CardModal({
                   🔄 Extrair itens de novo
                 </Button>
               )}
-              {(pdfFile || itensPedido.length > 0) && <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} />}
+              {(pdfFile || itensPedido.length > 0) && <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} valorFechado={valorFechado} />}
               <p className="text-xs text-dark-500">
                 A IA lê o PDF e sugere o valor orçado e os itens automaticamente — confira antes de salvar. Os itens só
                 ficam registrados de vez quando o pedido for fechado de verdade.
@@ -1881,7 +1907,7 @@ function CardModal({
                   </Button>
                 )}
               </div>
-              <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} />
+              <ItensPedidoEditor itens={itensPedido} onChange={setItensPedido} valorFechado={valorFechado} />
             </>
           )}
 

@@ -99,7 +99,25 @@ async function main() {
   }
   if (!divergentes) console.log('  Nenhuma encontrada.')
 
-  console.log('\nPronto — sem achados nas 4 checagens acima é um bom sinal, mas ainda vale abrir 2-3 PDFs reais (item 4 já aponta os candidatos com pdfPedidoPath) e comparar na mão.')
+  // 5) As N linhas de item com maior valor total, não importa se batem em
+  // algum limite fixo — no relatório "Itens mais comprados" (soma por
+  // descrição, todas as vendas do período), UMA linha errada já basta pra
+  // inflar o total daquele produto na tela toda (achado do João, 2026-09-11
+  // — item aparecendo com R$ 781 mil quando o esperado era R$ 700-800).
+  // Olhando as maiores linhas isoladas, o erro pula aos olhos sem precisar
+  // adivinhar um limite certo.
+  console.log('\n=== 5) As 15 linhas de item (não agrupadas) com maior valor — confira se fazem sentido ===')
+  const maioresLinhas = [...itensDaEmpresa].sort((a, b) => (b.valorTotal ?? 0) - (a.valorTotal ?? 0)).slice(0, 15)
+  for (const it of maioresLinhas) {
+    const venda = vendasPorId.get(it.vendaId)
+    console.log(
+      `  item #${it.id} (venda #${it.vendaId}, ${venda?.cliente?.razaoSocial ?? '—'}) — "${it.descricao}": ` +
+        `${it.quantidade ?? '?'} un. × R$ ${it.valorUnitario?.toFixed(2) ?? '?'} = R$ ${(it.valorTotal ?? 0).toFixed(2)} ` +
+        `| venda fechada em R$ ${venda?.valorFechado.toFixed(2) ?? '?'} | PDF: ${venda?.pdfPedidoPath ?? '(nenhum anexado)'}`
+    )
+  }
+
+  console.log('\nPronto — sem achados chamativos nos itens 1-4, olha ainda assim a lista do item 5: é a forma mais direta de achar um valor implausível, já que uma linha só pode inflar o total de um produto no relatório inteiro. Compare os 2-3 primeiros da lista contra o PDF de verdade (coluna PDF) antes de confiar no número.')
   process.exit(0)
 }
 
