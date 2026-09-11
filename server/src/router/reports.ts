@@ -615,10 +615,13 @@ export const reportsRouter = router({
       }
     }),
 
+  // Pedido do João, 2026-09-11: mesmo tratamento (vendedor, filtro mínimo de
+  // dias, "nunca" contado) que `clientesSemOrcamentoDias`/`clientesSemVendaDias`
+  // — os 3 formam o mesmo bloco "alertas" com número grande na tela.
   diasSemContato: protectedProcedure
-    .input(filtroAtualInput)
+    .input(filtroAtualInput.extend({ minimoDias: z.number().min(1).default(30) }))
     .query(async ({ ctx, input }) => {
-      const filtros = [isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)]
+      const filtros = [isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false)]
       const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
       if (filtroVend) filtros.push(filtroVend)
       const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
@@ -626,8 +629,9 @@ export const reportsRouter = router({
 
       const lista = await db.query.clientes.findMany({
         where: and(...filtros),
-        columns: { id: true, razaoSocial: true },
+        columns: { id: true, razaoSocial: true, codigo: true },
         with: {
+          vendedorAtual: { columns: { name: true } },
           funis: {
             where: isNull(funilMensal.deletedAt),
             orderBy: (f, { desc }) => [desc(f.mesReferencia)],
@@ -641,10 +645,10 @@ export const reportsRouter = router({
         .map((c) => {
           const ultimoFunil = c.funis[0]
           const dias = ultimoFunil ? diasDesde(ultimoFunil.dataUltimoContato ?? ultimoFunil.dataEntradaEtapa) : null
-          return { clienteId: c.id, razaoSocial: c.razaoSocial, dias }
+          return { clienteId: c.id, razaoSocial: c.razaoSocial, codigo: c.codigo, vendedorNome: c.vendedorAtual?.name ?? '—', dias }
         })
-        .filter((c) => c.dias !== null)
-        .sort((a, b) => (b.dias ?? 0) - (a.dias ?? 0))
+        .filter((c) => c.dias === null || c.dias >= input.minimoDias)
+        .sort((a, b) => (b.dias ?? Infinity) - (a.dias ?? Infinity))
     }),
 
   itensMaisComprados: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
@@ -838,6 +842,95 @@ export const reportsRouter = router({
       return funis
         .filter((f) => f.valorOrcado === null && f.qtdTentativasContato === 0)
         .map((f) => ({ clienteId: f.clienteId, razaoSocial: f.razaoSocial, vendedorNome: f.vendedorNome, etapa: f.etapa }))
+    }),
+
+  // "Cliente há 30/60 dias sem orçamento" — pedido do João, 2026-09-11.
+  // Diferente do `clientesSemOrcamentoEContato` acima (foto só do mês
+  // corrente): esse olha a CARTEIRA inteira e, pra cada cliente, procura o
+  // orçamento MAIS RECENTE em QUALQUER card dele (mês corrente ou passado)
+  // — cliente que orçou em julho e não teve card em agosto/setembro ainda
+  // aparece aqui como "62 dias sem orçamento", não some do relatório.
+  //
+  // Approximação conhecida: `valorOrcado` não tem timestamp próprio no
+  // schema (só é gravado dentro de `funil.moverEtapa`, junto de
+  // `dataEntradaEtapa`) — usamos `dataEntradaEtapa` do card como "quando",
+  // mesma aproximação que `orcamentosAbertos.diasEmAberto` já usa. Na
+  // prática funciona bem porque valorOrcado só muda através de uma
+  // transição de etapa; o caso raro que engana é mover o card de etapa de
+  // novo bem mais tarde reenviando o MESMO valor orçado sem alterar — aí a
+  // data "atualiza" mesmo sem ter refeito o orçamento de verdade.
+  clientesSemOrcamentoDias: protectedProcedure
+    .input(filtroAtualInput.extend({ minimoDias: z.number().min(1).default(30) }))
+    .query(async ({ ctx, input }) => {
+      const filtrosCliente = [eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false), isNull(clientes.deletedAt)]
+      const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+      if (filtroVend) filtrosCliente.push(filtroVend)
+      const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+      if (filtroReg) filtrosCliente.push(filtroReg)
+
+      const carteira = await db.query.clientes.findMany({
+        where: and(...filtrosCliente),
+        columns: { id: true, razaoSocial: true, codigo: true },
+        with: { vendedorAtual: { columns: { name: true } } },
+      })
+      if (!carteira.length) return []
+
+      const ids = carteira.map((c) => c.id)
+      const ultimosOrcamentos = await db
+        .select({ clienteId: funilMensal.clienteId, ultimo: sql<string>`max(${funilMensal.dataEntradaEtapa})` })
+        .from(funilMensal)
+        .where(and(inArray(funilMensal.clienteId, ids), isNotNull(funilMensal.valorOrcado), isNull(funilMensal.deletedAt)))
+        .groupBy(funilMensal.clienteId)
+      const ultimoPorCliente = new Map(ultimosOrcamentos.map((l) => [l.clienteId, l.ultimo]))
+
+      return carteira
+        .map((c) => {
+          const ultimoOrcamentoEm = ultimoPorCliente.get(c.id) ?? null
+          return {
+            clienteId: c.id,
+            razaoSocial: c.razaoSocial,
+            codigo: c.codigo,
+            vendedorNome: c.vendedorAtual?.name ?? '—',
+            ultimoOrcamentoEm,
+            // null = nunca teve orçamento nenhum registrado.
+            diasSemOrcamento: diasDesde(ultimoOrcamentoEm),
+          }
+        })
+        .filter((c) => c.diasSemOrcamento === null || c.diasSemOrcamento >= input.minimoDias)
+        .sort((a, b) => (b.diasSemOrcamento ?? Infinity) - (a.diasSemOrcamento ?? Infinity))
+    }),
+
+  // "Cliente há 30/60 dias sem venda" — mesma ideia de `clientesSemOrcamentoDias`,
+  // só que em cima de `clientes.dataUltimaCompra` (gravado direto em
+  // funil.ts/vendas.ts toda vez que uma venda fecha) — não precisa varrer
+  // funilMensal, é uma data já pronta e precisa por cliente.
+  clientesSemVendaDias: protectedProcedure
+    .input(filtroAtualInput.extend({ minimoDias: z.number().min(1).default(30) }))
+    .query(async ({ ctx, input }) => {
+      const filtrosCliente = [eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false), isNull(clientes.deletedAt)]
+      const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+      if (filtroVend) filtrosCliente.push(filtroVend)
+      const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+      if (filtroReg) filtrosCliente.push(filtroReg)
+
+      const carteira = await db.query.clientes.findMany({
+        where: and(...filtrosCliente),
+        columns: { id: true, razaoSocial: true, codigo: true, dataUltimaCompra: true },
+        with: { vendedorAtual: { columns: { name: true } } },
+      })
+
+      return carteira
+        .map((c) => ({
+          clienteId: c.id,
+          razaoSocial: c.razaoSocial,
+          codigo: c.codigo,
+          vendedorNome: c.vendedorAtual?.name ?? '—',
+          ultimaCompraEm: c.dataUltimaCompra,
+          // null = nunca comprou.
+          diasSemVenda: diasDesde(c.dataUltimaCompra),
+        }))
+        .filter((c) => c.diasSemVenda === null || c.diasSemVenda >= input.minimoDias)
+        .sort((a, b) => (b.diasSemVenda ?? Infinity) - (a.diasSemVenda ?? Infinity))
     }),
 
   // "Quantos orçamentos cada vendedor faz, por dia/semana/mês" — usa

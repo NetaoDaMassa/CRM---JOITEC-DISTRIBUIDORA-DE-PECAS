@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Bar,
   BarChart,
@@ -16,6 +17,7 @@ import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
+import Button from '../../components/ui/Button'
 import { formatDate, hojeBrString, primeiroDiaMesString } from '../../lib/utils'
 import { paraCsv, baixarCsv } from '../../lib/csv'
 
@@ -24,6 +26,104 @@ function BotaoExportar({ onClick }: { onClick: () => void }) {
     <button onClick={onClick} className="text-xs text-gold-400 hover:underline shrink-0">
       Exportar CSV
     </button>
+  )
+}
+
+type ClienteAlerta = { clienteId: number; razaoSocial: string; codigo: string | null; vendedorNome: string; dias: number | null }
+
+// Card de alerta compartilhado pelos 3 relatórios "cliente há N dias sem X"
+// (orçamento/venda/contato) — pedido do João, 2026-09-11: número grande em
+// destaque, toggle 30/60 dias e linha clicável levando pra ficha do cliente
+// (mesmo padrão nos 3, pra não reinventar o card 3 vezes com pequenas
+// diferenças que iam divergir com o tempo).
+function AlertaClientesCard({
+  titulo,
+  subtitulo,
+  dados,
+  minimoDias,
+  onMudarMinimoDias,
+  rotuloNunca,
+  rotuloVazio,
+  nomeArquivoCsv,
+  colunaDiasCsv,
+  clientesBasePath,
+}: {
+  titulo: string
+  subtitulo?: string
+  dados: ClienteAlerta[] | undefined
+  minimoDias: number
+  onMudarMinimoDias: (dias: number) => void
+  rotuloNunca: string
+  rotuloVazio: string
+  nomeArquivoCsv: string
+  colunaDiasCsv: string
+  // Reports.tsx é reaproveitada por admin (/admin/relatorios) e vendedor
+  // (/vendedor/relatorios) — a ficha do cliente mora em rota diferente pra
+  // cada um, senão o link do vendedor cai no AdminGuard e trava.
+  clientesBasePath: string
+}) {
+  const quantidade = dados?.length ?? 0
+  return (
+    <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+      <div className="flex items-start justify-between mb-1 flex-wrap gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-dark-100">{titulo}</h2>
+          <p className={`text-4xl font-bold mt-1 ${quantidade > 0 ? 'text-red-400' : 'text-green-400'}`}>{quantidade}</p>
+          <p className="text-xs text-dark-500">cliente(s) há {minimoDias}+ dias</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-lg border border-dark-600 overflow-hidden text-xs shrink-0">
+            {[30, 60].map((dias) => (
+              <button
+                key={dias}
+                type="button"
+                onClick={() => onMudarMinimoDias(dias)}
+                className={`px-3 py-1.5 font-medium transition-colors ${
+                  minimoDias === dias ? 'bg-gold-900/30 text-gold-300' : 'text-dark-400 hover:bg-dark-700'
+                }`}
+              >
+                {dias} dias
+              </button>
+            ))}
+          </div>
+          <BotaoExportar
+            onClick={() =>
+              baixarCsv(
+                nomeArquivoCsv,
+                paraCsv(
+                  [
+                    { chave: 'razaoSocial', rotulo: 'Cliente' },
+                    { chave: 'codigo', rotulo: 'Código' },
+                    { chave: 'vendedorNome', rotulo: 'Vendedor' },
+                    { chave: 'dias', rotulo: colunaDiasCsv },
+                  ],
+                  (dados ?? []).map((c) => ({ ...c, dias: c.dias ?? 'Nunca' }))
+                )
+              )
+            }
+          />
+        </div>
+      </div>
+      {subtitulo && <p className="text-xs text-dark-500 mb-2">{subtitulo}</p>}
+      <div className="divide-y divide-dark-700 max-h-96 overflow-y-auto pr-1 mt-2">
+        {dados?.map((c) => (
+          <Link
+            key={c.clienteId}
+            to={`${clientesBasePath}/${c.clienteId}`}
+            className="flex items-center justify-between py-2 px-1.5 -mx-1.5 rounded-lg text-sm hover:bg-dark-700/50 transition-colors"
+          >
+            <div>
+              <span className="text-dark-200">{c.razaoSocial}</span>
+              <span className="text-dark-500 text-xs ml-2">{c.vendedorNome}</span>
+            </div>
+            <span className={`font-medium ${c.dias === null || c.dias >= 60 ? 'text-red-400' : 'text-amber-400'}`}>
+              {c.dias === null ? rotuloNunca : `${c.dias} dia(s)`}
+            </span>
+          </Link>
+        ))}
+        {!dados?.length && <p className="text-sm text-dark-500 py-2">{rotuloVazio}</p>}
+      </div>
+    </section>
   )
 }
 
@@ -112,6 +212,19 @@ type Aba = (typeof ABAS)[number]['value']
 
 export default function AdminReports() {
   const { user } = useAuth()
+  // Essa página é reaproveitada em /admin/relatorios e /vendedor/relatorios
+  // (App.tsx) — a ficha do cliente mora em rota diferente pra cada papel.
+  const clientesBasePath = user?.role === 'admin' ? '/admin/clientes' : '/vendedor/clientes'
+  const utils = trpc.useUtils()
+  const [atualizando, setAtualizando] = useState(false)
+  async function atualizarTudo() {
+    setAtualizando(true)
+    try {
+      await utils.reports.invalidate()
+    } finally {
+      setAtualizando(false)
+    }
+  }
   // Controla aba por aba dentro de Relatórios — pra admin e pra vendedor (a
   // página "Relatórios" já é reaproveitada pelos dois, ver App.tsx). Aba
   // "Todas as Empresas" nunca depende disso (é superAdminOnly, fixo).
@@ -174,9 +287,14 @@ export default function AdminReports() {
   const { data: contatosPorDia } = trpc.reports.contatosPorDia.useQuery(periodo)
   const { data: ligacoesDetalhado } = trpc.reports.ligacoesDetalhado.useQuery(periodo)
   const [vendasVisao, setVendasVisao] = useState<'geral' | 'vendedor'>('geral')
-  const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery(filtroAtual)
+  const [minimoDiasSemContato, setMinimoDiasSemContato] = useState(30)
+  const { data: diasSemContato } = trpc.reports.diasSemContato.useQuery({ ...filtroAtual, minimoDias: minimoDiasSemContato })
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery(filtroAtual)
   const { data: clientesSemOrcamentoEContato } = trpc.reports.clientesSemOrcamentoEContato.useQuery(filtroAtual)
+  const [minimoDiasSemOrcamento, setMinimoDiasSemOrcamento] = useState(30)
+  const { data: clientesSemOrcamentoDias } = trpc.reports.clientesSemOrcamentoDias.useQuery({ ...filtroAtual, minimoDias: minimoDiasSemOrcamento })
+  const [minimoDiasSemVenda, setMinimoDiasSemVenda] = useState(30)
+  const { data: clientesSemVendaDias } = trpc.reports.clientesSemVendaDias.useQuery({ ...filtroAtual, minimoDias: minimoDiasSemVenda })
   const { data: orcamentosPorVendedor } = trpc.reports.orcamentosPorVendedor.useQuery({ ...periodo, granularidade: granularidadeOrcamentos })
   const { data: itensMaisComprados } = trpc.reports.itensMaisComprados.useQuery({
     dataInicio: itensDataInicio,
@@ -318,7 +436,12 @@ export default function AdminReports() {
   return (
     <div className="p-6 space-y-6 max-w-4xl">
       <div>
-        <h1 className="font-heading text-xl text-dark-50">Relatórios</h1>
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="font-heading text-xl text-dark-50">Relatórios</h1>
+          <Button variant="secondary" size="sm" loading={atualizando} onClick={atualizarTudo}>
+            🔄 Atualizar
+          </Button>
+        </div>
         <div className="flex flex-wrap items-end gap-2 mt-3">
           <Input label="De" type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} />
           <Input label="Até" type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} />
@@ -1150,12 +1273,16 @@ export default function AdminReports() {
             </p>
             <div className="divide-y divide-dark-700 max-h-72 overflow-y-auto pr-1">
               {clientesSemOrcamentoEContato?.map((c) => (
-                <div key={c.clienteId} className="flex items-center justify-between py-2 text-sm">
+                <Link
+                  key={c.clienteId}
+                  to={`${clientesBasePath}/${c.clienteId}`}
+                  className="flex items-center justify-between py-2 px-1.5 -mx-1.5 rounded-lg text-sm hover:bg-dark-700/50 transition-colors"
+                >
                   <span className="text-dark-200">{c.razaoSocial}</span>
                   <span className="text-dark-400">
                     {ETAPA_LABEL_REPORT[c.etapa] ?? c.etapa} · {c.vendedorNome}
                   </span>
-                </div>
+                </Link>
               ))}
               {!clientesSemOrcamentoEContato?.length && (
                 <p className="text-sm text-dark-500 py-2">Nenhum cliente esquecido — todo mundo tem contato ou orçamento neste mês.</p>
@@ -1163,34 +1290,44 @@ export default function AdminReports() {
             </div>
           </section>
 
-          <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold text-dark-100">Clientes há mais tempo sem contato</h2>
-              <BotaoExportar
-                onClick={() =>
-                  baixarCsv(
-                    'dias-sem-contato.csv',
-                    paraCsv(
-                      [
-                        { chave: 'razaoSocial', rotulo: 'Cliente' },
-                        { chave: 'dias', rotulo: 'Dias sem contato' },
-                      ],
-                      diasSemContato ?? []
-                    )
-                  )
-                }
-              />
-            </div>
-            <div className="divide-y divide-dark-700 max-h-72 overflow-y-auto pr-1">
-              {diasSemContato?.slice(0, 20).map((c) => (
-                <div key={c.clienteId} className="flex items-center justify-between py-2 text-sm">
-                  <span className="text-dark-200">{c.razaoSocial}</span>
-                  <span className="text-dark-400">{c.dias} dia(s)</span>
-                </div>
-              ))}
-              {!diasSemContato?.length && <p className="text-sm text-dark-500 py-2">Sem dados.</p>}
-            </div>
-          </section>
+          <AlertaClientesCard
+            titulo="Clientes sem orçamento"
+            subtitulo='Carteira inteira (não só o mês corrente) — pega o orçamento mais recente de cada cliente em qualquer mês. "Nunca" = cliente nunca teve orçamento lançado.'
+            dados={clientesSemOrcamentoDias?.map((c) => ({ ...c, dias: c.diasSemOrcamento }))}
+            minimoDias={minimoDiasSemOrcamento}
+            onMudarMinimoDias={setMinimoDiasSemOrcamento}
+            rotuloNunca="Nunca orçou"
+            rotuloVazio={`Nenhum cliente há ${minimoDiasSemOrcamento}+ dias sem orçamento.`}
+            nomeArquivoCsv={`clientes-sem-orcamento-${minimoDiasSemOrcamento}-dias.csv`}
+            colunaDiasCsv="Dias sem orçamento"
+            clientesBasePath={clientesBasePath}
+          />
+
+          <AlertaClientesCard
+            titulo="Clientes sem vendas"
+            subtitulo='Última compra de cada cliente, em qualquer mês. "Nunca" = cliente nunca fechou uma venda.'
+            dados={clientesSemVendaDias?.map((c) => ({ ...c, dias: c.diasSemVenda }))}
+            minimoDias={minimoDiasSemVenda}
+            onMudarMinimoDias={setMinimoDiasSemVenda}
+            rotuloNunca="Nunca comprou"
+            rotuloVazio={`Nenhum cliente há ${minimoDiasSemVenda}+ dias sem venda.`}
+            nomeArquivoCsv={`clientes-sem-venda-${minimoDiasSemVenda}-dias.csv`}
+            colunaDiasCsv="Dias sem venda"
+            clientesBasePath={clientesBasePath}
+          />
+
+          <AlertaClientesCard
+            titulo="Clientes sem contato"
+            subtitulo='Baseado no card do mês mais recente de cada cliente. "Nunca" = cliente nunca teve nenhum contato registrado.'
+            dados={diasSemContato}
+            minimoDias={minimoDiasSemContato}
+            onMudarMinimoDias={setMinimoDiasSemContato}
+            rotuloNunca="Nunca contatado"
+            rotuloVazio={`Nenhum cliente há ${minimoDiasSemContato}+ dias sem contato.`}
+            nomeArquivoCsv={`clientes-sem-contato-${minimoDiasSemContato}-dias.csv`}
+            colunaDiasCsv="Dias sem contato"
+            clientesBasePath={clientesBasePath}
+          />
 
           <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
             <h2 className="text-sm font-semibold text-dark-100 mb-3">Motivo de pedido perdido</h2>
