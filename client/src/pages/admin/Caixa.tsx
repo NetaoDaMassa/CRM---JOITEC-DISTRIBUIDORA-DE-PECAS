@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { paraCsv, baixarCsv } from '../../lib/csv'
+import { parseValorBr } from '../../lib/valorBr'
 
 const MES_LABEL: Intl.DateTimeFormatOptions = { month: 'short', year: 'numeric' }
 
@@ -93,8 +94,8 @@ export default function Caixa() {
   })
 
   function registrar() {
-    const valorNum = Number(valor.replace(',', '.'))
-    if (!valorNum || valorNum <= 0) return toast.error('Informe um valor válido')
+    const valorNum = parseValorBr(valor)
+    if (!valorNum || Number.isNaN(valorNum) || valorNum <= 0) return toast.error('Informe um valor válido')
     if (!data) return toast.error('Informe a data')
     criarMut.mutate({ tipo, valor: valorNum, data, descricao: descricao.trim() || undefined })
   }

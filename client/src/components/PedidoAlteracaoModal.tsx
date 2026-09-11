@@ -6,6 +6,7 @@ import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
 import Select from './ui/Select'
 import ClientePicker from './ClientePicker'
+import { parseValorBr } from '../lib/valorBr'
 
 const TIPO_ALTERACAO = [
   { value: 'data', label: 'Alteração de data de vencimento' },
@@ -43,10 +44,11 @@ export default function PedidoAlteracaoModal({ open, onClose }: { open: boolean;
   function handleSalvar() {
     if (!cliente) return toast.error('Escolha o cliente')
     if (!tipoAlteracao) return toast.error('Escolha o que foi pedido')
+    if (valor && Number.isNaN(parseValorBr(valor))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
     criarMut.mutate({
       clienteId: cliente.id,
       numeroBoleto: numeroBoleto.trim() || undefined,
-      valor: valor ? Number(valor.replace(',', '.')) : undefined,
+      valor: valor ? parseValorBr(valor) : undefined,
       tipoAlteracao: tipoAlteracao as 'data' | 'valor' | 'cancelamento',
       descricao: descricao.trim() || undefined,
     })

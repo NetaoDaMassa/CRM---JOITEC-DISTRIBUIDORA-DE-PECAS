@@ -4,6 +4,7 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
 import ClientePicker from './ClientePicker'
+import { parseValorBr } from '../lib/valorBr'
 
 // Formulário de criação compartilhado entre Cartório e RC — mesma forma
 // (cliente, valor opcional, data de envio, observações), só muda o título
@@ -29,7 +30,8 @@ export default function NegociacaoStatusModal({
   function handleSalvar() {
     if (!cliente) return toast.error('Escolha o cliente')
     if (!enviadoEm) return toast.error('Informe a data de envio')
-    const valorNumero = valor ? Number(valor.replace(',', '.')) : undefined
+    if (valor && Number.isNaN(parseValorBr(valor))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
+    const valorNumero = valor ? parseValorBr(valor) : undefined
     onCriar({ clienteId: cliente.id, valor: valorNumero, enviadoEm, observacoes: observacoes || undefined })
     setCliente(null)
     setValor('')

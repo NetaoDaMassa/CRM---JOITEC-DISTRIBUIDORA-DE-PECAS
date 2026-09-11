@@ -6,6 +6,7 @@ import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
 import ClientePicker from './ClientePicker'
+import { parseValorBr } from '../lib/valorBr'
 
 const CANAL_OPTIONS = [
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -40,11 +41,12 @@ export default function CobrancaModal({ open, onClose }: { open: boolean; onClos
   function handleSalvar() {
     if (!cliente) return toast.error('Escolha o cliente')
     if (!retorno.trim()) return toast.error('Escreva o retorno do cliente')
+    if (valor && Number.isNaN(parseValorBr(valor))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
     criarMut.mutate({
       clienteId: cliente.id,
       canal,
       retornoCliente: retorno.trim(),
-      valor: valor ? Number(valor.replace(',', '.')) : undefined,
+      valor: valor ? parseValorBr(valor) : undefined,
       dataVencimento: dataVencimento || undefined,
     })
   }

@@ -7,6 +7,7 @@ import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
 import ClientePicker from './ClientePicker'
 import { formatDateTime } from '../lib/utils'
+import { parseValorBr } from '../lib/valorBr'
 
 const TIPO_LABEL: Record<string, string> = { criacao: 'Boleto criado', valor: 'Valor alterado', vencimento: 'Vencimento alterado', status: 'Status alterado' }
 
@@ -87,8 +88,8 @@ export default function BoletoModal({ open, onClose, boletoId }: { open: boolean
 
   function handleCriar() {
     if (!cliente) return toast.error('Escolha o cliente')
-    const valor = Number(valorOriginal.replace(',', '.'))
-    if (!valor || valor <= 0) return toast.error('Informe um valor válido')
+    const valor = parseValorBr(valorOriginal)
+    if (!valor || Number.isNaN(valor) || valor <= 0) return toast.error('Informe um valor válido')
     if (!vencimento) return toast.error('Informe o vencimento')
     criarMut.mutate({ clienteId: cliente.id, numeroBoleto: numeroBoleto || undefined, valorOriginal: valor, vencimento, observacoes: observacoes || undefined })
   }
@@ -140,8 +141,8 @@ export default function BoletoModal({ open, onClose, boletoId }: { open: boolean
                   size="sm"
                   loading={alterarValorMut.isPending}
                   onClick={() => {
-                    const v = Number(novoValor.replace(',', '.'))
-                    if (!v || v <= 0) return toast.error('Valor inválido')
+                    const v = parseValorBr(novoValor)
+                    if (!v || Number.isNaN(v) || v <= 0) return toast.error('Valor inválido')
                     alterarValorMut.mutate({ id: boletoId, novoValor: v })
                   }}
                 >

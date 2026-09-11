@@ -10,6 +10,7 @@ import ContatoButtons from '../components/ui/ContatoButtons'
 import TelefonesExtras from '../components/ui/TelefonesExtras'
 import EmailsExtras from '../components/ui/EmailsExtras'
 import HistoricoCliente from '../components/HistoricoCliente'
+import { parseValorBr } from '../lib/valorBr'
 
 function formatarDataSimples(iso: string | null): string {
   if (!iso) return '—'
@@ -496,6 +497,7 @@ export default function ClienteDetail() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!cliente) return
+    if (ticketMedio && Number.isNaN(parseValorBr(ticketMedio))) return toast.error('Ticket médio inválido — use só números, ex: 1.250,50.')
     updateMut.mutate({
       id: cliente.id,
       versao: cliente.versao,
@@ -507,7 +509,7 @@ export default function ClienteDetail() {
       nomeContato,
       statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | 'consumidor_final' | undefined,
       observacoes: observacoes || undefined,
-      ticketMedioHistorico: ticketMedio ? Number(ticketMedio.replace(',', '.')) : undefined,
+      ticketMedioHistorico: ticketMedio ? parseValorBr(ticketMedio) : undefined,
       origemMarketing,
     })
   }
