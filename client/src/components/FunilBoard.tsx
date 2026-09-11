@@ -504,6 +504,9 @@ export default function FunilBoard({
                 </span>
               </div>
               <div className={`mt-1 text-sm font-semibold ${cobertura.naMedia ? 'text-green-400' : 'text-red-400'}`}>
+                📊 Hoje era pra estar em {cobertura.percentualIdealHoje}% — está em {cobertura.percentual}%
+              </div>
+              <div className={`text-xs ${cobertura.naMedia ? 'text-green-400' : 'text-red-400'}`}>
                 {cobertura.naMedia
                   ? '✅ Meta do dia em dia — nenhum contato faltando'
                   : `🎯 Faltam ${pluralizar(cobertura.faltamParaMeta, 'contato', 'contatos')} pra bater a meta de hoje`}

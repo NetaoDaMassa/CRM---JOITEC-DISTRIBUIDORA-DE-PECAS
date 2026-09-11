@@ -14,7 +14,9 @@ import { trpc } from '../lib/trpc'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
+import Modal from '../components/ui/Modal'
 import { STAGE_LABELS, STAGE_COLORS, STAGE_COLORS_HEX, type Stage } from '../lib/ordensShared'
+import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
 function money(v: number | null): string {
   if (v == null) return '—'
@@ -26,6 +28,10 @@ function horasParaTexto(h: number | null): string {
   const dias = Math.floor(h / 24)
   const horas = Math.round(h % 24)
   return dias > 0 ? `${dias}d ${horas}h` : `${horas}h`
+}
+
+function dataCurta(v: string): string {
+  return new Date(`${v.slice(0, 10)}T00:00:00`).toLocaleDateString('pt-BR')
 }
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
@@ -46,16 +52,70 @@ function mesAtualStr(): string {
 
 const STATUS_COLORS_HEX = ['#f59e0b', '#22c55e', '#ef4444']
 
-function StatCard({ label, value, sub, icon, colorClass }: { label: string; value: string | number; sub?: string; icon: React.ReactNode; colorClass: string }) {
+// Qual card do topo está aberto no modal — cada um reaproveita a lista já
+// trazida pelo resumo (pedidos/propostas/visitas/máquinas), só filtrando/
+// exibindo colunas diferentes por card.
+type CardKey =
+  | 'pedidosTotal'
+  | 'pedidosAtivos'
+  | 'pedidosConcluidos'
+  | 'pedidosCancelados'
+  | 'ticketMedio'
+  | 'cicloMedio'
+  | 'faturamento'
+  | 'propostas'
+  | 'visitasTotal'
+  | 'visitasMes'
+  | 'maquinas'
+
+const CARD_TITULOS: Record<CardKey, string> = {
+  pedidosTotal: 'Total de Pedidos',
+  pedidosAtivos: 'Pedidos em Andamento',
+  pedidosConcluidos: 'Pedidos Concluídos',
+  pedidosCancelados: 'Pedidos Cancelados',
+  ticketMedio: 'Pedidos no Período',
+  cicloMedio: 'Pedidos Concluídos',
+  faturamento: 'Pedidos Faturados',
+  propostas: 'Propostas',
+  visitasTotal: 'Visitas no Período',
+  visitasMes: 'Visitas este Mês',
+  maquinas: 'Máquinas Vendidas',
+}
+
+// `onClick` opcional — vira <button> clicável com hover (abre o modal com a
+// lista por trás do número), mesmo padrão do KpiCard em RelatoriosOdin.tsx.
+// Pedido do João, 2026-09-11: "quero poder abrir esses blocos também".
+function StatCard({
+  label,
+  value,
+  sub,
+  icon,
+  colorClass,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  sub?: string
+  icon: React.ReactNode
+  colorClass: string
+  onClick?: () => void
+}) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 flex items-start gap-3">
+    <Tag
+      onClick={onClick}
+      type={onClick ? 'button' : undefined}
+      className={`bg-dark-800 border border-dark-600 rounded-2xl p-4 flex items-start gap-3 text-left w-full ${
+        onClick ? 'cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 transition-all' : ''
+      }`}
+    >
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${colorClass}`}>{icon}</div>
       <div className="min-w-0">
         <p className="text-xl font-bold text-dark-50 leading-tight">{value}</p>
         <p className="text-xs text-dark-400 leading-tight mt-0.5">{label}</p>
         {sub && <p className="text-[11px] text-dark-500 mt-0.5">{sub}</p>}
       </div>
-    </div>
+    </Tag>
   )
 }
 
@@ -105,12 +165,15 @@ export default function DashboardOdin() {
   const [dataDe, setDataDe] = useState(() => monthToRange(mesAtualStr()).from)
   const [dataAte, setDataAte] = useState(() => monthToRange(mesAtualStr()).to)
   const [vendedorId, setVendedorId] = useState('')
+  const [cardAberto, setCardAberto] = useState<CardKey | null>(null)
+  const [alertasExpandido, setAlertasExpandido] = useState(false)
 
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
   const input = { dataDe: dataDe || undefined, dataAte: dataAte || undefined, vendedorId: vendedorId ? Number(vendedorId) : undefined }
   const { data, isLoading, refetch, isFetching } = useResumo(input)
 
   const basePath = isAdmin ? '/admin/ordens' : '/vendedor/ordens'
+  const propostaBasePath = isAdmin ? '/admin/propostas' : '/vendedor/propostas'
   const hasFiltro = !!(dataDe || dataAte || vendedorId)
 
   function aplicarMes(m: string) {
@@ -146,6 +209,19 @@ export default function DashboardOdin() {
   ].filter((d) => d.value > 0)
 
   const convRate = data.propostas.taxaConversao
+
+  // Cada card de pedido reaproveita a mesma lista (data.pedidos.lista),
+  // só filtrando por categoria — sem query extra por card.
+  const pedidosDoCardMap: Partial<Record<CardKey, typeof data.pedidos.lista>> = {
+    pedidosTotal: data.pedidos.lista,
+    pedidosAtivos: data.pedidos.lista.filter((p) => p.status !== 'cancelado' && p.stage !== 'pos_venda'),
+    pedidosConcluidos: data.pedidos.lista.filter((p) => p.stage === 'pos_venda'),
+    pedidosCancelados: data.pedidos.lista.filter((p) => p.status === 'cancelado'),
+    ticketMedio: data.pedidos.lista,
+    cicloMedio: data.pedidos.lista.filter((p) => p.stage === 'pos_venda'),
+  }
+  const pedidosDoCard = cardAberto ? pedidosDoCardMap[cardAberto] : undefined
+  const visitasDoCard = cardAberto === 'visitasMes' ? data.visitas.listaMes : data.visitas.lista
 
   return (
     <div className="p-6 space-y-6">
@@ -201,7 +277,7 @@ export default function DashboardOdin() {
             <p className="font-semibold text-red-400 text-sm">{data.alertas.length} pedido(s) com alerta</p>
           </div>
           <div className="space-y-1">
-            {data.alertas.slice(0, 5).map((a) => (
+            {(alertasExpandido ? data.alertas : data.alertas.slice(0, 5)).map((a) => (
               <Link key={a.ordemId} to={`${basePath}/${a.ordemId}`} className="flex items-center gap-2 text-xs hover:underline">
                 <span className={a.nivel === 'vermelho' ? 'text-red-400' : 'text-orange-400'}>
                   • Pedido #{a.ordemId} ({a.clienteNome}): parado em {STAGE_LABELS[a.stage as Stage] ?? a.stage}
@@ -209,28 +285,36 @@ export default function DashboardOdin() {
               </Link>
             ))}
           </div>
+          {data.alertas.length > 5 && (
+            <button
+              onClick={() => setAlertasExpandido((v) => !v)}
+              className="mt-2 text-xs text-dark-400 hover:text-gold-400 underline"
+            >
+              {alertasExpandido ? 'Ver menos' : `Ver todos os ${data.alertas.length}`}
+            </button>
+          )}
         </div>
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard label="Total de Pedidos" value={data.pedidos.total} sub={`${data.pedidos.recentes30d} nos últimos 30 dias`} icon={<Package size={20} className="text-white" />} colorClass="bg-blue-600" />
-        <StatCard label="Em Andamento" value={data.pedidos.active} icon={<Clock size={20} className="text-white" />} colorClass="bg-amber-500" />
-        <StatCard label="Faturado" value={money(data.faturamento.valor)} sub={`${data.faturamento.qtd} pedido(s)`} icon={<Receipt size={20} className="text-white" />} colorClass="bg-fuchsia-600" />
-        <StatCard label="Concluídos" value={data.pedidos.completed} icon={<CheckCircle2 size={20} className="text-white" />} colorClass="bg-green-500" />
-        <StatCard label="Cancelados" value={data.pedidos.cancelled} icon={<XCircle size={20} className="text-white" />} colorClass="bg-red-500" />
+        <StatCard label="Total de Pedidos" value={data.pedidos.total} sub={`${data.pedidos.recentes30d} nos últimos 30 dias`} icon={<Package size={20} className="text-white" />} colorClass="bg-blue-600" onClick={() => setCardAberto('pedidosTotal')} />
+        <StatCard label="Em Andamento" value={data.pedidos.active} icon={<Clock size={20} className="text-white" />} colorClass="bg-amber-500" onClick={() => setCardAberto('pedidosAtivos')} />
+        <StatCard label="Faturado" value={money(data.faturamento.valor)} sub={`${data.faturamento.qtd} pedido(s)`} icon={<Receipt size={20} className="text-white" />} colorClass="bg-fuchsia-600" onClick={() => setCardAberto('faturamento')} />
+        <StatCard label="Concluídos" value={data.pedidos.completed} icon={<CheckCircle2 size={20} className="text-white" />} colorClass="bg-green-500" onClick={() => setCardAberto('pedidosConcluidos')} />
+        <StatCard label="Cancelados" value={data.pedidos.cancelled} icon={<XCircle size={20} className="text-white" />} colorClass="bg-red-500" onClick={() => setCardAberto('pedidosCancelados')} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard label="Total de Propostas" value={data.propostas.total} sub={`${data.propostas.convertidas} convertidas em pedido`} icon={<FileText size={20} className="text-white" />} colorClass="bg-purple-500" />
-        <StatCard label="Taxa de Conversão" value={`${convRate}%`} sub="proposta → pedido" icon={<TrendingUp size={20} className="text-white" />} colorClass="bg-teal-500" />
-        <StatCard label="Total de Visitas" value={data.visitas.total} icon={<MapPin size={20} className="text-white" />} colorClass="bg-sky-500" />
-        <StatCard label="Visitas este Mês" value={data.visitas.mesAtual} icon={<MapPin size={20} className="text-white" />} colorClass="bg-indigo-500" />
+        <StatCard label="Total de Propostas" value={data.propostas.total} sub={`${data.propostas.convertidas} convertidas em pedido`} icon={<FileText size={20} className="text-white" />} colorClass="bg-purple-500" onClick={() => setCardAberto('propostas')} />
+        <StatCard label="Taxa de Conversão" value={`${convRate}%`} sub="proposta → pedido" icon={<TrendingUp size={20} className="text-white" />} colorClass="bg-teal-500" onClick={() => setCardAberto('propostas')} />
+        <StatCard label="Total de Visitas" value={data.visitas.total} icon={<MapPin size={20} className="text-white" />} colorClass="bg-sky-500" onClick={() => setCardAberto('visitasTotal')} />
+        <StatCard label="Visitas este Mês" value={data.visitas.mesAtual} icon={<MapPin size={20} className="text-white" />} colorClass="bg-indigo-500" onClick={() => setCardAberto('visitasMes')} />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        <StatCard label="Ticket Médio" value={money(data.pedidos.ticketMedio)} sub="valor médio dos pedidos no período" icon={<DollarSign size={20} className="text-white" />} colorClass="bg-emerald-600" />
-        <StatCard label="Máquinas Vendidas" value={data.pedidos.maquinasVendidas} sub="no período filtrado" icon={<Wrench size={20} className="text-white" />} colorClass="bg-cyan-600" />
-        <StatCard label="Tempo Médio de Ciclo" value={horasParaTexto(data.pedidos.cicloMedioHoras)} sub="pedidos concluídos no período" icon={<Timer size={20} className="text-white" />} colorClass="bg-violet-600" />
+        <StatCard label="Ticket Médio" value={money(data.pedidos.ticketMedio)} sub="valor médio dos pedidos no período" icon={<DollarSign size={20} className="text-white" />} colorClass="bg-emerald-600" onClick={() => setCardAberto('ticketMedio')} />
+        <StatCard label="Máquinas Vendidas" value={data.pedidos.maquinasVendidas} sub="no período filtrado" icon={<Wrench size={20} className="text-white" />} colorClass="bg-cyan-600" onClick={() => setCardAberto('maquinas')} />
+        <StatCard label="Tempo Médio de Ciclo" value={horasParaTexto(data.pedidos.cicloMedioHoras)} sub="pedidos concluídos no período" icon={<Timer size={20} className="text-white" />} colorClass="bg-violet-600" onClick={() => setCardAberto('cicloMedio')} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -329,6 +413,175 @@ export default function DashboardOdin() {
           </div>
         )}
       </div>
+
+      <Modal open={!!cardAberto} onClose={() => setCardAberto(null)} title={cardAberto ? CARD_TITULOS[cardAberto] : ''} size="lg">
+        {(cardAberto === 'pedidosTotal' ||
+          cardAberto === 'pedidosAtivos' ||
+          cardAberto === 'pedidosConcluidos' ||
+          cardAberto === 'pedidosCancelados' ||
+          cardAberto === 'ticketMedio' ||
+          cardAberto === 'cicloMedio') &&
+          (!pedidosDoCard || pedidosDoCard.length === 0 ? (
+            <p className="text-center py-8 text-sm text-dark-500">Nenhum pedido encontrado</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-700 text-dark-500 text-[11px] uppercase tracking-wide">
+                    <th className="text-left font-semibold py-2 px-2">#</th>
+                    <th className="text-left font-semibold py-2 px-2">Cliente</th>
+                    {isAdmin && <th className="text-left font-semibold py-2 px-2">Vendedor</th>}
+                    <th className="text-left font-semibold py-2 px-2">Etapa</th>
+                    <th className="text-left font-semibold py-2 px-2">{cardAberto === 'cicloMedio' ? 'Ciclo' : 'Valor'}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-700/60">
+                  {pedidosDoCard.map((p) => (
+                    <tr key={p.id} className="hover:bg-dark-900/40">
+                      <td className="py-2.5 px-2 font-mono text-xs text-gold-500">
+                        <Link to={`${basePath}/${p.id}`} className="hover:underline" onClick={() => setCardAberto(null)}>#{p.id}</Link>
+                      </td>
+                      <td className="py-2.5 px-2 text-dark-100 font-medium max-w-[200px] truncate">{p.clienteNome}</td>
+                      {isAdmin && <td className="py-2.5 px-2 text-dark-400 max-w-[140px] truncate">{p.vendedorNome}</td>}
+                      <td className="py-2.5 px-2 whitespace-nowrap">
+                        <Badge className={STAGE_COLORS[p.stage as Stage]}>{STAGE_LABELS[p.stage as Stage] ?? p.stage}</Badge>
+                      </td>
+                      <td className="py-2.5 px-2 whitespace-nowrap text-dark-200 font-medium">
+                        {cardAberto === 'cicloMedio' ? horasParaTexto(p.cicloHoras) : money(p.valor)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+        {cardAberto === 'faturamento' &&
+          (data.faturamento.lista.length === 0 ? (
+            <p className="text-center py-8 text-sm text-dark-500">Nenhum pedido faturado no período</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-700 text-dark-500 text-[11px] uppercase tracking-wide">
+                    <th className="text-left font-semibold py-2 px-2">#</th>
+                    <th className="text-left font-semibold py-2 px-2">Cliente</th>
+                    {isAdmin && <th className="text-left font-semibold py-2 px-2">Vendedor</th>}
+                    <th className="text-left font-semibold py-2 px-2">Faturado em</th>
+                    <th className="text-left font-semibold py-2 px-2">Valor</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-700/60">
+                  {data.faturamento.lista.map((o) => (
+                    <tr key={o.id} className="hover:bg-dark-900/40">
+                      <td className="py-2.5 px-2 font-mono text-xs text-gold-500">
+                        <Link to={`${basePath}/${o.id}`} className="hover:underline" onClick={() => setCardAberto(null)}>#{o.id}</Link>
+                      </td>
+                      <td className="py-2.5 px-2 text-dark-100 font-medium max-w-[200px] truncate">{o.clienteNome}</td>
+                      {isAdmin && <td className="py-2.5 px-2 text-dark-400 max-w-[140px] truncate">{o.vendedorNome}</td>}
+                      <td className="py-2.5 px-2 whitespace-nowrap text-dark-400">{dataCurta(o.dataRef)}</td>
+                      <td className="py-2.5 px-2 whitespace-nowrap text-dark-200 font-medium">{money(o.valor)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+        {cardAberto === 'propostas' &&
+          (data.propostas.lista.length === 0 ? (
+            <p className="text-center py-8 text-sm text-dark-500">Nenhuma proposta no período</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-700 text-dark-500 text-[11px] uppercase tracking-wide">
+                    <th className="text-left font-semibold py-2 px-2">#</th>
+                    <th className="text-left font-semibold py-2 px-2">Cliente</th>
+                    <th className="text-left font-semibold py-2 px-2">Etapa</th>
+                    <th className="text-left font-semibold py-2 px-2">Data</th>
+                    <th className="text-left font-semibold py-2 px-2">Convertido</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-700/60">
+                  {data.propostas.lista.map((p) => (
+                    <tr key={p.id} className="hover:bg-dark-900/40">
+                      <td className="py-2.5 px-2 font-mono text-xs text-gold-500">
+                        <Link to={`${propostaBasePath}/${p.id}`} className="hover:underline" onClick={() => setCardAberto(null)}>#{p.id}</Link>
+                      </td>
+                      <td className="py-2.5 px-2 text-dark-100 font-medium max-w-[220px] truncate">{p.clienteNome}</td>
+                      <td className="py-2.5 px-2 text-dark-400">{PROPOSTA_STAGE_LABELS[p.stage as PropostaStage] ?? p.stage}</td>
+                      <td className="py-2.5 px-2 whitespace-nowrap text-dark-400">{dataCurta(p.createdAt)}</td>
+                      <td className="py-2.5 px-2">
+                        {p.convertido ? (
+                          <Badge className="text-green-400 bg-green-900/20 border-green-700/40">Sim</Badge>
+                        ) : (
+                          <Badge className="text-dark-400 bg-dark-700 border-dark-600">Não</Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+        {(cardAberto === 'visitasTotal' || cardAberto === 'visitasMes') &&
+          (visitasDoCard.length === 0 ? (
+            <p className="text-center py-8 text-sm text-dark-500">Nenhuma visita encontrada</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-700 text-dark-500 text-[11px] uppercase tracking-wide">
+                    <th className="text-left font-semibold py-2 px-2">Cliente</th>
+                    {isAdmin && <th className="text-left font-semibold py-2 px-2">Vendedor</th>}
+                    <th className="text-left font-semibold py-2 px-2">Data</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-700/60">
+                  {visitasDoCard.map((v) => (
+                    <tr key={v.id} className="hover:bg-dark-900/40">
+                      <td className="py-2.5 px-2 text-dark-100 font-medium max-w-[240px] truncate">{v.clienteNome}</td>
+                      {isAdmin && <td className="py-2.5 px-2 text-dark-400 max-w-[160px] truncate">{v.vendedorNome}</td>}
+                      <td className="py-2.5 px-2 whitespace-nowrap text-dark-400">{dataCurta(v.dataVisita)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+
+        {cardAberto === 'maquinas' &&
+          (data.maquinasLista.length === 0 ? (
+            <p className="text-center py-8 text-sm text-dark-500">Nenhuma máquina vendida no período</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-dark-700 text-dark-500 text-[11px] uppercase tracking-wide">
+                    <th className="text-left font-semibold py-2 px-2">Série</th>
+                    <th className="text-left font-semibold py-2 px-2">Modelo</th>
+                    <th className="text-left font-semibold py-2 px-2">Cliente</th>
+                    <th className="text-left font-semibold py-2 px-2">Pedido</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-dark-700/60">
+                  {data.maquinasLista.map((m) => (
+                    <tr key={m.id} className="hover:bg-dark-900/40">
+                      <td className="py-2.5 px-2 text-dark-100 font-medium">{m.numeroSerie}</td>
+                      <td className="py-2.5 px-2 text-dark-400">{m.modelo ?? '—'}</td>
+                      <td className="py-2.5 px-2 text-dark-400 max-w-[200px] truncate">{m.clienteNome}</td>
+                      <td className="py-2.5 px-2 font-mono text-xs text-gold-500">
+                        <Link to={`${basePath}/${m.ordemId}`} className="hover:underline" onClick={() => setCardAberto(null)}>#{m.ordemId}</Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ))}
+      </Modal>
     </div>
   )
 }

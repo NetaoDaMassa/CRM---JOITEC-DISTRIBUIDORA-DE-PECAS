@@ -63,13 +63,35 @@ export const dashboardOdinRouter = router({
 
     const ids = todasOrdens.map((o) => o.id)
     const detalhes = ids.length ? await db.query.ordemDetalhes.findMany({ where: inArray(ordemDetalhes.ordemId, ids) }) : []
+    const detalhesPorOrdem = new Map(detalhes.map((d) => [d.ordemId, d]))
     const valores = detalhes.map((d) => d.valorPedido).filter((v): v is number => v != null)
     const ticketMedio = valores.length ? Math.round(valores.reduce((a, b) => a + b, 0) / valores.length) : null
 
-    const ciclos = todasOrdens
-      .filter((o) => o.stage === 'pos_venda')
-      .map((o) => (new Date(o.updatedAt.replace(' ', 'T') + 'Z').getTime() - new Date(o.createdAt.replace(' ', 'T') + 'Z').getTime()) / 3_600_000)
-    const cicloMedioHoras = ciclos.length ? Math.round((ciclos.reduce((a, b) => a + b, 0) / ciclos.length) * 10) / 10 : null
+    // Cada pedido carrega o valor e (quando concluído) o ciclo em horas —
+    // é o que alimenta os modais que abrem por trás dos cards do topo
+    // (pedido do João, 2026-09-11: "quero poder abrir esses blocos
+    // também", mesmo padrão dos cards clicáveis do Faturamento em
+    // Relatórios Odin).
+    const pedidosLista = todasOrdens.map((o) => {
+      const cicloHoras =
+        o.stage === 'pos_venda'
+          ? Math.round(((new Date(o.updatedAt.replace(' ', 'T') + 'Z').getTime() - new Date(o.createdAt.replace(' ', 'T') + 'Z').getTime()) / 3_600_000) * 10) / 10
+          : null
+      return {
+        id: o.id,
+        clienteNome: o.cliente?.razaoSocial ?? '—',
+        vendedorNome: o.vendedor?.name ?? '—',
+        stage: o.stage,
+        status: o.status,
+        valor: detalhesPorOrdem.get(o.id)?.valorPedido ?? null,
+        cicloHoras,
+      }
+    })
+
+    const cicloMedioHoras = (() => {
+      const horas = pedidosLista.map((p) => p.cicloHoras).filter((h): h is number => h != null)
+      return horas.length ? Math.round((horas.reduce((a, b) => a + b, 0) / horas.length) * 10) / 10 : null
+    })()
 
     // Pedidos criados nos últimos 30 dias — janela rolante, independente do filtro de data acima.
     const since30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 19).replace('T', ' ')
@@ -81,15 +103,18 @@ export const dashboardOdinRouter = router({
     // machine_reports.py original: o status manual "vendida" quase nunca é preenchido).
     const maquinasTodas = await db.query.estoqueMaquinas.findMany({
       where: eq(estoqueMaquinas.empresaId, ctx.empresaId),
-      with: { ordem: { columns: { id: true, status: true, vendedorId: true } } },
+      with: { ordem: { columns: { id: true, status: true, vendedorId: true }, with: { cliente: { columns: { razaoSocial: true } } } } },
     })
-    const maquinasVendidas = maquinasTodas.filter((m) => {
-      if (!m.ordem || m.ordem.status === 'cancelado') return false
-      if (vendedorId && m.ordem.vendedorId !== vendedorId) return false
-      if (input?.dataDe && m.updatedAt < input.dataDe) return false
-      if (input?.dataAte && m.updatedAt > `${input.dataAte} 23:59:59`) return false
-      return true
-    }).length
+    const maquinasVendidasLista = maquinasTodas
+      .filter((m) => {
+        if (!m.ordem || m.ordem.status === 'cancelado') return false
+        if (vendedorId && m.ordem.vendedorId !== vendedorId) return false
+        if (input?.dataDe && m.updatedAt < input.dataDe) return false
+        if (input?.dataAte && m.updatedAt > `${input.dataAte} 23:59:59`) return false
+        return true
+      })
+      .map((m) => ({ id: m.id, numeroSerie: m.numeroSerie, modelo: m.modelo, ordemId: m.ordem!.id, clienteNome: m.ordem!.cliente?.razaoSocial ?? '—' }))
+    const maquinasVendidas = maquinasVendidasLista.length
 
     // Faturamento — pedidos que já entraram na etapa Faturamento ou além,
     // dentro do período filtrado (mesma regra do Painel Financeiro, ver
@@ -104,6 +129,25 @@ export const dashboardOdinRouter = router({
       if (input?.dataAte && o.dataRef.slice(0, 10) > input.dataAte) return false
       return true
     })
+    // Cliente/vendedor de cada faturado — buscarOrdensFaturadas não traz
+    // (é reaproveitada pelo Painel Financeiro/TV, que não precisam disso),
+    // então busca só pelos ids que sobraram do filtro acima.
+    const idsFaturados = faturadasFiltradas.map((o) => o.id)
+    const ordensFaturadas = idsFaturados.length
+      ? await db.query.ordens.findMany({
+          where: inArray(ordens.id, idsFaturados),
+          columns: { id: true },
+          with: { cliente: { columns: { razaoSocial: true } }, vendedor: { columns: { name: true } } },
+        })
+      : []
+    const ordemFaturadaPorId = new Map(ordensFaturadas.map((o) => [o.id, o]))
+    const faturamentoLista = faturadasFiltradas.map((o) => ({
+      id: o.id,
+      clienteNome: ordemFaturadaPorId.get(o.id)?.cliente?.razaoSocial ?? '—',
+      vendedorNome: ordemFaturadaPorId.get(o.id)?.vendedor?.name ?? '—',
+      valor: o.valor,
+      dataRef: o.dataRef,
+    }))
     const faturamento = { qtd: faturadasFiltradas.length, valor: faturadasFiltradas.reduce((s, o) => s + o.valor, 0) }
 
     // Propostas
@@ -111,21 +155,55 @@ export const dashboardOdinRouter = router({
     if (vendedorId) condProp.push(eq(propostas.vendedorId, vendedorId))
     if (input?.dataDe) condProp.push(gte(propostas.createdAt, input.dataDe))
     if (input?.dataAte) condProp.push(lte(propostas.createdAt, `${input.dataAte} 23:59:59`))
-    const todasProp = await db.query.propostas.findMany({ where: and(...condProp), columns: { id: true, convertidoParaOrdemId: true } })
+    const todasProp = await db.query.propostas.findMany({
+      where: and(...condProp),
+      columns: { id: true, clienteNome: true, stage: true, createdAt: true, convertidoParaOrdemId: true },
+    })
     const totalPropostas = todasProp.length
     const propostasConvertidas = todasProp.filter((p) => p.convertidoParaOrdemId != null).length
+    const propostasLista = todasProp.map((p) => ({
+      id: p.id,
+      clienteNome: p.clienteNome,
+      stage: p.stage,
+      createdAt: p.createdAt,
+      convertido: p.convertidoParaOrdemId != null,
+    }))
 
     // Visitas
     const condVis = [eq(visitas.empresaId, ctx.empresaId)]
     if (vendedorId) condVis.push(eq(visitas.vendedorId, vendedorId))
     if (input?.dataDe) condVis.push(gte(visitas.dataVisita, input.dataDe))
     if (input?.dataAte) condVis.push(lte(visitas.dataVisita, input.dataAte))
-    const totalVisitas = (await db.query.visitas.findMany({ where: and(...condVis), columns: { id: true } })).length
+    const visitasEncontradas = await db.query.visitas.findMany({
+      where: and(...condVis),
+      columns: { id: true, clienteNome: true, nomeEmpresa: true, dataVisita: true },
+      with: { vendedor: { columns: { name: true } } },
+      orderBy: (v, { desc }) => [desc(v.dataVisita)],
+    })
+    const totalVisitas = visitasEncontradas.length
+    const visitasLista = visitasEncontradas.map((v) => ({
+      id: v.id,
+      clienteNome: v.clienteNome ?? v.nomeEmpresa ?? '—',
+      dataVisita: v.dataVisita,
+      vendedorNome: v.vendedor?.name ?? '—',
+    }))
 
     const inicioMes = new Date().toISOString().slice(0, 8) + '01'
     const condVisMes = [eq(visitas.empresaId, ctx.empresaId), gte(visitas.dataVisita, inicioMes)]
     if (vendedorId) condVisMes.push(eq(visitas.vendedorId, vendedorId))
-    const visitasMes = (await db.query.visitas.findMany({ where: and(...condVisMes), columns: { id: true } })).length
+    const visitasMesEncontradas = await db.query.visitas.findMany({
+      where: and(...condVisMes),
+      columns: { id: true, clienteNome: true, nomeEmpresa: true, dataVisita: true },
+      with: { vendedor: { columns: { name: true } } },
+      orderBy: (v, { desc }) => [desc(v.dataVisita)],
+    })
+    const visitasMes = visitasMesEncontradas.length
+    const visitasMesLista = visitasMesEncontradas.map((v) => ({
+      id: v.id,
+      clienteNome: v.clienteNome ?? v.nomeEmpresa ?? '—',
+      dataVisita: v.dataVisita,
+      vendedorNome: v.vendedor?.name ?? '—',
+    }))
 
     // Alertas — pedidos ativos parados demais na etapa atual.
     const alertas = todasOrdens
@@ -166,10 +244,16 @@ export const dashboardOdinRouter = router({
     }
 
     return {
-      pedidos: { total: todasOrdens.length, active, completed, cancelled, byStage, recentes30d, ticketMedio, cicloMedioHoras, maquinasVendidas },
-      faturamento,
-      propostas: { total: totalPropostas, convertidas: propostasConvertidas, taxaConversao: totalPropostas ? Math.round((propostasConvertidas / totalPropostas) * 1000) / 10 : 0 },
-      visitas: { total: totalVisitas, mesAtual: visitasMes },
+      pedidos: { total: todasOrdens.length, active, completed, cancelled, byStage, recentes30d, ticketMedio, cicloMedioHoras, maquinasVendidas, lista: pedidosLista },
+      faturamento: { ...faturamento, lista: faturamentoLista },
+      propostas: {
+        total: totalPropostas,
+        convertidas: propostasConvertidas,
+        taxaConversao: totalPropostas ? Math.round((propostasConvertidas / totalPropostas) * 1000) / 10 : 0,
+        lista: propostasLista,
+      },
+      visitas: { total: totalVisitas, mesAtual: visitasMes, lista: visitasLista, listaMes: visitasMesLista },
+      maquinasLista: maquinasVendidasLista,
       alertas,
       recentes,
       porVendedor,

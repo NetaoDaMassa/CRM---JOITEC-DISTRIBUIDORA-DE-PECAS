@@ -58,6 +58,12 @@ export interface Cobertura {
   // Pedido do João, 2026-09-11: número direto de "quanto falta", em vez de
   // só o rótulo "na média"/"abaixo do ritmo".
   faltamParaMeta: number
+  // "Hoje era pra estar em X%, está em Y%" — o % ideal se o vendedor tivesse
+  // seguido o ritmo certinho até hoje (diasUteisAteHoje/diasUteisMes), pra
+  // comparar lado a lado com `percentual` (o % real). Mesma conta do
+  // `percentualIdealHoje` que painel.ts/financeiro.ts já usam pra meta de
+  // faturamento — só que aqui em cima da carteira, não do faturamento.
+  percentualIdealHoje: number
 }
 
 // Cobertura de UM vendedor. `regiao` opcional filtra a carteira (usado pelo
@@ -92,6 +98,7 @@ export async function coberturaContatosVendedor(
       metaAcumuladaAteHoje: 0,
       naMedia: true,
       faltamParaMeta: 0,
+      percentualIdealHoje: 0,
     }
   }
   const idSet = new Set(carteira.map((c) => c.id))
@@ -156,6 +163,7 @@ export async function coberturaContatosVendedor(
     metaAcumuladaAteHoje,
     naMedia: contatados >= metaAcumuladaAteHoje,
     faltamParaMeta: Math.max(0, metaAcumuladaAteHoje - contatados),
+    percentualIdealHoje: diasUteisMes > 0 ? Math.round((diasUteisAteHoje / diasUteisMes) * 100) : 0,
   }
 }
 
