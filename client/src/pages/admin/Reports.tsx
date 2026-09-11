@@ -42,10 +42,16 @@ function AlertaClientesCard({
   dados,
   minimoDias,
   onMudarMinimoDias,
+  opcoesMinimo = [
+    { valor: 30, label: '30 dias' },
+    { valor: 60, label: '60 dias' },
+  ],
   rotuloNunca,
   rotuloVazio,
   nomeArquivoCsv,
   colunaDiasCsv,
+  formatarValor = (dias) => `${dias} dia(s)`,
+  limiteVermelho = 60,
   clientesBasePath,
 }: {
   titulo: string
@@ -53,36 +59,51 @@ function AlertaClientesCard({
   dados: ClienteAlerta[] | undefined
   minimoDias: number
   onMudarMinimoDias: (dias: number) => void
+  // Opções do toggle acima da lista — padrão 30/60 dias, mas a Positivação
+  // de Carteira usa isso em meses (1/2/3/6) sem precisar duplicar o card.
+  opcoesMinimo?: { valor: number; label: string }[]
   rotuloNunca: string
   rotuloVazio: string
   nomeArquivoCsv: string
   colunaDiasCsv: string
+  // Como mostrar o número de dias em cada linha — "45 dia(s)" (padrão) ou,
+  // na Positivação de Carteira, "1 mês" (dias convertido pra meses ali).
+  formatarValor?: (dias: number) => string
+  // A partir de quantos dias a linha fica vermelha (o resto fica âmbar).
+  limiteVermelho?: number
   // Reports.tsx é reaproveitada por admin (/admin/relatorios) e vendedor
   // (/vendedor/relatorios) — a ficha do cliente mora em rota diferente pra
   // cada um, senão o link do vendedor cai no AdminGuard e trava.
   clientesBasePath: string
 }) {
   const quantidade = dados?.length ?? 0
+  // Busca por cliente OU vendedor — pedido do João, 2026-09-12: listas com
+  // milhares de linhas (carteira grande) precisam de um jeito de achar
+  // "só os clientes da Fulana" sem trocar o filtro de Vendedor lá em cima
+  // (que refaz a consulta inteira) — aqui é só filtrar o que já veio.
+  const [busca, setBusca] = useState('')
+  const termo = busca.trim().toLowerCase()
+  const dadosFiltrados = termo ? dados?.filter((c) => c.razaoSocial.toLowerCase().includes(termo) || c.vendedorNome.toLowerCase().includes(termo)) : dados
   return (
     <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
       <div className="flex items-start justify-between mb-1 flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold text-dark-100">{titulo}</h2>
           <p className={`text-4xl font-bold mt-1 ${quantidade > 0 ? 'text-red-400' : 'text-green-400'}`}>{quantidade}</p>
-          <p className="text-xs text-dark-500">cliente(s) há {minimoDias}+ dias</p>
+          <p className="text-xs text-dark-500">cliente(s) nessa situação</p>
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-lg border border-dark-600 overflow-hidden text-xs shrink-0">
-            {[30, 60].map((dias) => (
+            {opcoesMinimo.map((op) => (
               <button
-                key={dias}
+                key={op.valor}
                 type="button"
-                onClick={() => onMudarMinimoDias(dias)}
+                onClick={() => onMudarMinimoDias(op.valor)}
                 className={`px-3 py-1.5 font-medium transition-colors ${
-                  minimoDias === dias ? 'bg-gold-900/30 text-gold-300' : 'text-dark-400 hover:bg-dark-700'
+                  minimoDias === op.valor ? 'bg-gold-900/30 text-gold-300' : 'text-dark-400 hover:bg-dark-700'
                 }`}
               >
-                {dias} dias
+                {op.label}
               </button>
             ))}
           </div>
@@ -105,8 +126,14 @@ function AlertaClientesCard({
         </div>
       </div>
       {subtitulo && <p className="text-xs text-dark-500 mb-2">{subtitulo}</p>}
-      <div className="divide-y divide-dark-700 max-h-96 overflow-y-auto pr-1 mt-2">
-        {dados?.map((c) => (
+      <Input
+        placeholder="Buscar por cliente ou vendedor..."
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        className="mb-2"
+      />
+      <div className="divide-y divide-dark-700 max-h-96 overflow-y-auto pr-1">
+        {dadosFiltrados?.map((c) => (
           <Link
             key={c.clienteId}
             to={`${clientesBasePath}/${c.clienteId}`}
@@ -116,12 +143,15 @@ function AlertaClientesCard({
               <span className="text-dark-200">{c.razaoSocial}</span>
               <span className="text-dark-500 text-xs ml-2">{c.vendedorNome}</span>
             </div>
-            <span className={`font-medium ${c.dias === null || c.dias >= 60 ? 'text-red-400' : 'text-amber-400'}`}>
-              {c.dias === null ? rotuloNunca : `${c.dias} dia(s)`}
+            <span className={`font-medium ${c.dias === null || c.dias >= limiteVermelho ? 'text-red-400' : 'text-amber-400'}`}>
+              {c.dias === null ? rotuloNunca : formatarValor(c.dias)}
             </span>
           </Link>
         ))}
         {!dados?.length && <p className="text-sm text-dark-500 py-2">{rotuloVazio}</p>}
+        {!!dados?.length && !dadosFiltrados?.length && (
+          <p className="text-sm text-dark-500 py-2">Nenhum resultado pra "{busca}".</p>
+        )}
       </div>
     </section>
   )
@@ -295,6 +325,13 @@ export default function AdminReports() {
   const { data: clientesSemOrcamentoDias } = trpc.reports.clientesSemOrcamentoDias.useQuery({ ...filtroAtual, minimoDias: minimoDiasSemOrcamento })
   const [minimoDiasSemVenda, setMinimoDiasSemVenda] = useState(30)
   const { data: clientesSemVendaDias } = trpc.reports.clientesSemVendaDias.useQuery({ ...filtroAtual, minimoDias: minimoDiasSemVenda })
+  // Positivação de Carteira detalhada — pedido do João, 2026-09-12: mesma
+  // fonte de dados de "Clientes sem vendas" (dataUltimaCompra), só que em
+  // meses em vez de dias (é como "positivação" é falado no dia a dia:
+  // "não compra há 3 meses"), com detalhe por cliente/CSV/busca — as
+  // versões agregadas (só %) já existiam nas abas Visão Geral/Contatos.
+  const [minimoDiasPositivacao, setMinimoDiasPositivacao] = useState(30)
+  const { data: positivacaoDetalhada } = trpc.reports.clientesSemVendaDias.useQuery({ ...filtroAtual, minimoDias: minimoDiasPositivacao })
   const { data: orcamentosPorVendedor } = trpc.reports.orcamentosPorVendedor.useQuery({ ...periodo, granularidade: granularidadeOrcamentos })
   const { data: itensMaisComprados } = trpc.reports.itensMaisComprados.useQuery({
     dataInicio: itensDataInicio,
@@ -1312,6 +1349,30 @@ export default function AdminReports() {
             rotuloNunca="Nunca comprou"
             rotuloVazio={`Nenhum cliente há ${minimoDiasSemVenda}+ dias sem venda.`}
             nomeArquivoCsv={`clientes-sem-venda-${minimoDiasSemVenda}-dias.csv`}
+            colunaDiasCsv="Dias sem venda"
+            clientesBasePath={clientesBasePath}
+          />
+
+          <AlertaClientesCard
+            titulo="Positivação de Carteira"
+            subtitulo='Detalhe por cliente de quem não compra há X meses (mesma data de última compra de "Clientes sem vendas" acima, só que em meses). Pra ver só o % agregado por vendedor, veja a aba "Contatos & Ligações".'
+            dados={positivacaoDetalhada?.map((c) => ({ ...c, dias: c.diasSemVenda }))}
+            minimoDias={minimoDiasPositivacao}
+            onMudarMinimoDias={setMinimoDiasPositivacao}
+            opcoesMinimo={[
+              { valor: 30, label: '1 mês' },
+              { valor: 60, label: '2 meses' },
+              { valor: 90, label: '3 meses' },
+              { valor: 180, label: '6 meses' },
+            ]}
+            formatarValor={(dias) => {
+              const meses = Math.floor(dias / 30)
+              return `${meses} ${meses === 1 ? 'mês' : 'meses'}`
+            }}
+            limiteVermelho={90}
+            rotuloNunca="Nunca comprou"
+            rotuloVazio="Nenhum cliente despositivado nesse período."
+            nomeArquivoCsv={`positivacao-carteira-${minimoDiasPositivacao}-dias.csv`}
             colunaDiasCsv="Dias sem venda"
             clientesBasePath={clientesBasePath}
           />

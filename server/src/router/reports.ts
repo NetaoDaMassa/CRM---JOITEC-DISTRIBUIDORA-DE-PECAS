@@ -621,7 +621,15 @@ export const reportsRouter = router({
   diasSemContato: protectedProcedure
     .input(filtroAtualInput.extend({ minimoDias: z.number().min(1).default(30) }))
     .query(async ({ ctx, input }) => {
-      const filtros = [isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false)]
+      // isNotNull(vendedorAtualId): mesmo motivo de clientesSemOrcamentoDias/
+      // clientesSemVendaDias — sem isso o Banco de Clientes (sem vendedor,
+      // sem card de funil) entrava inteiro como "nunca contatado".
+      const filtros = [
+        isNull(clientes.deletedAt),
+        eq(clientes.empresaId, ctx.empresaId),
+        eq(clientes.emProspeccao, false),
+        isNotNull(clientes.vendedorAtualId),
+      ]
       const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
       if (filtroVend) filtros.push(filtroVend)
       const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
@@ -862,7 +870,17 @@ export const reportsRouter = router({
   clientesSemOrcamentoDias: protectedProcedure
     .input(filtroAtualInput.extend({ minimoDias: z.number().min(1).default(30) }))
     .query(async ({ ctx, input }) => {
-      const filtrosCliente = [eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false), isNull(clientes.deletedAt)]
+      // `isNotNull(vendedorAtualId)` é o que faz esse relatório ser "carteira
+      // de vendedor" e não "todo cadastro de cliente" — sem isso, o Banco de
+      // Clientes (que nem tem vendedor, então nem card de funil) entrava
+      // inteiro como "nunca orçou/vendeu/contatou", inflando a contagem pra
+      // milhares (achado do João, 2026-09-12: relatório mostrando 17890).
+      const filtrosCliente = [
+        eq(clientes.empresaId, ctx.empresaId),
+        eq(clientes.emProspeccao, false),
+        isNull(clientes.deletedAt),
+        isNotNull(clientes.vendedorAtualId),
+      ]
       const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
       if (filtroVend) filtrosCliente.push(filtroVend)
       const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
@@ -907,7 +925,17 @@ export const reportsRouter = router({
   clientesSemVendaDias: protectedProcedure
     .input(filtroAtualInput.extend({ minimoDias: z.number().min(1).default(30) }))
     .query(async ({ ctx, input }) => {
-      const filtrosCliente = [eq(clientes.empresaId, ctx.empresaId), eq(clientes.emProspeccao, false), isNull(clientes.deletedAt)]
+      // `isNotNull(vendedorAtualId)` é o que faz esse relatório ser "carteira
+      // de vendedor" e não "todo cadastro de cliente" — sem isso, o Banco de
+      // Clientes (que nem tem vendedor, então nem card de funil) entrava
+      // inteiro como "nunca orçou/vendeu/contatou", inflando a contagem pra
+      // milhares (achado do João, 2026-09-12: relatório mostrando 17890).
+      const filtrosCliente = [
+        eq(clientes.empresaId, ctx.empresaId),
+        eq(clientes.emProspeccao, false),
+        isNull(clientes.deletedAt),
+        isNotNull(clientes.vendedorAtualId),
+      ]
       const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
       if (filtroVend) filtrosCliente.push(filtroVend)
       const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
