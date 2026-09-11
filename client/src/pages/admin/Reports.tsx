@@ -129,6 +129,13 @@ export default function AdminReports() {
   const [aba, setAba] = useState<Aba>('visao_geral')
   const [dataInicioTodas, setDataInicioTodas] = useState(primeiroDiaMesString())
   const [dataFimTodas, setDataFimTodas] = useState(hojeBrString())
+  // Período próprio do card "Itens mais comprados" — antes ele usava o
+  // filtro geral da página (De/Até lá em cima), mas o João quer comparar
+  // um período de itens sem mexer nos outros cards da aba. Começa igual ao
+  // filtro geral, mas passa a ser independente assim que mexido (pedido do
+  // João, 2026-09-11).
+  const [itensDataInicio, setItensDataInicio] = useState(primeiroDiaMesString())
+  const [itensDataFim, setItensDataFim] = useState(hojeBrString())
 
   // Se a aba selecionada (ou a inicial "visao_geral") não estiver mais entre
   // as permitidas assim que a permissão carrega, pula pra primeira liberada.
@@ -171,7 +178,12 @@ export default function AdminReports() {
   const { data: orcamentosAbertos } = trpc.reports.orcamentosAbertos.useQuery(filtroAtual)
   const { data: clientesSemOrcamentoEContato } = trpc.reports.clientesSemOrcamentoEContato.useQuery(filtroAtual)
   const { data: orcamentosPorVendedor } = trpc.reports.orcamentosPorVendedor.useQuery({ ...periodo, granularidade: granularidadeOrcamentos })
-  const { data: itensMaisComprados } = trpc.reports.itensMaisComprados.useQuery(periodo)
+  const { data: itensMaisComprados } = trpc.reports.itensMaisComprados.useQuery({
+    dataInicio: itensDataInicio,
+    dataFim: itensDataFim,
+    vendedorId: periodo.vendedorId,
+    regiao: periodo.regiao,
+  })
   const { data: motivosPerdas } = trpc.reports.motivosPerdas.useQuery(periodo)
   const { data: vendasTodasEmpresas } = trpc.reports.vendasTodasEmpresas.useQuery(
     { dataInicio: dataInicioTodas, dataFim: dataFimTodas },
@@ -231,11 +243,16 @@ export default function AdminReports() {
     [curvaAbc]
   )
 
+  // Corte curto (24 chars) fazia produtos de medidas diferentes (ex: mesmo
+  // "SUPORTE C/ TRAVA" em 20/25/32 MM) aparecerem com o MESMO rótulo cortado
+  // no eixo do gráfico — parecia item duplicado, mas eram itens diferentes
+  // (achado ao conferir a precisão do relatório, pedido do João 2026-09-11).
+  // Corte mais largo (34) deixa a medida sobrar na maioria dos casos.
   const itensTop10 = useMemo(
     () =>
       (itensMaisComprados ?? []).slice(0, 10).map((i) => ({
         ...i,
-        nomeCurto: i.descricao.length > 24 ? i.descricao.slice(0, 22) + '…' : i.descricao,
+        nomeCurto: i.descricao.length > 34 ? i.descricao.slice(0, 32) + '…' : i.descricao,
       })),
     [itensMaisComprados]
   )
@@ -1065,12 +1082,17 @@ export default function AdminReports() {
                 }
               />
             </div>
+            <div className="flex flex-wrap items-end gap-2 mb-3">
+              <Input label="De" type="date" value={itensDataInicio} onChange={(e) => setItensDataInicio(e.target.value)} />
+              <Input label="Até" type="date" value={itensDataFim} onChange={(e) => setItensDataFim(e.target.value)} />
+              <p className="text-[11px] text-dark-500 pb-2">Período só deste card — não muda o resto da aba.</p>
+            </div>
             {itensTop10.length > 0 && (
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={itensTop10} layout="vertical" margin={{ top: 4, right: 12, bottom: 0, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke={COR_GRID} horizontal={false} />
                   <XAxis type="number" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} />
-                  <YAxis dataKey="nomeCurto" type="category" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={130} />
+                  <YAxis dataKey="nomeCurto" type="category" tick={{ fill: COR_TICK, fontSize: 10 }} tickLine={false} axisLine={false} width={170} />
                   <Tooltip
                     content={({ active, payload }) =>
                       active && payload?.length ? (
