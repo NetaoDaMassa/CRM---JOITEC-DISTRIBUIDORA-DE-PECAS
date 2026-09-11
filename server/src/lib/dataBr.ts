@@ -104,7 +104,7 @@ function feriadosNacionaisDoAno(ano: number): Set<string> {
 // as datas — atualizar aqui quando chegar a lista.
 const FERIADOS_EXTRAS: string[] = []
 
-function ehDiaNaoUtil(d: Date): boolean {
+export function ehDiaNaoUtil(d: Date): boolean {
   const diaSemana = d.getUTCDay()
   if (diaSemana === 0 || diaSemana === 6) return true
   const key = d.toISOString().slice(0, 10)

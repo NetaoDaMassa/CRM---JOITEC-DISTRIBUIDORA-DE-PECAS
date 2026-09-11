@@ -8,6 +8,7 @@ import {
   diasDesde,
   diasUteisDecorridos,
   diasUteisNoMes,
+  ehDiaNaoUtil,
   hojeBr,
   hojeBrString,
   inicioSemanaBrString,
@@ -17,16 +18,29 @@ import {
 
 const DIAS_HISTORICO = 14
 
-// Sequência atual de dias seguidos vendendo pelo menos 1 negócio — conta pra
-// trás a partir de hoje. Se hoje ainda não vendeu, não quebra a sequência
-// (o dia não acabou), só não soma o dia de hoje ainda.
-function calcularSequenciaDias(diasComVenda: Set<string>, hoje: Date): number {
+// Sequência atual de dias ÚTEIS seguidos vendendo pelo menos 1 negócio —
+// conta pra trás a partir de hoje até o início do mês (o streak reseta a
+// cada mês, então o máximo possível é diasUteisNoMes — bateu todo dia útil
+// do mês, "22 foguinhos" pra um mês de 22 dias úteis). Fim de semana/feriado
+// não quebra a sequência nem conta como dia: é simplesmente pulado. Se hoje
+// ainda não vendeu, também não quebra (o dia não acabou), só não soma hoje.
+function calcularSequenciaDias(diasComVenda: Set<string>, hoje: Date, mesReferencia: string): number {
+  const [ano, mes] = mesReferencia.split('-').map(Number)
+  const inicioMes = new Date(Date.UTC(ano, mes - 1, 1))
   const chaveHoje = hoje.toISOString().slice(0, 10)
-  let sequencia = diasComVenda.has(chaveHoje) ? 1 : 0
+  let sequencia = 0
   const cursor = new Date(hoje)
-  cursor.setUTCDate(cursor.getUTCDate() - 1)
-  while (diasComVenda.has(cursor.toISOString().slice(0, 10))) {
-    sequencia++
+  while (cursor >= inicioMes) {
+    if (ehDiaNaoUtil(cursor)) {
+      cursor.setUTCDate(cursor.getUTCDate() - 1)
+      continue
+    }
+    const chave = cursor.toISOString().slice(0, 10)
+    if (diasComVenda.has(chave)) {
+      sequencia++
+    } else if (chave !== chaveHoje) {
+      break
+    }
     cursor.setUTCDate(cursor.getUTCDate() - 1)
   }
   return sequencia
@@ -84,9 +98,10 @@ export const painelRouter = router({
 
     const inicioSemana = `${inicioSemanaBrString()} 00:00:00`
     const inicioSemanaPassada = `${inicioSemanaPassadaBrString()} 00:00:00`
-    const inicioJanelaStreak = new Date(hojeBr())
-    inicioJanelaStreak.setUTCDate(inicioJanelaStreak.getUTCDate() - (DIAS_HISTORICO - 1))
-    const inicioStreakString = `${inicioJanelaStreak.toISOString().slice(0, 10)} 00:00:00`
+    // Streak de dias vendendo reseta todo mês — a janela de busca é o mês
+    // inteiro (não um recorte fixo de dias), senão o foguinho quebrava sozinho
+    // ao passar de ~2 semanas mesmo com o vendedor vendendo todo dia útil.
+    const inicioStreakString = `${mesAtual} 00:00:00`
 
     const vendedoresComDados = await Promise.all(
       vendedores.map(async (v) => {
@@ -142,7 +157,11 @@ export const painelRouter = router({
             and(eq(funilMensal.vendedorId, v.id), sql`${vendas.dataFechamento} >= ${inicioStreakString}`, isNull(vendas.deletedAt))
           )
           .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
-        const sequenciaDiasVendendo = calcularSequenciaDias(new Set(diasComVendaVendedor.map((d) => d.dia)), hojeBr())
+        const sequenciaDiasVendendo = calcularSequenciaDias(
+          new Set(diasComVendaVendedor.map((d) => d.dia)),
+          hojeBr(),
+          mesAtual
+        )
 
         const [{ ligacoesHoje }] = await db
           .select({ ligacoesHoje: count() })
@@ -516,7 +535,19 @@ export const painelRouter = router({
       vendas: vendasPorDiaMap.get(chave) ?? 0,
       contatos: contatosPorDiaMap.get(chave) ?? 0,
     }))
-    const sequenciaDiasVendendo = calcularSequenciaDias(new Set(vendasPorDia.filter((v) => v.quantidade > 0).map((v) => v.dia)), hojeBr())
+
+    // Streak de dias vendendo cobre o mês inteiro, não só os 14 dias do
+    // gráfico acima — senão o foguinho quebrava sozinho depois de ~2 semanas
+    // mesmo vendendo todo dia útil.
+    const diasComVendaMes = await db
+      .select({ dia: sql<string>`substr(${vendas.dataFechamento}, 1, 10)` })
+      .from(vendas)
+      .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+      .where(
+        and(eq(funilMensal.vendedorId, vendedorId), sql`${vendas.dataFechamento} >= ${mesAtual + ' 00:00:00'}`, isNull(vendas.deletedAt))
+      )
+      .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
+    const sequenciaDiasVendendo = calcularSequenciaDias(new Set(diasComVendaMes.map((d) => d.dia)), hojeBr(), mesAtual)
 
     // Clientes da própria carteira há mais tempo sem contato, pra saber
     // quem priorizar hoje.
