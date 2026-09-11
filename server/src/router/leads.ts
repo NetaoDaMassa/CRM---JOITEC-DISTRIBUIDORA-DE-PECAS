@@ -1299,6 +1299,10 @@ export const leadsRouter = router({
         produtosItens: z.string().optional(),
         clienteWhatsapp: z.string().optional(),
         formaPagamento: z.string().optional(),
+        // Opcional — se o lead ainda não tem código SAP (leads.codSap), o
+        // vendedor pode digitar aqui na hora de transferir, sem precisar
+        // voltar pro cadastro do lead antes. Pedido do João, 2026-09-11.
+        codSap: z.string().optional(),
         observacoes: z.string().optional(),
       })
     )
@@ -1321,6 +1325,11 @@ export const leadsRouter = router({
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
       if (empresa?.slug !== 'odin-compressores') throw new Error('Essa empresa usa Carteira, não Propostas — transfira pra Carteira')
 
+      // Se o vendedor digitou o código SAP agora (campo é opcional, o lead
+      // pode já ter vindo com um de leads.codSap), prevalece o que foi
+      // digitado — mas sem apagar um valor já existente por engano.
+      const codSap = input.codSap?.trim() || lead.codSap || undefined
+
       const result = await db.insert(propostas).values({
         empresaId: ctx.empresaId,
         vendedorId: lead.vendorId,
@@ -1330,12 +1339,16 @@ export const leadsRouter = router({
         produtosItens: input.produtosItens || undefined,
         formaPagamento: input.formaPagamento || undefined,
         observacoes: input.observacoes || undefined,
-        codSap: lead.codSap || undefined,
+        codSap,
         stage: 'proposta',
       })
       const propostaId = Number(result.lastInsertRowid)
 
-      await db.update(leads).set({ convertidoParaPropostaId: propostaId }).where(eq(leads.id, input.leadId))
+      const updatesLead: Record<string, unknown> = { convertidoParaPropostaId: propostaId }
+      // Grava de volta no lead também — se ele ainda não tinha código SAP,
+      // fica registrado lá igual se tivesse sido preenchido em LeadDetail.
+      if (input.codSap?.trim() && !lead.codSap) updatesLead.codSap = input.codSap.trim()
+      await db.update(leads).set(updatesLead).where(eq(leads.id, input.leadId))
       await db.insert(leadHistory).values({
         empresaId: ctx.empresaId,
         leadId: input.leadId,

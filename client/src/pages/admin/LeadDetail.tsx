@@ -732,6 +732,7 @@ export default function LeadDetail() {
         onClose={() => setTransferirPropostasOpen(false)}
         leadId={lead.id}
         telefoneSugerido={leadTelefoneCompleto(lead.ddd, lead.phone)}
+        codSapSugerido={lead.codSap}
       />
       <SaleValuesModal lead={lead} open={saleValuesOpen} onClose={() => setSaleValuesOpen(false)} />
       <EditarInfoModal lead={lead} open={editarInfoOpen} onClose={() => setEditarInfoOpen(false)} />

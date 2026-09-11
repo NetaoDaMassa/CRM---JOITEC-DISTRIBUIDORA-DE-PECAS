@@ -15,22 +15,30 @@ export default function TransferirParaPropostasModal({
   onClose,
   leadId,
   telefoneSugerido,
+  codSapSugerido,
 }: {
   open: boolean
   onClose: () => void
   leadId: number
   telefoneSugerido: string
+  codSapSugerido?: string | null
 }) {
   const utils = trpc.useUtils()
   const [produtosDescricao, setProdutosDescricao] = useState('')
   const [produtosItens, setProdutosItens] = useState('')
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
+  const [codSap, setCodSap] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
   useEffect(() => {
-    if (open) setClienteWhatsapp(telefoneSugerido)
-  }, [open, telefoneSugerido])
+    if (open) {
+      setClienteWhatsapp(telefoneSugerido)
+      // Se o lead já tem código SAP (cadastrado antes, em LeadDetail), vem
+      // pré-preenchido — o vendedor só digita aqui quando ainda não tem.
+      setCodSap(codSapSugerido ?? '')
+    }
+  }, [open, telefoneSugerido, codSapSugerido])
 
   const mut = trpc.leads.transferirParaPropostas.useMutation({
     onSuccess() {
@@ -52,6 +60,7 @@ export default function TransferirParaPropostasModal({
       produtosItens: produtosItens || undefined,
       clienteWhatsapp: clienteWhatsapp || undefined,
       formaPagamento: formaPagamento || undefined,
+      codSap: codSap.trim() || undefined,
       observacoes: observacoes || undefined,
     })
   }
@@ -70,7 +79,10 @@ export default function TransferirParaPropostasModal({
           />
         </div>
         <Input label="WhatsApp do cliente" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
-        <Input label="Forma de pagamento (opcional)" value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Forma de pagamento (opcional)" value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} />
+          <Input label="Código SAP (opcional)" value={codSap} onChange={(e) => setCodSap(e.target.value)} />
+        </div>
         <Textarea label="Observações (opcional)" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={2} />
         <div className="flex gap-3 pt-2">
           <Button type="button" variant="secondary" className="flex-1" onClick={onClose}>

@@ -212,6 +212,7 @@ function PropostaForm({
     comissao: string | null
     revenda: string | null
     formaPagamento: string | null
+    codSap?: string | null
     observacoes: string | null
     prioridade: string
     motivoUrgencia: string | null
@@ -228,6 +229,7 @@ function PropostaForm({
   const [comissao, setComissao] = useState(proposta.comissao ?? '')
   const [revenda, setRevenda] = useState(proposta.revenda ?? '')
   const [formaPagamento, setFormaPagamento] = useState(proposta.formaPagamento ?? '')
+  const [codSap, setCodSap] = useState(proposta.codSap ?? '')
   const [observacoes, setObservacoes] = useState(proposta.observacoes ?? '')
   const [prioridade, setPrioridade] = useState(proposta.prioridade ?? 'normal')
   const [motivoUrgencia, setMotivoUrgencia] = useState(proposta.motivoUrgencia ?? '')
@@ -293,7 +295,7 @@ function PropostaForm({
   }
 
   function salvarTudo() {
-    salvarMut.mutate({ id: propostaId, clienteNome, clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })
+    salvarMut.mutate({ id: propostaId, clienteNome, clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, codSap: codSap.trim() || undefined, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })
   }
 
   function compartilharWhatsapp() {
@@ -362,9 +364,12 @@ function PropostaForm({
             <datalist id="revendas-proposta">{(revendas ?? []).map((r) => <option key={r.id} value={r.nome} />)}</datalist>
           </div>
         </div>
-        <div>
-          <Input label="Forma de pagamento" list="condicoes-proposta" defaultValue={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} disabled={!podeEditar} placeholder="Ex: 30/60/90 dias" />
-          <datalist id="condicoes-proposta">{(condicoes ?? []).map((c) => <option key={c.id} value={c.nome} />)}</datalist>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <Input label="Forma de pagamento" list="condicoes-proposta" defaultValue={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} disabled={!podeEditar} placeholder="Ex: 30/60/90 dias" />
+            <datalist id="condicoes-proposta">{(condicoes ?? []).map((c) => <option key={c.id} value={c.nome} />)}</datalist>
+          </div>
+          <Input label="Código SAP (opcional)" defaultValue={codSap} onChange={(e) => setCodSap(e.target.value)} disabled={!podeEditar} />
         </div>
 
         <div>

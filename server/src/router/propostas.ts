@@ -101,6 +101,7 @@ export const propostasRouter = router({
         comissao: z.string().optional(),
         revenda: z.string().optional(),
         formaPagamento: z.string().optional(),
+        codSap: z.string().optional(),
         observacoes: z.string().optional(),
         prioridade: z.enum(['normal', 'urgente']).optional(),
         motivoUrgencia: z.string().optional(),
