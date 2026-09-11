@@ -6,23 +6,59 @@
 // filtra por ctx.empresaId, então cada usuário só vê o que é da própria
 // empresa, nunca de outra. Criar pasta/subir arquivo/excluir continua
 // admin-only de verdade (pedido do João, 2026-09-04) — isso não mudou.
+//
+// Controle de acesso por pasta (2026-09-11, pedido do João: "quero
+// controlar pra quem de fato vai ter acesso a esse conteúdo, com todos os
+// usuários") — cada pasta pode ter uma lista de usuários específicos que
+// podem vê-la (e o que tem dentro); sem lista = aberta pra todo mundo da
+// empresa, igual sempre foi. Ver assertPodeVerPasta abaixo.
 import { z } from 'zod'
 import { and, eq, isNull, inArray } from 'drizzle-orm'
 import { router, adminProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { marketingPastas, marketingArquivos, marketingArquivoDownloads } from '../db/schema.js'
+import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketingPastaAcessos } from '../db/schema.js'
+
+// Sem nenhuma linha em marketingPastaAcessos pra essa pasta = aberta pra
+// todo mundo da empresa (comportamento de sempre — pastas já existentes
+// não mudam quando esse controle foi criado, 2026-09-11). Com 1+ linha, só
+// quem está listado enxerga; superAdmin sempre passa, igual no resto do
+// sistema. Usado tanto pra listar (pasta/arquivos) quanto pra gerenciar
+// (renomear/excluir/editar acesso) — se você não pode ver, também não
+// pode mexer.
+async function assertPodeVerPasta(userId: number, superAdmin: boolean, pastaId: number) {
+  if (superAdmin) return
+  const acessos = await db.query.marketingPastaAcessos.findMany({ where: eq(marketingPastaAcessos.pastaId, pastaId) })
+  if (acessos.length === 0) return
+  if (!acessos.some((a) => a.userId === userId)) {
+    throw new Error('Você não tem acesso a essa pasta')
+  }
+}
 
 export const marketingRouter = router({
-  // pastaId ausente = raiz da empresa.
+  // pastaId ausente = raiz da empresa (a raiz nunca é restrita — só
+  // subpastas podem ter controle de acesso).
   listarPastas: protectedProcedure
     .input(z.object({ pastaId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      return db.query.marketingPastas.findMany({
+      if (input.pastaId) await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
+
+      const pastas = await db.query.marketingPastas.findMany({
         where: input.pastaId
           ? and(eq(marketingPastas.empresaId, ctx.empresaId), eq(marketingPastas.pastaPaiId, input.pastaId))
           : and(eq(marketingPastas.empresaId, ctx.empresaId), isNull(marketingPastas.pastaPaiId)),
         orderBy: (p, { asc }) => [asc(p.nome)],
       })
+      if (pastas.length === 0) return []
+
+      const acessos = await db.query.marketingPastaAcessos.findMany({
+        where: inArray(marketingPastaAcessos.pastaId, pastas.map((p) => p.id)),
+      })
+      const usuariosPorPasta = new Map<number, number[]>()
+      for (const a of acessos) usuariosPorPasta.set(a.pastaId, [...(usuariosPorPasta.get(a.pastaId) ?? []), a.userId])
+
+      return pastas
+        .map((p) => ({ ...p, restrita: (usuariosPorPasta.get(p.id)?.length ?? 0) > 0 }))
+        .filter((p) => ctx.user.superAdmin || !p.restrita || usuariosPorPasta.get(p.id)!.includes(ctx.user.id))
     }),
 
   // Trilha (breadcrumb) até a raiz — pra mostrar "Marketing > Campanha 2026 > Fotos".
@@ -46,6 +82,7 @@ export const marketingRouter = router({
   criarPasta: adminProcedure
     .input(z.object({ nome: z.string().min(1), pastaPaiId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
+      if (input.pastaPaiId) await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaPaiId)
       const result = await db.insert(marketingPastas).values({
         empresaId: ctx.empresaId,
         nome: input.nome,
@@ -82,6 +119,7 @@ export const marketingRouter = router({
     }),
 
   renomearPasta: adminProcedure.input(z.object({ id: z.number(), nome: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+    await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.id)
     await db.update(marketingPastas).set({ nome: input.nome }).where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
     return { ok: true }
   }),
@@ -89,14 +127,43 @@ export const marketingRouter = router({
   // Exclui a pasta, subpastas e arquivos dentro (cascade no banco) — aviso
   // "isso vai apagar N arquivos" fica por conta do front antes de confirmar.
   excluirPasta: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.id)
     await db.delete(marketingPastas).where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
     return { ok: true }
   }),
+
+  // Quem pode ver a pasta hoje — preenche o modal de "Gerenciar acesso"
+  // com a seleção atual.
+  obterAcessoPasta: adminProcedure.input(z.object({ pastaId: z.number() })).query(async ({ ctx, input }) => {
+    await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
+    const acessos = await db.query.marketingPastaAcessos.findMany({ where: eq(marketingPastaAcessos.pastaId, input.pastaId) })
+    return { userIds: acessos.map((a) => a.userId) }
+  }),
+
+  // Substitui a lista de quem pode ver a pasta (e o que tem dentro dela).
+  // Lista vazia = pasta volta a ficar aberta pra todo mundo da empresa.
+  definirAcessoPasta: adminProcedure
+    .input(z.object({ pastaId: z.number(), userIds: z.array(z.number()) }))
+    .mutation(async ({ ctx, input }) => {
+      await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
+      const pasta = await db.query.marketingPastas.findFirst({
+        where: and(eq(marketingPastas.id, input.pastaId), eq(marketingPastas.empresaId, ctx.empresaId)),
+      })
+      if (!pasta) throw new Error('Pasta não encontrada')
+
+      await db.delete(marketingPastaAcessos).where(eq(marketingPastaAcessos.pastaId, input.pastaId))
+      if (input.userIds.length > 0) {
+        await db.insert(marketingPastaAcessos).values(input.userIds.map((userId) => ({ pastaId: input.pastaId, userId })))
+      }
+      return { ok: true }
+    }),
 
   // pastaId ausente = arquivos soltos na raiz da empresa.
   listarArquivos: protectedProcedure
     .input(z.object({ pastaId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
+      if (input.pastaId) await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
+
       const arquivos = await db.query.marketingArquivos.findMany({
         where: input.pastaId
           ? and(eq(marketingArquivos.empresaId, ctx.empresaId), eq(marketingArquivos.pastaId, input.pastaId))
@@ -138,6 +205,7 @@ export const marketingRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.pastaId) await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
       const result = await db.insert(marketingArquivos).values({
         empresaId: ctx.empresaId,
         pastaId: input.pastaId ?? null,

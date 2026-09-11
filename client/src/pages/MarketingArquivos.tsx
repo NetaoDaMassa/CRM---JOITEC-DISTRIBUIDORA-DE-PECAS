@@ -151,6 +151,76 @@ function ModalVisualizarArquivo({ arquivo, onClose }: { arquivo: { id: number; n
   )
 }
 
+// Escolher quem pode ver uma pasta (e o que tem dentro dela) — pedido do
+// João, 2026-09-11. Ninguém marcado = pasta aberta pra todo mundo da
+// empresa (comportamento padrão, igual antes de existir esse controle).
+function ModalAcessoPasta({ pasta, onClose }: { pasta: { id: number; nome: string } | null; onClose: () => void }) {
+  const utils = trpc.useUtils()
+  const { data: usuarios } = trpc.users.list.useQuery(undefined, { enabled: !!pasta })
+  const { data: acesso, isLoading } = trpc.marketing.obterAcessoPasta.useQuery(
+    { pastaId: pasta?.id ?? 0 },
+    { enabled: !!pasta }
+  )
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
+
+  useEffect(() => {
+    setSelecionados(new Set(acesso?.userIds ?? []))
+  }, [acesso, pasta?.id])
+
+  const salvarMut = trpc.marketing.definirAcessoPasta.useMutation({
+    onSuccess() {
+      toast.success(selecionados.size === 0 ? 'Pasta liberada pra todo mundo' : 'Acesso atualizado')
+      utils.marketing.listarPastas.invalidate()
+      onClose()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  function toggle(id: number) {
+    setSelecionados((prev) => {
+      const novo = new Set(prev)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
+
+  return (
+    <Modal open={!!pasta} onClose={onClose} title={`Quem pode ver "${pasta?.nome ?? ''}"`} size="sm">
+      <div className="p-5 space-y-3">
+        <p className="text-xs text-dark-400">Ninguém marcado = pasta aberta pra todo mundo da empresa. Marque só quem deve ver esse conteúdo.</p>
+        <div className="max-h-72 overflow-y-auto space-y-0.5 border border-dark-700 rounded-lg p-1.5">
+          {isLoading ? (
+            <p className="text-xs text-dark-500 p-2">Carregando...</p>
+          ) : !usuarios?.length ? (
+            <p className="text-xs text-dark-500 p-2">Nenhum usuário nesta empresa.</p>
+          ) : (
+            usuarios
+              .filter((u) => u.isActive)
+              .map((u) => (
+                <label key={u.id} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50 cursor-pointer">
+                  <input type="checkbox" checked={selecionados.has(u.id)} onChange={() => toggle(u.id)} className="rounded accent-gold-500" />
+                  <span className="flex-1 truncate">{u.name}</span>
+                  <span className="text-[10px] text-dark-500 uppercase shrink-0">{u.role === 'admin' ? 'Admin' : 'Vendedor'}</span>
+                </label>
+              ))
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="secondary" className="flex-1" onClick={onClose}>Cancelar</Button>
+          <Button
+            className="flex-1"
+            loading={salvarMut.isPending}
+            onClick={() => pasta && salvarMut.mutate({ pastaId: pasta.id, userIds: Array.from(selecionados) })}
+          >
+            Salvar
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function MarketingArquivos() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
@@ -162,6 +232,7 @@ export default function MarketingArquivos() {
   const [enviando, setEnviando] = useState(false)
   const [verDownloadsDe, setVerDownloadsDe] = useState<{ id: number; nome: string } | null>(null)
   const [renomeando, setRenomeando] = useState<{ tipo: 'pasta' | 'arquivo'; id: number; nome: string } | null>(null)
+  const [gerenciandoAcesso, setGerenciandoAcesso] = useState<{ id: number; nome: string } | null>(null)
   const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
   const [visualizando, setVisualizando] = useState<{ id: number; nomeOriginal: string; tipoArquivo: string | null } | null>(null)
   const [progressoUpload, setProgressoUpload] = useState<{ atual: number; total: number } | null>(null)
@@ -385,9 +456,23 @@ export default function MarketingArquivos() {
               onClick={() => setPastaAtualId(pasta.id)}
             >
               <Folder size={26} className="text-gold-400 shrink-0" />
-              <span className="text-sm text-dark-100 font-medium truncate flex-1">{pasta.nome}</span>
+              <span className="text-sm text-dark-100 font-medium truncate flex-1 flex items-center gap-1.5">
+                {pasta.nome}
+                {pasta.restrita && (
+                  <span title="Só usuários específicos podem ver essa pasta">
+                    <Lock size={11} className="text-amber-400 shrink-0" />
+                  </span>
+                )}
+              </span>
               {isAdmin && (
                 <div className="flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={() => setGerenciandoAcesso({ id: pasta.id, nome: pasta.nome })}
+                    className={pasta.restrita ? 'text-amber-400 hover:text-amber-300' : 'text-dark-400 hover:text-gold-400'}
+                    title="Gerenciar quem pode ver essa pasta"
+                  >
+                    <Users size={14} />
+                  </button>
                   <button onClick={() => setRenomeando({ tipo: 'pasta', id: pasta.id, nome: pasta.nome })} className="text-dark-400 hover:text-gold-400">
                     <Pencil size={14} />
                   </button>
@@ -546,6 +631,7 @@ export default function MarketingArquivos() {
       </Modal>
 
       <ModalVisualizarArquivo arquivo={visualizando} onClose={() => setVisualizando(null)} />
+      <ModalAcessoPasta pasta={gerenciandoAcesso} onClose={() => setGerenciandoAcesso(null)} />
     </div>
   )
 }

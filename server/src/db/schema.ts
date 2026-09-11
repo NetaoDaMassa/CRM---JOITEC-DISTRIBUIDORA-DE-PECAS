@@ -2856,11 +2856,36 @@ export const marketingArquivoDownloads = sqliteTable(
   })
 )
 
+// Controle de acesso por pasta (Arquivos/Mídia) — pedido do João, 2026-09-11:
+// "quero controlar pra quem de fato vai ter acesso a esse conteúdo". Sem
+// nenhuma linha pra uma pasta = aberta pra todo mundo da empresa (o
+// comportamento de sempre — pastas já existentes não mudam). Com 1+ linha,
+// só quem está listado (mais superAdmin, que sempre vê tudo) enxerga a
+// pasta e o que tem dentro. Ver assertPodeVerPasta em marketing.ts.
+export const marketingPastaAcessos = sqliteTable(
+  'marketing_pasta_acessos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    pastaId: integer('pasta_id').notNull().references(() => marketingPastas.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => ({
+    pastaUsuario: unique().on(t.pastaId, t.userId),
+    pastaIdx: index('marketing_pasta_acessos_pasta_idx').on(t.pastaId),
+  })
+)
+
 export const marketingPastasRelations = relations(marketingPastas, ({ one, many }) => ({
   empresa: one(empresas, { fields: [marketingPastas.empresaId], references: [empresas.id] }),
   pastaPai: one(marketingPastas, { fields: [marketingPastas.pastaPaiId], references: [marketingPastas.id] }),
   criadoPorUser: one(users, { fields: [marketingPastas.criadoPor], references: [users.id] }),
   arquivos: many(marketingArquivos),
+  acessos: many(marketingPastaAcessos),
+}))
+
+export const marketingPastaAcessosRelations = relations(marketingPastaAcessos, ({ one }) => ({
+  pasta: one(marketingPastas, { fields: [marketingPastaAcessos.pastaId], references: [marketingPastas.id] }),
+  user: one(users, { fields: [marketingPastaAcessos.userId], references: [users.id] }),
 }))
 
 export const marketingArquivosRelations = relations(marketingArquivos, ({ one, many }) => ({
