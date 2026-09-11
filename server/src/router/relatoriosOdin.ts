@@ -137,29 +137,38 @@ export const relatoriosOdinRouter = router({
     if (input?.dataDe) condicoes.push(gte(ordens.createdAt, input.dataDe))
     if (input?.dataAte) condicoes.push(lte(ordens.createdAt, `${input.dataAte} 23:59:59`))
     if (input?.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
-    const pedidos = await db.query.ordens.findMany({ where: and(...condicoes) })
-    const ids = pedidos.map((p) => p.id)
 
-    const [detalhes, faturamentos] = await Promise.all([
-      db.query.ordemDetalhes.findMany(),
-      db.query.ordemFaturamento.findMany(),
-    ])
-    const detalhesPorOrdem = new Map(detalhes.map((d) => [d.ordemId, d]))
-    const faturamentoPorOrdem = new Map(faturamentos.map((f) => [f.ordemId, f]))
+    // Pega cliente/valor/confirmação junto (with:) em vez de varrer as
+    // tabelas de detalhes/faturamento inteiras (todas as empresas) e cruzar
+    // na mão — além de mais simples, isso trazia linhas de toda a base a
+    // cada consulta. `pedidos` na resposta é a lista por trás de cada
+    // card, pra clicar e ver quem é (pedido do João, 2026-09-11).
+    const pedidos = await db.query.ordens.findMany({
+      where: and(...condicoes),
+      columns: { id: true },
+      with: {
+        cliente: { columns: { razaoSocial: true } },
+        detalhes: { columns: { valorPedido: true } },
+        faturamento: { columns: { pagamentoConfirmado: true } },
+      },
+      orderBy: (o, { desc }) => [desc(o.createdAt)],
+    })
 
     let valorTotal = 0
     let valorConfirmado = 0
     let qtdConfirmado = 0
-    for (const id of ids) {
-      const valor = detalhesPorOrdem.get(id)?.valorPedido ?? 0
+    const lista = pedidos.map((p) => {
+      const valor = p.detalhes?.valorPedido ?? 0
+      const confirmado = !!p.faturamento?.pagamentoConfirmado
       valorTotal += valor
-      const fat = faturamentoPorOrdem.get(id)
-      if (fat?.pagamentoConfirmado) {
+      if (confirmado) {
         valorConfirmado += valor
         qtdConfirmado++
       }
-    }
-    return { totalPedidos: ids.length, valorTotal, valorConfirmado, qtdConfirmado }
+      return { id: p.id, clienteNome: p.cliente?.razaoSocial ?? '—', valor, confirmado }
+    })
+
+    return { totalPedidos: pedidos.length, valorTotal, valorConfirmado, qtdConfirmado, pedidos: lista }
   }),
 
   maquinas: adminProcedure.query(async ({ ctx }) => {

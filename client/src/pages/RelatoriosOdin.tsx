@@ -8,6 +8,7 @@ import { trpc } from '../lib/trpc'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
+import Modal from '../components/ui/Modal'
 import { STAGE_LABELS, STAGE_COLORS, type Stage } from '../lib/ordensShared'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
@@ -57,9 +58,32 @@ const TAB_ORDEM: TabKey[] = ['pedidos', 'marketing', 'posVenda', 'maquinas', 'pi
 
 // Cartão de indicador — ícone num quadrado colorido + valor + rótulo,
 // mesmo padrão do KpiCard de Relatorios.tsx no odincrm original.
-function KpiCard({ label, value, sub, color, icon, info }: { label: string; value: string | number; sub?: string; color: string; icon: React.ReactNode; info?: string }) {
+function KpiCard({
+  label,
+  value,
+  sub,
+  color,
+  icon,
+  info,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  sub?: string
+  color: string
+  icon: React.ReactNode
+  info?: string
+  onClick?: () => void
+}) {
+  const Tag = onClick ? 'button' : 'div'
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 flex items-center gap-3">
+    <Tag
+      onClick={onClick}
+      type={onClick ? 'button' : undefined}
+      className={`bg-dark-800 border border-dark-600 rounded-2xl p-4 flex items-center gap-3 text-left w-full ${
+        onClick ? 'cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 transition-all' : ''
+      }`}
+    >
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${color}`}>{icon}</div>
       <div className="min-w-0">
         <p className="text-xl font-bold text-dark-50 leading-tight truncate">{value}</p>
@@ -69,7 +93,7 @@ function KpiCard({ label, value, sub, color, icon, info }: { label: string; valu
         </p>
         {sub && <p className="text-[11px] text-dark-500 mt-0.5">{sub}</p>}
       </div>
-    </div>
+    </Tag>
   )
 }
 
@@ -371,8 +395,24 @@ function RelatorioPosVenda({ filtro }: { filtro: Filtro }) {
   )
 }
 
+// Cada card do Faturamento abre a mesma lista de pedidos por trás do
+// número, só filtrada/formatada diferente por card — pedido do João,
+// 2026-09-11 ("quero poder clicar nos quadrados e abrir ali pedidos no
+// período"). "Valor confirmado" e "Pagamentos confirmados" mostram só quem
+// já confirmou (é o que o número deles soma/conta); os outros dois mostram
+// todo mundo do período.
+type FaturamentoCardTipo = 'pedidos' | 'valorTotal' | 'valorConfirmado' | 'confirmados'
+
+const FATURAMENTO_CARD_TITULOS: Record<FaturamentoCardTipo, string> = {
+  pedidos: 'Pedidos no período',
+  valorTotal: 'Valor total',
+  valorConfirmado: 'Valor confirmado',
+  confirmados: 'Pagamentos confirmados',
+}
+
 function RelatorioFaturamento({ filtro }: { filtro: Filtro }) {
   const { data, isLoading } = trpc.relatoriosOdin.faturamento.useQuery(filtro)
+  const [cardAberto, setCardAberto] = useState<FaturamentoCardTipo | null>(null)
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
   const csv = () => {
     const linhas = [
@@ -384,15 +424,58 @@ function RelatorioFaturamento({ filtro }: { filtro: Filtro }) {
     ]
     baixarCsv(`relatorio_faturamento_${new Date().toISOString().slice(0, 10)}.csv`, linhas)
   }
+
+  const mostraSoConfirmados = cardAberto === 'valorConfirmado' || cardAberto === 'confirmados'
+  const pedidosDoCard = mostraSoConfirmados ? data.pedidos.filter((p) => p.confirmado) : data.pedidos
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end"><BotaoCsv onClick={csv} /></div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
-        <KpiCard label="Pedidos no período" value={data.totalPedidos} icon={<Package size={18} className="text-white" />} color="bg-blue-600" />
-        <KpiCard label="Valor total" value={money(data.valorTotal)} icon={<BarChart3 size={18} className="text-white" />} color="bg-purple-500" />
-        <KpiCard label="Valor confirmado" value={money(data.valorConfirmado)} icon={<CheckCircle2 size={18} className="text-white" />} color="bg-green-500" />
-        <KpiCard label="Pagamentos confirmados" value={data.qtdConfirmado} icon={<CheckCircle2 size={18} className="text-white" />} color="bg-emerald-600" />
+        <KpiCard label="Pedidos no período" value={data.totalPedidos} icon={<Package size={18} className="text-white" />} color="bg-blue-600" onClick={() => setCardAberto('pedidos')} />
+        <KpiCard label="Valor total" value={money(data.valorTotal)} icon={<BarChart3 size={18} className="text-white" />} color="bg-purple-500" onClick={() => setCardAberto('valorTotal')} />
+        <KpiCard label="Valor confirmado" value={money(data.valorConfirmado)} icon={<CheckCircle2 size={18} className="text-white" />} color="bg-green-500" onClick={() => setCardAberto('valorConfirmado')} />
+        <KpiCard label="Pagamentos confirmados" value={data.qtdConfirmado} icon={<CheckCircle2 size={18} className="text-white" />} color="bg-emerald-600" onClick={() => setCardAberto('confirmados')} />
       </div>
+
+      <Modal open={!!cardAberto} onClose={() => setCardAberto(null)} title={cardAberto ? FATURAMENTO_CARD_TITULOS[cardAberto] : ''} size="lg">
+        {pedidosDoCard.length === 0 ? (
+          <p className="text-center py-8 text-sm text-dark-500">Nenhum pedido encontrado</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-dark-700 text-dark-500 text-[11px] uppercase tracking-wide">
+                  <th className="text-left font-semibold py-2 px-2">#</th>
+                  <th className="text-left font-semibold py-2 px-2">Cliente</th>
+                  <th className="text-left font-semibold py-2 px-2">{cardAberto === 'confirmados' ? 'Confirmado' : 'Valor'}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-700/60">
+                {pedidosDoCard.map((p) => (
+                  <tr key={p.id} className="hover:bg-dark-900/40">
+                    <td className="py-2.5 px-2 font-mono text-xs text-gold-500">
+                      <Link to={`/admin/ordens/${p.id}`} className="hover:underline">#{p.id}</Link>
+                    </td>
+                    <td className="py-2.5 px-2 text-dark-100 font-medium max-w-[220px] truncate">{p.clienteNome}</td>
+                    <td className="py-2.5 px-2 whitespace-nowrap">
+                      {cardAberto === 'confirmados' ? (
+                        p.confirmado ? (
+                          <Badge className="text-green-400 bg-green-900/20 border-green-700/40">Confirmado</Badge>
+                        ) : (
+                          <Badge className="text-dark-400 bg-dark-700 border-dark-600">Pendente</Badge>
+                        )
+                      ) : (
+                        <span className="text-dark-200 font-medium">{money(p.valor)}</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }
