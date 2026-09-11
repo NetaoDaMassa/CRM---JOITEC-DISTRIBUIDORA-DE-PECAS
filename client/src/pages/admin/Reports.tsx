@@ -40,6 +40,7 @@ function AlertaClientesCard({
   titulo,
   subtitulo,
   dados,
+  totalCarteira,
   minimoDias,
   onMudarMinimoDias,
   opcoesMinimo = [
@@ -57,6 +58,11 @@ function AlertaClientesCard({
   titulo: string
   subtitulo?: string
   dados: ClienteAlerta[] | undefined
+  // Tamanho da carteira do vendedor (o denominador) — pedido do João,
+  // 2026-09-12: o número grande sozinho ("176") não dizia nada sem saber
+  // de quantos no total; mostrado bem menor do que o número principal,
+  // do lado, só de contexto.
+  totalCarteira: number | undefined
   minimoDias: number
   onMudarMinimoDias: (dias: number) => void
   // Opções do toggle acima da lista — padrão 30/60 dias, mas a Positivação
@@ -77,6 +83,7 @@ function AlertaClientesCard({
   clientesBasePath: string
 }) {
   const quantidade = dados?.length ?? 0
+  const percentualDaCarteira = totalCarteira ? Math.round((quantidade / totalCarteira) * 100) : null
   // Busca por cliente OU vendedor — pedido do João, 2026-09-12: listas com
   // milhares de linhas (carteira grande) precisam de um jeito de achar
   // "só os clientes da Fulana" sem trocar o filtro de Vendedor lá em cima
@@ -89,7 +96,14 @@ function AlertaClientesCard({
       <div className="flex items-start justify-between mb-1 flex-wrap gap-3">
         <div>
           <h2 className="text-sm font-semibold text-dark-100">{titulo}</h2>
-          <p className={`text-4xl font-bold mt-1 ${quantidade > 0 ? 'text-red-400' : 'text-green-400'}`}>{quantidade}</p>
+          <div className="flex items-baseline gap-2 mt-1 flex-wrap">
+            <p className={`text-4xl font-bold ${quantidade > 0 ? 'text-red-400' : 'text-green-400'}`}>{quantidade}</p>
+            {totalCarteira !== undefined && (
+              <p className="text-xs text-dark-500">
+                de {totalCarteira.toLocaleString('pt-BR')} na carteira{percentualDaCarteira !== null ? ` (${percentualDaCarteira}%)` : ''}
+              </p>
+            )}
+          </div>
           <p className="text-xs text-dark-500">cliente(s) nessa situação</p>
         </div>
         <div className="flex items-center gap-2">
@@ -1330,7 +1344,8 @@ export default function AdminReports() {
           <AlertaClientesCard
             titulo="Clientes sem orçamento"
             subtitulo='Carteira inteira (não só o mês corrente) — pega o orçamento mais recente de cada cliente em qualquer mês. "Nunca" = cliente nunca teve orçamento lançado.'
-            dados={clientesSemOrcamentoDias?.map((c) => ({ ...c, dias: c.diasSemOrcamento }))}
+            dados={clientesSemOrcamentoDias?.itens.map((c) => ({ ...c, dias: c.diasSemOrcamento }))}
+            totalCarteira={clientesSemOrcamentoDias?.totalCarteira}
             minimoDias={minimoDiasSemOrcamento}
             onMudarMinimoDias={setMinimoDiasSemOrcamento}
             rotuloNunca="Nunca orçou"
@@ -1343,7 +1358,8 @@ export default function AdminReports() {
           <AlertaClientesCard
             titulo="Clientes sem vendas"
             subtitulo='Última compra de cada cliente, em qualquer mês. "Nunca" = cliente nunca fechou uma venda.'
-            dados={clientesSemVendaDias?.map((c) => ({ ...c, dias: c.diasSemVenda }))}
+            dados={clientesSemVendaDias?.itens.map((c) => ({ ...c, dias: c.diasSemVenda }))}
+            totalCarteira={clientesSemVendaDias?.totalCarteira}
             minimoDias={minimoDiasSemVenda}
             onMudarMinimoDias={setMinimoDiasSemVenda}
             rotuloNunca="Nunca comprou"
@@ -1356,7 +1372,8 @@ export default function AdminReports() {
           <AlertaClientesCard
             titulo="Positivação de Carteira"
             subtitulo='Detalhe por cliente de quem não compra há X meses (mesma data de última compra de "Clientes sem vendas" acima, só que em meses). Pra ver só o % agregado por vendedor, veja a aba "Contatos & Ligações".'
-            dados={positivacaoDetalhada?.map((c) => ({ ...c, dias: c.diasSemVenda }))}
+            dados={positivacaoDetalhada?.itens.map((c) => ({ ...c, dias: c.diasSemVenda }))}
+            totalCarteira={positivacaoDetalhada?.totalCarteira}
             minimoDias={minimoDiasPositivacao}
             onMudarMinimoDias={setMinimoDiasPositivacao}
             opcoesMinimo={[
@@ -1380,7 +1397,8 @@ export default function AdminReports() {
           <AlertaClientesCard
             titulo="Clientes sem contato"
             subtitulo='Baseado no card do mês mais recente de cada cliente. "Nunca" = cliente nunca teve nenhum contato registrado.'
-            dados={diasSemContato}
+            dados={diasSemContato?.itens}
+            totalCarteira={diasSemContato?.totalCarteira}
             minimoDias={minimoDiasSemContato}
             onMudarMinimoDias={setMinimoDiasSemContato}
             rotuloNunca="Nunca contatado"

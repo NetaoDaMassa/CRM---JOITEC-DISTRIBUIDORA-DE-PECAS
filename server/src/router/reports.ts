@@ -649,7 +649,7 @@ export const reportsRouter = router({
         },
       })
 
-      return lista
+      const itens = lista
         .map((c) => {
           const ultimoFunil = c.funis[0]
           const dias = ultimoFunil ? diasDesde(ultimoFunil.dataUltimoContato ?? ultimoFunil.dataEntradaEtapa) : null
@@ -657,6 +657,7 @@ export const reportsRouter = router({
         })
         .filter((c) => c.dias === null || c.dias >= input.minimoDias)
         .sort((a, b) => (b.dias ?? Infinity) - (a.dias ?? Infinity))
+      return { totalCarteira: lista.length, itens }
     }),
 
   itensMaisComprados: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
@@ -891,7 +892,11 @@ export const reportsRouter = router({
         columns: { id: true, razaoSocial: true, codigo: true },
         with: { vendedorAtual: { columns: { name: true } } },
       })
-      if (!carteira.length) return []
+      // `totalCarteira` (o denominador) vai junto na resposta — pedido do
+      // João, 2026-09-12: o número grande sozinho ("176") não dizia nada
+      // sem saber de quantos clientes no total; o card mostra "176 de
+      // 3.248" com o total num tamanho menor, dando o contexto.
+      if (!carteira.length) return { totalCarteira: 0, itens: [] }
 
       const ids = carteira.map((c) => c.id)
       const ultimosOrcamentos = await db
@@ -901,7 +906,7 @@ export const reportsRouter = router({
         .groupBy(funilMensal.clienteId)
       const ultimoPorCliente = new Map(ultimosOrcamentos.map((l) => [l.clienteId, l.ultimo]))
 
-      return carteira
+      const itens = carteira
         .map((c) => {
           const ultimoOrcamentoEm = ultimoPorCliente.get(c.id) ?? null
           return {
@@ -916,6 +921,7 @@ export const reportsRouter = router({
         })
         .filter((c) => c.diasSemOrcamento === null || c.diasSemOrcamento >= input.minimoDias)
         .sort((a, b) => (b.diasSemOrcamento ?? Infinity) - (a.diasSemOrcamento ?? Infinity))
+      return { totalCarteira: carteira.length, itens }
     }),
 
   // "Cliente há 30/60 dias sem venda" — mesma ideia de `clientesSemOrcamentoDias`,
@@ -947,7 +953,7 @@ export const reportsRouter = router({
         with: { vendedorAtual: { columns: { name: true } } },
       })
 
-      return carteira
+      const itens = carteira
         .map((c) => ({
           clienteId: c.id,
           razaoSocial: c.razaoSocial,
@@ -959,6 +965,7 @@ export const reportsRouter = router({
         }))
         .filter((c) => c.diasSemVenda === null || c.diasSemVenda >= input.minimoDias)
         .sort((a, b) => (b.diasSemVenda ?? Infinity) - (a.diasSemVenda ?? Infinity))
+      return { totalCarteira: carteira.length, itens }
     }),
 
   // "Quantos orçamentos cada vendedor faz, por dia/semana/mês" — usa
