@@ -218,85 +218,92 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
         <StatTile titulo="Vendas no mês" quantidade={data.vendasMes.quantidade} />
       </div>
 
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold text-gold-400">🏆 Ranking de vendas (mês) · % da meta</h2>
-          <span className="text-xs font-semibold text-green-400 bg-green-900/20 px-3 py-1 rounded-full">
-            🎯 {data.vendedores.filter((v) => v.bateuMetaDia).length} de {data.vendedores.length} no ritmo da meta hoje
-          </span>
-        </div>
-        {!!data.vendedores.length && (
-          <ResponsiveContainer width="100%" height={data.vendedores.length * 30 + 10}>
-            <BarChart
-              data={data.vendedores.map((v) => ({ nome: v.nome, valor: v.valorFechadoMes, destaque: v.bateuMetaFaturamento }))}
-              layout="vertical"
-              margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
-              barCategoryGap={6}
-            >
-              <XAxis type="number" hide domain={[0, 'dataMax']} />
-              <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-              <Tooltip content={<TooltipGrafico formatarValor={formatarMoeda} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-              <Bar
-                dataKey="valor"
-                radius={[0, 4, 4, 0]}
-                maxBarSize={20}
-                isAnimationActive={false}
-                label={(props: any) => <LabelFimDaBarra {...props} formatarValor={formatarMoeda} />}
-              >
-                {data.vendedores.map((v) => (
-                  <Cell key={v.id} fill={v.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS} />
+      {(() => {
+        // Painel de TV fica visível pra qualquer um que passar perto — o
+        // valor em R$ de cada vendedor não pode aparecer aqui (pedido do
+        // João, 2026-09-11), só o % da meta batida. Mesma lógica já usada
+        // no tile "Meta geral da empresa" acima. Reordena localmente por %
+        // (a API devolve `vendedores` ordenado por R$, pro Dashboard do
+        // admin, que continua mostrando os valores reais) — sem isso o "1º"
+        // do ranking podia mostrar % menor que o "2º", já que cada um tem
+        // uma meta diferente.
+        const porPercentual = [...data.vendedores].sort((a, b) => b.percentualMetaFaturamento - a.percentualMetaFaturamento)
+        return (
+          <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-gold-400">🏆 Ranking de vendas (mês) · % da meta</h2>
+              <span className="text-xs font-semibold text-green-400 bg-green-900/20 px-3 py-1 rounded-full">
+                🎯 {data.vendedores.filter((v) => v.bateuMetaDia).length} de {data.vendedores.length} no ritmo da meta hoje
+              </span>
+            </div>
+            {!!porPercentual.length && (
+              <ResponsiveContainer width="100%" height={porPercentual.length * 30 + 10}>
+                <BarChart
+                  data={porPercentual.map((v) => ({ nome: v.nome, valor: v.percentualMetaFaturamento, destaque: v.bateuMetaFaturamento }))}
+                  layout="vertical"
+                  margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
+                  barCategoryGap={6}
+                >
+                  <XAxis type="number" hide domain={[0, 'dataMax']} />
+                  <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
+                  <Tooltip content={<TooltipGrafico formatarValor={(v) => `${formatarPercentual(v)}%`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+                  <Bar
+                    dataKey="valor"
+                    radius={[0, 4, 4, 0]}
+                    maxBarSize={20}
+                    isAnimationActive={false}
+                    label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${formatarPercentual(v)}%`} />}
+                  >
+                    {porPercentual.map((v) => (
+                      <Cell key={v.id} fill={v.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+            <table className="w-full text-sm mt-4">
+              <thead>
+                <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
+                  <th className="text-left font-semibold py-2">Vendedor</th>
+                  <th className="text-right font-semibold py-2">% da meta</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-700/60">
+                {porPercentual.map((v, i) => (
+                  <tr key={v.id}>
+                    <td className="py-2.5">
+                      <div className="flex items-center gap-3">
+                        <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
+                        <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} size="sm" />
+                        <span className="font-medium text-dark-100">{v.nome}</span>
+                        {v.sequenciaDiasVendendo >= 2 && (
+                          <span
+                            className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full"
+                            title="Dias seguidos vendendo"
+                          >
+                            🔥{v.sequenciaDiasVendendo}
+                          </span>
+                        )}
+                        {v.bateuMetaDia && <span className="text-xs" title="No ritmo da meta do dia">🎯</span>}
+                        {v.bateuMetaFaturamento && <span className="text-xs">🎉</span>}
+                      </div>
+                    </td>
+                    <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
+                      {formatarPercentual(v.percentualMetaFaturamento)}%
+                    </td>
+                  </tr>
                 ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-        )}
-        <table className="w-full text-sm mt-4">
-          <thead>
-            <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-              <th className="text-left font-semibold py-2">Vendedor</th>
-              <th className="text-right font-semibold py-2">Ticket médio</th>
-              <th className="text-right font-semibold py-2">Faturamento (mês)</th>
-              <th className="text-right font-semibold py-2">% da meta</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-dark-700/60">
-            {data.vendedores.map((v, i) => (
-              <tr key={v.id}>
-                <td className="py-2.5">
-                  <div className="flex items-center gap-3">
-                    <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-                    <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} size="sm" />
-                    <span className="font-medium text-dark-100">{v.nome}</span>
-                    {v.sequenciaDiasVendendo >= 2 && (
-                      <span
-                        className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full"
-                        title="Dias seguidos vendendo"
-                      >
-                        🔥{v.sequenciaDiasVendendo}
-                      </span>
-                    )}
-                    {v.bateuMetaDia && <span className="text-xs" title="No ritmo da meta do dia">🎯</span>}
-                    {v.bateuMetaFaturamento && <span className="text-xs">🎉</span>}
-                  </div>
-                </td>
-                <td className="text-right font-mono tabular-nums text-dark-300">{formatarMoeda(v.ticketMedioMes)}</td>
-                <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
-                  {formatarMoeda(v.valorFechadoMes)}
-                </td>
-                <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualMetaFaturamento)}%</td>
-              </tr>
-            ))}
-          </tbody>
-          <tfoot>
-            <tr className="border-t-2 border-dark-600 font-semibold">
-              <td className="py-2.5 text-dark-100">Total</td>
-              <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-              <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-              <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-dark-600 font-semibold">
+                  <td className="py-2.5 text-dark-100">Total</td>
+                  <td className="text-right font-mono tabular-nums text-dark-300">—</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )
+      })()}
     </div>
   )
 })
@@ -308,6 +315,18 @@ const SlideRankingSemanal = memo(function SlideRankingSemanal({ data }: { data: 
   const semanal = data.rankingSemanal
   const liderValor = semanal[0]?.valorFechadoSemana ?? 0
   const maiorEvolucao = data.rankingEvolucao[0]
+  // Painel de TV não pode mostrar R$ de vendedor (pedido do João,
+  // 2026-09-11) — sem meta semanal cadastrada no sistema (só existe meta
+  // mensal), o jeito de continuar comparando sem expor valor é relativo a
+  // quem está na frente: "X% do líder da semana". A ordem não muda —
+  // dividir todo mundo pelo mesmo líder preserva o ranking por R$ de antes.
+  const percentualDoLider = (v: number) => (liderValor > 0 ? (v / liderValor) * 100 : 0)
+  // Evolução também vira %: sem semana passada pra comparar (valor era 0),
+  // não dá pra calcular crescimento — nesse caso só destaca o nome, sem número.
+  const evolucaoPercentual =
+    maiorEvolucao && maiorEvolucao.valorFechadoSemanaPassada > 0
+      ? ((maiorEvolucao.valorFechadoSemana - maiorEvolucao.valorFechadoSemanaPassada) / maiorEvolucao.valorFechadoSemanaPassada) * 100
+      : null
 
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
@@ -315,27 +334,28 @@ const SlideRankingSemanal = memo(function SlideRankingSemanal({ data }: { data: 
         <h2 className="text-lg font-semibold text-gold-400">📅 Ranking da semana (segunda a hoje)</h2>
         {maiorEvolucao && maiorEvolucao.evolucaoSemana > 0 && (
           <span className="text-xs font-semibold text-green-400 bg-green-900/20 px-3 py-1 rounded-full">
-            📈 Quem mais evoluiu: {maiorEvolucao.nome} (+{formatarMoeda(maiorEvolucao.evolucaoSemana)} vs semana passada)
+            📈 Quem mais evoluiu: {maiorEvolucao.nome}
+            {evolucaoPercentual != null ? ` (+${formatarPercentual(evolucaoPercentual)}% vs semana passada)` : ''}
           </span>
         )}
       </div>
       {!!semanal.length && (
         <ResponsiveContainer width="100%" height={semanal.length * 30 + 10}>
           <BarChart
-            data={semanal.map((v) => ({ nome: v.nome, valor: v.valorFechadoSemana }))}
+            data={semanal.map((v) => ({ nome: v.nome, valor: percentualDoLider(v.valorFechadoSemana) }))}
             layout="vertical"
             margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
             barCategoryGap={6}
           >
             <XAxis type="number" hide domain={[0, 'dataMax']} />
             <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={formatarMoeda} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
+            <Tooltip content={<TooltipGrafico formatarValor={(v) => `${formatarPercentual(v)}% do líder`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
             <Bar
               dataKey="valor"
               radius={[0, 4, 4, 0]}
               maxBarSize={20}
               isAnimationActive={false}
-              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={formatarMoeda} />}
+              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${formatarPercentual(v)}%`} />}
             >
               {semanal.map((v) => (
                 <Cell key={v.id} fill={liderValor > 0 && v.valorFechadoSemana === liderValor ? COR_META_BATIDA : COR_VENDAS} />
@@ -355,7 +375,7 @@ const SlideRankingSemanal = memo(function SlideRankingSemanal({ data }: { data: 
                 🔥{v.sequenciaDiasVendendo}
               </span>
             )}
-            <span className="text-sm font-mono tabular-nums text-dark-100 w-24 text-right">{formatarMoeda(v.valorFechadoSemana)}</span>
+            <span className="text-sm font-mono tabular-nums text-dark-100 w-24 text-right">{formatarPercentual(percentualDoLider(v.valorFechadoSemana))}%</span>
           </div>
         ))}
       </div>
