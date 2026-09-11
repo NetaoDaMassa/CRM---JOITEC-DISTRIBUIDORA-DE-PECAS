@@ -86,7 +86,13 @@ function KpiCard({
     >
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${color}`}>{icon}</div>
       <div className="min-w-0">
-        <p className="text-xl font-bold text-dark-50 leading-tight truncate">{value}</p>
+        {/* Valor sempre inteiro, nunca cortado com "..." — valores em R$
+            ("R$ 521.234,56") não cabiam em text-xl no card e viravam
+            reticências (achado do João, 2026-09-11). Sem `truncate`, com o
+            tamanho da fonte reduzido conforme o texto cresce. */}
+        <p className={`font-bold text-dark-50 leading-tight break-words ${String(value).length > 13 ? 'text-base' : String(value).length > 9 ? 'text-lg' : 'text-xl'}`}>
+          {value}
+        </p>
         <p className="flex items-center gap-1 text-xs text-dark-400 leading-tight mt-0.5">
           {label}
           {info && <span title={info} className="shrink-0 text-dark-600 cursor-help"><Info size={10} /></span>}
