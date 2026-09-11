@@ -265,6 +265,8 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
               <thead>
                 <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
                   <th className="text-left font-semibold py-2">Vendedor</th>
+                  <th className="text-right font-semibold py-2">Qtde</th>
+                  <th className="text-right font-semibold py-2">Ticket médio</th>
                   <th className="text-right font-semibold py-2">% da meta</th>
                 </tr>
               </thead>
@@ -288,6 +290,8 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
                         {v.bateuMetaFaturamento && <span className="text-xs">🎉</span>}
                       </div>
                     </td>
+                    <td className="text-right font-mono tabular-nums text-dark-300">{v.qtdVendasMes}</td>
+                    <td className="text-right font-mono tabular-nums text-dark-300">{formatarMoeda(v.ticketMedioMes)}</td>
                     <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
                       {formatarPercentual(v.percentualMetaFaturamento)}%
                     </td>
@@ -297,6 +301,8 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
               <tfoot>
                 <tr className="border-t-2 border-dark-600 font-semibold">
                   <td className="py-2.5 text-dark-100">Total</td>
+                  <td className="text-right font-mono tabular-nums text-dark-300">{porPercentual.reduce((acc, v) => acc + v.qtdVendasMes, 0)}</td>
+                  <td className="text-right font-mono tabular-nums text-dark-300">—</td>
                   <td className="text-right font-mono tabular-nums text-dark-300">—</td>
                 </tr>
               </tfoot>
