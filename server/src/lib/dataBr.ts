@@ -53,17 +53,74 @@ export function mesReferenciaAtual(): string {
   return `${ano}-${mes}-01`
 }
 
-// Conta dias úteis (seg-sex, sem considerar feriados) num intervalo de datas
-// UTC — usado pra calcular a meta acumulada até hoje (meta mensal / dias
-// úteis do mês × dias úteis já passados), pra rateio de meta não "resetar"
-// todo dia: se o vendedor não bate num dia, a meta acumulada dos dias
-// seguintes cresce e carrega o déficit.
+// Feriados nacionais fixos (Lei 6.802/1980 + Lei 14.759/2023 pro 20/11) —
+// data igual todo ano, não precisa calcular.
+const FERIADOS_NACIONAIS_FIXOS = [
+  '01-01', // Confraternização Universal
+  '04-21', // Tiradentes
+  '05-01', // Dia do Trabalho
+  '09-07', // Independência do Brasil
+  '10-12', // Nossa Senhora Aparecida
+  '11-02', // Finados
+  '11-15', // Proclamação da República
+  '11-20', // Consciência Negra (federal desde 2023)
+  '12-25', // Natal
+]
+
+// Domingo de Páscoa de um ano (algoritmo de Gauss/Meeus, base do calendário
+// gregoriano) — só usado pra achar a Sexta-feira Santa, único feriado
+// nacional móvel. Carnaval e Corpus Christi NÃO são feriado nacional oficial
+// (são ponto facultativo/municipal, varia de cidade) — se a empresa não
+// trabalha nesses dias, entram em FERIADOS_EXTRAS abaixo.
+function pascoa(ano: number): Date {
+  const a = ano % 19
+  const b = Math.floor(ano / 100)
+  const c = ano % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const mes = Math.floor((h + l - 7 * m + 114) / 31)
+  const dia = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(Date.UTC(ano, mes - 1, dia))
+}
+
+function feriadosNacionaisDoAno(ano: number): Set<string> {
+  const set = new Set<string>()
+  for (const md of FERIADOS_NACIONAIS_FIXOS) set.add(`${ano}-${md}`)
+  const sextaSanta = new Date(pascoa(ano).getTime() - 2 * 24 * 60 * 60 * 1000)
+  set.add(sextaSanta.toISOString().slice(0, 10))
+  return set
+}
+
+// "Outros feriados" (estaduais/municipais, Carnaval etc.) que a empresa não
+// trabalha — não dá pra calcular automático, varia por cidade. Lista curada
+// pelo João (formato "YYYY-MM-DD"); pedido 2026-09-11, vazia até ele passar
+// as datas — atualizar aqui quando chegar a lista.
+const FERIADOS_EXTRAS: string[] = []
+
+function ehDiaNaoUtil(d: Date): boolean {
+  const diaSemana = d.getUTCDay()
+  if (diaSemana === 0 || diaSemana === 6) return true
+  const key = d.toISOString().slice(0, 10)
+  return FERIADOS_EXTRAS.includes(key) || feriadosNacionaisDoAno(d.getUTCFullYear()).has(key)
+}
+
+// Conta dias úteis (seg-sex, sem feriado nacional nem os extras acima) num
+// intervalo de datas UTC — usado pra calcular a meta acumulada até hoje
+// (meta mensal / dias úteis do mês × dias úteis já passados), pra rateio de
+// meta não "resetar" todo dia: se o vendedor não bate num dia, a meta
+// acumulada dos dias seguintes cresce e carrega o déficit.
 function contarDiasUteis(inicio: Date, fim: Date): number {
   let total = 0
   const d = new Date(inicio)
   while (d <= fim) {
-    const dia = d.getUTCDay()
-    if (dia !== 0 && dia !== 6) total++
+    if (!ehDiaNaoUtil(d)) total++
     d.setUTCDate(d.getUTCDate() + 1)
   }
   return total

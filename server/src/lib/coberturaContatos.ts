@@ -13,7 +13,7 @@
 import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, funilMensal, registroContato, clienteVinculos } from '../db/schema.js'
-import { mesReferenciaAtual } from './dataBr.js'
+import { mesReferenciaAtual, diasUteisNoMes, diasUteisDecorridos } from './dataBr.js'
 
 // União-busca (union-find) pra agrupar CNPJs vinculados do mesmo vendedor.
 class UnionFind {
@@ -40,6 +40,19 @@ export interface Cobertura {
   contatados: number
   semContato: number
   percentual: number
+  // Ritmo do mês — pedido do João, 2026-09-11: "carteira ÷ dias úteis do
+  // mês" dá quantos contatos por dia útil o vendedor precisa fazer pra
+  // cobrir todo mundo até o fim do mês; comparando com quantos dias úteis
+  // já passaram dá a meta acumulada "até hoje", igual o rateio de meta de
+  // faturamento que já existe (painel.ts/financeiro.ts/resumoDiario.ts).
+  // Só faz sentido pro mês CORRENTE (mesReferenciaAtual) — pra mês passado
+  // fica sempre 100% "na média" (diasUteisAteHoje satura no total do mês),
+  // o que é o comportamento certo: mês fechado não tem "atraso".
+  mediaEsperadaPorDia: number
+  diasUteisMes: number
+  diasUteisAteHoje: number
+  metaAcumuladaAteHoje: number
+  naMedia: boolean
 }
 
 // Cobertura de UM vendedor. `regiao` opcional filtra a carteira (usado pelo
@@ -62,7 +75,19 @@ export async function coberturaContatosVendedor(
     where: and(...filtros),
     columns: { id: true },
   })
-  if (carteira.length === 0) return { total: 0, contatados: 0, semContato: 0, percentual: 0 }
+  if (carteira.length === 0) {
+    return {
+      total: 0,
+      contatados: 0,
+      semContato: 0,
+      percentual: 0,
+      mediaEsperadaPorDia: 0,
+      diasUteisMes: diasUteisNoMes(mesReferencia),
+      diasUteisAteHoje: Math.min(diasUteisNoMes(mesReferencia), diasUteisDecorridos(mesReferencia)),
+      metaAcumuladaAteHoje: 0,
+      naMedia: true,
+    }
+  }
   const idSet = new Set(carteira.map((c) => c.id))
 
   // Clientes do vendedor com algum contato no card do mês (qualquer tipo).
@@ -105,11 +130,25 @@ export async function coberturaContatosVendedor(
   let contatados = 0
   for (const raiz of raizes) if (gruposContatados.has(raiz)) contatados++
 
+  const diasUteisMes = diasUteisNoMes(mesReferencia)
+  // `diasUteisDecorridos` conta dias úteis do início do mês ATÉ HOJE — pra
+  // mês passado isso passaria do fim do próprio mês (contaria até a data de
+  // hoje, meses depois). Trava no total do mês: mês fechado = meta cheia
+  // (100% esperado), não uma meta que só cresce com o calendário real.
+  const diasUteisAteHoje = Math.min(diasUteisNoMes(mesReferencia), diasUteisDecorridos(mesReferencia))
+  const mediaEsperadaPorDia = diasUteisMes > 0 ? total / diasUteisMes : 0
+  const metaAcumuladaAteHoje = Math.round(mediaEsperadaPorDia * diasUteisAteHoje)
+
   return {
     total,
     contatados,
     semContato: total - contatados,
     percentual: Math.round((contatados / total) * 100),
+    mediaEsperadaPorDia,
+    diasUteisMes,
+    diasUteisAteHoje,
+    metaAcumuladaAteHoje,
+    naMedia: contatados >= metaAcumuladaAteHoje,
   }
 }
 

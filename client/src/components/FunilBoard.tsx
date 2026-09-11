@@ -495,6 +495,19 @@ export default function FunilBoard({
               {pluralizar(cobertura.semContato, 'cliente sem contato', 'clientes sem contato')} ainda
             </span>
           </div>
+          {cobertura.diasUteisMes > 0 && (
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-dark-700 text-xs">
+              <span className="text-dark-400">
+                📅 Ritmo pra cobrir a carteira: {cobertura.mediaEsperadaPorDia.toFixed(1)} contato(s)/dia útil
+                <span className="text-dark-600"> ({cobertura.total} clientes ÷ {cobertura.diasUteisMes} dias úteis no mês)</span>
+              </span>
+              <span className={cobertura.naMedia ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>
+                {cobertura.naMedia
+                  ? '✅ Na média do dia'
+                  : `🔻 Abaixo do ritmo (esperado ${cobertura.metaAcumuladaAteHoje} até hoje, contatou ${cobertura.contatados})`}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
