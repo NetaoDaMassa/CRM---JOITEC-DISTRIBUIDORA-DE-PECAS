@@ -53,6 +53,11 @@ export interface Cobertura {
   diasUteisAteHoje: number
   metaAcumuladaAteHoje: number
   naMedia: boolean
+  // Quantos contatos faltam AGORA pra alcançar a meta acumulada até hoje —
+  // já carrega o atraso de dias anteriores, não é só "a fatia de hoje".
+  // Pedido do João, 2026-09-11: número direto de "quanto falta", em vez de
+  // só o rótulo "na média"/"abaixo do ritmo".
+  faltamParaMeta: number
 }
 
 // Cobertura de UM vendedor. `regiao` opcional filtra a carteira (usado pelo
@@ -86,6 +91,7 @@ export async function coberturaContatosVendedor(
       diasUteisAteHoje: Math.min(diasUteisNoMes(mesReferencia), diasUteisDecorridos(mesReferencia)),
       metaAcumuladaAteHoje: 0,
       naMedia: true,
+      faltamParaMeta: 0,
     }
   }
   const idSet = new Set(carteira.map((c) => c.id))
@@ -149,6 +155,7 @@ export async function coberturaContatosVendedor(
     diasUteisAteHoje,
     metaAcumuladaAteHoje,
     naMedia: contatados >= metaAcumuladaAteHoje,
+    faltamParaMeta: Math.max(0, metaAcumuladaAteHoje - contatados),
   }
 }
 

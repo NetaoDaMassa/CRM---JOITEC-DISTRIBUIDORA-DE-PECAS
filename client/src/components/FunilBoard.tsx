@@ -496,16 +496,18 @@ export default function FunilBoard({
             </span>
           </div>
           {cobertura.diasUteisMes > 0 && (
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-dark-700 text-xs">
-              <span className="text-dark-400">
-                📅 Ritmo pra cobrir a carteira: {cobertura.mediaEsperadaPorDia.toFixed(1)} contato(s)/dia útil
-                <span className="text-dark-600"> ({cobertura.total} clientes ÷ {cobertura.diasUteisMes} dias úteis no mês)</span>
-              </span>
-              <span className={cobertura.naMedia ? 'text-green-400 font-medium' : 'text-red-400 font-medium'}>
+            <div className="mt-2 pt-2 border-t border-dark-700">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-dark-400">
+                  📅 Ritmo pra cobrir a carteira: {cobertura.mediaEsperadaPorDia.toFixed(1)} contato(s)/dia útil
+                  <span className="text-dark-600"> ({cobertura.total} clientes ÷ {cobertura.diasUteisMes} dias úteis no mês)</span>
+                </span>
+              </div>
+              <div className={`mt-1 text-sm font-semibold ${cobertura.naMedia ? 'text-green-400' : 'text-red-400'}`}>
                 {cobertura.naMedia
-                  ? '✅ Na média do dia'
-                  : `🔻 Abaixo do ritmo (esperado ${cobertura.metaAcumuladaAteHoje} até hoje, contatou ${cobertura.contatados})`}
-              </span>
+                  ? '✅ Meta do dia em dia — nenhum contato faltando'
+                  : `🎯 Faltam ${pluralizar(cobertura.faltamParaMeta, 'contato', 'contatos')} pra bater a meta de hoje`}
+              </div>
             </div>
           )}
         </div>
