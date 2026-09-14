@@ -4,6 +4,7 @@ import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { solicitacoesDesign, users } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
+import { sincronizarDesignAprovadoNoNotion } from '../lib/notion.js'
 
 // Pedidos do vendedor pra equipe de marketing criar uma arte (comunicado,
 // oferta ou banner) — ficam pendentes até o admin aprovar (libera pra
@@ -74,19 +75,40 @@ export const designRouter = router({
   aprovar: adminProcedure
     .input(z.object({ id: z.number(), respostaObservacao: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
-      const solicitacao = await db.query.solicitacoesDesign.findFirst({ where: eq(solicitacoesDesign.id, input.id) })
+      const solicitacao = await db.query.solicitacoesDesign.findFirst({
+        where: eq(solicitacoesDesign.id, input.id),
+        with: { vendedorSolicitante: { columns: { name: true } } },
+      })
       if (!solicitacao) throw new Error('Pedido não encontrado')
       if (solicitacao.status !== 'pendente') throw new Error('Este pedido já foi decidido.')
 
+      const decididoEm = agoraSqlite()
       await db
         .update(solicitacoesDesign)
         .set({
           status: 'aprovado',
           respostaObservacao: input.respostaObservacao,
           decididoPor: ctx.user.id,
-          decididoEm: agoraSqlite(),
+          decididoEm,
         })
         .where(eq(solicitacoesDesign.id, input.id))
+
+      // Best-effort — pedido do João, 2026-09-14: pedido aprovado cai
+      // sozinho no Notion do marketing. Não bloqueia nem falha a aprovação
+      // se o Notion estiver fora do ar (ver notion.ts).
+      await sincronizarDesignAprovadoNoNotion({
+        tipo: solicitacao.tipo,
+        descricao: solicitacao.descricao,
+        preco: solicitacao.preco,
+        produto: solicitacao.produto,
+        quantidade: solicitacao.quantidade,
+        dataLimiteEntrega: solicitacao.dataLimiteEntrega,
+        dataLimiteValidade: solicitacao.dataLimiteValidade,
+        observacoes: solicitacao.observacoes,
+        vendedorNome: solicitacao.vendedorSolicitante.name,
+        decididoEm,
+      })
+
       return { success: true }
     }),
 

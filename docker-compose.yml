@@ -27,6 +27,11 @@ services:
       # "Leads aguardando" do Painel de TV. Se vazio, o slide some sozinho.
       MARKETING_CRM_URL: ${MARKETING_CRM_URL:-}
       MARKETING_CRM_API_KEY: ${MARKETING_CRM_API_KEY:-}
+      # Pedido de arte aprovado (Solicitação de Design) cai sozinho numa base
+      # do Notion, pro marketing ver sem precisar entrar no CRM. Se vazio, o
+      # recurso fica desabilitado (aprovação funciona igual, só não sincroniza).
+      NOTION_API_KEY: ${NOTION_API_KEY:-}
+      NOTION_DATABASE_ID_DESIGN: ${NOTION_DATABASE_ID_DESIGN:-}
       # Aviso amigável de leads novos no WhatsApp (server/src/lib/avisoLeadsNovos.ts).
       # Enquanto AVISO_LEADS_ENABLED != true, nada disso roda nem sobe sessão de WhatsApp.
       AVISO_LEADS_ENABLED: ${AVISO_LEADS_ENABLED:-false}
