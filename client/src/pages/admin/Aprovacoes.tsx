@@ -17,6 +17,7 @@ const TIPO_LABELS_DESIGN: Record<string, string> = {
   comunicado: 'Comunicado',
   oferta: 'Oferta',
   banner: 'Banner',
+  video: 'Vídeo',
 }
 
 function CarteiraTab() {

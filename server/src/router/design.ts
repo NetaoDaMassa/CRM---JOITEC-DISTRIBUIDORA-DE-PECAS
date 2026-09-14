@@ -15,7 +15,7 @@ export const designRouter = router({
   solicitar: protectedProcedure
     .input(
       z.object({
-        tipo: z.enum(['comunicado', 'oferta', 'banner']),
+        tipo: z.enum(['comunicado', 'oferta', 'banner', 'video']),
         descricao: z.string().min(1, 'Explique o que a arte precisa transmitir'),
         preco: z.string().optional(),
         produto: z.string().optional(),

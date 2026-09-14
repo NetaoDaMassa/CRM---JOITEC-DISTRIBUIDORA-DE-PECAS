@@ -809,7 +809,7 @@ export const compromissos = sqliteTable(
 export const solicitacoesDesign = sqliteTable('solicitacoes_design', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   vendedorSolicitanteId: integer('vendedor_solicitante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  tipo: text('tipo', { enum: ['comunicado', 'oferta', 'banner'] }).notNull(),
+  tipo: text('tipo', { enum: ['comunicado', 'oferta', 'banner', 'video'] }).notNull(),
   descricao: text('descricao').notNull(),
   preco: text('preco'),
   produto: text('produto'),

@@ -32,6 +32,9 @@ services:
       # recurso fica desabilitado (aprovação funciona igual, só não sincroniza).
       NOTION_API_KEY: ${NOTION_API_KEY:-}
       NOTION_DATABASE_ID_DESIGN: ${NOTION_DATABASE_ID_DESIGN:-}
+      # Base separada pra pedido de Vídeo (time diferente de quem acompanha
+      # comunicado/oferta/banner) — mesma integração/token acima.
+      NOTION_DATABASE_ID_DESIGN_VIDEO: ${NOTION_DATABASE_ID_DESIGN_VIDEO:-}
       # Aviso amigável de leads novos no WhatsApp (server/src/lib/avisoLeadsNovos.ts).
       # Enquanto AVISO_LEADS_ENABLED != true, nada disso roda nem sobe sessão de WhatsApp.
       AVISO_LEADS_ENABLED: ${AVISO_LEADS_ENABLED:-false}

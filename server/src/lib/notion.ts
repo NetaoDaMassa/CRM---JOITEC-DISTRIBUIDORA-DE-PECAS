@@ -9,7 +9,7 @@
 // aprovação em si — só fica sem sincronizar, e sobe no log do servidor.
 const NOTION_VERSION = '2022-06-28'
 
-const TIPO_LABEL: Record<string, string> = { comunicado: 'Comunicado', oferta: 'Oferta', banner: 'Banner' }
+const TIPO_LABEL: Record<string, string> = { comunicado: 'Comunicado', oferta: 'Oferta', banner: 'Banner', video: 'Vídeo' }
 
 export interface SolicitacaoDesignParaNotion {
   tipo: string
@@ -53,7 +53,12 @@ function paraDataIso(valor: string): string {
 
 export async function sincronizarDesignAprovadoNoNotion(solicitacao: SolicitacaoDesignParaNotion): Promise<void> {
   const token = process.env.NOTION_API_KEY
-  const databaseId = process.env.NOTION_DATABASE_ID_DESIGN
+  // Vídeo cai numa base diferente da de comunicado/oferta/banner (times
+  // diferentes de marketing acompanham cada uma) — pedido do João,
+  // 2026-09-14. Sem NOTION_DATABASE_ID_DESIGN_VIDEO configurada, um pedido
+  // de vídeo simplesmente não sincroniza (não cai por engano na base
+  // errada) até a base ser criada/configurada.
+  const databaseId = solicitacao.tipo === 'video' ? process.env.NOTION_DATABASE_ID_DESIGN_VIDEO : process.env.NOTION_DATABASE_ID_DESIGN
   if (!token || !databaseId) return
 
   const tipoLabel = TIPO_LABEL[solicitacao.tipo] ?? solicitacao.tipo
