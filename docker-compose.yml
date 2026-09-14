@@ -35,6 +35,9 @@ services:
       # Base separada pra pedido de Vídeo (time diferente de quem acompanha
       # comunicado/oferta/banner) — mesma integração/token acima.
       NOTION_DATABASE_ID_DESIGN_VIDEO: ${NOTION_DATABASE_ID_DESIGN_VIDEO:-}
+      # Vídeo é outro workspace/integração no Notion (Compretec Publicidade,
+      # não o mesmo de comunicado/oferta/banner) — token próprio.
+      NOTION_API_KEY_VIDEO: ${NOTION_API_KEY_VIDEO:-}
       # Aviso amigável de leads novos no WhatsApp (server/src/lib/avisoLeadsNovos.ts).
       # Enquanto AVISO_LEADS_ENABLED != true, nada disso roda nem sobe sessão de WhatsApp.
       AVISO_LEADS_ENABLED: ${AVISO_LEADS_ENABLED:-false}

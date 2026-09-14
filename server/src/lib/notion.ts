@@ -53,13 +53,15 @@ function paraDataIso(valor: string): string {
 }
 
 export async function sincronizarDesignAprovadoNoNotion(solicitacao: SolicitacaoDesignParaNotion): Promise<void> {
-  const token = process.env.NOTION_API_KEY
-  // Vídeo cai numa base diferente da de comunicado/oferta/banner (times
-  // diferentes de marketing acompanham cada uma) — pedido do João,
-  // 2026-09-14. Sem NOTION_DATABASE_ID_DESIGN_VIDEO configurada, um pedido
-  // de vídeo simplesmente não sincroniza (não cai por engano na base
-  // errada) até a base ser criada/configurada.
-  const databaseId = solicitacao.tipo === 'video' ? process.env.NOTION_DATABASE_ID_DESIGN_VIDEO : process.env.NOTION_DATABASE_ID_DESIGN
+  const ehVideo = solicitacao.tipo === 'video'
+  // Vídeo cai numa base (e workspace!) diferente da de comunicado/oferta/
+  // banner — é outro time (Compretec Publicidade) com sua própria
+  // integração/token no Notion, não só outra base do mesmo workspace.
+  // Pedido do João, 2026-09-14. Sem as duas env vars de vídeo
+  // configuradas, um pedido de vídeo simplesmente não sincroniza (não cai
+  // por engano na base errada) até estarem prontas.
+  const token = ehVideo ? process.env.NOTION_API_KEY_VIDEO : process.env.NOTION_API_KEY
+  const databaseId = ehVideo ? process.env.NOTION_DATABASE_ID_DESIGN_VIDEO : process.env.NOTION_DATABASE_ID_DESIGN
   if (!token || !databaseId) return
 
   const tipoLabel = TIPO_LABEL[solicitacao.tipo] ?? solicitacao.tipo
