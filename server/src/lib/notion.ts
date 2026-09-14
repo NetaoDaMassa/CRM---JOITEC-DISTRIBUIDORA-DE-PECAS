@@ -21,6 +21,7 @@ export interface SolicitacaoDesignParaNotion {
   dataLimiteValidade: string | null
   observacoes: string | null
   vendedorNome: string
+  empresaNome: string
   decididoEm: string
 }
 
@@ -62,13 +63,20 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
   if (!token || !databaseId) return
 
   const tipoLabel = TIPO_LABEL[solicitacao.tipo] ?? solicitacao.tipo
-  const nome = `${tipoLabel} — ${solicitacao.produto || solicitacao.descricao.slice(0, 60)}`
+  // Empresa no título também (não só na coluna) — pedido do João,
+  // 2026-09-14: o CRM é multi-empresa e a mesma base do Notion recebe
+  // pedido de vendedor de qualquer uma delas, então dá pra reconhecer de
+  // qual empresa é o pedido batendo o olho, sem abrir a página.
+  const nome = `[${solicitacao.empresaNome}] ${tipoLabel} — ${solicitacao.produto || solicitacao.descricao.slice(0, 60)}`
 
   const properties: Record<string, unknown> = {
     Nome: { title: textoRico(nome) },
     Status: { status: { name: 'Não iniciada' } },
     Data: { date: { start: paraDataIso(solicitacao.decididoEm) } },
     Vendedor: { rich_text: textoRico(solicitacao.vendedorNome) },
+    // `select` — o Notion cria a opção sozinho na primeira vez que vir um
+    // nome de empresa novo; dá pra agrupar/filtrar a view por ela depois.
+    Empresa: { select: { name: solicitacao.empresaNome } },
   }
   if (solicitacao.dataLimiteEntrega) {
     properties['Prazo de entrega'] = { date: { start: solicitacao.dataLimiteEntrega } }

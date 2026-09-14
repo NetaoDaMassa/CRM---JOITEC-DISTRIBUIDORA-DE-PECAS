@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { solicitacoesDesign, users } from '../db/schema.js'
+import { solicitacoesDesign, users, empresas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { sincronizarDesignAprovadoNoNotion } from '../lib/notion.js'
 
@@ -96,6 +96,9 @@ export const designRouter = router({
       // Best-effort — pedido do João, 2026-09-14: pedido aprovado cai
       // sozinho no Notion do marketing. Não bloqueia nem falha a aprovação
       // se o Notion estiver fora do ar (ver notion.ts).
+      // Empresa vem de ctx.empresaId (quem aprova) — CRM é multi-empresa e
+      // todas caem na mesma base do Notion, então precisa dizer de qual é.
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { nome: true } })
       await sincronizarDesignAprovadoNoNotion({
         tipo: solicitacao.tipo,
         descricao: solicitacao.descricao,
@@ -106,6 +109,7 @@ export const designRouter = router({
         dataLimiteValidade: solicitacao.dataLimiteValidade,
         observacoes: solicitacao.observacoes,
         vendedorNome: solicitacao.vendedorSolicitante.name,
+        empresaNome: empresa?.nome ?? 'Desconhecida',
         decididoEm,
       })
 
