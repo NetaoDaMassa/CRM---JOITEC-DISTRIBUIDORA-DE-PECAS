@@ -72,6 +72,28 @@ export const designRouter = router({
       .orderBy(asc(solicitacoesDesign.createdAt))
   }),
 
+  // Pedidos já aprovados (mais recentes primeiro) com o status do Notion —
+  // pedido do João, 2026-09-14: admin também precisa acompanhar em que pé
+  // está, não só o vendedor que pediu. Limitado aos últimos 30 pra não virar
+  // uma lista infinita (recusado/histórico antigo não entra aqui).
+  listarAprovados: adminProcedure.query(async ({ ctx }) => {
+    return db
+      .select({
+        id: solicitacoesDesign.id,
+        tipo: solicitacoesDesign.tipo,
+        descricao: solicitacoesDesign.descricao,
+        produto: solicitacoesDesign.produto,
+        decididoEm: solicitacoesDesign.decididoEm,
+        notionStatus: solicitacoesDesign.notionStatus,
+        vendedorSolicitanteNome: users.name,
+      })
+      .from(solicitacoesDesign)
+      .innerJoin(users, eq(solicitacoesDesign.vendedorSolicitanteId, users.id))
+      .where(and(eq(solicitacoesDesign.status, 'aprovado'), eq(users.empresaId, ctx.empresaId)))
+      .orderBy(desc(solicitacoesDesign.decididoEm))
+      .limit(30)
+  }),
+
   aprovar: adminProcedure
     .input(z.object({ id: z.number(), respostaObservacao: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
@@ -99,7 +121,7 @@ export const designRouter = router({
       // Empresa vem de ctx.empresaId (quem aprova) — CRM é multi-empresa e
       // todas caem na mesma base do Notion, então precisa dizer de qual é.
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { nome: true } })
-      await sincronizarDesignAprovadoNoNotion({
+      const notionPageId = await sincronizarDesignAprovadoNoNotion({
         tipo: solicitacao.tipo,
         descricao: solicitacao.descricao,
         preco: solicitacao.preco,
@@ -112,6 +134,16 @@ export const designRouter = router({
         empresaNome: empresa?.nome ?? 'Desconhecida',
         decididoEm,
       })
+      // Guarda o id da página pra dar pra consultar o status de volta
+      // depois (ver lib/pollNotionStatus.ts) — "Não iniciada" é o valor
+      // inicial que a própria criação da página já usa, então já entra
+      // certo aqui, sem esperar a primeira rodada do polling.
+      if (notionPageId) {
+        await db
+          .update(solicitacoesDesign)
+          .set({ notionPageId, notionStatus: 'Não iniciada', notionStatusAtualizadoEm: decididoEm })
+          .where(eq(solicitacoesDesign.id, input.id))
+      }
 
       return { success: true }
     }),

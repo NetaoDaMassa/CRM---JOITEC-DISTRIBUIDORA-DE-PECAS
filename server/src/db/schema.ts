@@ -821,6 +821,15 @@ export const solicitacoesDesign = sqliteTable('solicitacoes_design', {
   respostaObservacao: text('resposta_observacao'),
   decididoPor: integer('decidido_por').references(() => users.id, { onDelete: 'set null' }),
   decididoEm: text('decidido_em'),
+  // Página criada no Notion na aprovação (ver lib/notion.ts) — guardado pra
+  // dar pra consultar o status de volta depois (pollNotionStatus.ts).
+  notionPageId: text('notion_page_id'),
+  // Última etapa vista no Notion ("Não iniciada"/"Em andamento"/
+  // "Concluído") — cache local, atualizado por polling (o Notion não avisa
+  // o CRM sozinho quando alguém muda a coluna Status lá). Null até a
+  // primeira sincronização (ou se nunca foi aprovado/sincronizado).
+  notionStatus: text('notion_status'),
+  notionStatusAtualizadoEm: text('notion_status_atualizado_em'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 

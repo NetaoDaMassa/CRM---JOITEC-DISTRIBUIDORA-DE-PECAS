@@ -9,6 +9,7 @@ import { executarAvisoLeadsNovos, type Periodo } from './avisoLeadsNovos.js'
 import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
 import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
+import { sincronizarStatusNotion } from './pollNotionStatus.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -160,4 +161,12 @@ export function startScheduler() {
     runLeadsSlaChecks().catch((err) => console.error('[leads-sla] erro ao processar checagens:', err))
   })
   runLeadsSlaChecks().catch((err) => console.error('[leads-sla] erro ao processar checagens iniciais:', err))
+
+  // Status do pedido de arte/vídeo no Notion (Não iniciada/Em andamento/
+  // Concluído) — sem env var configurada, sincronizarStatusNotion não acha
+  // nenhum pedido com notionPageId de verdade e não faz chamada nenhuma.
+  cron.schedule('*/5 * * * *', () => {
+    sincronizarStatusNotion().catch((err) => console.error('[notion-status] erro ao sincronizar:', err))
+  })
+  sincronizarStatusNotion().catch((err) => console.error('[notion-status] erro ao sincronizar inicial:', err))
 }

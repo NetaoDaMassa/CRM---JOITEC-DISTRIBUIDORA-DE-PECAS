@@ -31,6 +31,15 @@ const STATUS_LABEL: Record<string, string> = {
   recusado: '❌ Recusado',
 }
 
+// Etapa dentro do Notion (marketing move lá, sincronizado de volta pro CRM
+// a cada 5min — ver server/src/lib/pollNotionStatus.ts). Só aparece depois
+// de aprovado, e só depois da 1ª sincronização.
+const NOTION_STATUS_BADGE: Record<string, string> = {
+  'Não iniciada': 'bg-dark-700 text-dark-300 border-dark-600',
+  'Em andamento': 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  Concluído: 'bg-green-500/15 text-green-400 border-green-500/30',
+}
+
 const CAMPOS_INICIAIS = {
   tipo: 'comunicado',
   descricao: '',
@@ -207,7 +216,14 @@ export default function SolicitarDesign() {
                     {new Date(p.createdAt.replace(' ', 'T')).toLocaleDateString('pt-BR')}
                   </span>
                 </p>
-                <Badge className={STATUS_BADGE[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Badge className={STATUS_BADGE[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                  {p.status === 'aprovado' && p.notionStatus && (
+                    <Badge className={NOTION_STATUS_BADGE[p.notionStatus] ?? 'bg-dark-700 text-dark-300 border-dark-600'}>
+                      {p.notionStatus}
+                    </Badge>
+                  )}
+                </div>
               </div>
               <p className="text-sm text-dark-300">{p.descricao}</p>
               {p.respostaObservacao && (

@@ -213,6 +213,43 @@ function DesignTab() {
   )
 }
 
+// Etapa dentro do Notion (marketing move lá) — sincronizado de volta pro
+// CRM a cada 5min, ver server/src/lib/pollNotionStatus.ts.
+const NOTION_STATUS_BADGE: Record<string, string> = {
+  'Não iniciada': 'bg-dark-700 text-dark-300 border-dark-600',
+  'Em andamento': 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+  Concluído: 'bg-green-500/15 text-green-400 border-green-500/30',
+}
+
+// Pedidos já aprovados — o admin também acompanha o andamento no Notion sem
+// precisar abrir lá. Pedido do João, 2026-09-14.
+function DesignAprovadosTab() {
+  const { data: pedidos, isLoading } = trpc.design.listarAprovados.useQuery()
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
+      {isLoading && <p className="p-4 text-dark-400 text-sm">Carregando...</p>}
+      {!isLoading && !pedidos?.length && <p className="p-4 text-dark-400 text-sm">Nenhum pedido aprovado ainda.</p>}
+      {pedidos?.map((p) => (
+        <div key={p.id} className="p-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm text-dark-100">
+              <span className="text-xs font-normal text-gold-400 bg-gold-600/10 border border-gold-600/30 rounded px-1.5 py-0.5 mr-1.5">
+                {TIPO_LABELS_DESIGN[p.tipo]}
+              </span>
+              {p.produto || p.descricao.slice(0, 50)}
+            </p>
+            <p className="text-xs text-dark-500 mt-0.5">pedido de {p.vendedorSolicitanteNome}</p>
+          </div>
+          <Badge className={p.notionStatus ? NOTION_STATUS_BADGE[p.notionStatus] ?? 'bg-dark-700 text-dark-300 border-dark-600' : 'bg-dark-700 text-dark-400 border-dark-600'}>
+            {p.notionStatus ?? 'Ainda não sincronizado'}
+          </Badge>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // Pedidos que o vendedor faz (transferir/descartar cliente, ou solicitar
 // arte pra marketing) — o admin decide aqui. Duas abas porque são fluxos
 // bem diferentes: carteira aplica uma ação de sistema ao aprovar, design só
@@ -246,7 +283,17 @@ export default function Aprovacoes() {
         </button>
       </div>
 
-      {aba === 'carteira' ? <CarteiraTab /> : <DesignTab />}
+      {aba === 'carteira' ? (
+        <CarteiraTab />
+      ) : (
+        <div className="space-y-6">
+          <DesignTab />
+          <div>
+            <h2 className="text-sm font-semibold text-dark-200 mb-2">Aprovados — andamento no Notion</h2>
+            <DesignAprovadosTab />
+          </div>
+        </div>
+      )}
     </div>
   )
 }
