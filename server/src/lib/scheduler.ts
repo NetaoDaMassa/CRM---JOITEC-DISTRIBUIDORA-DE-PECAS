@@ -165,7 +165,9 @@ export function startScheduler() {
   // Status do pedido de arte/vídeo no Notion (Não iniciada/Em andamento/
   // Concluído) — sem env var configurada, sincronizarStatusNotion não acha
   // nenhum pedido com notionPageId de verdade e não faz chamada nenhuma.
-  cron.schedule('*/5 * * * *', () => {
+  // A cada minuto (era 5min — João achou lento, mesma cadência do
+  // pabxone360.ts, que também só é um punhado de chamadas REST leves).
+  cron.schedule('* * * * *', () => {
     sincronizarStatusNotion().catch((err) => console.error('[notion-status] erro ao sincronizar:', err))
   })
   sincronizarStatusNotion().catch((err) => console.error('[notion-status] erro ao sincronizar inicial:', err))
