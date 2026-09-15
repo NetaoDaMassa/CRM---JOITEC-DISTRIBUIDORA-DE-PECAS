@@ -24,6 +24,7 @@ import { prospeccaoOdinRouter } from './prospeccaoOdin.js'
 import { aprovacoesRouter } from './aprovacoes.js'
 import { designRouter } from './design.js'
 import { requisicaoPostoRouter } from './requisicaoPosto.js'
+import { cartaoRouter } from './cartao.js'
 import { financeiroRouter } from './financeiro.js'
 import { vinculosRouter } from './vinculos.js'
 import { emailsRouter } from './emails.js'
@@ -90,6 +91,7 @@ export const appRouter = router({
   aprovacoes: aprovacoesRouter,
   design: designRouter,
   requisicaoPosto: requisicaoPostoRouter,
+  cartao: cartaoRouter,
   financeiro: financeiroRouter,
   vinculos: vinculosRouter,
   emails: emailsRouter,

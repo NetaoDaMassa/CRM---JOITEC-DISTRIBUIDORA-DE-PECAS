@@ -2983,6 +2983,48 @@ export const requisicaoPosto = sqliteTable(
   })
 )
 
+// ── Cartão de Crédito (gastos do vendedor externo) ──────────────────────────
+// Controle de gastos com cartão corporativo pro vendedor EXTERNO da Odin
+// Compressores (`canalVenda: 'visitas'` já é exatamente essa distinção —
+// ver comentário em `users`, campo criado pro Painel de TV mas que já
+// separa quem faz visita de quem só atende lead do site). Pedido do João,
+// 2026-09-15: cada gasto precisa vir com nota fiscal/cupom fiscal anexado
+// (pelo menos 1 arquivo, checado no router), pra dar pro admin principal
+// (superAdmin) fechar relatório do mês sem ficar cobrando comprovante
+// separado por WhatsApp.
+export const cartaoGastos = sqliteTable('cartao_gastos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  data: text('data').notNull(), // YYYY-MM-DD, data do gasto (não do lançamento)
+  valor: real('valor').notNull(),
+  categoria: text('categoria', {
+    enum: ['combustivel', 'alimentacao', 'hospedagem', 'pedagio', 'manutencao', 'outro'],
+  }),
+  descricao: text('descricao'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Mesmo shape de devolucaoAnexos (urlArquivo já pronto pra servir, nome
+// aleatorizado no disco — ver rota /upload/cartao-anexo). Mais de um anexo
+// por gasto porque às vezes vem nota fiscal E cupom separados.
+export const cartaoGastoAnexos = sqliteTable('cartao_gasto_anexos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  gastoId: integer('gasto_id').notNull().references(() => cartaoGastos.id, { onDelete: 'cascade' }),
+  urlArquivo: text('url_arquivo').notNull(),
+  nomeArquivo: text('nome_arquivo').notNull(),
+  tipoArquivo: text('tipo_arquivo'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const cartaoGastosRelations = relations(cartaoGastos, ({ one, many }) => ({
+  vendedor: one(users, { fields: [cartaoGastos.vendedorId], references: [users.id] }),
+  anexos: many(cartaoGastoAnexos),
+}))
+
+export const cartaoGastoAnexosRelations = relations(cartaoGastoAnexos, ({ one }) => ({
+  gasto: one(cartaoGastos, { fields: [cartaoGastoAnexos.gastoId], references: [cartaoGastos.id] }),
+}))
+
 export const requisicaoPostoColaboradoresRelations = relations(requisicaoPostoColaboradores, ({ one, many }) => ({
   empresa: one(empresas, { fields: [requisicaoPostoColaboradores.empresaId], references: [empresas.id] }),
   requisicoes: many(requisicaoPosto),

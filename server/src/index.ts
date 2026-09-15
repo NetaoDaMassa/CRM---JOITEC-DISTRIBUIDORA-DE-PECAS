@@ -260,6 +260,29 @@ app.post('/upload/proposta-anexo', uploadProposta.single('file'), async (req, re
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// Nota fiscal/cupom fiscal do Cartão de Crédito (Gastos) — mesmo padrão de
+// proposta-anexo (só imagem/PDF, nome aleatorizado no disco).
+const storageCartao = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `cartao-${randomUUID()}${ext}`)
+  },
+})
+const uploadCartao = multer({
+  storage: storageCartao,
+  limits: { fileSize: 15 * 1024 * 1024, files: 5 },
+  fileFilter: (req, file, cb) => {
+    cb(null, ['image/', 'application/pdf'].some((m) => file.mimetype.startsWith(m)))
+  },
+})
+app.post('/upload/cartao-anexo', uploadCartao.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
 // Anexos de Demandas (board estilo Trello) — mesmo padrão de ordem-anexo/
 // proposta-anexo, aceita qualquer tipo de arquivo (planilha, doc, pdf,
 // imagem etc.), diferente dos outros dois que são só imagem/PDF.

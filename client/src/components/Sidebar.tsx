@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -157,6 +157,12 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },
   { to: '/vendedor/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/vendedor/prospeccao-odin', label: 'Prospecção', icon: Search, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao_odin' },
+  // Gastos com cartão corporativo — pensado pro vendedor EXTERNO da Odin
+  // Compressores (visita → proposta → venda), mas quem controla quem vê é
+  // Permissões (mesmo espírito do resto do menu) — não trava aqui por
+  // `canalVenda` de propósito, pra não duplicar a mesma regra em 2 lugares.
+  // Pedido do João, 2026-09-15.
+  { to: '/vendedor/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
   { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
@@ -270,6 +276,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
+    // Relatório geral de gastos do cartão (todos os vendedores) — só o
+    // admin principal (superAdmin) vê, pedido explícito do João, 2026-09-15.
+    { to: '/admin/cartao-relatorio', label: 'Cartão de Crédito (Relatório)', icon: CreditCard, visivel: !!user?.superAdmin },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     {
       // Sem trava de empresa aqui de propósito — a permissão concedida em
