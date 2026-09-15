@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Pencil, X } from 'lucide-react'
+import { Pencil, X, MessageCircle } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import PastaPicker from '../../components/PastaPicker'
+import { buildDesignFinalizadoWaLink } from '../../lib/designWhatsapp'
 
 const BANCO_CLIENTES_VALUE = 'banco'
 
@@ -232,6 +233,8 @@ type PedidoAprovado = {
   arquivoPastaId: number | null
   arquivoPastaNome: string | null
   vendedorSolicitanteNome: string
+  vendedorSolicitanteWhatsapp: string | null
+  vendedorSolicitanteRole: string
 }
 
 // Uma linha de pedido aprovado — separado do map em DesignAprovadosTab
@@ -291,11 +294,14 @@ function PedidoAprovadoRow({ pedido }: { pedido: PedidoAprovado }) {
           )}
         </div>
       ) : (
-        <div className="flex items-center gap-2 text-xs">
+        <div className="flex items-center gap-2 text-xs flex-wrap">
           {pastaFoiRemovida ? (
             <span className="text-amber-400">⚠️ A pasta vinculada foi removida</span>
           ) : (
-            <Link to={`/admin/arquivos?pasta=${pedido.arquivoPastaId}`} className="text-gold-400 hover:underline">
+            <Link
+              to={`/${pedido.vendedorSolicitanteRole === 'admin' ? 'admin' : 'vendedor'}/arquivos?pasta=${pedido.arquivoPastaId}`}
+              className="text-gold-400 hover:underline"
+            >
               📁 {pedido.arquivoPastaNome}
             </Link>
           )}
@@ -310,6 +316,30 @@ function PedidoAprovadoRow({ pedido }: { pedido: PedidoAprovado }) {
           >
             <X size={11} />
           </button>
+          {!pastaFoiRemovida && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!pedido.vendedorSolicitanteWhatsapp) {
+                  toast.error(`${pedido.vendedorSolicitanteNome} não tem WhatsApp cadastrado (cadastre em Usuários).`)
+                  return
+                }
+                const pastaUrl = `${window.location.origin}/${pedido.vendedorSolicitanteRole === 'admin' ? 'admin' : 'vendedor'}/arquivos?pasta=${pedido.arquivoPastaId}`
+                const link = buildDesignFinalizadoWaLink({
+                  vendedorWhatsapp: pedido.vendedorSolicitanteWhatsapp,
+                  tipo: pedido.tipo,
+                  nomeApresentacao: pedido.produto || pedido.descricao.slice(0, 50),
+                  pastaNome: pedido.arquivoPastaNome ?? '',
+                  pastaUrl,
+                })
+                window.open(link, '_blank')
+              }}
+              className="flex items-center gap-1 text-green-500 hover:text-green-400 ml-auto"
+              title={`Avisar ${pedido.vendedorSolicitanteNome} no WhatsApp`}
+            >
+              <MessageCircle size={12} /> Avisar no WhatsApp
+            </button>
+          )}
         </div>
       )}
     </div>

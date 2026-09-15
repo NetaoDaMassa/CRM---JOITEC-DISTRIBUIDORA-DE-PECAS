@@ -22,6 +22,7 @@ export interface SolicitacaoDesignParaNotion {
   observacoes: string | null
   vendedorNome: string
   empresaNome: string
+  empresaSlug: string
   decididoEm: string
 }
 
@@ -64,6 +65,23 @@ function credenciaisPara(tipo: string): { token: string; databaseId: string } | 
   return { token, databaseId }
 }
 
+// A base de vídeo ("CONTROLE DE DEMANDAS", time da Compretec Publicidade) já
+// existia com sua própria estrutura antes de ligarmos nela — colunas em
+// CAIXA ALTA e EMPRESA é tipo "status" (opções fixas, cadastradas na mão no
+// Notion; diferente do "select" da base de Design, a API não pode criar uma
+// opção nova ali). Mapeamento por slug (não pelo nome de exibição, que pode
+// mudar) — pedido do João, 2026-09-15: empresa fora do mapa fica sem essa
+// coluna preenchida (o nome completo continua no título da página), sem
+// travar a sincronização. Ajustar aqui se entrar empresa nova ou o time
+// criar mais opções na coluna.
+function empresaStatusVideo(empresaSlug: string): string | null {
+  if (empresaSlug.startsWith('compretec')) return 'COMPRETEC'
+  if (empresaSlug.startsWith('odin-tubos')) return 'ODINTC'
+  if (empresaSlug.startsWith('odin-compressores')) return 'ODIN COMPRESSORES'
+  if (empresaSlug.startsWith('joitec')) return 'JOITEC'
+  return null
+}
+
 // Devolve o id da página criada (pra guardar em solicitacoesDesign.notionPageId
 // e depois conseguir consultar o status de volta) — null se não sincronizou
 // (env vars ausentes ou erro na chamada).
@@ -78,17 +96,32 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
   // pedido de vendedor de qualquer uma delas, então dá pra reconhecer de
   // qual empresa é o pedido batendo o olho, sem abrir a página.
   const nome = `[${solicitacao.empresaNome}] ${tipoLabel} — ${solicitacao.produto || solicitacao.descricao.slice(0, 60)}`
+  const ehVideo = solicitacao.tipo === 'video'
 
-  const properties: Record<string, unknown> = {
-    Nome: { title: textoRico(nome) },
-    Status: { status: { name: 'Não iniciada' } },
-    Data: { date: { start: paraDataIso(solicitacao.decididoEm) } },
-    Vendedor: { rich_text: textoRico(solicitacao.vendedorNome) },
-    // `select` — o Notion cria a opção sozinho na primeira vez que vir um
-    // nome de empresa novo; dá pra agrupar/filtrar a view por ela depois.
-    Empresa: { select: { name: solicitacao.empresaNome } },
-  }
-  if (solicitacao.dataLimiteEntrega) {
+  // Base de vídeo já existia com estrutura própria (ver empresaStatusVideo
+  // acima) — sem coluna Vendedor/Prazo de entrega e Status/Empresa em CAIXA
+  // ALTA. Vendedor e prazo viram parágrafo no corpo da página nesse caso,
+  // em vez de coluna.
+  const properties: Record<string, unknown> = ehVideo
+    ? {
+        Nome: { title: textoRico(nome) },
+        STATUS: { status: { name: 'Não iniciada' } },
+        Data: { date: { start: paraDataIso(solicitacao.decididoEm) } },
+      }
+    : {
+        Nome: { title: textoRico(nome) },
+        Status: { status: { name: 'Não iniciada' } },
+        Data: { date: { start: paraDataIso(solicitacao.decididoEm) } },
+        Vendedor: { rich_text: textoRico(solicitacao.vendedorNome) },
+        // `select` — o Notion cria a opção sozinho na primeira vez que vir
+        // um nome de empresa novo; dá pra agrupar/filtrar a view por ela.
+        Empresa: { select: { name: solicitacao.empresaNome } },
+      }
+
+  if (ehVideo) {
+    const empresaStatus = empresaStatusVideo(solicitacao.empresaSlug)
+    if (empresaStatus) properties['EMPRESA'] = { status: { name: empresaStatus } }
+  } else if (solicitacao.dataLimiteEntrega) {
     properties['Prazo de entrega'] = { date: { start: solicitacao.dataLimiteEntrega } }
   }
 
@@ -100,6 +133,7 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
     blocoCampo('Quantidade', solicitacao.quantidade),
     blocoCampo('Validade da arte', solicitacao.dataLimiteValidade),
     blocoCampo('Observações', solicitacao.observacoes),
+    ...(ehVideo ? [blocoCampo('Vendedor', solicitacao.vendedorNome), blocoCampo('Prazo de entrega', solicitacao.dataLimiteEntrega)] : []),
   ].filter((b): b is NonNullable<typeof b> => b !== null)
 
   try {
@@ -133,6 +167,8 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
 export async function buscarStatusNotion(pageId: string, tipo: string): Promise<string | null> {
   const creds = credenciaisPara(tipo)
   if (!creds) return null
+  // Base de vídeo usa a coluna "STATUS" (caixa alta) — ver empresaStatusVideo.
+  const statusProperty = tipo === 'video' ? 'STATUS' : 'Status'
 
   try {
     const res = await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
@@ -140,8 +176,8 @@ export async function buscarStatusNotion(pageId: string, tipo: string): Promise<
       signal: AbortSignal.timeout(8000),
     })
     if (!res.ok) return null
-    const pagina = (await res.json()) as { properties?: { Status?: { status?: { name?: string } } } }
-    return pagina.properties?.Status?.status?.name ?? null
+    const pagina = (await res.json()) as { properties?: Record<string, { status?: { name?: string } }> }
+    return pagina.properties?.[statusProperty]?.status?.name ?? null
   } catch (err) {
     console.error('[notion] falha ao consultar status:', err)
     return null

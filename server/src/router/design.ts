@@ -108,6 +108,11 @@ export const designRouter = router({
         arquivoPastaId: solicitacoesDesign.arquivoPastaId,
         arquivoPastaNome: marketingPastas.nome,
         vendedorSolicitanteNome: users.name,
+        // Pra montar o link wa.me do botão "Avisar no WhatsApp" (ver
+        // designWhatsapp.ts no client) — o role decide se o link da pasta
+        // vai pra rota /admin/arquivos ou /vendedor/arquivos.
+        vendedorSolicitanteWhatsapp: users.whatsapp,
+        vendedorSolicitanteRole: users.role,
       })
       .from(solicitacoesDesign)
       .innerJoin(users, eq(solicitacoesDesign.vendedorSolicitanteId, users.id))
@@ -169,7 +174,7 @@ export const designRouter = router({
       // se o Notion estiver fora do ar (ver notion.ts).
       // Empresa vem de ctx.empresaId (quem aprova) — CRM é multi-empresa e
       // todas caem na mesma base do Notion, então precisa dizer de qual é.
-      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { nome: true } })
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { nome: true, slug: true } })
       const notionPageId = await sincronizarDesignAprovadoNoNotion({
         tipo: solicitacao.tipo,
         descricao: solicitacao.descricao,
@@ -181,6 +186,7 @@ export const designRouter = router({
         observacoes: solicitacao.observacoes,
         vendedorNome: solicitacao.vendedorSolicitante.name,
         empresaNome: empresa?.nome ?? 'Desconhecida',
+        empresaSlug: empresa?.slug ?? '',
         decididoEm,
       })
       // Guarda o id da página pra dar pra consultar o status de volta
