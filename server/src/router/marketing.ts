@@ -16,7 +16,7 @@ import { z } from 'zod'
 import { and, eq, isNull, inArray } from 'drizzle-orm'
 import { router, adminProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketingPastaAcessos } from '../db/schema.js'
+import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketingPastaAcessos, solicitacoesDesign } from '../db/schema.js'
 
 // Sem nenhuma linha em marketingPastaAcessos pra essa pasta = aberta pra
 // todo mundo da empresa (comportamento de sempre — pastas já existentes
@@ -25,7 +25,11 @@ import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketin
 // sistema. Usado tanto pra listar (pasta/arquivos) quanto pra gerenciar
 // (renomear/excluir/editar acesso) — se você não pode ver, também não
 // pode mexer.
-async function assertPodeVerPasta(userId: number, superAdmin: boolean, pastaId: number) {
+// Exportada — reaproveitada por design.ts (ver `definirPastaFinal`) pra
+// checar se o admin que está vinculando um pedido de arte a uma pasta
+// também pode enxergar essa pasta (mesma regra de sempre: pasta restrita
+// só deixa quem está na lista, superAdmin sempre passa).
+export async function assertPodeVerPasta(userId: number, superAdmin: boolean, pastaId: number) {
   if (superAdmin) return
   const acessos = await db.query.marketingPastaAcessos.findMany({ where: eq(marketingPastaAcessos.pastaId, pastaId) })
   if (acessos.length === 0) return
@@ -79,6 +83,48 @@ export const marketingRouter = router({
     return trilha
   }),
 
+  // Todas as pastas da empresa, achatadas (não em árvore) com o caminho
+  // completo já montado ("Campanhas 2026 / Setembro") — alimenta o
+  // seletor de pasta usado em Solicitar Arte → Aprovações ("em qual pasta
+  // ficou o arquivo pronto", ver design.ts `definirPastaFinal`). Respeita
+  // o mesmo controle de acesso por pasta de `listarPastas` — o admin não
+  // vê (e não consegue escolher) uma pasta restrita que ele mesmo não tem
+  // acesso. adminProcedure porque só quem aprova pedido de arte usa isso.
+  listarTodasPastas: adminProcedure.query(async ({ ctx }) => {
+    const todas = await db.query.marketingPastas.findMany({
+      where: eq(marketingPastas.empresaId, ctx.empresaId),
+      orderBy: (p, { asc }) => [asc(p.nome)],
+    })
+    if (todas.length === 0) return []
+
+    const acessos = await db.query.marketingPastaAcessos.findMany({
+      where: inArray(marketingPastaAcessos.pastaId, todas.map((p) => p.id)),
+    })
+    const usuariosPorPasta = new Map<number, number[]>()
+    for (const a of acessos) usuariosPorPasta.set(a.pastaId, [...(usuariosPorPasta.get(a.pastaId) ?? []), a.userId])
+
+    const porId = new Map(todas.map((p) => [p.id, p]))
+    function caminhoDe(p: (typeof todas)[number]): string {
+      const partes = [p.nome]
+      let atual = p.pastaPaiId
+      while (atual) {
+        const pai = porId.get(atual)
+        if (!pai) break
+        partes.unshift(pai.nome)
+        atual = pai.pastaPaiId
+      }
+      return partes.join(' / ')
+    }
+
+    return todas
+      .filter((p) => {
+        const lista = usuariosPorPasta.get(p.id)
+        return ctx.user.superAdmin || !lista?.length || lista.includes(ctx.user.id)
+      })
+      .map((p) => ({ id: p.id, nome: p.nome, caminho: caminhoDe(p) }))
+      .sort((a, b) => a.caminho.localeCompare(b.caminho, 'pt-BR'))
+  }),
+
   criarPasta: adminProcedure
     .input(z.object({ nome: z.string().min(1), pastaPaiId: z.number().optional() }))
     .mutation(async ({ ctx, input }) => {
@@ -128,6 +174,36 @@ export const marketingRouter = router({
   // "isso vai apagar N arquivos" fica por conta do front antes de confirmar.
   excluirPasta: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.id)
+
+    // Um pedido de Solicitar Arte pode estar vinculado a essa pasta OU a
+    // uma subpasta dela (solicitacoesDesign.arquivoPastaId) — precisa
+    // desvincular na mão ANTES de apagar. O cascade de pastaPaiId (ON
+    // DELETE cascade de verdade, criado junto da tabela) ia tentar apagar
+    // as subpastas também, mas arquivoPastaId foi acrescentado depois via
+    // ALTER TABLE (schema.ts) — o SQLite não aceita ON DELETE nesse tipo
+    // de ALTER, então sem essa limpeza manual a constraint trava a
+    // exclusão inteira com um erro cru, mesmo pra quem nunca ouviu falar
+    // de FOREIGN KEY. Achado testando esta função, 2026-09-15.
+    const todasDaEmpresa = await db.query.marketingPastas.findMany({
+      where: eq(marketingPastas.empresaId, ctx.empresaId),
+      columns: { id: true, pastaPaiId: true },
+    })
+    const idsParaApagar = new Set<number>([input.id])
+    let cresceu = true
+    while (cresceu) {
+      cresceu = false
+      for (const p of todasDaEmpresa) {
+        if (p.pastaPaiId !== null && idsParaApagar.has(p.pastaPaiId) && !idsParaApagar.has(p.id)) {
+          idsParaApagar.add(p.id)
+          cresceu = true
+        }
+      }
+    }
+    await db
+      .update(solicitacoesDesign)
+      .set({ arquivoPastaId: null })
+      .where(inArray(solicitacoesDesign.arquivoPastaId, [...idsParaApagar]))
+
     await db.delete(marketingPastas).where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
     return { ok: true }
   }),

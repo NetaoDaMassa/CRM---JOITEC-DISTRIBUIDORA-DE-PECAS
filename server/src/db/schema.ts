@@ -830,6 +830,13 @@ export const solicitacoesDesign = sqliteTable('solicitacoes_design', {
   // primeira sincronização (ou se nunca foi aprovado/sincronizado).
   notionStatus: text('notion_status'),
   notionStatusAtualizadoEm: text('notion_status_atualizado_em'),
+  // Pasta em Arquivos/Mídia (marketingPastas, definida mais abaixo neste
+  // arquivo — referência adiante, por isso o tipo explícito) onde o
+  // arquivo final (arte/vídeo pronto) foi colocado. Selecionado manualmente
+  // pelo admin depois que a marketing termina — não é automático, ninguém
+  // aqui sabe "quando terminou" sozinho. Preenchido, vira link direto pra
+  // pasta no card do pedido (vendedor E admin). Pedido do João, 2026-09-15.
+  arquivoPastaId: integer('arquivo_pasta_id').references((): AnySQLiteColumn => marketingPastas.id, { onDelete: 'set null' }),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 

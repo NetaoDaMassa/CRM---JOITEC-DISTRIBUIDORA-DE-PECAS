@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
+import { Pencil, X } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
+import PastaPicker from '../../components/PastaPicker'
 
 const BANCO_CLIENTES_VALUE = 'banco'
 
@@ -221,6 +223,99 @@ const NOTION_STATUS_BADGE: Record<string, string> = {
   Concluído: 'bg-green-500/15 text-green-400 border-green-500/30',
 }
 
+type PedidoAprovado = {
+  id: number
+  tipo: string
+  descricao: string
+  produto: string | null
+  notionStatus: string | null
+  arquivoPastaId: number | null
+  arquivoPastaNome: string | null
+  vendedorSolicitanteNome: string
+}
+
+// Uma linha de pedido aprovado — separado do map em DesignAprovadosTab
+// porque precisa de estado próprio (editandoPasta) pra alternar entre "ver
+// o link da pasta" e "escolher/trocar a pasta". Pedido do João, 2026-09-15:
+// depois que a marketing termina o pedido, o admin vincula a pasta em
+// Arquivos/Mídia onde o arquivo final ficou — daí o card (aqui e no "Meus
+// pedidos" do vendedor) vira um link direto pra lá, sem precisar procurar.
+function PedidoAprovadoRow({ pedido }: { pedido: PedidoAprovado }) {
+  const utils = trpc.useUtils()
+  const [editandoPasta, setEditandoPasta] = useState(false)
+
+  const definirPastaMut = trpc.design.definirPastaFinal.useMutation({
+    onSuccess() {
+      utils.design.listarAprovados.invalidate()
+      setEditandoPasta(false)
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  // arquivoPastaId preenchido mas arquivoPastaNome vazio = a pasta foi
+  // apagada em Arquivos/Mídia depois de vinculada (não tem trava de banco
+  // pra isso, é intencional — ver comentário na coluna, schema.ts).
+  const pastaFoiRemovida = !!pedido.arquivoPastaId && !pedido.arquivoPastaNome
+  const mostrarPicker = editandoPasta || !pedido.arquivoPastaId
+
+  return (
+    <div className="p-4 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm text-dark-100">
+            <span className="text-xs font-normal text-gold-400 bg-gold-600/10 border border-gold-600/30 rounded px-1.5 py-0.5 mr-1.5">
+              {TIPO_LABELS_DESIGN[pedido.tipo]}
+            </span>
+            {pedido.produto || pedido.descricao.slice(0, 50)}
+          </p>
+          <p className="text-xs text-dark-500 mt-0.5">pedido de {pedido.vendedorSolicitanteNome}</p>
+        </div>
+        <Badge className={pedido.notionStatus ? NOTION_STATUS_BADGE[pedido.notionStatus] ?? 'bg-dark-700 text-dark-300 border-dark-600' : 'bg-dark-700 text-dark-400 border-dark-600'}>
+          {pedido.notionStatus ?? 'Ainda não sincronizado'}
+        </Badge>
+      </div>
+
+      {mostrarPicker ? (
+        <div className="max-w-xs flex items-center gap-2">
+          <div className="flex-1">
+            <PastaPicker
+              pastaId={null}
+              pastaNome={null}
+              onSelect={(pasta) => pasta && definirPastaMut.mutate({ id: pedido.id, pastaId: pasta.id })}
+            />
+          </div>
+          {pedido.arquivoPastaId && (
+            <button type="button" onClick={() => setEditandoPasta(false)} className="text-xs text-dark-500 hover:text-dark-200 shrink-0">
+              cancelar
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs">
+          {pastaFoiRemovida ? (
+            <span className="text-amber-400">⚠️ A pasta vinculada foi removida</span>
+          ) : (
+            <Link to={`/admin/arquivos?pasta=${pedido.arquivoPastaId}`} className="text-gold-400 hover:underline">
+              📁 {pedido.arquivoPastaNome}
+            </Link>
+          )}
+          <button type="button" onClick={() => setEditandoPasta(true)} className="text-dark-500 hover:text-gold-400" title="Trocar pasta">
+            <Pencil size={11} />
+          </button>
+          <button
+            type="button"
+            onClick={() => definirPastaMut.mutate({ id: pedido.id, pastaId: null })}
+            className="text-dark-500 hover:text-red-400"
+            title="Desvincular pasta"
+          >
+            <X size={11} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // Pedidos já aprovados — o admin também acompanha o andamento no Notion sem
 // precisar abrir lá. Pedido do João, 2026-09-14.
 function DesignAprovadosTab() {
@@ -231,20 +326,7 @@ function DesignAprovadosTab() {
       {isLoading && <p className="p-4 text-dark-400 text-sm">Carregando...</p>}
       {!isLoading && !pedidos?.length && <p className="p-4 text-dark-400 text-sm">Nenhum pedido aprovado ainda.</p>}
       {pedidos?.map((p) => (
-        <div key={p.id} className="p-4 flex items-center justify-between gap-3">
-          <div>
-            <p className="text-sm text-dark-100">
-              <span className="text-xs font-normal text-gold-400 bg-gold-600/10 border border-gold-600/30 rounded px-1.5 py-0.5 mr-1.5">
-                {TIPO_LABELS_DESIGN[p.tipo]}
-              </span>
-              {p.produto || p.descricao.slice(0, 50)}
-            </p>
-            <p className="text-xs text-dark-500 mt-0.5">pedido de {p.vendedorSolicitanteNome}</p>
-          </div>
-          <Badge className={p.notionStatus ? NOTION_STATUS_BADGE[p.notionStatus] ?? 'bg-dark-700 text-dark-300 border-dark-600' : 'bg-dark-700 text-dark-400 border-dark-600'}>
-            {p.notionStatus ?? 'Ainda não sincronizado'}
-          </Badge>
-        </div>
+        <PedidoAprovadoRow key={p.id} pedido={p} />
       ))}
     </div>
   )

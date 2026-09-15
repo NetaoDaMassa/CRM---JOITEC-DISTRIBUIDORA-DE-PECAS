@@ -1,6 +1,8 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import { Input, Textarea } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -55,6 +57,11 @@ const CAMPOS_INICIAIS = {
 // banner) — precisa passar pela aprovação do admin antes de ir pra
 // marketing (mesmo fluxo de transferência/descarte de carteira).
 export default function SolicitarDesign() {
+  const { user } = useAuth()
+  // Essa página é reaproveitada em /admin/solicitar-design e
+  // /vendedor/solicitar-design (App.tsx, mesmo padrão de Reports.tsx) — a
+  // pasta de Arquivos/Mídia mora em rota diferente pra cada papel.
+  const arquivosBasePath = user?.role === 'admin' ? '/admin/arquivos' : '/vendedor/arquivos'
   const utils = trpc.useUtils()
   const { data: pedidos, isLoading } = trpc.design.minhas.useQuery()
   const [campos, setCampos] = useState(CAMPOS_INICIAIS)
@@ -228,6 +235,14 @@ export default function SolicitarDesign() {
               <p className="text-sm text-dark-300">{p.descricao}</p>
               {p.respostaObservacao && (
                 <p className="text-xs text-dark-400 italic">Observação do admin: {p.respostaObservacao}</p>
+              )}
+              {p.arquivoPastaId && p.arquivoPastaNome && (
+                <Link
+                  to={`${arquivosBasePath}?pasta=${p.arquivoPastaId}`}
+                  className="inline-flex items-center gap-1 text-xs text-gold-400 hover:underline"
+                >
+                  📁 Ver arquivo final ({p.arquivoPastaNome})
+                </Link>
               )}
             </div>
           ))}

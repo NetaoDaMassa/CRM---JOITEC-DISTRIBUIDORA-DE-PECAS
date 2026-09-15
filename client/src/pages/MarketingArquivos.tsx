@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Folder, FolderPlus, FolderUp, Upload, Download, Trash2, ChevronRight, Home,
@@ -226,7 +227,14 @@ export default function MarketingArquivos() {
   const isAdmin = user?.role === 'admin'
   const utils = trpc.useUtils()
 
-  const [pastaAtualId, setPastaAtualId] = useState<number | null>(null)
+  // "?pasta=<id>" — link direto pra uma pasta, sem passar pela raiz. Vem do
+  // botão "Ver arquivo" do card de Solicitar Arte (o pedido aprovado com a
+  // pasta final já vinculada, ver design.ts `arquivoPastaId`), mas serve
+  // pra qualquer link externo/favorito também. Só lido na abertura da
+  // página — depois disso a navegação por clique funciona normal.
+  const [searchParams] = useSearchParams()
+  const pastaParam = searchParams.get('pasta')
+  const [pastaAtualId, setPastaAtualId] = useState<number | null>(pastaParam ? Number(pastaParam) : null)
   const [modalNovaPasta, setModalNovaPasta] = useState(false)
   const [nomeNovaPasta, setNomeNovaPasta] = useState('')
   const [enviando, setEnviando] = useState(false)
@@ -247,9 +255,19 @@ export default function MarketingArquivos() {
   }, [])
 
   const argPasta = { pastaId: pastaAtualId ?? undefined }
-  const { data: pastas, isLoading: carregandoPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
+  const { data: pastas, isLoading: carregandoPastas, error: erroPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
   const { data: arquivos, isLoading: carregandoArquivos } = trpc.marketing.listarArquivos.useQuery(argPasta)
   const { data: trilha } = trpc.marketing.caminhoPasta.useQuery({ pastaId: pastaAtualId! }, { enabled: pastaAtualId != null })
+
+  // Link direto (ou volta atrás no navegador) pra uma pasta que não existe
+  // mais/foi apagada/perdeu o acesso — sem isso a página ficava travada
+  // numa pasta inválida sem explicar por quê.
+  useEffect(() => {
+    if (erroPastas && pastaAtualId != null) {
+      toast.error(erroPastas.message || 'Essa pasta não existe mais ou você não tem mais acesso a ela.')
+      setPastaAtualId(null)
+    }
+  }, [erroPastas, pastaAtualId])
 
   function invalidarLista() {
     utils.marketing.listarPastas.invalidate(argPasta)

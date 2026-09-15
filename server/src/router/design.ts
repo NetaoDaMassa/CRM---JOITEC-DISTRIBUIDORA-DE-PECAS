@@ -2,9 +2,10 @@ import { z } from 'zod'
 import { and, asc, desc, eq } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { solicitacoesDesign, users, empresas } from '../db/schema.js'
+import { solicitacoesDesign, users, empresas, marketingPastas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { sincronizarDesignAprovadoNoNotion } from '../lib/notion.js'
+import { assertPodeVerPasta } from './marketing.js'
 
 // Pedidos do vendedor pra equipe de marketing criar uma arte (comunicado,
 // oferta ou banner) — ficam pendentes até o admin aprovar (libera pra
@@ -41,11 +42,30 @@ export const designRouter = router({
     }),
 
   // Próprios pedidos do vendedor logado, mais recentes primeiro — pra ele
-  // acompanhar o status sem precisar perguntar pro admin.
+  // acompanhar o status sem precisar perguntar pro admin. Traz também o
+  // nome da pasta final em Arquivos/Mídia (se o admin já vinculou uma) —
+  // leftJoin porque arquivoPastaId é opcional e pode nem existir ainda.
   minhas: protectedProcedure.query(async ({ ctx }) => {
     return db
-      .select()
+      .select({
+        id: solicitacoesDesign.id,
+        tipo: solicitacoesDesign.tipo,
+        descricao: solicitacoesDesign.descricao,
+        preco: solicitacoesDesign.preco,
+        produto: solicitacoesDesign.produto,
+        quantidade: solicitacoesDesign.quantidade,
+        dataLimiteEntrega: solicitacoesDesign.dataLimiteEntrega,
+        dataLimiteValidade: solicitacoesDesign.dataLimiteValidade,
+        observacoes: solicitacoesDesign.observacoes,
+        status: solicitacoesDesign.status,
+        respostaObservacao: solicitacoesDesign.respostaObservacao,
+        notionStatus: solicitacoesDesign.notionStatus,
+        arquivoPastaId: solicitacoesDesign.arquivoPastaId,
+        arquivoPastaNome: marketingPastas.nome,
+        createdAt: solicitacoesDesign.createdAt,
+      })
       .from(solicitacoesDesign)
+      .leftJoin(marketingPastas, eq(marketingPastas.id, solicitacoesDesign.arquivoPastaId))
       .where(eq(solicitacoesDesign.vendedorSolicitanteId, ctx.user.id))
       .orderBy(desc(solicitacoesDesign.createdAt))
   }),
@@ -85,14 +105,43 @@ export const designRouter = router({
         produto: solicitacoesDesign.produto,
         decididoEm: solicitacoesDesign.decididoEm,
         notionStatus: solicitacoesDesign.notionStatus,
+        arquivoPastaId: solicitacoesDesign.arquivoPastaId,
+        arquivoPastaNome: marketingPastas.nome,
         vendedorSolicitanteNome: users.name,
       })
       .from(solicitacoesDesign)
       .innerJoin(users, eq(solicitacoesDesign.vendedorSolicitanteId, users.id))
+      .leftJoin(marketingPastas, eq(marketingPastas.id, solicitacoesDesign.arquivoPastaId))
       .where(and(eq(solicitacoesDesign.status, 'aprovado'), eq(users.empresaId, ctx.empresaId)))
       .orderBy(desc(solicitacoesDesign.decididoEm))
       .limit(30)
   }),
+
+  // Vincula (ou desvincula, pastaId null) a pasta de Arquivos/Mídia onde o
+  // arquivo final ficou — feito manualmente pelo admin depois que a
+  // marketing termina o trabalho, sem depender do status do Notion (que
+  // pode nem estar configurado). Pedido do João, 2026-09-15: "o card da
+  // solicitação mostrar pra qual pasta foi o arquivo, e a pessoa poder
+  // clicar e ir direto pra ela".
+  definirPastaFinal: adminProcedure
+    .input(z.object({ id: z.number(), pastaId: z.number().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const solicitacao = await db.query.solicitacoesDesign.findFirst({
+        where: eq(solicitacoesDesign.id, input.id),
+        with: { vendedorSolicitante: { columns: { empresaId: true } } },
+      })
+      if (!solicitacao) throw new Error('Pedido não encontrado')
+      if (solicitacao.vendedorSolicitante.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+
+      if (input.pastaId !== null) {
+        const pasta = await db.query.marketingPastas.findFirst({ where: eq(marketingPastas.id, input.pastaId) })
+        if (!pasta || pasta.empresaId !== ctx.empresaId) throw new Error('Pasta não encontrada')
+        await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
+      }
+
+      await db.update(solicitacoesDesign).set({ arquivoPastaId: input.pastaId }).where(eq(solicitacoesDesign.id, input.id))
+      return { success: true }
+    }),
 
   aprovar: adminProcedure
     .input(z.object({ id: z.number(), respostaObservacao: z.string().optional() }))

@@ -1,0 +1,1 @@
+ALTER TABLE `solicitacoes_design` ADD `arquivo_pasta_id` integer REFERENCES marketing_pastas(id);
