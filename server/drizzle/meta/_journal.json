@@ -610,6 +610,13 @@
       "when": 1789477214541,
       "tag": "0086_add_cliente_ordem_endereco_completo",
       "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "6",
+      "when": 1789479215399,
+      "tag": "0087_fix_endereco_completo_colunas_faltantes",
+      "breakpoints": true
     }
   ]
 }
