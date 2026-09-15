@@ -117,6 +117,17 @@ export const ordensCoreRouter = router({
         criadoPor: ctx.user.id,
         orderType: input.orderType,
         stage: sequencia[0],
+        // Endereço de entrega já nasce igual ao cadastro do cliente — evita
+        // redigitar o que já está na Carteira. Continua editável depois (ver
+        // atualizarEndereco), pra quando a entrega for num endereço
+        // diferente do cadastral. Pedido do João, 2026-09-15.
+        enderecoEntregaCep: cliente.cep,
+        enderecoEntregaLogradouro: cliente.endereco,
+        enderecoEntregaNumero: cliente.numero,
+        enderecoEntregaComplemento: cliente.complemento,
+        enderecoEntregaBairro: cliente.bairro,
+        enderecoEntregaCidade: cliente.cidade,
+        enderecoEntregaEstado: cliente.estado,
       })
       const ordemId = Number(result.lastInsertRowid)
 
@@ -227,6 +238,9 @@ export const ordensCoreRouter = router({
         id: z.number(),
         cep: z.string().optional(),
         logradouro: z.string().optional(),
+        numero: z.string().optional(),
+        complemento: z.string().optional(),
+        bairro: z.string().optional(),
         cidade: z.string().optional(),
         estado: z.string().optional(),
       })
@@ -239,6 +253,9 @@ export const ordensCoreRouter = router({
         .set({
           enderecoEntregaCep: input.cep,
           enderecoEntregaLogradouro: input.logradouro,
+          enderecoEntregaNumero: input.numero,
+          enderecoEntregaComplemento: input.complemento,
+          enderecoEntregaBairro: input.bairro,
           enderecoEntregaCidade: input.cidade,
           enderecoEntregaEstado: input.estado,
           updatedAt: agoraSqlite(),

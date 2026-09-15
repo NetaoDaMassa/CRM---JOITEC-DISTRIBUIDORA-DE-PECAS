@@ -239,7 +239,16 @@ export const clientes = sqliteTable('clientes', {
   }).notNull(),
   estado: text('estado'),
   cidade: text('cidade'),
+  // `endereco` é o logradouro (rua/avenida) — os 4 campos abaixo completam
+  // o endereço estruturado (número, complemento, bairro, CEP), que antes
+  // não existiam. Faltavam pra cadastro completo servir de fonte única na
+  // hora de gerar um Pedido (Odin Compressores), sem redigitar nada — pedido
+  // do João, 2026-09-15.
   endereco: text('endereco'),
+  numero: text('numero'),
+  complemento: text('complemento'),
+  bairro: text('bairro'),
+  cep: text('cep'),
   telefoneWhatsapp: text('telefone_whatsapp'),
   email: text('email'),
   // Nome da pessoa de contato na empresa do cliente — diferente da razão
@@ -2100,6 +2109,13 @@ export const ordens = sqliteTable(
     pausadoEm: text('pausado_em'),
     enderecoEntregaCep: text('endereco_entrega_cep'),
     enderecoEntregaLogradouro: text('endereco_entrega_logradouro'),
+    // Número/complemento/bairro faltavam pra bater com os campos completos
+    // do cadastro do cliente (ver clientes.numero/complemento/bairro) — sem
+    // eles o endereço de entrega nunca ficava completo mesmo puxando do
+    // cadastro. Pedido do João, 2026-09-15.
+    enderecoEntregaNumero: text('endereco_entrega_numero'),
+    enderecoEntregaComplemento: text('endereco_entrega_complemento'),
+    enderecoEntregaBairro: text('endereco_entrega_bairro'),
     enderecoEntregaCidade: text('endereco_entrega_cidade'),
     enderecoEntregaEstado: text('endereco_entrega_estado'),
     // Gancho pra migração dos pedidos reais do odincrm.duckdns.org (fase

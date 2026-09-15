@@ -424,6 +424,19 @@ export default function ClienteDetail() {
   const [razaoSocial, setRazaoSocial] = useState('')
   const [codigo, setCodigo] = useState('')
   const [cnpj, setCnpj] = useState('')
+  const [cpf, setCpf] = useState('')
+  const [inscricaoEstadual, setInscricaoEstadual] = useState('')
+  // Cadastro completo (endereço estruturado) — antes só tinha CNPJ/telefone/
+  // e-mail nessa tela, sem jeito de completar o endereço fora do Pedido.
+  // Pedido do João, 2026-09-15: cadastro sai daqui já completo, pra gerar
+  // Pedido sem precisar redigitar.
+  const [estado, setEstado] = useState('')
+  const [cidade, setCidade] = useState('')
+  const [endereco, setEndereco] = useState('')
+  const [numero, setNumero] = useState('')
+  const [complemento, setComplemento] = useState('')
+  const [bairro, setBairro] = useState('')
+  const [cep, setCep] = useState('')
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState('')
   const [email, setEmail] = useState('')
   const [nomeContato, setNomeContato] = useState('')
@@ -437,6 +450,15 @@ export default function ClienteDetail() {
     setRazaoSocial(cliente.razaoSocial)
     setCodigo(cliente.codigo ?? '')
     setCnpj(cliente.cnpj ?? '')
+    setCpf(cliente.cpf ?? '')
+    setInscricaoEstadual(cliente.inscricaoEstadual ?? '')
+    setEstado(cliente.estado ?? '')
+    setCidade(cliente.cidade ?? '')
+    setEndereco(cliente.endereco ?? '')
+    setNumero(cliente.numero ?? '')
+    setComplemento(cliente.complemento ?? '')
+    setBairro(cliente.bairro ?? '')
+    setCep(cliente.cep ?? '')
     setTelefoneWhatsapp(cliente.telefoneWhatsapp ?? '')
     setEmail(cliente.email ?? '')
     setNomeContato(cliente.nomeContato ?? '')
@@ -504,6 +526,15 @@ export default function ClienteDetail() {
       razaoSocial,
       codigo,
       cnpj,
+      cpf: cpf || undefined,
+      inscricaoEstadual: inscricaoEstadual || undefined,
+      estado: estado || undefined,
+      cidade: cidade || undefined,
+      endereco: endereco || undefined,
+      numero: numero || undefined,
+      complemento: complemento || undefined,
+      bairro: bairro || undefined,
+      cep: cep || undefined,
       telefoneWhatsapp,
       email,
       nomeContato,
@@ -541,7 +572,25 @@ export default function ClienteDetail() {
       <form onSubmit={handleSubmit} className="space-y-4 bg-dark-800 border border-dark-600 rounded-2xl p-5">
         <Input label="Razão social" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} />
         <Input label="Código (SAP)" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
-        <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} />
+          <Input label="CPF" value={cpf} onChange={(e) => setCpf(e.target.value)} />
+        </div>
+        <Input label="Inscrição Estadual" value={inscricaoEstadual} onChange={(e) => setInscricaoEstadual(e.target.value)} />
+        <h2 className="text-sm font-semibold text-dark-200 pt-1">Endereço</h2>
+        <div className="grid grid-cols-[1fr_100px] gap-3">
+          <Input label="Endereço" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
+          <Input label="Número" value={numero} onChange={(e) => setNumero(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Complemento" value={complemento} onChange={(e) => setComplemento(e.target.value)} />
+          <Input label="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-[1fr_1fr_100px] gap-3">
+          <Input label="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
+          <Input label="Estado (UF)" value={estado} onChange={(e) => setEstado(e.target.value)} maxLength={2} />
+          <Input label="CEP" value={cep} onChange={(e) => setCep(e.target.value)} />
+        </div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
           <Input label="E-mail" value={email} onChange={(e) => setEmail(e.target.value)} />

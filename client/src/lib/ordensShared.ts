@@ -34,7 +34,10 @@ export const STAGE_LABELS: Record<Stage, string> = {
   cadastro: 'Cadastro',
   liberacao_financeira: 'Liberação Financeira',
   pedido: 'Pedido',
-  cotacao_frete: 'Cotação de Frete',
+  // Renomeado — pedido do João, 2026-09-15: a etapa já cobre a preparação
+  // junto com a cotação, o nome antigo ("Cotação de Frete") não deixava
+  // isso claro pra quem olha o Kanban.
+  cotacao_frete: 'Cotação de Frete/Preparação',
   preparacao: 'Preparação',
   frete_finalizado: 'Frete Finalizado',
   faturamento: 'Faturamento',

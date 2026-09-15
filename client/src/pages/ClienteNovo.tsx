@@ -30,6 +30,14 @@ export default function ClienteNovo() {
   const [regiao, setRegiao] = useState('')
   const [estado, setEstado] = useState('')
   const [cidade, setCidade] = useState('')
+  // Endereço estruturado — cadastro precisa sair completo daqui pra depois
+  // alimentar sozinho a geração de Pedido (Odin Compressores), sem
+  // redigitar nada. Pedido do João, 2026-09-15.
+  const [endereco, setEndereco] = useState('')
+  const [numero, setNumero] = useState('')
+  const [complemento, setComplemento] = useState('')
+  const [bairro, setBairro] = useState('')
+  const [cep, setCep] = useState('')
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState('')
   const [telefonesExtras, setTelefonesExtras] = useState<{ numero: string; rotulo: string }[]>([])
   const [email, setEmail] = useState('')
@@ -51,6 +59,12 @@ export default function ClienteNovo() {
       setEstado(dados.estado)
       setCidade(dados.cidade)
       if (dados.regiao) setRegiao(dados.regiao)
+      if (dados.endereco) setEndereco(dados.endereco)
+      if (dados.numero) setNumero(dados.numero)
+      if (dados.complemento) setComplemento(dados.complemento)
+      if (dados.bairro) setBairro(dados.bairro)
+      if (dados.cep) setCep(dados.cep)
+      if (dados.email && !email) setEmail(dados.email)
       toast.success('Dados preenchidos a partir da Receita Federal.')
     } catch (err: any) {
       toast.error(err.message ?? 'Falha na consulta.')
@@ -89,6 +103,11 @@ export default function ClienteNovo() {
       regiao: regiao as any,
       estado: estado || undefined,
       cidade: cidade || undefined,
+      endereco: endereco || undefined,
+      numero: numero || undefined,
+      complemento: complemento || undefined,
+      bairro: bairro || undefined,
+      cep: cep || undefined,
       telefoneWhatsapp: telefoneWhatsapp || undefined,
       email: email || undefined,
       vendedorAtualId: vendedorAtualId ? Number(vendedorAtualId) : undefined,
@@ -144,6 +163,15 @@ export default function ClienteNovo() {
           <Select label="Região" value={regiao} onChange={(e) => setRegiao(e.target.value)} placeholder="Selecione..." options={REGIOES} />
           <Input label="Estado" value={estado} onChange={(e) => setEstado(e.target.value)} />
           <Input label="Cidade" value={cidade} onChange={(e) => setCidade(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-[1fr_100px] gap-3">
+          <Input label="Endereço (opcional)" value={endereco} onChange={(e) => setEndereco(e.target.value)} />
+          <Input label="Número" value={numero} onChange={(e) => setNumero(e.target.value)} />
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <Input label="Complemento (opcional)" value={complemento} onChange={(e) => setComplemento(e.target.value)} />
+          <Input label="Bairro (opcional)" value={bairro} onChange={(e) => setBairro(e.target.value)} />
+          <Input label="CEP (opcional)" value={cep} onChange={(e) => setCep(e.target.value)} />
         </div>
         <div className="grid grid-cols-2 gap-3">
           <Input label="WhatsApp" value={telefoneWhatsapp} onChange={(e) => setTelefoneWhatsapp(e.target.value)} />
