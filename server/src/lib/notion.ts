@@ -53,16 +53,16 @@ function paraDataIso(valor: string): string {
   return valor.includes(' ') ? valor.replace(' ', 'T') + 'Z' : valor
 }
 
-// Uma base só ("CONTROLE DE DEMANDAS") pra tudo — arte (comunicado/oferta/
-// banner) e vídeo — desde 2026-09-15. Antes eram duas bases/integrações
-// separadas (uma "nossa" com Status/Empresa em select+rich_text, outra do
-// time de vídeo com STATUS/EMPRESA em CAIXA ALTA); João decidiu unificar
-// tudo na segunda (já tinha a separação por empresa pronta) e a base antiga
-// de Design ficou pra trás (perdeu a conexão com a integração — não dá mais
-// pra usar, nem precisa: é só essa agora).
-function credenciaisPara(): { token: string; databaseId: string } | null {
-  const token = process.env.NOTION_API_KEY
-  const databaseId = process.env.NOTION_DATABASE_ID_DESIGN
+// Duas bases de novo — pedido do João, 2026-09-15 (mesmo dia da unificação
+// anterior, ele voltou atrás): Design (comunicado/oferta/banner) fica na
+// base "CONTROLE DE DEMANDAS" já testada, Vídeo cai numa base separada
+// (outro token/link — outro time cuidando). Schema idêntico nas duas
+// (Nome/Data/STATUS/EMPRESA — ver blocos abaixo), só muda pra qual conta/
+// base a página vai.
+function credenciaisPara(tipo: string): { token: string; databaseId: string } | null {
+  const ehVideo = tipo === 'video'
+  const token = ehVideo ? process.env.NOTION_API_KEY_VIDEO : process.env.NOTION_API_KEY
+  const databaseId = ehVideo ? process.env.NOTION_DATABASE_ID_DESIGN_VIDEO : process.env.NOTION_DATABASE_ID_DESIGN
   if (!token || !databaseId) return null
   return { token, databaseId }
 }
@@ -83,11 +83,19 @@ function empresaStatusNotion(empresaSlug: string): string | null {
   return null
 }
 
+// As duas bases têm Nome/Data/STATUS/EMPRESA, mas só a de vídeo tem coluna
+// própria de Vendedor (rich_text) e Prazo de entrega (date) — a de Design
+// não tem essas duas, viram parágrafo no corpo da página nesse caso (ver
+// blocoCampo). Checado na API em 2026-09-15 pras duas bases reais.
+function temColunasExtras(tipo: string): boolean {
+  return tipo === 'video'
+}
+
 // Devolve o id da página criada (pra guardar em solicitacoesDesign.notionPageId
 // e depois conseguir consultar o status de volta) — null se não sincronizou
 // (env vars ausentes ou erro na chamada).
 export async function sincronizarDesignAprovadoNoNotion(solicitacao: SolicitacaoDesignParaNotion): Promise<string | null> {
-  const creds = credenciaisPara()
+  const creds = credenciaisPara(solicitacao.tipo)
   if (!creds) return null
   const { token, databaseId } = creds
 
@@ -98,9 +106,8 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
   // qual empresa é o pedido batendo o olho, sem abrir a página.
   const nome = `[${solicitacao.empresaNome}] ${tipoLabel} — ${solicitacao.produto || solicitacao.descricao.slice(0, 60)}`
 
-  // Schema real da base "CONTROLE DE DEMANDAS" (não criamos nós, já existia
-  // com esse formato): só Nome/Data/STATUS/EMPRESA como coluna — sem
-  // Vendedor nem Prazo de entrega, viram parágrafo no corpo da página.
+  const comColunasExtras = temColunasExtras(solicitacao.tipo)
+
   const properties: Record<string, unknown> = {
     Nome: { title: textoRico(nome) },
     STATUS: { status: { name: 'Não iniciada' } },
@@ -108,11 +115,14 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
   }
   const empresaStatus = empresaStatusNotion(solicitacao.empresaSlug)
   if (empresaStatus) properties['EMPRESA'] = { status: { name: empresaStatus } }
+  if (comColunasExtras) {
+    properties['Vendedor'] = { rich_text: textoRico(solicitacao.vendedorNome) }
+    if (solicitacao.dataLimiteEntrega) properties['Prazo de entrega'] = { date: { start: solicitacao.dataLimiteEntrega } }
+  }
 
   const children = [
     blocoCampo('Tipo', tipoLabel),
-    blocoCampo('Vendedor', solicitacao.vendedorNome),
-    blocoCampo('Prazo de entrega', solicitacao.dataLimiteEntrega),
+    ...(comColunasExtras ? [] : [blocoCampo('Vendedor', solicitacao.vendedorNome), blocoCampo('Prazo de entrega', solicitacao.dataLimiteEntrega)]),
     blocoCampo('Descrição', solicitacao.descricao),
     blocoCampo('Produto', solicitacao.produto),
     blocoCampo('Preço', solicitacao.preco),
@@ -149,8 +159,8 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
 // já que o Notion não avisa o CRM sozinho quando alguém muda a coluna lá.
 // null tanto pra "não configurado" quanto pra qualquer erro (página
 // apagada/despublicada no Notion etc.) — quem chama só pula essa linha.
-export async function buscarStatusNotion(pageId: string): Promise<string | null> {
-  const creds = credenciaisPara()
+export async function buscarStatusNotion(pageId: string, tipo: string): Promise<string | null> {
+  const creds = credenciaisPara(tipo)
   if (!creds) return null
 
   try {

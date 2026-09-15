@@ -21,13 +21,13 @@ export async function sincronizarStatusNotion(): Promise<{ atualizados: number }
       isNotNull(solicitacoesDesign.notionPageId),
       or(isNull(solicitacoesDesign.notionStatus), ne(solicitacoesDesign.notionStatus, 'Concluído'))
     ),
-    columns: { id: true, notionPageId: true, notionStatus: true },
+    columns: { id: true, notionPageId: true, notionStatus: true, tipo: true },
   })
 
   let atualizados = 0
   for (const s of pendentes) {
     if (!s.notionPageId) continue
-    const statusAtual = await buscarStatusNotion(s.notionPageId)
+    const statusAtual = await buscarStatusNotion(s.notionPageId, s.tipo)
     if (statusAtual && statusAtual !== s.notionStatus) {
       await db
         .update(solicitacoesDesign)

@@ -28,12 +28,14 @@ services:
       MARKETING_CRM_URL: ${MARKETING_CRM_URL:-}
       MARKETING_CRM_API_KEY: ${MARKETING_CRM_API_KEY:-}
       # Pedido de arte/vídeo aprovado (Solicitação de Design) cai sozinho numa
-      # base do Notion ("CONTROLE DE DEMANDAS", uma só pra tudo desde
-      # 2026-09-15), pro marketing ver sem precisar entrar no CRM. Se vazio,
-      # o recurso fica desabilitado (aprovação funciona igual, só não
-      # sincroniza).
+      # base do Notion, pro marketing ver sem precisar entrar no CRM. Se
+      # vazio, o recurso fica desabilitado (aprovação funciona igual, só não
+      # sincroniza). Design e Vídeo são bases/integrações separadas de
+      # novo (times diferentes) — mesmo formato de coluna nas duas.
       NOTION_API_KEY: ${NOTION_API_KEY:-}
       NOTION_DATABASE_ID_DESIGN: ${NOTION_DATABASE_ID_DESIGN:-}
+      NOTION_API_KEY_VIDEO: ${NOTION_API_KEY_VIDEO:-}
+      NOTION_DATABASE_ID_DESIGN_VIDEO: ${NOTION_DATABASE_ID_DESIGN_VIDEO:-}
       # Aviso amigável de leads novos no WhatsApp (server/src/lib/avisoLeadsNovos.ts).
       # Enquanto AVISO_LEADS_ENABLED != true, nada disso roda nem sobe sessão de WhatsApp.
       AVISO_LEADS_ENABLED: ${AVISO_LEADS_ENABLED:-false}
