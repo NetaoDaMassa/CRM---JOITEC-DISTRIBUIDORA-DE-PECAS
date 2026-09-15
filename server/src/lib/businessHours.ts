@@ -1,6 +1,12 @@
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000 // America/Sao_Paulo (UTC-3, sem horário de verão desde 2019)
 const BUSINESS_START_HOUR = 8
 const BUSINESS_END_HOUR = 18
+// Horário de almoço — não conta como expediente. Pedido do João, 2026-09-15:
+// o "Tempo médio até 1º contato" (e os alertas de SLA de leads parados, que
+// usam a mesma função) estavam contando 8h-18h corrido (10h/dia), sem
+// descontar o almoço — agora são 9h de expediente por dia útil de verdade.
+const LUNCH_START_HOUR = 12
+const LUNCH_END_HOUR = 13
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // SQLite grava `datetime('now')` como "YYYY-MM-DD HH:MM:SS" (UTC, sem sufixo de fuso).
@@ -32,7 +38,15 @@ export function businessHoursElapsedMs(fromISO: string, toISO: string = new Date
       const windowEnd = dayStart + BUSINESS_END_HOUR * 60 * 60 * 1000
       const clippedStart = Math.max(windowStart, from)
       const clippedEnd = Math.min(windowEnd, to)
-      if (clippedEnd > clippedStart) total += clippedEnd - clippedStart
+      if (clippedEnd > clippedStart) {
+        let diaTotal = clippedEnd - clippedStart
+        const lunchStart = dayStart + LUNCH_START_HOUR * 60 * 60 * 1000
+        const lunchEnd = dayStart + LUNCH_END_HOUR * 60 * 60 * 1000
+        const overlapStart = Math.max(clippedStart, lunchStart)
+        const overlapEnd = Math.min(clippedEnd, lunchEnd)
+        if (overlapEnd > overlapStart) diaTotal -= overlapEnd - overlapStart
+        total += diaTotal
+      }
     }
 
     dayStart += DAY_MS
