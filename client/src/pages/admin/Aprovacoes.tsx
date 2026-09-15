@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Pencil, X, MessageCircle } from 'lucide-react'
+import { Pencil, X, MessageCircle, Trash2 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -160,6 +160,16 @@ function DesignTab() {
     },
   })
 
+  const excluirMut = trpc.design.excluir.useMutation({
+    onSuccess() {
+      toast.success('Pedido excluído')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
       {isLoading && <p className="p-4 text-dark-400 text-sm">Carregando...</p>}
@@ -209,6 +219,16 @@ function DesignTab() {
             >
               Recusar
             </Button>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('Excluir esse pedido de arte/vídeo? Não dá pra desfazer.')) excluirMut.mutate({ id: p.id })
+              }}
+              className="ml-auto text-dark-500 hover:text-red-400"
+              title="Excluir pedido"
+            >
+              <Trash2 size={14} />
+            </button>
           </div>
         </div>
       ))}
@@ -217,7 +237,7 @@ function DesignTab() {
 }
 
 // Etapa dentro do Notion (marketing move lá) — sincronizado de volta pro
-// CRM a cada 5min, ver server/src/lib/pollNotionStatus.ts.
+// CRM a cada 1min, ver server/src/lib/pollNotionStatus.ts.
 const NOTION_STATUS_BADGE: Record<string, string> = {
   'Não iniciada': 'bg-dark-700 text-dark-300 border-dark-600',
   'Em andamento': 'bg-blue-500/15 text-blue-400 border-blue-500/30',
@@ -255,6 +275,14 @@ function PedidoAprovadoRow({ pedido }: { pedido: PedidoAprovado }) {
     onError: (e) => toast.error(e.message),
   })
 
+  const excluirMut = trpc.design.excluir.useMutation({
+    onSuccess() {
+      toast.success('Pedido excluído')
+      utils.design.listarAprovados.invalidate()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
   // arquivoPastaId preenchido mas arquivoPastaNome vazio = a pasta foi
   // apagada em Arquivos/Mídia depois de vinculada (não tem trava de banco
   // pra isso, é intencional — ver comentário na coluna, schema.ts).
@@ -273,9 +301,21 @@ function PedidoAprovadoRow({ pedido }: { pedido: PedidoAprovado }) {
           </p>
           <p className="text-xs text-dark-500 mt-0.5">pedido de {pedido.vendedorSolicitanteNome}</p>
         </div>
-        <Badge className={pedido.notionStatus ? NOTION_STATUS_BADGE[pedido.notionStatus] ?? 'bg-dark-700 text-dark-300 border-dark-600' : 'bg-dark-700 text-dark-400 border-dark-600'}>
-          {pedido.notionStatus ?? 'Ainda não sincronizado'}
-        </Badge>
+        <div className="flex items-center gap-2 shrink-0">
+          <Badge className={pedido.notionStatus ? NOTION_STATUS_BADGE[pedido.notionStatus] ?? 'bg-dark-700 text-dark-300 border-dark-600' : 'bg-dark-700 text-dark-400 border-dark-600'}>
+            {pedido.notionStatus ?? 'Ainda não sincronizado'}
+          </Badge>
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('Excluir esse pedido de arte/vídeo? Não dá pra desfazer.')) excluirMut.mutate({ id: pedido.id })
+            }}
+            className="text-dark-500 hover:text-red-400"
+            title="Excluir pedido"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
 
       {mostrarPicker ? (

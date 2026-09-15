@@ -203,6 +203,24 @@ export const designRouter = router({
       return { success: true }
     }),
 
+  // Exclusão de verdade (não é recusar) — pedido do João, 2026-09-15: dar
+  // pra apagar um pedido de arte/vídeo (teste, duplicado, engano) direto
+  // no CRM. Não mexe na página já criada no Notion (se tiver) — só some
+  // daqui; o time de marketing continua vendo lá se já tinha ido.
+  excluir: adminProcedure
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const solicitacao = await db.query.solicitacoesDesign.findFirst({
+        where: eq(solicitacoesDesign.id, input.id),
+        with: { vendedorSolicitante: { columns: { empresaId: true } } },
+      })
+      if (!solicitacao) throw new Error('Pedido não encontrado')
+      if (solicitacao.vendedorSolicitante.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+
+      await db.delete(solicitacoesDesign).where(eq(solicitacoesDesign.id, input.id))
+      return { success: true }
+    }),
+
   recusar: adminProcedure
     .input(z.object({ id: z.number(), respostaObservacao: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
