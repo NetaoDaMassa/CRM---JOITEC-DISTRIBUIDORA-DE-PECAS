@@ -2931,3 +2931,65 @@ export const marketingArquivoDownloadsRelations = relations(marketingArquivoDown
   arquivo: one(marketingArquivos, { fields: [marketingArquivoDownloads.arquivoId], references: [marketingArquivos.id] }),
   user: one(users, { fields: [marketingArquivoDownloads.userId], references: [users.id] }),
 }))
+
+// ── Requisição Posto (abastecimento) ────────────────────────────────────────
+// Digitaliza a planilha "REQUISIÇÃO POSTO" que o Financeiro/Compras já usa
+// pra controlar abastecimento de motorista/colaborador de qualquer empresa
+// do grupo — pedido do João, 2026-09-15. Cross-empresa por design (mesmo
+// padrão de financeiro.ts/painelResumo): quem tem a permissão
+// `requisicao_posto` vê e lança pra TODAS as empresas numa tela só, sem
+// trocar de empresa ativa — o Financeiro precisa da visão do grupo inteiro,
+// não só da empresa que está selecionada no momento.
+//
+// Colaborador NÃO tem login próprio no CRM (é motorista/operacional, não
+// vendedor) — quem lança é sempre alguém do Financeiro/Compras, escolhendo
+// o nome num menu. Lista de colaboradores/placas começa vazia; quem tiver
+// a permissão cadastra conforme for precisando (mesmo gesto de "adicionar
+// opção nova" que a planilha do Google Sheets já tinha nos menus dela).
+export const requisicaoPostoColaboradores = sqliteTable('requisicao_posto_colaboradores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nome: text('nome').notNull(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Placas não são amarradas a uma empresa — lista única compartilhada (mesmo
+// jeito da planilha original, onde um carro podia aparecer associado a
+// nomes de empresas diferentes ao longo do tempo). Pedido explícito do
+// João, 2026-09-15.
+export const requisicaoPostoVeiculos = sqliteTable('requisicao_posto_veiculos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  placa: text('placa').notNull().unique(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const requisicaoPosto = sqliteTable(
+  'requisicao_posto',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    colaboradorId: integer('colaborador_id').notNull().references(() => requisicaoPostoColaboradores.id),
+    veiculoId: integer('veiculo_id').notNull().references(() => requisicaoPostoVeiculos.id),
+    data: text('data').notNull(), // YYYY-MM-DD
+    valor: real('valor').notNull(),
+    // "Canhoto" = comprovante físico do abastecimento — controla se já foi
+    // entregue pro Financeiro (nem sempre acontece no mesmo dia do
+    // lançamento). Começa como não entregue, alguém marca depois.
+    canhotoEntregue: integer('canhoto_entregue', { mode: 'boolean' }).notNull().default(false),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    dataIdx: index('requisicao_posto_data_idx').on(t.data),
+  })
+)
+
+export const requisicaoPostoColaboradoresRelations = relations(requisicaoPostoColaboradores, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [requisicaoPostoColaboradores.empresaId], references: [empresas.id] }),
+  requisicoes: many(requisicaoPosto),
+}))
+
+export const requisicaoPostoRelations = relations(requisicaoPosto, ({ one }) => ({
+  colaborador: one(requisicaoPostoColaboradores, { fields: [requisicaoPosto.colaboradorId], references: [requisicaoPostoColaboradores.id] }),
+  veiculo: one(requisicaoPostoVeiculos, { fields: [requisicaoPosto.veiculoId], references: [requisicaoPostoVeiculos.id] }),
+  criadoPorUser: one(users, { fields: [requisicaoPosto.criadoPor], references: [users.id] }),
+}))

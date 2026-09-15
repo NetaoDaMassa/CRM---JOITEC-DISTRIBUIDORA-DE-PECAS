@@ -51,6 +51,8 @@ import VendorKanban from './pages/vendor/Kanban'
 import VendorCalendario from './pages/vendor/Calendario'
 import FilaHoje from './pages/vendor/FilaHoje'
 import SolicitarDesign from './pages/vendor/SolicitarDesign'
+import RequisicaoPosto from './pages/admin/RequisicaoPosto'
+import GrupoOdin from './pages/admin/GrupoOdin'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
@@ -220,6 +222,8 @@ export default function App() {
           <Route path="admin/campanhas" element={<AdminGuard><FeatureGuard feature="leads"><Campanhas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/arquivos" element={<AdminGuard><FeatureGuard feature="arquivos"><MarketingArquivos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />
