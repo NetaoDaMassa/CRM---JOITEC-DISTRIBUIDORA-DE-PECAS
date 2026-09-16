@@ -72,17 +72,31 @@ type CampoFormulario = { label: string; valor: string }
 // formulário como se fosse o nome, e nunca olhava pros rótulos — daí "tudo
 // trocado". Aqui separa rótulo/valor de cada linha; a saudação (sem ":")
 // simplesmente não vira um campo.
+const REGEX_LINHA_ROTULADA = /^([^:]{2,60}):\s*(.+)$/
+
 function extrairCamposRotulados(texto: string): CampoFormulario[] {
   const campos: CampoFormulario[] = []
   for (const linhaBruta of texto.split('\n')) {
     const linha = linhaBruta.trim()
-    const m = linha.match(/^([^:]{2,60}):\s*(.+)$/)
+    const m = linha.match(REGEX_LINHA_ROTULADA)
     if (!m) continue
     const valor = m[2].trim()
     if (!valor) continue
     campos.push({ label: m[1].trim(), valor })
   }
   return campos
+}
+
+// Linhas que não bateram no formato "Rótulo: valor" nenhuma (ex: a saudação
+// do topo do formulário, ou qualquer texto livre que o vendedor colou junto)
+// — achado do João, 2026-09-16: essas linhas simplesmente desapareciam,
+// nunca viravam nem campo nem observação. Aqui juntam a "Observações" junto
+// com os campos de rótulo desconhecido, pra nenhuma linha colada se perder.
+function extrairLinhasSoltas(texto: string): string[] {
+  return texto
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !REGEX_LINHA_ROTULADA.test(l))
 }
 
 function achaCampo(campos: CampoFormulario[], ...palavrasChave: string[]): string | null {
@@ -177,10 +191,13 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
 
       // Perguntas sem rótulo reconhecido (ex: "Você trabalha com compressor
       // de ar?") viram observação, e se a resposta bater com um segmento
-      // conhecido, preenche o segmento sozinho.
+      // conhecido, preenche o segmento sozinho. Linhas sem rótulo nenhum
+      // (texto livre colado junto) entram também, pra nada desaparecer.
       const extras = campos.filter((c) => !LABELS_CONHECIDOS.some((l) => normalizar(c.label).includes(l)))
-      if (extras.length) {
-        setObservations(extras.map((c) => `${c.label}: ${c.valor}`).join('\n'))
+      const linhasSoltas = extrairLinhasSoltas(texto)
+      if (extras.length || linhasSoltas.length) {
+        const textoObservacoes = [...extras.map((c) => `${c.label}: ${c.valor}`), ...linhasSoltas].join('\n')
+        setObservations(textoObservacoes)
         for (const c of extras) {
           const seg = segmentoPorResposta(c.valor)
           if (seg) {
@@ -229,6 +246,22 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     if (nome) setName(nome)
     const mail = extrairEmail(texto)
     if (mail) setEmail(mail)
+
+    // Qualquer linha que não virou nome/telefone/e-mail (ex: "precisa de
+    // peça pro compressor X", contexto que o vendedor colou junto) ia pro
+    // limbo antes — achado do João, 2026-09-16. Agora cai em Observações,
+    // igual já acontecia no modo "formulário com rótulo".
+    const restante = texto
+      .split('\n')
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0 && l !== nome)
+      .filter((l) => {
+        const soDigitos = l.replace(/\D/g, '')
+        if (tel && soDigitos.length > 4 && (tel.completo.includes(soDigitos) || soDigitos.includes(tel.completo))) return false
+        if (mail && l.includes(mail)) return false
+        return true
+      })
+    if (restante.length) setObservations(restante.join('\n'))
   }
 
   const addAttachmentMut = trpc.leads.addAttachment.useMutation({
