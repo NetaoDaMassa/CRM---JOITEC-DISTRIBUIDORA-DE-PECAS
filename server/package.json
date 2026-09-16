@@ -13,7 +13,8 @@
     "limpar-prospects-vazados": "tsx src/scripts/limparProspectsVazados.ts",
     "importar-banco-odintc": "tsx src/scripts/importarBancoOdinTubosSetembro.ts",
     "auditar-itens-pedido": "tsx src/scripts/auditarItensPedido.ts",
-    "permissoes:liberar-solicitar-design": "tsx src/scripts/liberarSolicitarDesignTodos.ts"
+    "permissoes:liberar-solicitar-design": "tsx src/scripts/liberarSolicitarDesignTodos.ts",
+    "seed-message-templates": "tsx src/scripts/seedMessageTemplatesTodasEmpresas.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
