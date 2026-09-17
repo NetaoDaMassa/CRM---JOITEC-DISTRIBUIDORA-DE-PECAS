@@ -19,6 +19,7 @@ import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermis
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
 import { trackingRouter, TRACKER_JS } from './routes/tracking.js'
+import { woocommerceRouter } from './routes/woocommerce.js'
 
 config()
 
@@ -27,6 +28,14 @@ const PORT = process.env.PORT ?? 3001
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? './uploads'
 
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
+
+// Webhooks do WooCommerce (loja online da Compretec Loja Física) — a
+// assinatura HMAC que o WooCommerce manda é calculada em cima do corpo cru
+// da requisição, então precisa de express.raw() em vez do express.json()
+// global logo abaixo. Registrado ANTES do parser global de propósito: sem
+// isso, o express.json() já teria consumido/parseado o corpo antes da rota
+// rodar e não daria pra validar a assinatura.
+app.use('/api/woocommerce', express.raw({ type: 'application/json', limit: '2mb' }), woocommerceRouter)
 
 // Limite default do express.json() é 100kb — currículo em base64 (até 5MB,
 // ver RESUME_MAX_SIZE_BYTES em routes/careers.ts) estourava isso e o body

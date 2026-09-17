@@ -32,7 +32,7 @@ async function encontrarCampanhaPorUtm(empresaId: number, utmCampaign: string | 
 // embutido — o formulário do site manda o telefone cru, do jeito que a
 // pessoa digitou (DDD junto, às vezes com parênteses/traço), e guardar isso
 // direto duplicava o DDD na ficha do lead e quebrava o link do WhatsApp.
-function parseTelefone(phoneRaw: string): { ddd: number; phone: string } | null {
+export function parseTelefone(phoneRaw: string): { ddd: number; phone: string } | null {
   const digits = phoneRaw.replace(/\D/g, '')
   const local = digits.startsWith('55') && digits.length > 11 ? digits.slice(2) : digits
   if (local.length < 10) return null
