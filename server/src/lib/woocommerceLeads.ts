@@ -115,6 +115,7 @@ export interface CarrinhoRecartoRow {
   billing_email?: string | null
   billing_phone?: string | null
   abandoned_cart_time?: number | null
+  itens?: { nome: string; quantidade: number }[] | null
 }
 
 // Carrinho capturado pelo plugin Recarto assim que a pessoa preenche o
@@ -126,7 +127,14 @@ export async function processarCarrinhoRecarto(empresaId: number, row: CarrinhoR
   const dataHora = row.abandoned_cart_time
     ? new Date(row.abandoned_cart_time * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
     : null
-  const observations = `Carrinho abandonado no checkout da loja online${dataHora ? ` (${dataHora})` : ''} — preencheu os dados mas não finalizou a compra.`
+  const itensTexto =
+    row.itens && row.itens.length > 0 ? row.itens.map((i) => `${i.quantidade}x ${i.nome}`).join(', ') : ''
+  const observations = [
+    `Carrinho abandonado no checkout da loja online${dataHora ? ` (${dataHora})` : ''} — preencheu os dados mas não finalizou a compra.`,
+    itensTexto && `Itens: ${itensTexto}.`,
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return criarLeadWoocommerce({
     empresaId,
