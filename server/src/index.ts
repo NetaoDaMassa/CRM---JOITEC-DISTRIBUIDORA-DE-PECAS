@@ -35,10 +35,12 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 // global logo abaixo. Registrado ANTES do parser global de propósito: sem
 // isso, o express.json() já teria consumido/parseado o corpo antes da rota
 // rodar e não daria pra validar a assinatura. `type: () => true` (em vez de
-// só 'application/json') pra sempre entregar Buffer em req.body mesmo se o
-// WooCommerce mandar Content-Type diferente/ausente no teste de conexão do
-// webhook — sem isso req.body virava objeto parseado e quebrava o cálculo
-// do HMAC (derrubou o servidor inteiro numa rodada de teste, 2026-09-17).
+// só 'application/json') pra sempre entregar Buffer em req.body — na
+// prática o WooCommerce manda Content-Type: application/x-www-form-urlencoded
+// nas entregas do webhook (confirmado em produção, 2026-09-17), não
+// application/json; sem esse `type: () => true`, req.body virava objeto
+// parseado e quebrava o cálculo do HMAC (derrubou o servidor inteiro numa
+// rodada de teste).
 app.use('/api/woocommerce', express.raw({ type: () => true, limit: '2mb' }), woocommerceRouter)
 
 // Limite default do express.json() é 100kb — currículo em base64 (até 5MB,
