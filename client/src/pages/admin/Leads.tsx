@@ -268,6 +268,20 @@ export default function Leads() {
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border ${LEAD_STATUS_COLORS[lead.status as keyof typeof LEAD_STATUS_COLORS]}`}>
                           {LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS]}
                         </span>
+                        {(lead.tagPprVerde || lead.tagOutrasLinhas) && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {lead.tagPprVerde && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-900/30 text-emerald-300 border border-emerald-700/50">
+                                🌿 PPR Verde
+                              </span>
+                            )}
+                            {lead.tagOutrasLinhas && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-teal-900/30 text-teal-300 border border-teal-700/50">
+                                📦 Outras Linhas
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       {isAdmin && <td className="px-5 py-3 text-dark-300">{lead.vendor?.name ?? '—'}</td>}
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>

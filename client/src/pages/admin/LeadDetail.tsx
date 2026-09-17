@@ -19,6 +19,7 @@ import LeadChangeStatusModal from '../../components/LeadChangeStatusModal'
 import LeadReopenDisqualifiedModal from '../../components/LeadReopenDisqualifiedModal'
 import LeadContactAttemptForm from '../../components/LeadContactAttemptForm'
 import LeadNegotiationTagPicker from '../../components/LeadNegotiationTagPicker'
+import LeadProductLineTagPicker from '../../components/LeadProductLineTagPicker'
 import TransferirParaCarteiraModal from '../../components/TransferirParaCarteiraModal'
 import TransferirParaPropostasModal from '../../components/TransferirParaPropostasModal'
 import {
@@ -464,6 +465,12 @@ export default function LeadDetail() {
           <p className="text-sm font-semibold text-dark-100 mb-2">Destaque da negociação</p>
           <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />
         </div>
+        {empresaSlug === 'odin-tubos' && (
+          <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+            <p className="text-sm font-semibold text-dark-100 mb-2">Linha de produto</p>
+            <LeadProductLineTagPicker leadId={lead.id} pprVerde={lead.tagPprVerde} outrasLinhas={lead.tagOutrasLinhas} />
+          </div>
+        )}
         {isAdmin && lead.status === 'desqualificado' && (
           <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
             <p className="text-sm font-semibold text-dark-100 mb-1">Devolver pro Kanban</p>

@@ -15,9 +15,10 @@ const EMPRESA_ODIN_COMPRESSORES = 4
 //                                                    contador de contato zera; "entrou na etapa" = agora)
 //   fechado / perdido                             → "novo" (sem selo)
 //   faturamento / consumidor_final(_loja)         → NÃO cria card (fica parado onde está)
+//   outras_linhas_ppr_verde (só Odin Tubos)       → NÃO cria card (fica parado onde está)
 //   sem card no mês passado (cliente novo)        → "novo" (sem selo)
 const ETAPAS_VOLTA_NOVO_CARREGADO = ['novo', 'abordagem', 'interessado', 'sem_contato']
-const ETAPAS_TERMINAIS_SEM_CARD = ['faturamento', 'consumidor_final', 'consumidor_final_loja']
+const ETAPAS_TERMINAIS_SEM_CARD = ['faturamento', 'consumidor_final', 'consumidor_final_loja', 'outras_linhas_ppr_verde']
 
 // ── Regra ANTIGA (Odin Compressores) ───────────────────────────────────────
 // "aberto" = card volta pra "novo" com selo; o resto vira "novo" sem selo.

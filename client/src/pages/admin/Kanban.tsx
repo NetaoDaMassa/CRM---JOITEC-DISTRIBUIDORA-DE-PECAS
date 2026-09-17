@@ -12,6 +12,7 @@ export default function AdminKanban() {
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const ehCompretecLojaFisica = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'compretec-loja-fisica'
+  const ehOdinTubos = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-tubos'
 
   useEffect(() => {
     if (vendedores && vendedores.length > 0 && vendedorId === null) {
@@ -55,6 +56,7 @@ export default function AdminKanban() {
           vendedorIdVendaRapida={vendedorId}
           mostrarFaturamento={ehCompretecLojaFisica}
           mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
+          mostrarOutrasLinhas={ehOdinTubos}
         />
       )}
     </div>

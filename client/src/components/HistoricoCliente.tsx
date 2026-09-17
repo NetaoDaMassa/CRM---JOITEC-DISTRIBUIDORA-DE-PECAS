@@ -9,6 +9,7 @@ const ETAPA_LABEL: Record<string, string> = {
   sem_contato: 'Sem contato',
   consumidor_final: 'Consumidor Final / Repassado',
   consumidor_final_loja: 'Consumidor Final',
+  outras_linhas_ppr_verde: 'Outras Linhas / PPR Verde',
 }
 const ETAPA_COR: Record<string, string> = {
   novo: 'text-dark-400',
@@ -19,6 +20,7 @@ const ETAPA_COR: Record<string, string> = {
   sem_contato: 'text-dark-500',
   consumidor_final: 'text-purple-400',
   consumidor_final_loja: 'text-cyan-400',
+  outras_linhas_ppr_verde: 'text-emerald-400',
 }
 const TIPO_ICONE: Record<string, string> = { ligacao: '📞', whatsapp: '💬', email: '📧', visita: '🚗' }
 const EMPRESA_REPASSE_LABEL: Record<string, string> = {

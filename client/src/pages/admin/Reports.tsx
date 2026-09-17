@@ -205,6 +205,7 @@ const ETAPA_LABEL_REPORT: Record<string, string> = {
   perdido: 'Perdido',
   sem_contato: 'Sem contato',
   consumidor_final: 'Consumidor Final',
+  outras_linhas_ppr_verde: 'Outras Linhas / PPR Verde',
 }
 
 const REGIAO_OPTIONS = [

@@ -394,6 +394,12 @@ export const funilMensal = sqliteTable('funil_mensal', {
       'sem_contato',
       'consumidor_final',
       'consumidor_final_loja',
+      // Etapa "estacionamento", exclusiva da Odin Tubos e Conexões — cliente
+      // específico de PPR Verde ou outra linha que a empresa ainda não
+      // trabalha, mas vale manter na carteira. Igual a 'faturamento'/
+      // 'consumidor_final_loja': fica parado onde está, não volta pra "novo"
+      // no reset mensal (ver ETAPAS_TERMINAIS_SEM_CARD em resetMensal.ts).
+      'outras_linhas_ppr_verde',
     ],
   }).notNull().default('novo'),
   dataEntradaEtapa: text('data_entrada_etapa').notNull().default(sql`(datetime('now'))`),
@@ -1346,6 +1352,13 @@ export const leads = sqliteTable(
     disqualifyReason: text('disqualify_reason'),
     finalConsumerReason: text('final_consumer_reason'),
     negotiationTag: text('negotiation_tag', { enum: ['vermelho', 'amarelo'] }),
+    // Etiquetas de linha de produto — pedido do João, 2026-09-17: só Odin
+    // Tubos e Conexões usa (etapa "Qualificado" em diante), pra marcar leads
+    // de PPR Verde/outras linhas fora do catálogo normal e conseguir tirar
+    // relatório disso depois (ver leadsRelatorios.reportGeral). Booleanos em
+    // vez de enum único porque um lead pode ter as duas ao mesmo tempo.
+    tagPprVerde: integer('tag_ppr_verde', { mode: 'boolean' }).notNull().default(false),
+    tagOutrasLinhas: integer('tag_outras_linhas', { mode: 'boolean' }).notNull().default(false),
     // Preenchido quando um lead "Ganho" é transferido pra frente — Carteira
     // (Joitec/Odin Tubos, cadastro completo de cliente) ou Propostas (Odin
     // Compressores, que não usa Carteira e segue o funil normal de

@@ -32,6 +32,9 @@ const ETAPA_VALUES = [
   // 'consumidor_final' (que exige empresaRepasse), essa não pede nenhum
   // campo extra pra mover o card pra cá.
   'consumidor_final_loja',
+  // Estacionamento exclusivo da Odin Tubos e Conexões — ver comentário em
+  // schema.ts (funilMensal.etapa).
+  'outras_linhas_ppr_verde',
 ] as const
 
 // Compartilhado entre `meuFunil` (vendedor vendo o próprio funil),
@@ -439,6 +442,10 @@ export const funilRouter = router({
 
       if (input.etapa === 'faturamento' && funil.etapa !== 'fechado') {
         throw new Error('Só é possível mover pra Faturamento a partir de "Fechado".')
+      }
+
+      if (input.etapa === 'outras_linhas_ppr_verde' && empresa?.slug !== 'odin-tubos') {
+        throw new Error('Etapa "Outras Linhas / PPR Verde" disponível só pra Odin Tubos e Conexões.')
       }
 
       if (input.etapa === 'perdido') {

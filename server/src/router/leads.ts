@@ -711,6 +711,30 @@ export const leadsRouter = router({
       return { success: true }
     }),
 
+  // Etiqueta de linha de produto (PPR Verde / Outras Linhas) — só Odin Tubos
+  // e Conexões usa, pra marcar lead qualificado com interesse fora do
+  // catálogo normal e depois tirar relatório disso (ver leadsRelatorios.
+  // reportGeral). Dois booleanos porque um lead pode ter as duas.
+  setProductLineTags: protectedProcedure
+    .input(z.object({ id: z.number(), pprVerde: z.boolean(), outrasLinhas: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
+      if (!existing) throw new Error('Lead não encontrado')
+      if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+      if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
+      if (empresa?.slug !== 'odin-tubos') {
+        throw new Error('Etiqueta de linha de produto disponível só pra Odin Tubos e Conexões.')
+      }
+
+      await db
+        .update(leads)
+        .set({ tagPprVerde: input.pprVerde, tagOutrasLinhas: input.outrasLinhas, updatedAt: sql`(datetime('now'))` })
+        .where(eq(leads.id, input.id))
+      return { success: true }
+    }),
+
   addNote: protectedProcedure
     .input(z.object({ leadId: z.number(), type: z.enum(['nota', 'lembrete']), content: z.string().min(1), nextContactAt: z.string().optional().nullable() }))
     .mutation(async ({ ctx, input }) => {

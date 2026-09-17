@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -396,6 +397,9 @@ function GeralTab() {
   const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
   const [dataFim, setDataFim] = useState(hojeString())
   const [editarMetaAberto, setEditarMetaAberto] = useState(false)
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
   const { data, isLoading } = trpc.leadsRelatorios.reportGeral.useQuery({
     dataInicio: dataInicio || undefined,
     dataFim: dataFim || undefined,
@@ -424,6 +428,12 @@ function GeralTab() {
             <StatTile label="Tempo Médio de Fechamento" value={formatarDias(data.tempoMedioFechamentoDias)} sub="da atribuição até o fechamento" />
             <StatTile label="Total de Vendas" value={formatarMoeda(data.totalVendas)} sub="soma dos pedidos ganhos" />
             <StatTile label="Valor em Negociação" value={formatarMoeda(data.valorEmNegociacao)} sub="soma dos pedidos em negociação" />
+            {empresaSlug === 'odin-tubos' && (
+              <>
+                <StatTile label="🌿 Leads PPR Verde" value={String(data.totalPprVerde)} sub="etiquetados em qualquer etapa" />
+                <StatTile label="📦 Leads Outras Linhas" value={String(data.totalOutrasLinhas)} sub="etiquetados em qualquer etapa" />
+              </>
+            )}
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">

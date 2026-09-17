@@ -10,6 +10,7 @@ export default function VendorKanban() {
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const ehCompretecLojaFisica = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'compretec-loja-fisica'
+  const ehOdinTubos = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-tubos'
 
   return (
     <div className="p-6">
@@ -28,6 +29,7 @@ export default function VendorKanban() {
         permitirVendaRapida={ehCompretecLojaFisica}
         mostrarFaturamento={ehCompretecLojaFisica}
         mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
+        mostrarOutrasLinhas={ehOdinTubos}
       />
     </div>
   )

@@ -217,6 +217,11 @@ export const leadsRelatoriosRouter = router({
         return { status, label: STATUS_LABELS[status], count, conversionRate: total > 0 ? (count / total) * 100 : 0 }
       })
 
+      // Só tem sentido pra Odin Tubos e Conexões (única empresa que usa a
+      // etiqueta), mas calcula sempre — pra quem não usa, fica zerado.
+      const totalPprVerde = todosLeads.filter((l) => l.tagPprVerde).length
+      const totalOutrasLinhas = todosLeads.filter((l) => l.tagOutrasLinhas).length
+
       return {
         tempoMedioPrimeiroContatoHoras: avg(temposPrimeiroContato),
         ticketMedio,
@@ -229,6 +234,8 @@ export const leadsRelatoriosRouter = router({
         tempoMedioFechamentoDias,
         totalVendas,
         funnel,
+        totalPprVerde,
+        totalOutrasLinhas,
       }
     }),
 

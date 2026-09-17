@@ -27,6 +27,8 @@ type LeadCard = {
   company: string | null
   status: string
   negotiationTag: string | null
+  tagPprVerde: boolean
+  tagOutrasLinhas: boolean
   nextContactAt: string | null
   createdAt: string
   updatedAt: string
@@ -142,6 +144,17 @@ export default function LeadKanbanBoard({
                       {lead.fromSite && (
                         <div className="mb-2">
                           <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                        </div>
+                      )}
+
+                      {(lead.tagPprVerde || lead.tagOutrasLinhas) && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {lead.tagPprVerde && (
+                            <Badge className="text-emerald-300 bg-emerald-900/20 border-emerald-700/40">🌿 PPR Verde</Badge>
+                          )}
+                          {lead.tagOutrasLinhas && (
+                            <Badge className="text-teal-300 bg-teal-900/20 border-teal-700/40">📦 Outras Linhas</Badge>
+                          )}
                         </div>
                       )}
 
