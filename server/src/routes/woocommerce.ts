@@ -19,8 +19,16 @@ function assinaturaValida(rawBody: Buffer, assinaturaRecebida: string | undefine
   const esperada = crypto.createHmac('sha256', secret).update(rawBody).digest('base64')
   const bufA = Buffer.from(assinaturaRecebida)
   const bufB = Buffer.from(esperada)
-  if (bufA.length !== bufB.length) return false
-  return crypto.timingSafeEqual(bufA, bufB)
+  const bateu = bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB)
+  if (!bateu) {
+    // Log temporário de diagnóstico (2026-09-17) — não expõe a senha, só o
+    // hash resultante. Remover depois que o webhook da Compretec estiver
+    // validado em produção.
+    console.log(
+      `[woocommerce][debug] assinatura não bateu — tamanho do corpo: ${rawBody.length} bytes | assinatura recebida: ${assinaturaRecebida} | assinatura esperada: ${esperada} | primeiros 200 bytes do corpo: ${rawBody.subarray(0, 200).toString('utf8')}`
+    )
+  }
+  return bateu
 }
 
 woocommerceRouter.post('/compretec/webhook', async (req, res) => {
@@ -41,6 +49,9 @@ woocommerceRouter.post('/compretec/webhook', async (req, res) => {
 
     const rawBody = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0)
     const assinatura = req.header('x-wc-webhook-signature')
+    console.log(
+      `[woocommerce][debug] content-type=${req.header('content-type')} content-encoding=${req.header('content-encoding')} transfer-encoding=${req.header('transfer-encoding')} req.body é Buffer? ${Buffer.isBuffer(req.body)}`
+    )
     if (!assinaturaValida(rawBody, assinatura, secret)) {
       return res.status(401).json({ error: 'assinatura inválida' })
     }
