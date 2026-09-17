@@ -104,6 +104,40 @@ export async function processarCadastroWoocommerce(empresaId: number, payload: a
   return criarLeadWoocommerce({ empresaId, name, phoneRaw, email, source: 'ecommerce_cadastro' })
 }
 
+// Linha vinda do endpoint de exportação do plugin Recarto/WooCommerce
+// Abandoned Cart Recovery (ver woocommerceCarrinhoAbandonadoPoller.ts) — id
+// é o id na tabela wacv_abandoned_cart_record, usado como marca d'água pra
+// não reprocessar a mesma linha de novo a cada rodada do poller.
+export interface CarrinhoRecartoRow {
+  id: number
+  billing_first_name?: string | null
+  billing_last_name?: string | null
+  billing_email?: string | null
+  billing_phone?: string | null
+  abandoned_cart_time?: number | null
+}
+
+// Carrinho capturado pelo plugin Recarto assim que a pessoa preenche o
+// checkout (nome/telefone/e-mail), mesmo sem nunca clicar em "Finalizar
+// pedido" — pega muito mais gente do que o processarPedidoWoocommerce acima
+// (que só reage quando o WooCommerce chega a criar um pedido de verdade).
+export async function processarCarrinhoRecarto(empresaId: number, row: CarrinhoRecartoRow): Promise<number | null> {
+  const name = [row.billing_first_name, row.billing_last_name].filter(Boolean).join(' ').trim()
+  const dataHora = row.abandoned_cart_time
+    ? new Date(row.abandoned_cart_time * 1000).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+    : null
+  const observations = `Carrinho abandonado no checkout da loja online${dataHora ? ` (${dataHora})` : ''} — preencheu os dados mas não finalizou a compra.`
+
+  return criarLeadWoocommerce({
+    empresaId,
+    name,
+    phoneRaw: row.billing_phone ?? undefined,
+    email: row.billing_email ?? undefined,
+    source: 'ecommerce_carrinho_abandonado',
+    observations,
+  })
+}
+
 // Webhook "order.created"/"order.updated" — só vira lead de remarketing
 // quando o pedido nunca foi pago (ver STATUS_ABANDONO).
 export async function processarPedidoWoocommerce(empresaId: number, payload: any): Promise<number | null> {

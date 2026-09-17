@@ -10,6 +10,7 @@ import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
 import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
 import { sincronizarStatusNotion } from './pollNotionStatus.js'
+import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoAbandonadoPoller.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -171,4 +172,12 @@ export function startScheduler() {
     sincronizarStatusNotion().catch((err) => console.error('[notion-status] erro ao sincronizar:', err))
   })
   sincronizarStatusNotion().catch((err) => console.error('[notion-status] erro ao sincronizar inicial:', err))
+
+  // Carrinhos abandonados da loja online (Compretec Loja Física) captados
+  // pelo plugin Recarto no WordPress — sem credencial configurada, sai
+  // calado (ver woocommerceCarrinhoAbandonadoPoller.ts).
+  cron.schedule('*/5 * * * *', () => {
+    sincronizarCarrinhosAbandonadosCompretec().catch((err) => console.error('[woocommerce-carrinho] erro ao sincronizar:', err))
+  })
+  sincronizarCarrinhosAbandonadosCompretec().catch((err) => console.error('[woocommerce-carrinho] erro ao sincronizar inicial:', err))
 }
