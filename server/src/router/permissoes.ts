@@ -117,6 +117,11 @@ export const FEATURES_ADMIN = [
   // Relatórios (propostas/pipeline/pós-venda/faturamento/máquinas/visitas)
   // — só Odin Compressores, gestor-only.
   'relatorios_odin',
+  // Requisição Posto (abastecimento) — cross-empresa por design, mesmo
+  // padrão de 'painel_financeiro'. Grupo Odin — hub de atalhos gerais.
+  // Ambos 2026-09-15.
+  'requisicao_posto',
+  'grupo_odin',
 ] as const
 
 // "Arquivos/Mídia" (Marketing) NÃO tem chave aqui de propósito — é liberado
@@ -171,6 +176,9 @@ export const FEATURES_VENDEDOR = [
   'visitas_odin',
   // Prospecção Odin (esteira da Bruna) — mesma chave de FEATURES_ADMIN acima.
   'prospeccao_odin',
+  // Cartão de Crédito (gastos com comprovante) — pensado pro vendedor
+  // externo da Odin Compressores. 2026-09-15.
+  'cartao_credito',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima
