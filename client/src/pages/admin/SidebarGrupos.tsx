@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Trash2, ChevronUp, ChevronDown, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import { ADMIN_LINKS, VENDOR_LINKS, NOMES_ICONES_GRUPO } from '../../components/Sidebar'
+import { textoContem } from '../../lib/utils'
 
 function moverNaLista<T>(lista: T[], indice: number, direcao: -1 | 1): T[] {
   const novoIndice = indice + direcao
@@ -49,6 +50,7 @@ const FORM_VAZIO: GrupoForm = { nome: '', icone: 'Folder', itens: [] }
 export default function SidebarGrupos() {
   const [selecionadoId, setSelecionadoId] = useState<number | 'novo' | null>(null)
   const [form, setForm] = useState<GrupoForm>(FORM_VAZIO)
+  const [buscaItens, setBuscaItens] = useState('')
 
   const utils = trpc.useUtils()
   const { data: grupos, isLoading } = trpc.sidebarGrupos.listar.useQuery()
@@ -214,13 +216,23 @@ export default function SidebarGrupos() {
 
                 <div>
                   <p className="text-xs text-dark-500 mb-2">Itens dentro desse grupo</p>
+                  <Input
+                    icon={<Search size={14} />}
+                    placeholder="Buscar item..."
+                    value={buscaItens}
+                    onChange={(e) => setBuscaItens(e.target.value)}
+                    className="mb-2"
+                  />
                   <div className="grid grid-cols-2 gap-2 max-h-96 overflow-y-auto pr-1">
-                    {TODOS_ITENS.map(({ to, label }) => (
+                    {TODOS_ITENS.filter(({ label }) => textoContem(label, buscaItens)).map(({ to, label }) => (
                       <label key={to} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                         <input type="checkbox" className="accent-gold-500" checked={form.itens.includes(to)} onChange={() => toggleItem(to)} />
                         {label}
                       </label>
                     ))}
+                    {TODOS_ITENS.filter(({ label }) => textoContem(label, buscaItens)).length === 0 && (
+                      <p className="col-span-2 text-sm text-dark-500 px-2 py-1.5">Nenhum item encontrado.</p>
+                    )}
                   </div>
                 </div>
 

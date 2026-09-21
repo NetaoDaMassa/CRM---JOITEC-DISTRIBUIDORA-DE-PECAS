@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, Eye, EyeOff, Download } from 'lucide-react'
+import { Plus, Edit3, Trash2, UserCheck, UserX, KeyRound, Camera, Tv, Eye, EyeOff, Download, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
@@ -7,7 +7,7 @@ import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Modal from '../../components/ui/Modal'
 import AvatarMeta from '../../components/ui/AvatarMeta'
-import { formatDate, formatDateTime, timeAgo, downloadBase64Excel } from '../../lib/utils'
+import { formatDate, formatDateTime, timeAgo, downloadBase64Excel, textoContem } from '../../lib/utils'
 
 function fmtMinutos(segundos: number): string {
   const mins = Math.round(segundos / 60)
@@ -162,9 +162,13 @@ export default function AdminUsers() {
   const [senhaGerada, setSenhaGerada] = useState<{ username: string; senha: string } | null>(null)
   const [fotoForm, setFotoForm] = useState<File | null>(null)
   const [enviandoFotoForm, setEnviandoFotoForm] = useState(false)
+  const [busca, setBusca] = useState('')
 
   const utils = trpc.useUtils()
   const { data: users, isLoading } = trpc.users.list.useQuery()
+  const usersFiltrados = users?.filter(
+    (u: any) => textoContem(u.name, busca) || textoContem(u.username, busca) || textoContem(u.funcaoNome ?? '', busca)
+  )
   const { data: funcaoTemplates } = trpc.funcaoTemplates.listar.useQuery()
   const { data: accessLog } = trpc.users.accessLog.useQuery()
   const accessByUser = new Map((accessLog?.users ?? []).map((u) => [u.id, u]))
@@ -304,10 +308,12 @@ export default function AdminUsers() {
 
   return (
     <div className="p-6 space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="font-heading text-2xl text-gold-400 font-bold">Vendedores</h1>
-          <p className="text-dark-400 text-sm">{users?.length ?? 0} usuários cadastrados</p>
+          <p className="text-dark-400 text-sm">
+            {usersFiltrados?.length ?? 0} de {users?.length ?? 0} usuários
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" loading={exportMut.isPending} onClick={() => exportMut.mutate()}>
@@ -325,6 +331,10 @@ export default function AdminUsers() {
             Novo Usuário
           </Button>
         </div>
+      </div>
+
+      <div className="w-72">
+        <Input icon={<Search size={14} />} placeholder="Buscar por nome, usuário ou função..." value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
@@ -350,7 +360,7 @@ export default function AdminUsers() {
                     ))}
                   </tr>
                 ))
-              : users?.map((user) => (
+              : usersFiltrados?.map((user) => (
                   <tr key={user.id} className="hover:bg-dark-700/30 transition-colors">
                     <td className="px-4 py-3">
                       <button
@@ -441,6 +451,13 @@ export default function AdminUsers() {
                     </td>
                   </tr>
                 ))}
+            {!isLoading && !usersFiltrados?.length && (
+              <tr>
+                <td colSpan={10} className="px-4 py-8 text-center text-dark-500 text-sm">
+                  Ninguém encontrado.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
         </div>
