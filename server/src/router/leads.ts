@@ -2,7 +2,7 @@ import { z } from 'zod'
 import fs from 'fs'
 import path from 'path'
 import { eq, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure } from './_base.js'
+import { router, protectedProcedure, adminProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import {
   leads,
@@ -1092,6 +1092,82 @@ export const leadsRouter = router({
       })
 
       return { success: true, total: leadsAlvo.length }
+    }),
+
+  // Mudar o lead de EMPRESA (não só de vendedor) — ex.: lead que caiu na
+  // empresa errada, ou decisão de negócio de rotear pra outro time. Só
+  // superAdmin, igual todo endpoint que atravessa empresa (ver
+  // superAdminProcedure em _base.ts). O vendedor de destino não é escolhido
+  // na mão — segue o mesmo rodízio por DDD/região que um lead novo teria
+  // naquela empresa (getVendorByDDD), pra não bagunçar a distribuição de
+  // quem já está de plantão lá. regionId é recalculado pra empresa nova
+  // (o antigo não existe lá) e campaignId é zerado (campanha é por
+  // empresa, a antiga não faz sentido na nova). Cada lead roda num
+  // try/catch próprio — um problema pontual (ex: origemLeadId duplicado na
+  // empresa de destino, unique constraint) não trava o resto do lote.
+  transferirParaOutraEmpresa: superAdminProcedure
+    .input(z.object({ leadIds: z.array(z.number()).min(1), empresaDestinoId: z.number(), reason: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const empresaDestino = await db.query.empresas.findFirst({ where: eq(empresas.id, input.empresaDestinoId) })
+      if (!empresaDestino) throw new Error('Empresa de destino inválida')
+
+      const leadsAlvo = await db.query.leads.findMany({
+        where: and(inArray(leads.id, input.leadIds), isNull(leads.deletedAt)),
+      })
+      if (!leadsAlvo.length) throw new Error('Nenhum lead válido selecionado')
+
+      let semVendedor = 0
+      const falhas: { id: number; nome: string; motivo: string }[] = []
+
+      for (const lead of leadsAlvo) {
+        if (lead.empresaId === input.empresaDestinoId) continue
+
+        try {
+          const empresaOrigemId = lead.empresaId
+          const vendorId = await getVendorByDDD(lead.ddd, input.empresaDestinoId)
+          const regionId = await getRegionIdByDDD(lead.ddd, input.empresaDestinoId)
+          if (!vendorId) semVendedor++
+
+          await db
+            .update(leads)
+            .set({
+              empresaId: input.empresaDestinoId,
+              vendorId,
+              regionId,
+              campaignId: null,
+              assignedAt: vendorId ? new Date().toISOString() : null,
+              updatedAt: sql`(datetime('now'))`,
+              idleAlertSentAt: null,
+              autoReassignedAt: null,
+            })
+            .where(eq(leads.id, lead.id))
+
+          await db.insert(leadHistory).values({
+            empresaId: input.empresaDestinoId,
+            leadId: lead.id,
+            userId: ctx.user.id,
+            action: 'transferido_empresa',
+            fromStatus: lead.status,
+            toStatus: lead.status,
+            fromVendorId: lead.vendorId,
+            toVendorId: vendorId,
+            details: `Transferido da empresa #${empresaOrigemId} para "${empresaDestino.nome}" (rodízio automático)${vendorId ? '' : ' — sem vendedor no rodízio dessa região'}. ${input.reason ?? ''}`,
+          })
+
+          if (vendorId) {
+            await db.insert(notifications).values({
+              vendedorId: vendorId,
+              type: 'lead_assigned',
+              title: 'Novo lead atribuído',
+              message: `${lead.name} foi transferido pra você agora (de outra empresa).`,
+            })
+          }
+        } catch (err) {
+          falhas.push({ id: lead.id, nome: lead.name, motivo: err instanceof Error ? err.message : 'erro desconhecido' })
+        }
+      }
+
+      return { success: true, total: leadsAlvo.length - falhas.length, semVendedor, falhas }
     }),
 
   delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {

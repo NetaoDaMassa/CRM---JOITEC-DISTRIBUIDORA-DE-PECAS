@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle } from 'lucide-react'
+import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
@@ -51,6 +51,7 @@ export default function Leads() {
   const [limpezaOpen, setLimpezaOpen] = useState(false)
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
   const [transferMuitosOpen, setTransferMuitosOpen] = useState(false)
+  const [transferEmpresaOpen, setTransferEmpresaOpen] = useState(false)
 
   // Muda filtro/página = a seleção de outra tela de resultados não faz mais
   // sentido visível — limpa pra não confundir com "X selecionados" fantasma.
@@ -191,6 +192,12 @@ export default function Leads() {
               <ArrowRightLeft size={14} />
               Transferir selecionados
             </Button>
+            {user?.superAdmin && (
+              <Button size="sm" variant="secondary" onClick={() => setTransferEmpresaOpen(true)}>
+                <Building2 size={14} />
+                Transferir p/ outra empresa
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -369,6 +376,18 @@ export default function Leads() {
         }}
       />
 
+      <TransferirEmpresaModal
+        open={transferEmpresaOpen}
+        total={selecionados.size}
+        leadIds={[...selecionados]}
+        empresas={(empresas ?? []).filter((e) => e.id !== empresaAtivaId)}
+        onClose={() => setTransferEmpresaOpen(false)}
+        onTransferido={() => {
+          setTransferEmpresaOpen(false)
+          setSelecionados(new Set())
+        }}
+      />
+
       <Modal open={!!deleteLead} onClose={() => setDeleteLead(null)} title="Excluir lead" size="sm">
         <p className="text-dark-300 text-sm mb-5">Tem certeza que quer excluir "{deleteLead?.name}"?</p>
         <div className="flex gap-3">
@@ -492,6 +511,75 @@ function TransferMuitosModal({
             loading={mut.isPending}
             disabled={!newVendorId || leadIds.length === 0}
             onClick={() => mut.mutate({ leadIds, newVendorId: Number(newVendorId) })}
+          >
+            Transferir
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// superAdmin-only — muda o lead de empresa (não só de vendedor). O
+// vendedor de destino não é escolhido aqui: segue o mesmo rodízio
+// automático por DDD/região que um lead novo teria na empresa de destino.
+function TransferirEmpresaModal({
+  open,
+  total,
+  leadIds,
+  empresas,
+  onClose,
+  onTransferido,
+}: {
+  open: boolean
+  total: number
+  leadIds: number[]
+  empresas: { id: number; nome: string }[]
+  onClose: () => void
+  onTransferido: () => void
+}) {
+  const utils = trpc.useUtils()
+  const [empresaDestinoId, setEmpresaDestinoId] = useState('')
+
+  const mut = trpc.leads.transferirParaOutraEmpresa.useMutation({
+    onSuccess(data) {
+      if (data.falhas.length > 0) {
+        toast.error(`${data.total} transferido(s), ${data.falhas.length} falharam — veja o console`)
+        console.error('Falhas na transferência entre empresas:', data.falhas)
+      } else {
+        toast.success(`${data.total} lead(s) transferido(s)${data.semVendedor > 0 ? ` (${data.semVendedor} sem vendedor no rodízio dessa região)` : ''}`)
+      }
+      utils.leads.list.invalidate()
+      setEmpresaDestinoId('')
+      onTransferido()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Transferir ${total} lead(s) para outra empresa`} size="sm">
+      <div className="space-y-4">
+        <p className="text-xs text-dark-500">
+          O vendedor de destino é escolhido automaticamente pelo rodízio da empresa de destino (por DDD/região) — não dá pra escolher na mão.
+        </p>
+        <Select
+          label="Empresa de destino"
+          value={empresaDestinoId}
+          onChange={(e) => setEmpresaDestinoId(e.target.value)}
+          placeholder="Selecione..."
+          options={empresas.map((e) => ({ value: e.id, label: e.nome }))}
+        />
+        <div className="flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            className="flex-1"
+            loading={mut.isPending}
+            disabled={!empresaDestinoId || leadIds.length === 0}
+            onClick={() => mut.mutate({ leadIds, empresaDestinoId: Number(empresaDestinoId) })}
           >
             Transferir
           </Button>
