@@ -46,6 +46,7 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   desqualificacao_aprovada: 'Desqualificação confirmada',
   tentativa_contato: 'Tentativa de contato',
   transferido: 'Transferido de vendedor',
+  transferido_empresa: 'Transferido de empresa',
   excluido: 'Excluído',
   reatribuicao_automatica: 'Reatribuído por rodízio',
   email_marketing: 'E-mail marketing',

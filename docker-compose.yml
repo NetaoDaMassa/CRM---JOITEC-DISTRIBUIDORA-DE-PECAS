@@ -27,6 +27,14 @@ services:
       # "Leads aguardando" do Painel de TV. Se vazio, o slide some sozinho.
       MARKETING_CRM_URL: ${MARKETING_CRM_URL:-}
       MARKETING_CRM_API_KEY: ${MARKETING_CRM_API_KEY:-}
+      # Webhooks do WooCommerce da loja online da Compretec Loja Física
+      # (carrinho abandonado + cadastro novo → vira lead). Se vazio, os
+      # webhooks chegam mas são rejeitados (o resto do CRM funciona normal).
+      WOOCOMMERCE_COMPRETEC_WEBHOOK_SECRET: ${WOOCOMMERCE_COMPRETEC_WEBHOOK_SECRET:-}
+      # Poller dos carrinhos abandonados do plugin Recarto (WordPress) —
+      # se vazio, fica desligado sozinho.
+      WOOCOMMERCE_COMPRETEC_SITE_URL: ${WOOCOMMERCE_COMPRETEC_SITE_URL:-}
+      WOOCOMMERCE_COMPRETEC_EXPORT_SECRET: ${WOOCOMMERCE_COMPRETEC_EXPORT_SECRET:-}
       # Pedido de arte/vídeo aprovado (Solicitação de Design) cai sozinho numa
       # base do Notion, pro marketing ver sem precisar entrar no CRM. Se
       # vazio, o recurso fica desabilitado (aprovação funciona igual, só não
