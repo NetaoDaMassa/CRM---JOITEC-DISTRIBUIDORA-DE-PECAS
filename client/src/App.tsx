@@ -39,6 +39,7 @@ import LeadsKanban from './pages/admin/LeadsKanban'
 import LeadsDesqualificados from './pages/admin/LeadsDesqualificados'
 import LeadsRelatorios from './pages/admin/LeadsRelatorios'
 import Campanhas from './pages/admin/Campanhas'
+import IntegracaoBrevo from './pages/admin/IntegracaoBrevo'
 import LeadsRegioes from './pages/admin/LeadsRegioes'
 import SidebarGrupos from './pages/admin/SidebarGrupos'
 import AutomacaoLeads from './pages/admin/AutomacaoLeads'
@@ -222,6 +223,7 @@ export default function App() {
           <Route path="admin/leads-desqualificados" element={<AdminGuard><FeatureGuard feature="leads"><LeadsDesqualificados /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-relatorios" element={<AdminGuard><FeatureGuard feature="leads"><LeadsRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/campanhas" element={<AdminGuard><FeatureGuard feature="leads"><Campanhas /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/integracao-brevo" element={<AdminGuard><FeatureGuard feature="leads"><IntegracaoBrevo /></FeatureGuard></AdminGuard>} />
           <Route path="admin/arquivos" element={<AdminGuard><FeatureGuard feature="arquivos"><MarketingArquivos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />

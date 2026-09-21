@@ -129,14 +129,16 @@ export function getLeadContactUrgency(nextContactAt: string, status: string) {
 // `phone`. Essas duas funções juntam ddd+phone sem duplicar o DDD quando ele
 // já está lá — usadas tanto pra exibir o telefone quanto pra montar o link
 // do WhatsApp/discador, que precisam do número completo.
-export function leadTelefoneCompleto(ddd: number, phone: string): string {
+export function leadTelefoneCompleto(ddd: number | null, phone: string | null): string {
+  if (ddd === null || phone === null) return ''
   const digitosPhone = phone.replace(/\D/g, '')
   const dddStr = String(ddd)
   if (digitosPhone.length >= 10 && digitosPhone.startsWith(dddStr)) return digitosPhone
   return `${dddStr}${digitosPhone}`
 }
 
-export function leadTelefoneFormatado(ddd: number, phone: string): string {
+export function leadTelefoneFormatado(ddd: number | null, phone: string | null): string {
+  if (ddd === null || phone === null) return 'Sem telefone'
   const completo = leadTelefoneCompleto(ddd, phone)
   const local = completo.slice(String(ddd).length)
   if (local.length === 9) return `(${ddd}) ${local.slice(0, 5)}-${local.slice(5)}`

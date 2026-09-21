@@ -38,6 +38,7 @@ import { candidatosRouter } from './candidatos.js'
 import { mensagensRhRouter } from './mensagensRh.js'
 import { contasVinculadasRouter } from './contasVinculadas.js'
 import { integracoesRouter } from './integracoes.js'
+import { brevoRouter } from './brevo.js'
 import { leadsRouter } from './leads.js'
 import { leadsRelatoriosRouter } from './leadsRelatorios.js'
 import { leadsRegioesRouter } from './leadsRegioes.js'
@@ -127,6 +128,7 @@ export const appRouter = router({
   leadCampaigns: leadCampaignsRouter,
   avisoLeads: avisoLeadsRouter,
   marketing: marketingRouter,
+  brevo: brevoRouter,
 })
 
 export type AppRouter = typeof appRouter

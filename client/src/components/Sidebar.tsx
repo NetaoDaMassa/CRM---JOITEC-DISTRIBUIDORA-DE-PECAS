@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Mail,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -106,6 +106,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/leads-desqualificados', label: 'Revisão de Leads', icon: ShieldCheck, feature: 'leads' },
   { to: '/admin/leads-relatorios', label: 'Relatórios de Leads', icon: BarChart3, feature: 'leads' },
   { to: '/admin/campanhas', label: 'Campanhas', icon: Megaphone, feature: 'leads' },
+  { to: '/admin/integracao-brevo', label: 'Integração Brevo', icon: Mail, feature: 'leads' },
   // Arquivos/Mídia (Marketing) — pastas/fotos/vídeos/PDFs, todas as empresas.
   { to: '/admin/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },
   // "Solicitar Arte" pro admin — mesma tela de VENDOR_LINKS (trpc.design.*

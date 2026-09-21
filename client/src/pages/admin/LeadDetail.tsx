@@ -48,6 +48,7 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   transferido: 'Transferido de vendedor',
   excluido: 'Excluído',
   reatribuicao_automatica: 'Reatribuído por rodízio',
+  email_marketing: 'E-mail marketing',
 }
 
 const TRACKING_EVENT_LABELS: Record<string, string> = {

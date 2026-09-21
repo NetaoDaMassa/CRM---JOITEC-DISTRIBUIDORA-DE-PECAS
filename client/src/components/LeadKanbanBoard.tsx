@@ -21,8 +21,8 @@ import {
 type LeadCard = {
   id: number
   name: string
-  phone: string
-  ddd: number
+  phone: string | null
+  ddd: number | null
   email: string | null
   company: string | null
   status: string
@@ -192,7 +192,7 @@ export default function LeadKanbanBoard({
                         </div>
                         <div className="flex items-center gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          <WhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} size="sm" />
+                          {lead.phone && <WhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} size="sm" />}
                         </div>
                       </div>
 

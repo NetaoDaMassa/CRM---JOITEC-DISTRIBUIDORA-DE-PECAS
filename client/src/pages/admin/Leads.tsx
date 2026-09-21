@@ -294,8 +294,12 @@ export default function Leads() {
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          <LeadLigarButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
-                          <LeadWhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
+                          {lead.phone && (
+                            <>
+                              <LeadLigarButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
+                              <LeadWhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
+                            </>
+                          )}
                         </div>
                       </td>
                       {isAdmin && (

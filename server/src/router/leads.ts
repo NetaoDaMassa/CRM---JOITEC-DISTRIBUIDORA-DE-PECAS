@@ -206,7 +206,10 @@ export const leadsRouter = router({
       if (search) {
         const s = search.toLowerCase()
         filtered = filtered.filter(
-          (l) => l.name.toLowerCase().includes(s) || l.phone.includes(s) || (l.company?.toLowerCase().includes(s) ?? false)
+          (l) =>
+            l.name.toLowerCase().includes(s) ||
+            (l.phone?.includes(s) ?? false) ||
+            (l.company?.toLowerCase().includes(s) ?? false)
         )
       }
 

@@ -12,6 +12,11 @@ export const empresas = sqliteTable('empresas', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   nome: text('nome').notNull(),
   slug: text('slug').notNull().unique(),
+  // Token secreto da URL do webhook de e-mail marketing (Brevo) dessa
+  // empresa — /api/brevo/webhook/:slug/:token, ver server/src/routes/
+  // brevo.ts. Nulo até alguém gerar em Configurações/Integrações. Cada
+  // empresa tem o seu (contas Brevo são separadas por empresa).
+  brevoWebhookToken: text('brevo_webhook_token'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -1312,8 +1317,12 @@ export const leads = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
-    phone: text('phone').notNull(),
-    ddd: integer('ddd').notNull(),
+    // Nulo só pra lead que veio de e-mail marketing (Brevo) sem telefone
+    // extraível — todo outro fluxo de criação continua exigindo os dois (ver
+    // leads.create). Sem ddd não dá pra rodízio por região (getVendorByDDD),
+    // então esse lead nasce sem vendedor até alguém completar o telefone.
+    phone: text('phone'),
+    ddd: integer('ddd'),
     email: text('email'),
     company: text('company'),
     city: text('city'),
@@ -1380,8 +1389,34 @@ export const leads = sqliteTable(
   },
   (t) => ({
     origemIdx: unique().on(t.empresaId, t.origemLeadId),
+    emailIdx: index('leads_email_idx').on(t.email),
   })
 )
+
+// Eventos de e-mail marketing (Brevo, por enquanto) — um por recebido via
+// webhook (server/src/routes/brevo.ts). 'aberto' só vira histórico (nunca
+// cria lead sozinho, sinal fraco demais); 'clicado'/'resposta' entram na
+// fila de "Respostas sem vínculo" quando não batem com nenhum lead pelo
+// e-mail (ver leadsBrevo.ts) — resposta com telefone reconhecível no texto
+// cria o lead na hora, sem passar pela fila.
+export const emailMarketingEventos = sqliteTable('email_marketing_eventos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  origem: text('origem', { enum: ['brevo'] }).notNull().default('brevo'),
+  tipo: text('tipo', {
+    enum: ['entregue', 'aberto', 'clicado', 'resposta', 'rejeitado', 'spam', 'descadastrado', 'bloqueado'],
+  }).notNull(),
+  email: text('email').notNull(),
+  nomeCampanha: text('nome_campanha'),
+  assunto: text('assunto'),
+  url: text('url'), // só em 'clicado'
+  motivo: text('motivo'), // só em 'rejeitado'/'bloqueado'
+  conteudo: text('conteudo'), // corpo da resposta, só em 'resposta'
+  leadId: integer('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+  leadCriadoAutomaticamente: integer('lead_criado_automaticamente', { mode: 'boolean' }).notNull().default(false),
+  payloadBruto: text('payload_bruto'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
 
 export const leadNotes = sqliteTable('lead_notes', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -1525,11 +1560,17 @@ export const leadsRelations = relations(leads, ({ one, many }) => ({
   history: many(leadHistory),
   contactAttempts: many(leadContactAttempts),
   trackingVisitors: many(leadTrackingVisitors),
+  emailMarketingEventos: many(emailMarketingEventos),
 }))
 
 export const leadNotesRelations = relations(leadNotes, ({ one }) => ({
   lead: one(leads, { fields: [leadNotes.leadId], references: [leads.id] }),
   user: one(users, { fields: [leadNotes.userId], references: [users.id] }),
+}))
+
+export const emailMarketingEventosRelations = relations(emailMarketingEventos, ({ one }) => ({
+  empresa: one(empresas, { fields: [emailMarketingEventos.empresaId], references: [empresas.id] }),
+  lead: one(leads, { fields: [emailMarketingEventos.leadId], references: [leads.id] }),
 }))
 
 export const leadAttachmentsRelations = relations(leadAttachments, ({ one }) => ({

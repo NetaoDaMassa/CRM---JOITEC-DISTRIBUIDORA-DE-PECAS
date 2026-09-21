@@ -19,6 +19,7 @@ import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermis
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
 import { trackingRouter, TRACKER_JS } from './routes/tracking.js'
+import { brevoRouter } from './routes/brevo.js'
 
 config()
 
@@ -55,6 +56,12 @@ app.use('/api/tracking', cors({ origin: true }), trackingRouter)
 app.get('/tracker.js', cors({ origin: true }), (req, res) => {
   res.type('application/javascript').send(TRACKER_JS)
 })
+
+// Webhook do Brevo (e-mail marketing) — chamada servidor-a-servidor pela
+// Brevo, não pelo navegador, então não precisa do CORS aberto acima (não
+// tem preflight). Fica antes do CORS global só por organização, junto das
+// outras rotas públicas.
+app.use('/api/brevo', brevoRouter)
 
 app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173', credentials: true }))
 app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))
