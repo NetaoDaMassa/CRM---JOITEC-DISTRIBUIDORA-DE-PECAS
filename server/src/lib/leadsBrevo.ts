@@ -182,7 +182,12 @@ export async function processarEventoBrevo(empresaId: number, rawBody: unknown):
         toStatus: 'novo',
         details: `Lead criado a partir de ${evento.tipo === 'resposta' ? 'resposta' : 'clique'} de e-mail marketing (Brevo) — sem telefone, sem vendedor até completar.`,
       })
-    } else if (leadExistente) {
+      // "entregue" fica de fora do histórico do lead de propósito — dispara
+      // em TODO envio de campanha (não é sinal de interesse, é só
+      // confirmação técnica) e ia poluir a ficha com uma linha por
+      // newsletter mandada. Continua salvo em emailMarketingEventos, só não
+      // aparece na timeline.
+    } else if (leadExistente && evento.tipo !== 'entregue') {
       await db.insert(leadHistory).values({
         empresaId,
         leadId: leadExistente.id,
