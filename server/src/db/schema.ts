@@ -17,6 +17,12 @@ export const empresas = sqliteTable('empresas', {
   // brevo.ts. Nulo até alguém gerar em Configurações/Integrações. Cada
   // empresa tem o seu (contas Brevo são separadas por empresa).
   brevoWebhookToken: text('brevo_webhook_token'),
+  // Chave de API do Brevo (Configurações > SMTP e API > Chaves de API, lá no
+  // Brevo) — opcional, só usada pra enriquecer lead criado a partir de
+  // clique/resposta (buscar nome/telefone/empresa/cidade do cadastro do
+  // contato no Brevo, ver server/src/lib/brevoApi.ts). Sem ela, o lead
+  // continua nascendo só com nome chutado a partir do e-mail.
+  brevoApiKey: text('brevo_api_key'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 

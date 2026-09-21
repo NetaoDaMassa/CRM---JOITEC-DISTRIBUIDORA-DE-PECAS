@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Copy, RefreshCw, ExternalLink } from 'lucide-react'
+import { Copy, RefreshCw, ExternalLink, KeyRound, X } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { timeAgo } from '../../lib/utils'
@@ -32,6 +32,7 @@ export default function IntegracaoBrevo() {
   const { data: config, isLoading } = trpc.brevo.config.useQuery()
   const { data: eventos } = trpc.brevo.eventosRecentes.useQuery({ limit: 50 })
   const [gerando, setGerando] = useState(false)
+  const [apiKeyInput, setApiKeyInput] = useState('')
 
   const gerarMut = trpc.brevo.gerarToken.useMutation({
     onSuccess() {
@@ -42,6 +43,27 @@ export default function IntegracaoBrevo() {
     onError(err) {
       toast.error(err.message)
       setGerando(false)
+    },
+  })
+
+  const salvarApiKeyMut = trpc.brevo.salvarApiKey.useMutation({
+    onSuccess() {
+      utils.brevo.config.invalidate()
+      setApiKeyInput('')
+      toast.success('Chave de API salva')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const removerApiKeyMut = trpc.brevo.removerApiKey.useMutation({
+    onSuccess() {
+      utils.brevo.config.invalidate()
+      toast.success('Chave de API removida')
+    },
+    onError(err) {
+      toast.error(err.message)
     },
   })
 
@@ -113,6 +135,47 @@ export default function IntegracaoBrevo() {
               </li>
               <li>Salve.</li>
             </ol>
+          </div>
+
+          <div className="border-t border-dark-700 pt-4">
+            <p className="text-sm font-semibold text-dark-100 mb-2">3. Chave de API (opcional, mas recomendado)</p>
+            <p className="text-xs text-dark-400 mb-2">
+              Com a chave, o CRM busca o cadastro completo do contato no Brevo (nome, telefone, empresa) assim que um lead
+              é criado por clique/resposta — sem ela, o lead nasce só com o nome tirado do e-mail. Pega em{' '}
+              <span className="text-gold-400">Configurações → SMTP e API → Chaves de API</span> no Brevo.
+            </p>
+            {config?.temApiKey ? (
+              <div className="flex items-center gap-2 text-sm text-green-400 bg-green-900/15 border border-green-700/30 rounded-lg px-3 py-2">
+                <KeyRound size={14} />
+                Chave configurada
+                <button
+                  type="button"
+                  onClick={() => removerApiKeyMut.mutate()}
+                  disabled={removerApiKeyMut.isPending}
+                  className="ml-auto text-red-400 hover:text-red-300 flex items-center gap-1"
+                >
+                  <X size={13} /> Remover
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="password"
+                  placeholder="xkeysib-..."
+                  value={apiKeyInput}
+                  onChange={(e) => setApiKeyInput(e.target.value)}
+                  className="flex-1 bg-dark-900 border border-dark-700 rounded-lg text-xs text-dark-200 px-3 py-2 font-mono"
+                />
+                <Button
+                  size="sm"
+                  loading={salvarApiKeyMut.isPending}
+                  disabled={!apiKeyInput.trim()}
+                  onClick={() => salvarApiKeyMut.mutate({ apiKey: apiKeyInput.trim() })}
+                >
+                  Salvar
+                </Button>
+              </div>
+            )}
           </div>
 
           <div className="border-t border-dark-700 pt-4 bg-dark-900/40 rounded-xl p-3">

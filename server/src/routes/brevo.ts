@@ -22,7 +22,7 @@ brevoRouter.post('/webhook/:empresaSlug/:token', async (req, res) => {
       return res.status(404).json({ ok: false })
     }
 
-    const { processados } = await processarEventoBrevo(empresa.id, req.body)
+    const { processados } = await processarEventoBrevo(empresa.id, empresa.brevoApiKey, req.body)
     res.json({ ok: true, processados })
   } catch (err) {
     // 200 mesmo em erro nosso — webhook malformado ou bug aqui não pode

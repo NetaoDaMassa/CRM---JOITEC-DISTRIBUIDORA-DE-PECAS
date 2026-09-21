@@ -1,0 +1,1 @@
+ALTER TABLE `empresas` ADD `brevo_api_key` text;

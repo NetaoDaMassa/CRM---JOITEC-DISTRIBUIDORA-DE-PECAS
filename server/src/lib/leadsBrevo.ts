@@ -1,6 +1,9 @@
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, leadHistory, emailMarketingEventos } from '../db/schema.js'
+import { parseTelefone } from './leadsTrackingService.js'
+import { getVendorByDDD, getRegionIdByDDD } from './leadsRoundRobin.js'
+import { buscarContatoBrevo } from './brevoApi.js'
 
 // Integração com Brevo (e-mail marketing) — pedido do João, 2026-09-21.
 // Chamada por server/src/routes/brevo.ts (rota pública, um webhook por
@@ -147,7 +150,11 @@ const HISTORICO_LABEL: Record<TipoEvento, string> = {
 // Sempre grava em `emailMarketingEventos`, casado ou não com um lead — é o
 // registro bruto que sustenta o relatório e serve de log pra depurar o
 // formato do payload real da Brevo.
-export async function processarEventoBrevo(empresaId: number, rawBody: unknown): Promise<{ processados: number }> {
+export async function processarEventoBrevo(
+  empresaId: number,
+  apiKey: string | null,
+  rawBody: unknown
+): Promise<{ processados: number }> {
   const eventos = normalizarPayload(rawBody)
   let processados = 0
 
@@ -160,16 +167,29 @@ export async function processarEventoBrevo(empresaId: number, rawBody: unknown):
     let leadCriado = false
 
     if (!leadExistente && TIPOS_QUE_CRIAM_LEAD.includes(evento.tipo)) {
-      const nome = evento.nomeContato?.trim() || nomeAPartirDoEmail(evento.email)
+      // Com chave de API configurada, tenta buscar o cadastro completo do
+      // contato no Brevo (nome/telefone/empresa/cidade) antes de criar o
+      // lead — se achar telefone, o lead já nasce completo (com vendedor,
+      // via rodízio por DDD), em vez de parado esperando alguém completar.
+      const enriquecido = apiKey ? await buscarContatoBrevo(apiKey, evento.email) : null
+      const nome = enriquecido?.nome || evento.nomeContato?.trim() || nomeAPartirDoEmail(evento.email)
+      const telefoneParsed = enriquecido?.telefone ? parseTelefone(enriquecido.telefone) : null
+
+      const vendorId = telefoneParsed ? await getVendorByDDD(telefoneParsed.ddd, empresaId) : null
+      const regionId = telefoneParsed ? await getRegionIdByDDD(telefoneParsed.ddd, empresaId) : null
+
       const result = await db.insert(leads).values({
         empresaId,
         name: nome,
-        // Sem telefone — e-mail marketing só traz o e-mail. Lead nasce sem
-        // vendedor (rodízio por DDD não roda sem DDD) até alguém completar.
-        phone: null,
-        ddd: null,
+        phone: telefoneParsed?.phone ?? null,
+        ddd: telefoneParsed?.ddd ?? null,
         email: evento.email,
+        company: enriquecido?.empresa ?? null,
+        city: enriquecido?.cidade ?? null,
         source: `brevo_${evento.tipo}`,
+        vendorId,
+        regionId,
+        assignedAt: vendorId ? new Date().toISOString() : null,
         statusChangedAt: new Date().toISOString(),
       })
       leadId = Number(result.lastInsertRowid)
@@ -180,7 +200,9 @@ export async function processarEventoBrevo(empresaId: number, rawBody: unknown):
         leadId,
         action: 'criado',
         toStatus: 'novo',
-        details: `Lead criado a partir de ${evento.tipo === 'resposta' ? 'resposta' : 'clique'} de e-mail marketing (Brevo) — sem telefone, sem vendedor até completar.`,
+        details: telefoneParsed
+          ? `Lead criado a partir de ${evento.tipo === 'resposta' ? 'resposta' : 'clique'} de e-mail marketing (Brevo) — telefone encontrado no cadastro do Brevo${vendorId ? ' e atribuído ao vendedor' : ''}.`
+          : `Lead criado a partir de ${evento.tipo === 'resposta' ? 'resposta' : 'clique'} de e-mail marketing (Brevo) — sem telefone, sem vendedor até completar.`,
       })
       // "entregue" fica de fora do histórico do lead de propósito — dispara
       // em TODO envio de campanha (não é sinal de interesse, é só

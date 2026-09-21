@@ -12,13 +12,28 @@ import { empresas, emailMarketingEventos } from '../db/schema.js'
 export const brevoRouter = router({
   config: adminProcedure.query(async ({ ctx }) => {
     const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
-    return { token: empresa?.brevoWebhookToken ?? null, empresaSlug: empresa?.slug ?? '' }
+    return {
+      token: empresa?.brevoWebhookToken ?? null,
+      empresaSlug: empresa?.slug ?? '',
+      // Nunca devolve a chave em si pro front, só se já tem uma salva.
+      temApiKey: !!empresa?.brevoApiKey,
+    }
   }),
 
   gerarToken: adminProcedure.mutation(async ({ ctx }) => {
     const token = randomBytes(16).toString('hex')
     await db.update(empresas).set({ brevoWebhookToken: token }).where(eq(empresas.id, ctx.empresaId))
     return { token }
+  }),
+
+  salvarApiKey: adminProcedure.input(z.object({ apiKey: z.string().trim().min(1) })).mutation(async ({ ctx, input }) => {
+    await db.update(empresas).set({ brevoApiKey: input.apiKey }).where(eq(empresas.id, ctx.empresaId))
+    return { ok: true }
+  }),
+
+  removerApiKey: adminProcedure.mutation(async ({ ctx }) => {
+    await db.update(empresas).set({ brevoApiKey: null }).where(eq(empresas.id, ctx.empresaId))
+    return { ok: true }
   }),
 
   eventosRecentes: adminProcedure
