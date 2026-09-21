@@ -441,6 +441,17 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
             // dataVisita é gravada em hora de parede de Brasília (o que o
             // vendedor digitou no datetime-local) — mostra o valor cru.
             const hora = (iso: string | null) => (iso ? iso.slice(11, 16) : null)
+            // Igual à hora acima: manipulação de string, não Date, pra não
+            // arriscar reintroduzir o bug de fuso já resolvido nesse módulo
+            // (ver comentário de agoraParaInputLocal/hojeBrString). Card na
+            // aba "Todas" pode misturar visitas de meses/anos diferentes —
+            // só hora não bastava pra saber qual dia era.
+            const dataFormatada = (iso: string | null) => {
+              const dia = (iso ?? '').slice(0, 10)
+              if (dia.length !== 10) return null
+              const [ano, mes, d] = dia.split('-')
+              return `${d}/${mes}/${ano}`
+            }
             // checkinEm/checkoutEm vêm do agoraSqlite() do back, que grava em
             // UTC — sem converter pro fuso de Brasília apareciam 3h adiantados.
             const horaBr = (ts: string | null) =>
@@ -452,7 +463,11 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                   })
                 : null
             return (
-              <div key={v.id} className="bg-dark-800 rounded-xl border border-dark-600 p-4 text-sm hover:shadow-lg hover:shadow-black/20 transition-shadow">
+              <div
+                key={v.id}
+                onClick={() => abrirEdicao(v)}
+                className="bg-dark-800 rounded-xl border border-dark-600 p-4 text-sm cursor-pointer hover:border-gold-600/50 hover:shadow-lg hover:shadow-black/20 transition-all"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -477,7 +492,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                     <div className="flex items-center gap-4 mt-2 text-xs text-dark-400 flex-wrap">
                       <span className="flex items-center gap-1">
                         <Clock size={12} />
-                        {horaBr(v.checkinEm) ?? hora(v.dataVisita) ?? v.dataVisita}
+                        {dataFormatada(v.dataVisita)} {horaBr(v.checkinEm) ?? hora(v.dataVisita) ?? v.dataVisita}
                         {v.checkoutEm && <> – {horaBr(v.checkoutEm)}</>}
                         {duracaoMin !== null && <span className="ml-1 text-[11px] text-dark-500">({duracaoMin}min)</span>}
                       </span>
@@ -490,7 +505,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                           <MapPinOff size={12} /> Sem GPS
                           {podeEditar && (
                             <button
-                              onClick={() => tentarLocalizacaoDeNovo(v.id)}
+                              onClick={(e) => { e.stopPropagation(); tentarLocalizacaoDeNovo(v.id) }}
                               disabled={capturandoGpsId === v.id}
                               className="ml-0.5 underline decoration-dotted hover:text-amber-300 disabled:opacity-60"
                             >
@@ -517,7 +532,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                     )}
                   </div>
 
-                  <div className="flex gap-1 shrink-0">
+                  <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                     {podeEditar && (
                       <>
                         {!v.checkinEm && (
