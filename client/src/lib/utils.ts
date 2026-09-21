@@ -11,6 +11,14 @@ function toUtcDate(date: string | Date): Date {
   return new Date(date.replace(' ', 'T') + 'Z')
 }
 
+// Compara ignorando acento/maiúscula — pra campo de busca em lista longa
+// (Vendedores, Funções, Permissões, Grupos da Sidebar) não exigir digitar
+// "ç"/"ã" certinho pra achar "Prospecção"/"Região".
+export function textoContem(texto: string, busca: string): boolean {
+  const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+  return normalizar(texto).includes(normalizar(busca))
+}
+
 // Percentuais de meta vêm do backend com 1 casa decimal (ex: 5.3) — formata
 // com vírgula (padrão BR) igual ao resto do app, em vez do ponto do JS puro.
 export function formatarPercentual(v: number | null | undefined): string {

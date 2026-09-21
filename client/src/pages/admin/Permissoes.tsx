@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react'
+import { Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
+import { Input } from '../../components/ui/Input'
 import { ADMIN_LINKS, VENDOR_LINKS, FEATURES_SEMPRE_LIBERADAS } from '../../components/Sidebar'
+import { textoContem } from '../../lib/utils'
 
 // Painel Financeiro e Painel de TV não são itens do menu comum (ADMIN_LINKS)
 // — são links à parte no Sidebar, renderizados fora do links.map(). Somados
@@ -32,11 +35,14 @@ const FEATURES_RELATORIOS = [
 export default function Permissoes() {
   const [userIdSelecionado, setUserIdSelecionado] = useState<number | null>(null)
   const [featuresSelecionadas, setFeaturesSelecionadas] = useState<string[]>([])
+  const [buscaAdmin, setBuscaAdmin] = useState('')
+  const [buscaFeature, setBuscaFeature] = useState('')
 
   const utils = trpc.useUtils()
   const { data: admins, isLoading } = trpc.permissoes.listarAdmins.useQuery()
 
   const adminAtual = admins?.find((a) => a.id === userIdSelecionado) ?? admins?.[0]
+  const adminsFiltrados = admins?.filter((a) => textoContem(a.name, buscaAdmin))
 
   useEffect(() => {
     if (adminAtual && userIdSelecionado === null) setUserIdSelecionado(adminAtual.id)
@@ -77,23 +83,27 @@ export default function Permissoes() {
 
       {!!admins?.length && (
         <div className="grid grid-cols-[240px_1fr] gap-4">
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden self-start">
-            {admins.map((a) => (
-              <button
-                key={a.id}
-                onClick={() => setUserIdSelecionado(a.id)}
-                className={`w-full text-left px-4 py-3 text-sm transition-colors ${
-                  adminAtual?.id === a.id ? 'bg-gold-600/20 text-gold-400' : 'text-dark-200 hover:bg-dark-700'
-                }`}
-              >
-                <p className="font-medium truncate">{a.name}</p>
-                <p className="text-xs text-dark-500 truncate">
-                  {a.superAdmin ? 'Admin principal · acesso total' : `@${a.username}`}
-                  {!a.superAdmin && a.funcaoNome ? ` · ${a.funcaoNome}` : ''}
-                  {!a.isActive ? ' · inativo' : ''}
-                </p>
-              </button>
-            ))}
+          <div className="space-y-2 self-start">
+            <Input icon={<Search size={14} />} placeholder="Buscar admin..." value={buscaAdmin} onChange={(e) => setBuscaAdmin(e.target.value)} />
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden max-h-96 overflow-y-auto">
+              {adminsFiltrados?.map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setUserIdSelecionado(a.id)}
+                  className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                    adminAtual?.id === a.id ? 'bg-gold-600/20 text-gold-400' : 'text-dark-200 hover:bg-dark-700'
+                  }`}
+                >
+                  <p className="font-medium truncate">{a.name}</p>
+                  <p className="text-xs text-dark-500 truncate">
+                    {a.superAdmin ? 'Admin principal · acesso total' : `@${a.username}`}
+                    {!a.superAdmin && a.funcaoNome ? ` · ${a.funcaoNome}` : ''}
+                    {!a.isActive ? ' · inativo' : ''}
+                  </p>
+                </button>
+              ))}
+              {!adminsFiltrados?.length && <p className="px-4 py-3 text-sm text-dark-500">Ninguém encontrado.</p>}
+            </div>
           </div>
 
           <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-4">
@@ -101,8 +111,9 @@ export default function Permissoes() {
               <p className="text-sm text-dark-400">{adminAtual.name} é admin principal e sempre tem acesso a todos os itens — não precisa configurar.</p>
             ) : adminAtual ? (
               <>
+                <Input icon={<Search size={14} />} placeholder="Buscar tela..." value={buscaFeature} onChange={(e) => setBuscaFeature(e.target.value)} />
                 <div className="grid grid-cols-2 gap-2">
-                  {FEATURES.map(({ feature, label }) => (
+                  {FEATURES.filter(({ label }) => textoContem(label, buscaFeature)).map(({ feature, label }) => (
                     <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                       <input
                         type="checkbox"
@@ -113,6 +124,9 @@ export default function Permissoes() {
                       {label}
                     </label>
                   ))}
+                  {!FEATURES.filter(({ label }) => textoContem(label, buscaFeature)).length && (
+                    <p className="col-span-2 text-sm text-dark-500 px-2 py-1.5">Nenhuma tela encontrada.</p>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-dark-700">
@@ -157,11 +171,14 @@ export default function Permissoes() {
 function PermissoesVendedor() {
   const [userIdSelecionado, setUserIdSelecionado] = useState<number | null>(null)
   const [featuresSelecionadas, setFeaturesSelecionadas] = useState<string[]>([])
+  const [buscaVendedor, setBuscaVendedor] = useState('')
+  const [buscaFeature, setBuscaFeature] = useState('')
 
   const utils = trpc.useUtils()
   const { data: vendedores, isLoading } = trpc.permissoes.listarVendedores.useQuery()
 
   const vendedorAtual = vendedores?.find((v) => v.id === userIdSelecionado) ?? vendedores?.[0]
+  const vendedoresFiltrados = vendedores?.filter((v) => textoContem(v.name, buscaVendedor))
 
   useEffect(() => {
     if (vendedorAtual && userIdSelecionado === null) setUserIdSelecionado(vendedorAtual.id)
@@ -202,29 +219,34 @@ function PermissoesVendedor() {
 
       {!!vendedores?.length && (
         <div className="grid grid-cols-[240px_1fr] gap-4">
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden self-start max-h-96 overflow-y-auto">
-            {vendedores.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => setUserIdSelecionado(v.id)}
-                className={`w-full text-left px-4 py-3 text-sm transition-colors ${
-                  vendedorAtual?.id === v.id ? 'bg-gold-600/20 text-gold-400' : 'text-dark-200 hover:bg-dark-700'
-                }`}
-              >
-                <p className="font-medium truncate">{v.name}</p>
-                <p className="text-xs text-dark-500 truncate">
-                  @{v.username}
-                  {!v.isActive ? ' · inativo' : ''}
-                </p>
-              </button>
-            ))}
+          <div className="space-y-2 self-start">
+            <Input icon={<Search size={14} />} placeholder="Buscar vendedor..." value={buscaVendedor} onChange={(e) => setBuscaVendedor(e.target.value)} />
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden max-h-96 overflow-y-auto">
+              {vendedoresFiltrados?.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => setUserIdSelecionado(v.id)}
+                  className={`w-full text-left px-4 py-3 text-sm transition-colors ${
+                    vendedorAtual?.id === v.id ? 'bg-gold-600/20 text-gold-400' : 'text-dark-200 hover:bg-dark-700'
+                  }`}
+                >
+                  <p className="font-medium truncate">{v.name}</p>
+                  <p className="text-xs text-dark-500 truncate">
+                    @{v.username}
+                    {!v.isActive ? ' · inativo' : ''}
+                  </p>
+                </button>
+              ))}
+              {!vendedoresFiltrados?.length && <p className="px-4 py-3 text-sm text-dark-500">Ninguém encontrado.</p>}
+            </div>
           </div>
 
           <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-4 self-start">
             {vendedorAtual ? (
               <>
+                <Input icon={<Search size={14} />} placeholder="Buscar tela..." value={buscaFeature} onChange={(e) => setBuscaFeature(e.target.value)} />
                 <div className="grid grid-cols-2 gap-2">
-                  {FEATURES_VENDEDOR.map(({ feature, label }) => (
+                  {FEATURES_VENDEDOR.filter(({ label }) => textoContem(label, buscaFeature)).map(({ feature, label }) => (
                     <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                       <input
                         type="checkbox"
@@ -235,6 +257,9 @@ function PermissoesVendedor() {
                       {label}
                     </label>
                   ))}
+                  {!FEATURES_VENDEDOR.filter(({ label }) => textoContem(label, buscaFeature)).length && (
+                    <p className="col-span-2 text-sm text-dark-500 px-2 py-1.5">Nenhuma tela encontrada.</p>
+                  )}
                 </div>
 
                 <div className="pt-2 border-t border-dark-700">
@@ -276,6 +301,7 @@ function PermissoesVendedor() {
 function VinculoContas() {
   const [userIdSelecionado, setUserIdSelecionado] = useState<number | null>(null)
   const [busca, setBusca] = useState('')
+  const [buscaCandidato, setBuscaCandidato] = useState('')
   const [selecionadas, setSelecionadas] = useState<number[]>([])
 
   const utils = trpc.useUtils()
@@ -303,6 +329,7 @@ function VinculoContas() {
 
   const usuariosFiltrados = usuarios?.filter((u) => u.name.toLowerCase().includes(busca.toLowerCase()))
   const candidatos = usuarios?.filter((u) => u.id !== userIdSelecionado)
+  const candidatosFiltrados = candidatos?.filter((c) => textoContem(c.name, buscaCandidato))
 
   return (
     <div className="space-y-3">
@@ -352,8 +379,14 @@ function VinculoContas() {
                   Contas que <strong className="text-dark-100">{usuarioAtual.name}</strong> ({usuarioAtual.empresaNome}) pode
                   trocar sem senha:
                 </p>
+                <Input
+                  icon={<Search size={14} />}
+                  placeholder="Buscar pessoa..."
+                  value={buscaCandidato}
+                  onChange={(e) => setBuscaCandidato(e.target.value)}
+                />
                 <div className="max-h-80 overflow-y-auto space-y-1">
-                  {candidatos?.map((c) => (
+                  {candidatosFiltrados?.map((c) => (
                     <label key={c.id} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                       <input
                         type="checkbox"

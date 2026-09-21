@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import { ADMIN_LINKS, VENDOR_LINKS, FEATURES_SEMPRE_LIBERADAS } from '../../components/Sidebar'
+import { textoContem } from '../../lib/utils'
 
 // Painel Financeiro e Painel de TV não são itens do menu comum (ADMIN_LINKS)
 // — mesma ressalva de Permissoes.tsx. Itens em FEATURES_SEMPRE_LIBERADAS
@@ -39,6 +40,7 @@ const FORM_VAZIO: TemplateForm = { nome: '', role: 'admin', features: [] }
 export default function Funcoes() {
   const [selecionadoId, setSelecionadoId] = useState<number | 'novo' | null>(null)
   const [form, setForm] = useState<TemplateForm>(FORM_VAZIO)
+  const [buscaTelas, setBuscaTelas] = useState('')
 
   const utils = trpc.useUtils()
   const { data: templates, isLoading } = trpc.funcaoTemplates.listar.useQuery()
@@ -164,18 +166,30 @@ export default function Funcoes() {
 
                 <div>
                   <p className="text-xs text-dark-500 mb-2">Telas liberadas pra essa função</p>
+                  <Input
+                    icon={<Search size={14} />}
+                    placeholder="Buscar tela..."
+                    value={buscaTelas}
+                    onChange={(e) => setBuscaTelas(e.target.value)}
+                    className="mb-2"
+                  />
                   <div className="grid grid-cols-2 gap-2">
-                    {featuresDisponiveis.map(({ feature, label }) => (
-                      <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
-                        <input
-                          type="checkbox"
-                          className="accent-gold-500"
-                          checked={form.features.includes(feature)}
-                          onChange={() => toggleFeature(feature)}
-                        />
-                        {label}
-                      </label>
-                    ))}
+                    {featuresDisponiveis
+                      .filter(({ label }) => textoContem(label, buscaTelas))
+                      .map(({ feature, label }) => (
+                        <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
+                          <input
+                            type="checkbox"
+                            className="accent-gold-500"
+                            checked={form.features.includes(feature)}
+                            onChange={() => toggleFeature(feature)}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    {featuresDisponiveis.filter(({ label }) => textoContem(label, buscaTelas)).length === 0 && (
+                      <p className="col-span-2 text-sm text-dark-500 px-2 py-1.5">Nenhuma tela encontrada.</p>
+                    )}
                   </div>
                 </div>
 
