@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Building2, Calendar, ChevronRight, AlertCircle, Repeat2, Phone } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Building2, Calendar, ChevronRight, AlertCircle, Repeat2, Phone, Hand } from 'lucide-react'
 import { formatElapsed, timeAgo } from '../lib/utils'
+import { useAuth } from '../contexts/AuthContext'
+import { trpc } from '../lib/trpc'
 import { WhatsappButton } from './ui/ContatoButtons'
 import EmailButton from './ui/EmailButton'
+import Button from './ui/Button'
 import { Badge } from './ui/Badge'
 import {
   LEAD_STATUS_VALUES,
@@ -53,7 +57,23 @@ export default function LeadKanbanBoard({
   mostrarVendedor?: boolean
 }) {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const utils = trpc.useUtils()
   const colunas = LEAD_STATUS_VALUES.filter((s) => isLeadStatusAllowedForEmpresa(s, empresaSlug))
+
+  // "Pegar esse lead" — fila de Consumidor Final, sem rodízio por tempo:
+  // primeiro vendedor da região que clicar fica com o lead. Pedido do João,
+  // 2026-09-21.
+  const assumirMut = trpc.leads.assumirConsumidorFinal.useMutation({
+    onSuccess() {
+      toast.success('Lead pego! Já está na sua etapa "Novo".')
+      utils.leads.list.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+      utils.leads.list.invalidate()
+    },
+  })
   // Lead "Ganho" da Odin Compressores vira Proposta (ver TransferirParaPropostasModal) —
   // pedido do João (2026-09-03): o lead continua aparecendo aqui normalmente, mas
   // com um link direto pra proposta gerada, pra quem tá procurando não precisar ir
@@ -170,6 +190,20 @@ export default function LeadKanbanBoard({
                             </Badge>
                           </Link>
                         </div>
+                      )}
+
+                      {lead.status === 'novo_consumidor_final' && user?.role === 'vendor' && (
+                        <Button
+                          size="sm"
+                          className="w-full mb-2"
+                          loading={assumirMut.isPending}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            assumirMut.mutate({ id: lead.id })
+                          }}
+                        >
+                          <Hand size={13} className="mr-1" /> Pegar esse lead
+                        </Button>
                       )}
 
                       {lead.status === 'consumidor_final' && lead.finalConsumerReason && (

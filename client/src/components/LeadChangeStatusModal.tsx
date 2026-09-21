@@ -91,7 +91,7 @@ export default function LeadChangeStatusModal({
           label="Nova etapa"
           value={status}
           onChange={(e) => setStatus(e.target.value as LeadStatus)}
-          options={LEAD_STATUS_VALUES.filter((s) => isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => ({
+          options={LEAD_STATUS_VALUES.filter((s) => s !== 'novo_consumidor_final' && isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => ({
             value: s,
             label: LEAD_STATUS_LABELS[s],
           }))}

@@ -126,9 +126,11 @@ function segmentoPorResposta(resposta: string): string | null {
 }
 
 export default function QuickLeadCreate({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated?: (id: number) => void }) {
-  const { user } = useAuth()
+  const { user, empresaAtivaId } = useAuth()
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
+  const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: user?.role === 'admin' })
+  const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
 
   const [colado, setColado] = useState('')
   const [name, setName] = useState('')
@@ -143,6 +145,10 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
   const [campaignId, setCampaignId] = useState('')
   const { data: campanhas } = trpc.leadCampaigns.listarAtivas.useQuery()
   const [autoAssign, setAutoAssign] = useState(true)
+  // Fila "Novo (Consumidor Final)" — só Joitec, pedido do João, 2026-09-21:
+  // lead cai sem vendedor, visível pra região inteira, quem pegar primeiro
+  // fica com ele (sem rodízio). Ver leads.assumirConsumidorFinal.
+  const [paraFilaConsumidorFinal, setParaFilaConsumidorFinal] = useState(false)
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
   const ultimoCnpjConsultadoRef = useRef<string | null>(null)
   const [arquivos, setArquivos] = useState<File[]>([])
@@ -160,6 +166,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     setObservations('')
     setVendorId('')
     setAutoAssign(true)
+    setParaFilaConsumidorFinal(false)
     setCampaignId('')
     ultimoCnpjConsultadoRef.current = null
     setArquivos([])
@@ -325,9 +332,10 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
       city: city || undefined,
       segment: (segment || undefined) as any,
       observations: observations || undefined,
-      vendorId: user?.role === 'admin' && vendorId ? Number(vendorId) : undefined,
-      autoAssign: user?.role === 'admin' ? (!vendorId ? autoAssign : false) : true,
+      vendorId: user?.role === 'admin' && !paraFilaConsumidorFinal && vendorId ? Number(vendorId) : undefined,
+      autoAssign: user?.role === 'admin' ? (!paraFilaConsumidorFinal && !vendorId ? autoAssign : false) : true,
       campaignId: campaignId ? Number(campaignId) : undefined,
+      status: paraFilaConsumidorFinal ? 'novo_consumidor_final' : undefined,
     })
   }
 
@@ -408,7 +416,18 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
           )}
         </div>
 
-        {user?.role === 'admin' && (
+        {user?.role === 'admin' && empresaSlug === 'joitec' && (
+          <label className="flex items-center gap-2 text-xs text-dark-300 bg-dark-800 border border-dark-600 rounded-lg px-3 py-2">
+            <input
+              type="checkbox"
+              checked={paraFilaConsumidorFinal}
+              onChange={(e) => setParaFilaConsumidorFinal(e.target.checked)}
+            />
+            Colocar na fila "Novo (Consumidor Final)" — sem vendedor, quem pegar da região fica com o lead
+          </label>
+        )}
+
+        {user?.role === 'admin' && !paraFilaConsumidorFinal && (
           <div>
             <Select
               label="Atribuir a"

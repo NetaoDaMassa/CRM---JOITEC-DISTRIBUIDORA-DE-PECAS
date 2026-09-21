@@ -41,7 +41,9 @@ export default function LeadReopenDisqualifiedModal({
     },
   })
 
-  const opcoesEtapa = LEAD_STATUS_VALUES.filter((s) => !isLeadTerminalStatus(s) && isLeadStatusAllowedForEmpresa(s, empresaSlug))
+  const opcoesEtapa = LEAD_STATUS_VALUES.filter(
+    (s) => s !== 'novo_consumidor_final' && !isLeadTerminalStatus(s) && isLeadStatusAllowedForEmpresa(s, empresaSlug)
+  )
 
   return (
     <Modal open={open} onClose={onClose} title="Reabrir lead desqualificado" size="sm">

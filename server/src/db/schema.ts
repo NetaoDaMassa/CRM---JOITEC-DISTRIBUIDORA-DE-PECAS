@@ -1336,7 +1336,7 @@ export const leads = sqliteTable(
       enum: ['assistente_tecnico', 'instalador', 'revendedor_lojista', 'outros'],
     }).default('outros'),
     status: text('status', {
-      enum: ['novo', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final'],
+      enum: ['novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final'],
     }).notNull().default('novo'),
     vendorId: integer('vendor_id').references(() => users.id, { onDelete: 'set null' }),
     regionId: integer('region_id').references(() => leadRegions.id, { onDelete: 'set null' }),

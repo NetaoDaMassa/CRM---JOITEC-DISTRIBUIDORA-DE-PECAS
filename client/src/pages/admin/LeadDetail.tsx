@@ -381,7 +381,10 @@ export default function LeadDetail() {
         )}
         {(isAdmin || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
           <div className="flex items-center gap-1.5 flex-wrap mt-4 pt-4 border-t border-dark-700">
-            {LEAD_STATUS_VALUES.filter((s) => isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => (
+            {/* 'novo_consumidor_final' fica de fora do seletor manual — só entra na
+                criação do lead (fila sem dono) e sai só pegando na fila, nunca
+                escolhendo aqui (ver leads.changeStatus, que recusa esse valor). */}
+            {LEAD_STATUS_VALUES.filter((s) => s !== 'novo_consumidor_final' && isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => (
               <button
                 key={s}
                 onClick={() => {

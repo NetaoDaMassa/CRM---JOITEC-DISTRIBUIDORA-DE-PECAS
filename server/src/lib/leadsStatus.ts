@@ -3,13 +3,19 @@
 // sem alteração de comportamento.
 
 export const STATUS_VALUES = [
-  'novo', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
+  'novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
 ] as const
 
 export type LeadStatus = (typeof STATUS_VALUES)[number]
 
 export const STATUS_LABELS: Record<LeadStatus, string> = {
   novo: 'Novo',
+  // Fila de leads sem vendedor, visível pra todo mundo da região — quem
+  // pegar primeiro fica com ele (vira lead "Novo" normal a partir daí, ver
+  // leads.assumirConsumidorFinal). NÃO confundir com `consumidor_final`
+  // abaixo, que é uma etapa de FECHAMENTO (lead que não vai virar venda).
+  // Pedido do João, 2026-09-21 — só Joitec Distribuidora de Peças.
+  novo_consumidor_final: 'Novo (Consumidor Final)',
   abordagem: 'Abordagem',
   qualificado: 'Qualificado',
   em_negociacao: 'Em Negociação',
@@ -23,9 +29,11 @@ export const TERMINAL_STATUSES: LeadStatus[] = ['ganho', 'perdido', 'desqualific
 
 // Etapa restrita a empresas específicas (por slug) — igual ao sistema de
 // origem: só Odin Tubos e Joitec usam "Consumidor Final / Repassado" pra
-// separar leads fora do funil normal de revenda.
+// separar leads fora do funil normal de revenda. `novo_consumidor_final` é
+// só Joitec (fila de leads sem dono, ver comentário acima).
 export const COMPANY_RESTRICTED_STATUSES: Partial<Record<LeadStatus, string[]>> = {
   consumidor_final: ['odin-tubos', 'joitec'],
+  novo_consumidor_final: ['joitec'],
 }
 
 export function isStatusAllowedForCompany(status: LeadStatus, empresaSlug: string): boolean {
@@ -79,6 +87,7 @@ export const STATUS_FIELD_LABELS: Record<StatusFieldKey, string> = {
 
 export const REQUIRED_FIELDS_BY_STATUS: Record<LeadStatus, StatusFieldKey[]> = {
   novo: [],
+  novo_consumidor_final: [],
   abordagem: [],
   qualificado: [],
   em_negociacao: ['codSap'],

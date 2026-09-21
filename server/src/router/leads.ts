@@ -19,6 +19,7 @@ import {
   funilMensal,
   propostas,
   leadCampaigns,
+  leadRegionVendedores,
 } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD, assignNextVendor } from '../lib/leadsRoundRobin.js'
 import { validateNextContactLimit, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO } from '../lib/businessHours.js'
@@ -194,7 +195,17 @@ export const leadsRouter = router({
       let filtered = allLeads
 
       if (ctx.user.role === 'vendor') {
-        filtered = filtered.filter((l) => l.vendorId === ctx.user.id)
+        // Além dos próprios, o vendedor também vê a fila de "Novo (Consumidor
+        // Final)" das regiões que ele atende — sem dono, é isso que dá pra
+        // ele "pegar" (ver assumirConsumidorFinal). Pedido do João, 2026-09-21.
+        const minhasRegioes = await db.query.leadRegionVendedores.findMany({
+          where: eq(leadRegionVendedores.vendorId, ctx.user.id),
+          columns: { regionId: true },
+        })
+        const regioesIds = new Set(minhasRegioes.map((r) => r.regionId))
+        filtered = filtered.filter(
+          (l) => l.vendorId === ctx.user.id || (l.status === 'novo_consumidor_final' && l.regionId != null && regioesIds.has(l.regionId))
+        )
       } else if (vendorId) {
         filtered = filtered.filter((l) => l.vendorId === vendorId)
       }
@@ -334,32 +345,48 @@ export const leadsRouter = router({
         vendorId: z.number().optional(),
         autoAssign: z.boolean().default(true),
         campaignId: z.number().optional(),
+        // 'novo_consumidor_final' = cai na fila sem vendedor, visível pra
+        // toda a região (ver assumirConsumidorFinal) — pedido do João,
+        // 2026-09-21, só Joitec. Qualquer outro valor (ou ausência) segue o
+        // fluxo de sempre.
+        status: z.enum(['novo', 'novo_consumidor_final']).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      const paraFilaConsumidorFinal = input.status === 'novo_consumidor_final'
       let vendorId: number | null = null
-      let regionId: number | null = null
 
-      if (ctx.user.role === 'vendor') {
+      if (paraFilaConsumidorFinal) {
+        if (ctx.user.role !== 'admin') throw new Error('Só admin pode cadastrar lead na fila de Consumidor Final')
+        const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+        if (empresa?.slug !== 'joitec') throw new Error('Etapa "Novo (Consumidor Final)" disponível só pra Joitec Distribuidora de Peças')
+        // vendorId fica null de propósito — é o ponto da fila: ninguém é
+        // dono até um vendedor da região pegar (assumirConsumidorFinal).
+      } else if (ctx.user.role === 'vendor') {
         // Vendedor só cadastra lead pra si mesmo — nunca escolhe outro vendedor nem rodízio.
         vendorId = ctx.user.id
-        regionId = await getRegionIdByDDD(input.ddd, ctx.empresaId)
       } else if (input.vendorId) {
         const targetVendor = await db.query.users.findFirst({ where: eq(users.id, input.vendorId) })
         if (!targetVendor || targetVendor.empresaId !== ctx.empresaId || targetVendor.role !== 'vendor') {
           throw new Error('Vendedor inválido')
         }
         vendorId = input.vendorId
-        regionId = await getRegionIdByDDD(input.ddd, ctx.empresaId)
       } else if (input.autoAssign) {
         vendorId = await getVendorByDDD(input.ddd, ctx.empresaId)
-        regionId = await getRegionIdByDDD(input.ddd, ctx.empresaId)
       }
+
+      // Região vem sempre do DDD, com ou sem vendedor atribuído — precisa
+      // dela mesmo sem dono pra a fila de Consumidor Final aparecer pra
+      // quem atende aquela região (antes só era calculada quando um
+      // vendedor também era definido).
+      const regionId = await getRegionIdByDDD(input.ddd, ctx.empresaId)
 
       if (input.campaignId) {
         const campanha = await db.query.leadCampaigns.findFirst({ where: eq(leadCampaigns.id, input.campaignId) })
         if (!campanha || campanha.empresaId !== ctx.empresaId) throw new Error('Campanha inválida')
       }
+
+      const status = paraFilaConsumidorFinal ? 'novo_consumidor_final' : 'novo'
 
       const result = await db.insert(leads).values({
         empresaId: ctx.empresaId,
@@ -372,6 +399,7 @@ export const leadsRouter = router({
         segment: input.segment,
         source: input.source || null,
         observations: input.observations || null,
+        status,
         vendorId,
         regionId,
         campaignId: input.campaignId ?? null,
@@ -386,8 +414,10 @@ export const leadsRouter = router({
         leadId,
         userId: ctx.user.id,
         action: 'criado',
-        toStatus: 'novo',
-        details: `Lead criado${vendorId ? ' e atribuído ao vendedor' : ' sem vendedor'}`,
+        toStatus: status,
+        details: paraFilaConsumidorFinal
+          ? 'Lead criado na fila de Consumidor Final (sem vendedor)'
+          : `Lead criado${vendorId ? ' e atribuído ao vendedor' : ' sem vendedor'}`,
       })
 
       if (vendorId && vendorId !== ctx.user.id) {
@@ -401,6 +431,49 @@ export const leadsRouter = router({
 
       return { id: leadId }
     }),
+
+  // "Pegar" um lead da fila de Consumidor Final — pedido do João, 2026-09-21:
+  // sem rodízio por tempo, o primeiro vendedor da região que clicar fica com
+  // ele. Vira lead "Novo" comum a partir daqui (segue o funil normal). A
+  // condição extra no UPDATE (status + vendorId IS NULL) fecha a corrida: se
+  // dois vendedores clicarem juntos, só o primeiro UPDATE realmente muda a
+  // linha — o segundo recebe rowsAffected 0 e sabe na hora que perdeu (mesmo
+  // padrão de carteira.transferirCliente).
+  assumirConsumidorFinal: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+    if (ctx.user.role !== 'vendor') throw new Error('Só vendedor pode pegar um lead da fila')
+
+    const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+    if (lead.status !== 'novo_consumidor_final') throw new Error('Esse lead não está mais na fila de Consumidor Final')
+
+    if (lead.regionId) {
+      const vinculo = await db.query.leadRegionVendedores.findFirst({
+        where: and(eq(leadRegionVendedores.regionId, lead.regionId), eq(leadRegionVendedores.vendorId, ctx.user.id)),
+      })
+      if (!vinculo) throw new Error('Você não atende a região desse lead')
+    }
+
+    const agora = new Date().toISOString()
+    const resultado = await db
+      .update(leads)
+      .set({ status: 'novo', vendorId: ctx.user.id, assignedAt: agora, statusChangedAt: agora, updatedAt: agora })
+      .where(and(eq(leads.id, input.id), eq(leads.status, 'novo_consumidor_final'), isNull(leads.vendorId)))
+    if (resultado.rowsAffected === 0) throw new Error('Esse lead já foi pego por outro vendedor')
+
+    await db.insert(leadHistory).values({
+      empresaId: ctx.empresaId,
+      leadId: input.id,
+      userId: ctx.user.id,
+      action: 'assumido_fila_consumidor_final',
+      fromStatus: 'novo_consumidor_final',
+      toStatus: 'novo',
+      toVendorId: ctx.user.id,
+      details: `${ctx.user.name} pegou o lead da fila de Consumidor Final`,
+    })
+
+    return { success: true }
+  }),
 
   update: protectedProcedure
     .input(
@@ -502,6 +575,12 @@ export const leadsRouter = router({
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
       if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+
+      // "Novo (Consumidor Final)" só entra na criação (leads.create) — não é
+      // uma etapa pra onde dá pra mover um lead manualmente (é uma fila sem
+      // dono; um lead já atribuído indo pra lá quebraria essa premissa). Sair
+      // dela é só via leads.assumirConsumidorFinal.
+      if (input.status === 'novo_consumidor_final') throw new Error('Essa etapa não pode ser escolhida manualmente')
 
       // Lead já transferido (virou cliente de Carteira ou proposta de
       // verdade) trava a etapa — mudar pra outro status aqui não desfaz o

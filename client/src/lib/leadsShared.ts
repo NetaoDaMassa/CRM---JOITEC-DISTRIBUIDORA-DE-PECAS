@@ -4,12 +4,16 @@
 // server em runtime — só tipos vêm de @server, ver client/src/lib/trpc.ts).
 
 export const LEAD_STATUS_VALUES = [
-  'novo', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
+  'novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
 ] as const
 export type LeadStatus = (typeof LEAD_STATUS_VALUES)[number]
 
 export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   novo: 'Novo',
+  // Fila sem dono, visível pra região inteira — quem clicar "Pegar" primeiro
+  // fica com o lead. NÃO é a mesma coisa que `consumidor_final` (etapa de
+  // fechamento, lá embaixo). Só Joitec Distribuidora de Peças.
+  novo_consumidor_final: 'Novo (Consumidor Final)',
   abordagem: 'Abordagem',
   qualificado: 'Qualificado',
   em_negociacao: 'Em Negociação',
@@ -21,6 +25,7 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
 
 export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   novo: 'text-blue-400 bg-blue-900/20 border-blue-700/40',
+  novo_consumidor_final: 'text-indigo-400 bg-indigo-900/20 border-indigo-700/40',
   abordagem: 'text-gold-400 bg-gold-900/20 border-gold-700/40',
   qualificado: 'text-purple-400 bg-purple-900/20 border-purple-700/40',
   em_negociacao: 'text-amber-400 bg-amber-900/20 border-amber-700/40',
@@ -36,10 +41,12 @@ export function isLeadTerminalStatus(status: string): boolean {
 }
 
 // Igual a COMPANY_RESTRICTED_STATUSES no server — só Odin Tubos e Joitec têm
-// a etapa "Consumidor Final / Repassado".
+// a etapa "Consumidor Final / Repassado"; "Novo (Consumidor Final)" (a fila)
+// é só Joitec.
 export function isLeadStatusAllowedForEmpresa(status: LeadStatus, empresaSlug: string | undefined): boolean {
-  if (status !== 'consumidor_final') return true
-  return empresaSlug === 'odin-tubos' || empresaSlug === 'joitec'
+  if (status === 'consumidor_final') return empresaSlug === 'odin-tubos' || empresaSlug === 'joitec'
+  if (status === 'novo_consumidor_final') return empresaSlug === 'joitec'
+  return true
 }
 
 export const LEAD_SEGMENT_VALUES = ['assistente_tecnico', 'instalador', 'revendedor_lojista', 'outros'] as const
@@ -76,6 +83,7 @@ export type LeadStatusFieldKey =
 
 export const LEAD_REQUIRED_FIELDS_BY_STATUS: Record<LeadStatus, LeadStatusFieldKey[]> = {
   novo: [],
+  novo_consumidor_final: [],
   abordagem: [],
   qualificado: [],
   em_negociacao: ['codSap'],
