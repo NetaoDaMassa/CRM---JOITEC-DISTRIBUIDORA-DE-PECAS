@@ -1127,8 +1127,10 @@ export const leadsRouter = router({
 
         try {
           const empresaOrigemId = lead.empresaId
-          const vendorId = await getVendorByDDD(lead.ddd, input.empresaDestinoId)
-          const regionId = await getRegionIdByDDD(lead.ddd, input.empresaDestinoId)
+          // Lead sem DDD (veio só de e-mail, sem telefone) não tem como
+          // rodar rodízio por região — vai sem vendedor, igual nasceu.
+          const vendorId = lead.ddd !== null ? await getVendorByDDD(lead.ddd, input.empresaDestinoId) : null
+          const regionId = lead.ddd !== null ? await getRegionIdByDDD(lead.ddd, input.empresaDestinoId) : null
           if (!vendorId) semVendedor++
 
           await db
