@@ -1387,6 +1387,16 @@ export const leads = sqliteTable(
     // server/scripts/migrar-leads-crm-marketing.ts). Nulo pra lead criado
     // direto aqui.
     origemLeadId: integer('origem_lead_id'),
+    // Lead vindo da automação de Instagram (ver instagramLeads.ts) — nasce
+    // sem telefone/DDD (mesmo padrão do lead de e-mail marketing/Brevo:
+    // `vendorId`/`regionId` ficam null até alguém completar o telefone e
+    // atribuir na mão, já que não dá pra rodízio por DDD sem telefone).
+    // `source` guarda 'instagram_comment_keyword' ou 'instagram_first_dm'
+    // (mesmo campo livre já usado por brevo_* — ver leadsBrevo.ts). Pedido
+    // do João, 2026-09-21.
+    igUserId: text('ig_user_id'),
+    igUsername: text('ig_username'),
+    igTriggerText: text('ig_trigger_text'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
     assignedAt: text('assigned_at'),
@@ -1396,6 +1406,7 @@ export const leads = sqliteTable(
   (t) => ({
     origemIdx: unique().on(t.empresaId, t.origemLeadId),
     emailIdx: index('leads_email_idx').on(t.email),
+    igUserIdx: index('leads_ig_user_idx').on(t.empresaId, t.igUserId),
   })
 )
 
@@ -3083,6 +3094,53 @@ export const cartaoGastosRelations = relations(cartaoGastos, ({ one, many }) => 
 
 export const cartaoGastoAnexosRelations = relations(cartaoGastoAnexos, ({ one }) => ({
   gasto: one(cartaoGastos, { fields: [cartaoGastoAnexos.gastoId], references: [cartaoGastos.id] }),
+}))
+
+// ── Instagram (captação de leads via Direct) ────────────────────────────────
+// Pedido do João, 2026-09-21. UM Meta App só, compartilhado por todas as
+// empresas (webhook único — ver server/src/routes/instagram.ts); cada
+// empresa conecta a própria conta profissional do Instagram (vinculada a
+// uma Página do Facebook) via OAuth, e o evento que chega no webhook é
+// roteado pra empresa certa batendo `ig_business_account_id`/`ig_page_id`
+// contra esta tabela. 1 conexão por empresa (`.unique()` em empresaId) —
+// reconectar substitui a anterior, não acumula.
+export const instagramAccounts = sqliteTable('instagram_accounts', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().unique().references(() => empresas.id, { onDelete: 'cascade' }),
+  igBusinessAccountId: text('ig_business_account_id').notNull(),
+  igPageId: text('ig_page_id').notNull(),
+  igUsername: text('ig_username'),
+  // Token de página de longa duração, sempre criptografado (AES-256-GCM,
+  // ver lib/crypto.ts) — nunca texto puro, mesmo sendo a primeira integração
+  // deste CRM a fazer isso (GoTo/Brevo guardam token/API key em texto puro
+  // hoje; aqui o próprio pedido do João foi explícito sobre isso).
+  pageAccessTokenEnc: text('page_access_token_enc').notNull(),
+  status: text('status', { enum: ['conectado', 'erro', 'desconectado'] }).notNull().default('conectado'),
+  connectedAt: text('connected_at').notNull().default(sql`(datetime('now'))`),
+  connectedBy: integer('connected_by').references(() => users.id, { onDelete: 'set null' }),
+})
+
+// Configuração da automação por empresa, editável na própria tela de
+// Configurações (Integrações > Instagram). `triggerKeywords` guarda um JSON
+// (array de strings) — texto livre porque SQLite não tem tipo array nativo,
+// mesmo padrão usado noutras colunas "lista" deste schema (ex: nenhuma hoje
+// como array real, mas é a saída padrão do projeto pra isso: JSON.stringify
+// na escrita, JSON.parse na leitura, ver instagram.ts router).
+export const instagramAutomationSettings = sqliteTable('instagram_automation_settings', {
+  empresaId: integer('empresa_id').primaryKey().references(() => empresas.id, { onDelete: 'cascade' }),
+  triggerKeywords: text('trigger_keywords').notNull().default('[]'),
+  commentReplyMessage: text('comment_reply_message').notNull().default('Oi! Te chamei no direct 😊'),
+  welcomeDmMessage: text('welcome_dm_message').notNull().default('Olá! Obrigado por entrar em contato. Já já alguém te responde por aqui.'),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const instagramAccountsRelations = relations(instagramAccounts, ({ one }) => ({
+  empresa: one(empresas, { fields: [instagramAccounts.empresaId], references: [empresas.id] }),
+  conectadoPorUser: one(users, { fields: [instagramAccounts.connectedBy], references: [users.id] }),
+}))
+
+export const instagramAutomationSettingsRelations = relations(instagramAutomationSettings, ({ one }) => ({
+  empresa: one(empresas, { fields: [instagramAutomationSettings.empresaId], references: [empresas.id] }),
 }))
 
 export const requisicaoPostoColaboradoresRelations = relations(requisicaoPostoColaboradores, ({ one, many }) => ({

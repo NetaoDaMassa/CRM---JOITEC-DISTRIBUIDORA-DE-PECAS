@@ -11,7 +11,7 @@ import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
-import { adminEmpresasExtras, marketingArquivos, propostaArquivos } from './db/schema.js'
+import { adminEmpresasExtras, marketingArquivos, propostaArquivos, instagramAccounts } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
@@ -21,6 +21,9 @@ import { careersRouter } from './routes/careers.js'
 import { trackingRouter, TRACKER_JS } from './routes/tracking.js'
 import { brevoRouter } from './routes/brevo.js'
 import { woocommerceRouter } from './routes/woocommerce.js'
+import { instagramRouter } from './routes/instagram.js'
+import { trocarCodigoEAcharConta, validarState } from './lib/instagramApi.js'
+import { encryptSecret } from './lib/crypto.js'
 
 config()
 
@@ -43,6 +46,11 @@ if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true })
 // parseado e quebrava o cálculo do HMAC (derrubou o servidor inteiro numa
 // rodada de teste).
 app.use('/api/woocommerce', express.raw({ type: () => true, limit: '2mb' }), woocommerceRouter)
+
+// Webhook único do Instagram (Meta), compartilhado por todas as empresas —
+// mesmo motivo do WooCommerce acima: a assinatura (x-hub-signature-256) é
+// calculada em cima do corpo cru, precisa vir antes do express.json() global.
+app.use('/api/instagram', express.raw({ type: () => true, limit: '2mb' }), instagramRouter)
 
 // Limite default do express.json() é 100kb — currículo em base64 (até 5MB,
 // ver RESUME_MAX_SIZE_BYTES em routes/careers.ts) estourava isso e o body
@@ -447,6 +455,45 @@ app.get('/api/goto/callback', async (req, res) => {
   } catch (err) {
     console.error('[goto] falha no callback de autorização:', err)
     res.redirect(`${clientUrl}/admin/configuracoes?goto=erro`)
+  }
+})
+
+// Callback do OAuth do Instagram (Facebook Login for Business) — mesmo
+// motivo do callback da GoTo acima: quem chama é o navegador sendo
+// redirecionado pela Meta, sem header de autenticação nosso. `state` carrega
+// o empresaId assinado (ver instagramApi.ts) pra saber de qual empresa era
+// o pedido de conexão.
+app.get('/api/instagram/callback', async (req, res) => {
+  const code = req.query.code as string | undefined
+  const state = req.query.state as string | undefined
+  const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5183'
+
+  const empresaId = state ? validarState(state) : null
+  if (!code || !empresaId) {
+    return res.redirect(`${clientUrl}/admin/configuracoes?instagram=erro`)
+  }
+
+  try {
+    const conta = await trocarCodigoEAcharConta(code)
+    const valores = {
+      empresaId,
+      igBusinessAccountId: conta.igBusinessAccountId,
+      igPageId: conta.igPageId,
+      igUsername: conta.igUsername,
+      pageAccessTokenEnc: encryptSecret(conta.pageAccessToken),
+      status: 'conectado' as const,
+      connectedAt: new Date().toISOString(),
+    }
+    const existente = await db.query.instagramAccounts.findFirst({ where: eq(instagramAccounts.empresaId, empresaId) })
+    if (existente) {
+      await db.update(instagramAccounts).set(valores).where(eq(instagramAccounts.empresaId, empresaId))
+    } else {
+      await db.insert(instagramAccounts).values(valores)
+    }
+    res.redirect(`${clientUrl}/admin/configuracoes?instagram=conectado`)
+  } catch (err) {
+    console.error('[instagram] falha no callback de autorização:', err)
+    res.redirect(`${clientUrl}/admin/configuracoes?instagram=erro`)
   }
 })
 

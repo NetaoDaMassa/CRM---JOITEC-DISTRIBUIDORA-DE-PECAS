@@ -35,6 +35,17 @@ services:
       # se vazio, fica desligado sozinho.
       WOOCOMMERCE_COMPRETEC_SITE_URL: ${WOOCOMMERCE_COMPRETEC_SITE_URL:-}
       WOOCOMMERCE_COMPRETEC_EXPORT_SECRET: ${WOOCOMMERCE_COMPRETEC_EXPORT_SECRET:-}
+      # Captação de leads via Instagram Direct — UM Meta App só, todas as
+      # empresas conectam a própria conta em Configurações > Integração
+      # Instagram. Se vazio, o recurso fica desabilitado (o resto do CRM
+      # funciona normal). Precisa de App Review/Verificação de Negócio no
+      # painel da Meta pra funcionar com conta de empresa cliente de
+      # verdade — ver .env.example.
+      INSTAGRAM_APP_ID: ${INSTAGRAM_APP_ID:-}
+      INSTAGRAM_APP_SECRET: ${INSTAGRAM_APP_SECRET:-}
+      INSTAGRAM_VERIFY_TOKEN: ${INSTAGRAM_VERIFY_TOKEN:-}
+      INSTAGRAM_REDIRECT_URI: ${INSTAGRAM_REDIRECT_URI:-}
+      INSTAGRAM_TOKEN_ENCRYPTION_KEY: ${INSTAGRAM_TOKEN_ENCRYPTION_KEY:-}
       # Pedido de arte/vídeo aprovado (Solicitação de Design) cai sozinho numa
       # base do Notion, pro marketing ver sem precisar entrar no CRM. Se
       # vazio, o recurso fica desabilitado (aprovação funciona igual, só não
