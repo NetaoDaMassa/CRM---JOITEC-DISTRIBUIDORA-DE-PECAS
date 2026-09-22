@@ -201,11 +201,22 @@ export async function desconectar(): Promise<void> {
   await pararSessao()
   ultimoQr = null
   precisaParear = false
+  // `sessionDir()` é um volume do Docker (WA_SESSION_DIR) — apagar o
+  // diretório em si (rmSync recursivo na pasta) dá EBUSY (ponto de montagem
+  // não pode ser removido), e esse erro era silenciosamente engolido aqui,
+  // fazendo o log mentir "credenciais apagadas" enquanto as credenciais
+  // ANTIGAS (já invalidadas pelo logout) continuavam no disco — a próxima
+  // tentativa de conectar reusava essas credenciais mortas, o WhatsApp
+  // barrava na hora ("logout") e nunca chegava a gerar QR novo. Achado do
+  // João, 2026-09-22 (botão "Desconectar / trocar número" nunca funcionou
+  // de verdade). Correção: apagar só o CONTEÚDO da pasta, não a pasta.
   try {
-    fs.rmSync(sessionDir(), { recursive: true, force: true })
-    fs.mkdirSync(sessionDir(), { recursive: true })
+    const dir = sessionDir()
+    for (const entrada of fs.readdirSync(dir)) {
+      fs.rmSync(path.join(dir, entrada), { recursive: true, force: true })
+    }
+    console.log('[whatsapp] sessão desconectada e credenciais apagadas')
   } catch (err) {
     console.error('[whatsapp] falha ao limpar a pasta da sessão:', err)
   }
-  console.log('[whatsapp] sessão desconectada e credenciais apagadas')
 }
