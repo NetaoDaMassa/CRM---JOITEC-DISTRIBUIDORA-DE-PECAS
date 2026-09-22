@@ -29,7 +29,6 @@ const ITENS_EXTRAS = [
   { to: '/admin/leads-regioes', label: 'Regiões de Leads' },
   { to: '/admin/automacoes', label: 'Automações' },
   { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar' },
-  { to: '/admin/cartao-relatorio', label: 'Cartão de Crédito (Relatório)' },
   { to: '/painel-financeiro', label: 'Painel Financeiro' },
   { to: '/painel-tv-odin', label: 'Painel de TV Odin' },
 ]

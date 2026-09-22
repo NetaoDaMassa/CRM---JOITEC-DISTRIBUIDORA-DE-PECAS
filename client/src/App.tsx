@@ -230,7 +230,7 @@ export default function App() {
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
-          <Route path="admin/cartao-relatorio" element={<AdminGuard><SuperAdminGuard><CartaoCreditoRelatorio /></SuperAdminGuard></AdminGuard>} />
+          <Route path="admin/cartao-relatorio" element={<AdminGuard><FeatureGuard feature="cartao_credito_relatorio"><CartaoCreditoRelatorio /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />

@@ -70,6 +70,10 @@ export const ADMIN_LINKS = [
   { to: '/admin/caixa', label: 'Caixa', icon: Banknote, feature: 'caixa' },
   { to: '/admin/boletos', label: 'Boletos', icon: FileSpreadsheet, feature: 'boletos' },
   { to: '/admin/negociacoes', label: 'Negociações', icon: Handshake, feature: 'negociacoes' },
+  // Relatório geral de gastos do cartão corporativo — era superAdmin-only
+  // (pedido do João, 2026-09-15), virou delegável em 2026-09-22. Só faz
+  // sentido pra Odin Compressores (é quem usa cartão corporativo hoje).
+  { to: '/admin/cartao-relatorio', label: 'Cartão de Crédito (Relatório)', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito_relatorio' },
   // Mesma tela/rota do VENDOR_LINKS abaixo — quem processa o faturamento da
   // Compretec Loja Física (Daniela) virou admin (função Financeiro) mas
   // continua precisando desse board. `funil.funilFaturamentoGeral` já é
@@ -278,9 +282,6 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
-    // Relatório geral de gastos do cartão (todos os vendedores) — só o
-    // admin principal (superAdmin) vê, pedido explícito do João, 2026-09-15.
-    { to: '/admin/cartao-relatorio', label: 'Cartão de Crédito (Relatório)', icon: CreditCard, visivel: !!user?.superAdmin },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     {
       // Sem trava de empresa aqui de propósito — a permissão concedida em

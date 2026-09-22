@@ -42,6 +42,12 @@ export const FEATURES_ADMIN = [
   // diferente de 'demandas').
   'boletos',
   'negociacoes',
+  // Relatório geral de gastos do cartão corporativo (todos os lançamentos da
+  // empresa, não só os do próprio admin) — era superAdmin-only (pedido do
+  // João, 2026-09-15), virou delegável em 2026-09-22. Admin comum concedido
+  // só vê a própria empresa; superAdmin continua vendo o grupo inteiro (ver
+  // cartao.ts, relatorio).
+  'cartao_credito_relatorio',
   // Board "Faturamento Geral" da Compretec Loja Física — mesma chave/tela de
   // FEATURES_VENDEDOR. Nasceu como tela só de vendedor (Daniela), mas quando
   // essa pessoa vira admin (função Financeiro) o link some do menu, que é

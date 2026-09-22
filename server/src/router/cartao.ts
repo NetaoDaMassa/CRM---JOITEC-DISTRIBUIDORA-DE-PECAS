@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { desc, eq, inArray, like, sql } from 'drizzle-orm'
-import { router, protectedProcedure, superAdminProcedure } from './_base.js'
+import { and, desc, eq, inArray, like, sql } from 'drizzle-orm'
+import { router, protectedProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { cartaoGastos, cartaoGastoAnexos, users, empresas } from '../db/schema.js'
 import { mesReferenciaAtual } from '../lib/dataBr.js'
@@ -83,14 +83,16 @@ export const cartaoRouter = router({
     return { success: true }
   }),
 
-  // Só o admin principal (superAdmin) vê o relatório geral — pedido
-  // explícito do João, 2026-09-15. `mesReferencia` (YYYY-MM) default é o
-  // mês atual.
-  relatorio: superAdminProcedure
+  // O admin principal (superAdmin) sempre viu o relatório geral (todas as
+  // empresas juntas). Virou permissão delegável em 2026-09-22 (pedido do
+  // João) — um admin comum concedido só vê os gastos da própria empresa
+  // (senão vazaria gasto de vendedor de outra empresa pra quem não devia).
+  relatorio: featureProcedure('cartao_credito_relatorio')
     .input(z.object({ mesReferencia: z.string().optional() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const mes = input.mesReferencia ?? mesReferenciaAtual()
       const filtroMes = like(cartaoGastos.data, `${mes}%`)
+      const filtroEmpresa = ctx.user.superAdmin ? undefined : eq(users.empresaId, ctx.empresaId)
 
       const lancamentos = await db
         .select({
@@ -106,7 +108,7 @@ export const cartaoRouter = router({
         .from(cartaoGastos)
         .innerJoin(users, eq(users.id, cartaoGastos.vendedorId))
         .innerJoin(empresas, eq(empresas.id, users.empresaId))
-        .where(filtroMes)
+        .where(filtroEmpresa ? and(filtroMes, filtroEmpresa) : filtroMes)
         .orderBy(desc(cartaoGastos.data))
 
       const anexosDoMes = lancamentos.length
@@ -120,7 +122,8 @@ export const cartaoRouter = router({
       const [totalGeral] = await db
         .select({ total: sql<number>`coalesce(sum(${cartaoGastos.valor}), 0)`, qtd: sql<number>`count(*)` })
         .from(cartaoGastos)
-        .where(filtroMes)
+        .innerJoin(users, eq(users.id, cartaoGastos.vendedorId))
+        .where(filtroEmpresa ? and(filtroMes, filtroEmpresa) : filtroMes)
 
       const porVendedor = await db
         .select({
@@ -131,7 +134,7 @@ export const cartaoRouter = router({
         })
         .from(cartaoGastos)
         .innerJoin(users, eq(users.id, cartaoGastos.vendedorId))
-        .where(filtroMes)
+        .where(filtroEmpresa ? and(filtroMes, filtroEmpresa) : filtroMes)
         .groupBy(cartaoGastos.vendedorId, users.name)
         .orderBy(desc(sql`sum(${cartaoGastos.valor})`))
 
