@@ -79,6 +79,10 @@ export const ADMIN_LINKS = [
   // continua precisando desse board. `funil.funilFaturamentoGeral` já é
   // adminOrFeatureProcedure, então admin passa; só faltava o link + a rota.
   { to: '/admin/faturamento-geral', label: 'Faturamento Geral', icon: Receipt, somenteEmpresa: SO_COMPRETEC_LOJA_FISICA, feature: 'faturamento_geral' },
+  // Mesma tela/rota do VENDOR_LINKS abaixo — igual Faturamento Geral acima:
+  // admin comum concedido (ex: Roberto) usa a versão dele pelo link daqui,
+  // vendedor concedido usa a de VENDOR_LINKS. Pedido do João, 2026-09-23.
+  { to: '/admin/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
   { to: '/admin/compras', label: 'Compras', icon: Ship, feature: 'compras' },
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
