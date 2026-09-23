@@ -109,26 +109,55 @@ function normalizarPayload(rawBody: unknown): EventoNormalizado[] {
     return resultado
   }
 
-  // Formato 1: evento de automação de marketing — a Brevo manda um objeto
-  // por POST, mas alguns painéis permitem agrupar vários num array.
+  // Formato 1: evento de automação de marketing (webhook clássico) — a
+  // Brevo manda um objeto por POST, mas alguns painéis permitem agrupar
+  // vários num array.
   const eventos = Array.isArray(body) ? body : [body]
   const resultado: EventoNormalizado[] = []
   for (const raw of eventos) {
     if (!raw || typeof raw !== 'object') continue
     const ev = raw as Record<string, unknown>
     const eventoRaw = String(ev.event ?? ev.Event ?? '').toLowerCase()
-    const tipo = MAPA_EVENTO_BREVO[eventoRaw]
+    let tipo = MAPA_EVENTO_BREVO[eventoRaw]
     const email = String(ev.email ?? ev.Email ?? '').toLowerCase().trim()
+    let nomeCampanha = (ev.tag as string | undefined) ?? null
+    let url = (ev.url as string | undefined) ?? (ev.link as string | undefined) ?? null
+    let nomeContato: string | null = null
+
+    // Formato 3: etapa "Chamar um webhook" de DENTRO do editor de
+    // automação (mais novo, diferente do webhook clássico acima) — usado
+    // pra rotear por empresa quando várias empresas compartilham a mesma
+    // conta Brevo (pedido do João, 2026-09-23: separar Joitec Distribuidora
+    // de Joitec Automação). Não tem campo `event` nenhum — o próprio
+    // gatilho da automação (ex: "Link clicado em um e-mail") já diz qual é
+    // o evento, então cada automação corresponde a 1 tipo fixo. Hoje só
+    // temos automação de clique montada, então fica fixo 'clicado' — se um
+    // dia tiver uma pra "abriu e-mail" etc., precisa diferenciar aqui
+    // (não dá pra saber pelo payload em si, só pelo automação que a gerou).
+    // Formato real (confirmado no log de produção):
+    // { appName: 'workflow-action-processor', attributes: { NOME, SOBRENOME,
+    //   COMPANY_NAME, CITY, WHATSAPP, SMS, LANDLINE_NUMBER, ... }, contact_id,
+    //   email, params: { campaign_id, clicked_link, email_type }, step_id, workflow_id }
+    if (!tipo && typeof ev.workflow_id !== 'undefined' && email) {
+      const params = (ev.params as Record<string, unknown> | undefined) ?? {}
+      const attrs = (ev.attributes as Record<string, unknown> | undefined) ?? {}
+      tipo = 'clicado'
+      url = (params.clicked_link as string | undefined) ?? url
+      nomeCampanha = params.campaign_id != null ? `Campanha #${params.campaign_id}` : nomeCampanha
+      const nomeCompleto = [attrs.NOME, attrs.SOBRENOME].filter(Boolean).join(' ').trim()
+      nomeContato = nomeCompleto || null
+    }
+
     if (!tipo || !email) continue
     resultado.push({
       tipo,
       email,
-      nomeCampanha: (ev.tag as string | undefined) ?? null,
+      nomeCampanha,
       assunto: (ev.subject as string | undefined) ?? null,
-      url: (ev.url as string | undefined) ?? (ev.link as string | undefined) ?? null,
+      url,
       motivo: (ev.reason as string | undefined) ?? null,
       conteudo: null,
-      nomeContato: null,
+      nomeContato,
       payloadBruto: ev,
     })
   }
