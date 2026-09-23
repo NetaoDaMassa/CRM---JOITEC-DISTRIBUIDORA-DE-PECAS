@@ -17,12 +17,24 @@ brevoRouter.post('/webhook/:empresaSlug/:token', async (req, res) => {
     const { empresaSlug, token } = req.params
     const empresa = await db.query.empresas.findFirst({ where: eq(empresas.slug, empresaSlug) })
     if (!empresa || !empresa.brevoWebhookToken || empresa.brevoWebhookToken !== token) {
+      // Log temporário (achado do João, 2026-09-23): a etapa "Chamar um
+      // webhook" do editor de automação da Brevo não estava gerando nenhum
+      // lead, e não dava pra saber se a chamada nem chegava (URL/token
+      // errado) ou se chegava mas o payload não batia com o parser. Sem
+      // expor o token inteiro no log — só se bateu ou não.
+      console.error(`[brevo webhook] rejeitado: slug="${empresaSlug}" empresa=${empresa ? 'achada' : 'não achada'} tokenBate=${empresa ? empresa.brevoWebhookToken === token : 'n/a'}`)
       // 404 genérico de propósito — não confirma pra quem estiver tentando
       // adivinhar slug/token se a empresa existe ou não.
       return res.status(404).json({ ok: false })
     }
 
     const { processados } = await processarEventoBrevo(empresa.id, empresa.brevoApiKey, req.body)
+    if (processados === 0) {
+      // Mesmo motivo do log acima — payload chegou mas nada bateu o formato
+      // esperado (ver normalizarPayload em leadsBrevo.ts). Log temporário
+      // pra descobrir o formato real que a etapa "Chamar um webhook" manda.
+      console.error(`[brevo webhook] chegou mas 0 processados (empresa ${empresaSlug}) — payload bruto:`, JSON.stringify(req.body).slice(0, 3000))
+    }
     res.json({ ok: true, processados })
   } catch (err) {
     // 200 mesmo em erro nosso — webhook malformado ou bug aqui não pode
