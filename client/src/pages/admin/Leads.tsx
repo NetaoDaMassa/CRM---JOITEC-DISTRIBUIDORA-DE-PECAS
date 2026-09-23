@@ -44,6 +44,7 @@ export default function Leads() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [soDoSite, setSoDoSite] = useState(false)
+  const [soDeEmailMarketing, setSoDeEmailMarketing] = useState(false)
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [transferLead, setTransferLead] = useState<{ id: number; name: string } | null>(null)
@@ -57,7 +58,7 @@ export default function Leads() {
   // sentido visível — limpa pra não confundir com "X selecionados" fantasma.
   useEffect(() => {
     setSelecionados(new Set())
-  }, [status, vendorId, search, dateFrom, dateTo, soDoSite, page])
+  }, [status, vendorId, search, dateFrom, dateTo, soDoSite, soDeEmailMarketing, page])
 
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
 
@@ -68,6 +69,7 @@ export default function Leads() {
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
     fromSite: soDoSite || undefined,
+    fromEmailMarketing: soDeEmailMarketing || undefined,
     page,
     pageSize: 30,
   })
@@ -179,6 +181,18 @@ export default function Leads() {
           />
           <span className="text-xs text-dark-300 whitespace-nowrap">Só leads do site</span>
         </label>
+        <label className="flex items-center gap-2 bg-dark-900/40 border border-dark-600 rounded-xl px-3 py-2.5 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={soDeEmailMarketing}
+            onChange={(e) => {
+              setSoDeEmailMarketing(e.target.checked)
+              setPage(1)
+            }}
+            className="accent-pink-500"
+          />
+          <span className="text-xs text-dark-300 whitespace-nowrap">Só leads de e-mail marketing</span>
+        </label>
       </div>
 
       {isAdmin && selecionados.size > 0 && (
@@ -259,6 +273,11 @@ export default function Leads() {
                         {lead.fromSite && (
                           <div className="mt-1">
                             <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                          </div>
+                        )}
+                        {lead.fromEmailMarketing && (
+                          <div className="mt-1">
+                            <Badge className="text-pink-400 bg-pink-900/20 border-pink-700/40">📧 Veio de e-mail marketing</Badge>
                           </div>
                         )}
                         {lead.convertidoParaPropostaId && (

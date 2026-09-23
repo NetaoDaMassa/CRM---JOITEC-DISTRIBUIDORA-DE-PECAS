@@ -164,12 +164,13 @@ export const leadsRouter = router({
         dateFrom: z.string().optional(),
         dateTo: z.string().optional(),
         fromSite: z.boolean().optional(),
+        fromEmailMarketing: z.boolean().optional(),
         page: z.number().default(1),
         pageSize: z.number().default(50),
       })
     )
     .query(async ({ ctx, input }) => {
-      const { page, pageSize, search, status, vendorId, segment, dateFrom, dateTo, fromSite } = input
+      const { page, pageSize, search, status, vendorId, segment, dateFrom, dateTo, fromSite, fromEmailMarketing } = input
       const offset = (page - 1) * pageSize
 
       const rawLeads = await db.query.leads.findMany({
@@ -190,7 +191,15 @@ export const leadsRouter = router({
         .where(and(eq(leadTrackingVisitors.empresaId, ctx.empresaId), isNotNull(leadTrackingVisitors.leadId)))
       const siteLeadIds = new Set(siteVisitorRows.map((r) => r.leadId))
 
-      const allLeads = rawLeads.map((l) => ({ ...l, fromSite: siteLeadIds.has(l.id) }))
+      // Leads vindos da Brevo (email marketing) já gravam a origem no próprio
+      // `source` na hora da criação (`brevo_<tipo do evento>` — ver
+      // processarEventoBrevo em leadsBrevo.ts), diferente do site (que
+      // precisa do join acima porque `source` sozinho não é confiável lá).
+      const allLeads = rawLeads.map((l) => ({
+        ...l,
+        fromSite: siteLeadIds.has(l.id),
+        fromEmailMarketing: l.source?.startsWith('brevo_') ?? false,
+      }))
 
       let filtered = allLeads
 
@@ -213,6 +222,7 @@ export const leadsRouter = router({
       if (status) filtered = filtered.filter((l) => l.status === status)
       if (segment) filtered = filtered.filter((l) => l.segment === segment)
       if (fromSite) filtered = filtered.filter((l) => l.fromSite)
+      if (fromEmailMarketing) filtered = filtered.filter((l) => l.fromEmailMarketing)
 
       if (search) {
         const s = search.toLowerCase()
