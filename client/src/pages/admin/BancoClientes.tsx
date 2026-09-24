@@ -114,6 +114,7 @@ export default function BancoClientes() {
   const [exportando, setExportando] = useState(false)
   const [vendedorPorLinha, setVendedorPorLinha] = useState<Record<number, string>>({})
   const [gerenciando, setGerenciando] = useState(false)
+  const [vendedorTransferirBanco, setVendedorTransferirBanco] = useState('')
   const utils = trpc.useUtils()
 
   const { data: vendors } = trpc.users.vendors.useQuery()
@@ -181,13 +182,36 @@ export default function BancoClientes() {
     },
   })
 
+  // Transferir o banco inteiro (grupo origemBanco selecionado nos chips) pra
+  // um vendedor de uma vez — pedido do João, 2026-09-24: já dava pra
+  // transferir 1 a 1, faltava o banco todo junto.
+  const transferirBancoMut = trpc.clientes.bancoTransferirCompleto.useMutation({
+    onSuccess(data) {
+      toast.success(`${data.quantidade} cliente(s) transferido(s)`)
+      utils.clientes.banco.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+      setVendedorTransferirBanco('')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
   const vendorOptions = (vendors ?? []).map((v) => ({ value: v.id, label: v.name }))
   const totalBanco = (resumo ?? []).reduce((soma, r) => soma + r.quantidade, 0)
+  const quantidadeBancoSelecionado = (resumo ?? []).find((r) => r.origemBanco === origemBanco)?.quantidade ?? 0
 
   function atribuir(clienteId: number) {
     const vendedorId = vendedorPorLinha[clienteId]
     if (!vendedorId) return toast.error('Selecione o vendedor de destino.')
     transferirMut.mutate({ clienteId, vendedorId: Number(vendedorId) })
+  }
+
+  function transferirBancoInteiro() {
+    if (!vendedorTransferirBanco) return toast.error('Selecione o vendedor de destino.')
+    const nomeVendedor = vendorOptions.find((v) => v.value === Number(vendedorTransferirBanco))?.label ?? ''
+    if (!confirm(`Transferir os ${quantidadeBancoSelecionado} cliente(s) de "${origemBanco}" pra ${nomeVendedor}?`)) return
+    transferirBancoMut.mutate({ origemBanco, vendedorId: Number(vendedorTransferirBanco) })
   }
 
   return (
@@ -241,6 +265,26 @@ export default function BancoClientes() {
           </button>
         ))}
       </div>
+
+      {user?.role === 'admin' && origemBanco && (
+        <div className="flex flex-wrap items-center gap-2 bg-dark-800 border border-dark-600 rounded-xl px-3 py-2.5">
+          <p className="text-sm text-dark-300 shrink-0">
+            Transferir banco inteiro <span className="text-dark-100 font-medium">"{origemBanco}"</span> ({quantidadeBancoSelecionado}{' '}
+            cliente{quantidadeBancoSelecionado === 1 ? '' : 's'}) para:
+          </p>
+          <div className="w-56">
+            <Select
+              value={vendedorTransferirBanco}
+              onChange={(e) => setVendedorTransferirBanco(e.target.value)}
+              placeholder="Selecione o vendedor..."
+              options={vendorOptions}
+            />
+          </div>
+          <Button size="sm" loading={transferirBancoMut.isPending} onClick={transferirBancoInteiro}>
+            Transferir tudo
+          </Button>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <Input

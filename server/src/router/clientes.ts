@@ -9,7 +9,7 @@ import { buscarCnpj } from '../lib/brasilApi.js'
 import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
-import { transferirCliente } from './carteira.js'
+import { transferirCliente, validarVendedorDaEmpresa } from './carteira.js'
 
 const PAGE_SIZE = 20
 // Rótulo pra cliente sem vendedor que não veio de nenhuma importação com
@@ -623,6 +623,27 @@ export const clientesRouter = router({
         )
       }
       return { success: true }
+    }),
+
+  // Transfere TODO um banco (grupo origemBanco) de uma vez pra um vendedor —
+  // pedido do João, 2026-09-24: já dava pra transferir cliente do banco 1 a
+  // 1 (carteira.transferirIndividual), faltava o banco inteiro de uma vez.
+  // Mesma função transferirCliente() de sempre, só que em loop — cobre
+  // carteiraHistorico/funilMensal/auditoria igual a transferência manual.
+  bancoTransferirCompleto: adminProcedure
+    .input(z.object({ origemBanco: z.string().min(1), vendedorId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      await validarVendedorDaEmpresa(input.vendedorId, ctx.empresaId)
+
+      const filtroOrigem =
+        input.origemBanco === SEM_ORIGEM ? isNull(clientes.origemBanco) : eq(clientes.origemBanco, input.origemBanco)
+      const doBanco = await db.query.clientes.findMany({
+        where: and(filtroOrigem, isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)),
+      })
+      for (const cliente of doBanco) {
+        await transferirCliente(cliente.id, input.vendedorId, ctx.user.id)
+      }
+      return { quantidade: doBanco.length }
     }),
 })
 
