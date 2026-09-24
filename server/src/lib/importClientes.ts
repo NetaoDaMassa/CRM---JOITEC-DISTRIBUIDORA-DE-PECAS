@@ -6,6 +6,7 @@ import { cnpjValido } from './cnpj.js'
 import { regiaoPorUf } from './regiao.js'
 import { mesReferenciaAtual } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
+import { transferirCliente } from '../router/carteira.js'
 
 export interface ImportRowError {
   linha: number
@@ -15,13 +16,16 @@ export interface ImportRowError {
 export interface ImportFileResult {
   arquivo: string
   sucesso: number
+  // Linha com "Código" que já existia no sistema, mas a planilha trazia um
+  // vendedor válido diferente do atual — o cliente existente foi
+  // REATRIBUÍDO pra esse vendedor (mesma função usada em Carteira pra
+  // transferir na mão), em vez de só acusar "já cadastrado" e não fazer
+  // nada. Pedido do João, 2026-09-24.
+  atualizados: number
   erros: ImportRowError[]
-  // Importado com ressalva — hoje só um caso: "Vendedor" da planilha não
-  // bateu com ninguém cadastrado, cliente foi pro Banco de Clientes mesmo
-  // assim em vez de travar a linha inteira (pedido do João, 2026-09-24: o
-  // objetivo de importar é sempre ter para onde mandar o cliente — banco ou
-  // vendedor — nunca simplesmente não importar por causa de um nome digitado
-  // diferente).
+  // Importado/atualizado com ressalva — ex: "Vendedor" da planilha não
+  // bateu com ninguém cadastrado (cliente novo foi pro Banco de Clientes em
+  // vez de travar a linha), ou código já cadastrado sem nada pra mudar.
   avisos: ImportRowError[]
 }
 
@@ -95,6 +99,7 @@ export async function importarClientesCsv(
   const erros: ImportRowError[] = []
   const avisos: ImportRowError[] = []
   let sucesso = 0
+  let atualizados = 0
 
   for (let i = 0; i < rows.length; i++) {
     const linha = i + 2 // +1 pelo cabeçalho, +1 porque planilha é 1-indexada
@@ -106,11 +111,32 @@ export async function importarClientesCsv(
       continue
     }
 
+    // Resolvido aqui em cima (antes da checagem de duplicado) porque serve
+    // pros dois caminhos: cliente novo (atribui direto) e cliente já
+    // cadastrado (reatribui, ver abaixo).
+    const vendedorNomeRaw = getCol(row, 'Vendedor', 'Vendedor Responsável', 'Vendedor Responsavel', 'Representante')
+    const vendedor = vendedorNomeRaw ? vendedorPorNome.get(normalizarTexto(vendedorNomeRaw)) : undefined
+
     const existente = await db.query.clientes.findFirst({
       where: and(eq(clientes.codigo, codigo), eq(clientes.empresaId, empresaId)),
     })
     if (existente) {
-      erros.push({ linha, motivo: `Código ${codigo} já cadastrado (cliente #${existente.id})` })
+      if (vendedorNomeRaw && !vendedor) {
+        avisos.push({ linha, motivo: `Vendedor "${vendedorNomeRaw}" não encontrado — cliente ${codigo} (já cadastrado) não foi alterado` })
+      } else if (!vendedor) {
+        avisos.push({ linha, motivo: `Código ${codigo} já cadastrado (cliente #${existente.id}) — planilha sem vendedor, nada alterado` })
+      } else if (existente.vendedorAtualId === vendedor.id) {
+        avisos.push({ linha, motivo: `Código ${codigo} já cadastrado e já está com ${vendedor.name} — nada alterado` })
+      } else {
+        try {
+          await transferirCliente(existente.id, vendedor.id, alteradoPor)
+          avisos.push({ linha, motivo: `Código ${codigo} já cadastrado (cliente #${existente.id}) — reatribuído para ${vendedor.name}` })
+          atualizados++
+        } catch (err) {
+          console.error(`[importarClientesCsv] erro reatribuindo linha ${linha}:`, err)
+          erros.push({ linha, motivo: 'Erro inesperado ao reatribuir esse cliente — avise o suporte se persistir' })
+        }
+      }
       continue
     }
 
@@ -128,8 +154,6 @@ export async function importarClientesCsv(
       continue
     }
 
-    const vendedorNomeRaw = getCol(row, 'Vendedor', 'Vendedor Responsável', 'Vendedor Responsavel', 'Representante')
-    const vendedor = vendedorNomeRaw ? vendedorPorNome.get(normalizarTexto(vendedorNomeRaw)) : undefined
     // Não bater o nome do vendedor NÃO trava a linha — o cliente ainda tem
     // que ir pra algum lugar (Banco de Clientes), só avisa que não conseguiu
     // atribuir automaticamente.
@@ -189,5 +213,5 @@ export async function importarClientesCsv(
     }
   }
 
-  return { arquivo: nomeArquivo, sucesso, erros, avisos }
+  return { arquivo: nomeArquivo, sucesso, atualizados, erros, avisos }
 }

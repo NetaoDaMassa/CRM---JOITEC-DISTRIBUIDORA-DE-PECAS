@@ -434,7 +434,7 @@ app.post('/upload/clientes-csv', uploadMemoria.array('files'), async (req, res) 
       resultados.push(resultado)
     } catch (err) {
       console.error(`[upload/clientes-csv] falha lendo ${file.originalname}:`, err)
-      resultados.push({ arquivo: file.originalname, sucesso: 0, erros: [{ linha: 0, motivo: 'Não consegui abrir esse arquivo — confirme se é um Excel/CSV válido' }], avisos: [] })
+      resultados.push({ arquivo: file.originalname, sucesso: 0, atualizados: 0, erros: [{ linha: 0, motivo: 'Não consegui abrir esse arquivo — confirme se é um Excel/CSV válido' }], avisos: [] })
     }
   }
   res.json({ resultados })

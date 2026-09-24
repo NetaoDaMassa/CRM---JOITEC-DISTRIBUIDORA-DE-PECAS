@@ -16,7 +16,6 @@ import AdminDashboard from './pages/admin/Dashboard'
 import AdminUsers from './pages/admin/Users'
 import AdminCarteira from './pages/admin/Carteira'
 import AdminBancoClientes from './pages/admin/BancoClientes'
-import AdminImportar from './pages/admin/Importar'
 import AdminLixeira from './pages/admin/Lixeira'
 import AdminReports from './pages/admin/Reports'
 import AdminMessageTemplates from './pages/admin/MessageTemplates'
@@ -198,7 +197,6 @@ export default function App() {
           <Route path="admin/clientes/:id" element={<AdminGuard><FeatureGuard feature="clientes"><ClienteDetail /></FeatureGuard></AdminGuard>} />
           <Route path="admin/carteira" element={<AdminGuard><FeatureGuard feature="carteira"><AdminCarteira /></FeatureGuard></AdminGuard>} />
           <Route path="admin/banco-clientes" element={<AdminGuard><FeatureGuard feature="banco_clientes"><AdminBancoClientes /></FeatureGuard></AdminGuard>} />
-          <Route path="admin/importar" element={<AdminGuard><FeatureGuard feature="importar"><AdminImportar /></FeatureGuard></AdminGuard>} />
           <Route path="admin/lixeira" element={<AdminGuard><FeatureGuard feature="lixeira"><AdminLixeira /></FeatureGuard></AdminGuard>} />
           <Route path="admin/relatorios" element={<AdminGuard><FeatureGuard feature="relatorios"><AdminReports /></FeatureGuard></AdminGuard>} />
           <Route path="admin/usuarios" element={<AdminGuard><FeatureGuard feature="usuarios"><AdminUsers /></FeatureGuard></AdminGuard>} />

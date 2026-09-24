@@ -18,9 +18,12 @@ export const FEATURES_ADMIN = [
   'clientes',
   'prospeccao',
   'aprovacoes',
+  // 'importar' virou uma seção dentro da própria tela de Carteira em
+  // 2026-09-24 (pedido do João) — não é mais item de menu separado, então
+  // saiu daqui. Quem gerencia carteira (feature 'carteira') já gerencia
+  // importação também.
   'carteira',
   'banco_clientes',
-  'importar',
   'relatorios',
   'usuarios',
   'metas',

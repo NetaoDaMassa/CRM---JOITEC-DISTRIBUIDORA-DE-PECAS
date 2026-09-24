@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
-  KanbanSquare, List, LogOut, ArrowRightLeft, Trash2, Upload,
+  KanbanSquare, List, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail,
 } from 'lucide-react'
@@ -62,7 +62,6 @@ export const ADMIN_LINKS = [
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
   { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft, feature: 'carteira' },
   { to: '/admin/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
-  { to: '/admin/importar', label: 'Importar', icon: Upload, feature: 'importar' },
   { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
   { to: '/admin/usuarios', label: 'Vendedores', icon: Users, feature: 'usuarios' },
   { to: '/admin/metas', label: 'Metas', icon: Target, feature: 'metas' },

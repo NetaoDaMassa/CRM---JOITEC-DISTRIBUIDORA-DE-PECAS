@@ -5,6 +5,19 @@ import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 
+interface ImportRowError {
+  linha: number
+  motivo: string
+}
+
+interface ImportFileResult {
+  arquivo: string
+  sucesso: number
+  atualizados: number
+  erros: ImportRowError[]
+  avisos: ImportRowError[]
+}
+
 const REGIOES = [
   { value: 'norte', label: 'Norte' },
   { value: 'nordeste', label: 'Nordeste' },
@@ -23,6 +36,10 @@ export default function AdminCarteira() {
   const [paraVendedor, setParaVendedor] = useState('')
   const [destinoRedistribuicao, setDestinoRedistribuicao] = useState<'vendedor' | 'banco'>('vendedor')
   const [rotuloBanco, setRotuloBanco] = useState('')
+
+  const [arquivosImportar, setArquivosImportar] = useState<FileList | null>(null)
+  const [importando, setImportando] = useState(false)
+  const [resultadosImportar, setResultadosImportar] = useState<ImportFileResult[] | null>(null)
 
   const [buscaCliente, setBuscaCliente] = useState('')
   const [clienteSelecionado, setClienteSelecionado] = useState<{ id: number; razaoSocial: string; vendedorAtual: { name: string } | null } | null>(null)
@@ -90,12 +107,108 @@ export default function AdminCarteira() {
     },
   })
 
+  // Importação de planilha — vivia numa tela separada ("Importar", menu
+  // próprio); virou uma seção aqui dentro de Carteira porque é exatamente
+  // isso que ela faz (jogar clientes pro Banco ou pra um vendedor), pedido
+  // do João 2026-09-24. Fora do tRPC de propósito (upload de arquivo).
+  async function handleImportar() {
+    if (!arquivosImportar || arquivosImportar.length === 0) return toast.error('Selecione ao menos um arquivo.')
+
+    setImportando(true)
+    setResultadosImportar(null)
+    try {
+      const token = localStorage.getItem('odin_token')
+      const empresaAtivaId = localStorage.getItem('empresa_ativa_id')
+      const form = new FormData()
+      for (const file of Array.from(arquivosImportar)) form.append('files', file)
+
+      const res = await fetch('/upload/clientes-csv', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Sem isso, importar com outra empresa selecionada (superAdmin
+          // trocando de empresa no seletor) ia sempre cair na empresa "de
+          // casa" do login, sem avisar nada.
+          ...(empresaAtivaId ? { 'x-empresa-id': empresaAtivaId } : {}),
+        },
+        body: form,
+      })
+      const data = await res.json()
+      if (!res.ok) return toast.error(data.error ?? 'Falha na importação.')
+
+      setResultadosImportar(data.resultados)
+      const totalSucesso = data.resultados.reduce((acc: number, r: ImportFileResult) => acc + r.sucesso, 0)
+      const totalAtualizados = data.resultados.reduce((acc: number, r: ImportFileResult) => acc + r.atualizados, 0)
+      toast.success(`${totalSucesso} cliente(s) novo(s), ${totalAtualizados} reatribuído(s).`)
+      utils.clientes.list.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+    } catch {
+      toast.error('Falha ao enviar os arquivos.')
+    } finally {
+      setImportando(false)
+    }
+  }
+
   const vendorOptions = (vendors ?? []).map((v) => ({ value: v.id, label: v.name }))
 
   return (
     <div className="p-6 max-w-xl space-y-6">
       <div>
-        <h1 className="font-heading text-xl text-dark-50">Atribuição de carteira</h1>
+        <h1 className="font-heading text-xl text-dark-50">Carteira</h1>
+      </div>
+
+      <div className="space-y-3 bg-dark-800 border border-dark-600 rounded-2xl p-5">
+        <h2 className="text-sm font-semibold text-dark-100">Importar planilha de clientes</h2>
+        <p className="text-xs text-dark-400">
+          Envie um ou mais arquivos Excel/CSV. Cada linha precisa ter "Código" (identificador único), "Nome do
+          Cliente" e "Estado". O CNPJ é opcional. Se a coluna "Vendedor" tiver um nome que bate com um vendedor
+          cadastrado, o cliente já é atribuído a ele — se o código já existir no sistema, o cliente existente é
+          reatribuído pra esse vendedor em vez de duplicar. Sem vendedor (ou sem bater o nome), o cliente vai pro
+          Banco de Clientes.
+        </p>
+        <input
+          type="file"
+          accept=".csv,.xlsx,.xls"
+          multiple
+          onChange={(e) => setArquivosImportar(e.target.files)}
+          className="text-sm text-dark-300"
+        />
+        <Button onClick={handleImportar} loading={importando}>
+          Importar
+        </Button>
+
+        {resultadosImportar && (
+          <div className="space-y-2 pt-2">
+            {resultadosImportar.map((r) => (
+              <div key={r.arquivo} className="bg-dark-900/50 border border-dark-700 rounded-xl p-3">
+                <p className="text-sm font-medium text-dark-100">
+                  {r.arquivo} — <span className="text-green-400">{r.sucesso} novo(s)</span>
+                  {r.atualizados > 0 && <span className="text-cyan-400"> · {r.atualizados} reatribuído(s)</span>}
+                  {r.avisos.length > 0 && <span className="text-amber-400"> · {r.avisos.length} aviso(s)</span>}
+                  {r.erros.length > 0 && <span className="text-red-400"> · {r.erros.length} erro(s)</span>}
+                </p>
+                {r.avisos.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs text-amber-400">
+                    {r.avisos.map((a, i) => (
+                      <li key={i}>
+                        Linha {a.linha}: {a.motivo}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {r.erros.length > 0 && (
+                  <ul className="mt-2 space-y-1 text-xs text-dark-400">
+                    {r.erros.map((e, i) => (
+                      <li key={i}>
+                        Linha {e.linha}: {e.motivo}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 bg-dark-800 border border-dark-600 rounded-2xl p-5">
