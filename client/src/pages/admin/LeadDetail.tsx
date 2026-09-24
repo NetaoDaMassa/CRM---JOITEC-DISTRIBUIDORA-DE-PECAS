@@ -47,6 +47,7 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   tentativa_contato: 'Tentativa de contato',
   transferido: 'Transferido de vendedor',
   transferido_empresa: 'Transferido de empresa',
+  duplicado_empresa: 'Duplicado pra outra empresa',
   excluido: 'Excluído',
   reatribuicao_automatica: 'Reatribuído por rodízio',
   email_marketing: 'E-mail marketing',

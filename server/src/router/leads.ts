@@ -1264,6 +1264,94 @@ export const leadsRouter = router({
       return { success: true, total: leadsAlvo.length - falhas.length, semVendedor, falhas }
     }),
 
+  // Diferente de transferirParaOutraEmpresa (move, some da origem): aqui o
+  // lead original fica intacto e nasce uma CÓPIA nova em cada empresa de
+  // destino — pedido do João, 2026-09-24: tem lead que serve pra mais de
+  // uma empresa do grupo ao mesmo tempo (ex: contato interessado tanto em
+  // Tubos quanto em Compressores), então precisa aparecer nos dois funis
+  // sem duplicar o trabalho de recadastrar na mão. Mesmo rodízio por
+  // DDD/região da transferência pra escolher o vendedor em cada destino.
+  duplicarParaOutrasEmpresas: superAdminProcedure
+    .input(z.object({ leadIds: z.array(z.number()).min(1), empresaDestinoIds: z.array(z.number()).min(1) }))
+    .mutation(async ({ ctx, input }) => {
+      const empresasDestino = await db.query.empresas.findMany({ where: inArray(empresas.id, input.empresaDestinoIds) })
+      if (empresasDestino.length !== input.empresaDestinoIds.length) throw new Error('Empresa de destino inválida')
+
+      const leadsAlvo = await db.query.leads.findMany({
+        where: and(inArray(leads.id, input.leadIds), isNull(leads.deletedAt)),
+      })
+      if (!leadsAlvo.length) throw new Error('Nenhum lead válido selecionado')
+
+      let criados = 0
+      let semVendedor = 0
+      const falhas: { id: number; nome: string; empresaDestino: string; motivo: string }[] = []
+
+      for (const lead of leadsAlvo) {
+        for (const empresaDestino of empresasDestino) {
+          if (lead.empresaId === empresaDestino.id) continue // já está lá, não duplica pra própria empresa
+
+          try {
+            const vendorId = lead.ddd !== null ? await getVendorByDDD(lead.ddd, empresaDestino.id) : null
+            const regionId = lead.ddd !== null ? await getRegionIdByDDD(lead.ddd, empresaDestino.id) : null
+            if (!vendorId) semVendedor++
+
+            const result = await db.insert(leads).values({
+              empresaId: empresaDestino.id,
+              name: lead.name,
+              phone: lead.phone,
+              ddd: lead.ddd,
+              email: lead.email,
+              company: lead.company,
+              city: lead.city,
+              segment: lead.segment,
+              observations: lead.observations,
+              source: 'duplicado',
+              vendorId,
+              regionId,
+              assignedAt: vendorId ? new Date().toISOString() : null,
+              statusChangedAt: new Date().toISOString(),
+            })
+            const novoLeadId = Number(result.lastInsertRowid)
+            criados++
+
+            await db.insert(leadHistory).values({
+              empresaId: empresaDestino.id,
+              leadId: novoLeadId,
+              userId: ctx.user.id,
+              action: 'criado',
+              toStatus: 'novo',
+              details: `Duplicado do lead #${lead.id} (empresa #${lead.empresaId})${vendorId ? ' e atribuído ao vendedor' : ' sem vendedor no rodízio dessa região'}.`,
+            })
+            await db.insert(leadHistory).values({
+              empresaId: lead.empresaId,
+              leadId: lead.id,
+              userId: ctx.user.id,
+              action: 'duplicado_empresa',
+              details: `Duplicado para "${empresaDestino.nome}" — novo lead #${novoLeadId}.`,
+            })
+
+            if (vendorId) {
+              await db.insert(notifications).values({
+                vendedorId: vendorId,
+                type: 'lead_assigned',
+                title: 'Novo lead atribuído',
+                message: `${lead.name} foi duplicado pra você agora (de outra empresa).`,
+              })
+            }
+          } catch (err) {
+            falhas.push({
+              id: lead.id,
+              nome: lead.name,
+              empresaDestino: empresaDestino.nome,
+              motivo: err instanceof Error ? err.message : 'erro desconhecido',
+            })
+          }
+        }
+      }
+
+      return { success: true, criados, semVendedor, falhas }
+    }),
+
   delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const existing = await db.query.leads.findFirst({
       where: and(eq(leads.id, input.id), eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),

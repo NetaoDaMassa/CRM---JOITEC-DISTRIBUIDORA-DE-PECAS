@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle, Building2 } from 'lucide-react'
+import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle, Building2, Copy } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
@@ -53,6 +53,7 @@ export default function Leads() {
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
   const [transferMuitosOpen, setTransferMuitosOpen] = useState(false)
   const [transferEmpresaOpen, setTransferEmpresaOpen] = useState(false)
+  const [duplicarEmpresaOpen, setDuplicarEmpresaOpen] = useState(false)
 
   // Muda filtro/página = a seleção de outra tela de resultados não faz mais
   // sentido visível — limpa pra não confundir com "X selecionados" fantasma.
@@ -210,6 +211,12 @@ export default function Leads() {
               <Button size="sm" variant="secondary" onClick={() => setTransferEmpresaOpen(true)}>
                 <Building2 size={14} />
                 Transferir p/ outra empresa
+              </Button>
+            )}
+            {user?.superAdmin && (
+              <Button size="sm" variant="secondary" onClick={() => setDuplicarEmpresaOpen(true)}>
+                <Copy size={14} />
+                Duplicar p/ outra(s) empresa(s)
               </Button>
             )}
           </div>
@@ -411,6 +418,18 @@ export default function Leads() {
         }}
       />
 
+      <DuplicarEmpresaModal
+        open={duplicarEmpresaOpen}
+        total={selecionados.size}
+        leadIds={[...selecionados]}
+        empresas={(empresas ?? []).filter((e) => e.id !== empresaAtivaId)}
+        onClose={() => setDuplicarEmpresaOpen(false)}
+        onDuplicado={() => {
+          setDuplicarEmpresaOpen(false)
+          setSelecionados(new Set())
+        }}
+      />
+
       <Modal open={!!deleteLead} onClose={() => setDeleteLead(null)} title="Excluir lead" size="sm">
         <p className="text-dark-300 text-sm mb-5">Tem certeza que quer excluir "{deleteLead?.name}"?</p>
         <div className="flex gap-3">
@@ -605,6 +624,86 @@ function TransferirEmpresaModal({
             onClick={() => mut.mutate({ leadIds, empresaDestinoId: Number(empresaDestinoId) })}
           >
             Transferir
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Diferente de transferir (move, some da origem): aqui o lead continua
+// existindo na empresa atual e nasce uma cópia em cada empresa marcada —
+// pra lead que interessa a mais de uma empresa do grupo ao mesmo tempo.
+function DuplicarEmpresaModal({
+  open,
+  total,
+  leadIds,
+  empresas,
+  onClose,
+  onDuplicado,
+}: {
+  open: boolean
+  total: number
+  leadIds: number[]
+  empresas: { id: number; nome: string }[]
+  onClose: () => void
+  onDuplicado: () => void
+}) {
+  const utils = trpc.useUtils()
+  const [empresaDestinoIds, setEmpresaDestinoIds] = useState<Set<number>>(new Set())
+
+  const mut = trpc.leads.duplicarParaOutrasEmpresas.useMutation({
+    onSuccess(data) {
+      if (data.falhas.length > 0) {
+        toast.error(`${data.criados} duplicado(s), ${data.falhas.length} falharam — veja o console`)
+        console.error('Falhas na duplicação entre empresas:', data.falhas)
+      } else {
+        toast.success(`${data.criados} lead(s) duplicado(s)${data.semVendedor > 0 ? ` (${data.semVendedor} sem vendedor no rodízio dessa região)` : ''}`)
+      }
+      utils.leads.list.invalidate()
+      setEmpresaDestinoIds(new Set())
+      onDuplicado()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function alternar(id: number) {
+    setEmpresaDestinoIds((prev) => {
+      const novo = new Set(prev)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={`Duplicar ${total} lead(s) para outra(s) empresa(s)`} size="sm">
+      <div className="space-y-4">
+        <p className="text-xs text-dark-500">
+          O lead original continua onde está — uma cópia nova é criada em cada empresa marcada, com vendedor escolhido
+          pelo rodízio de lá (por DDD/região).
+        </p>
+        <div className="space-y-1.5">
+          {empresas.map((e) => (
+            <label key={e.id} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
+              <input type="checkbox" className="accent-gold-500" checked={empresaDestinoIds.has(e.id)} onChange={() => alternar(e.id)} />
+              {e.nome}
+            </label>
+          ))}
+        </div>
+        <div className="flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button
+            className="flex-1"
+            loading={mut.isPending}
+            disabled={empresaDestinoIds.size === 0 || leadIds.length === 0}
+            onClick={() => mut.mutate({ leadIds, empresaDestinoIds: [...empresaDestinoIds] })}
+          >
+            Duplicar
           </Button>
         </div>
       </div>
