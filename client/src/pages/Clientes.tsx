@@ -117,7 +117,7 @@ export default function Clientes() {
             <div>
               <p className="font-medium text-dark-100">{c.razaoSocial}</p>
               <p className="text-dark-400 text-xs">
-                {c.cnpj ?? `Cód. ${c.codigo} (sem CNPJ)`} · {REGIAO_LABELS[c.regiao]}
+                {c.cnpj ?? `Cód. ${c.codigo} (sem CNPJ)`} · {c.regiao ? REGIAO_LABELS[c.regiao] : 'sem região'}
                 {c.cidade ? ` · ${c.cidade}/${c.estado}` : ''}
                 {user?.role === 'admin' && ` · ${c.vendedorAtual?.name ?? 'sem vendedor'}`}
               </p>
