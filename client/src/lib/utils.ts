@@ -11,6 +11,15 @@ function toUtcDate(date: string | Date): Date {
   return new Date(date.replace(' ', 'T') + 'Z')
 }
 
+// O date-fns (format/formatDistanceToNow/intervalToDuration) lança
+// RangeError em vez de devolver algo exibível quando a data é inválida —
+// sem essa checagem antes, um lead com data corrompida/vazia-mas-não-nula
+// derrubava a tela inteira (React desmonta tudo no erro, fica preto).
+// Achado real: Kanban de Leads do Marcos (Compretec Loja Física), 2026-09-24.
+function dataValida(d: Date): boolean {
+  return !Number.isNaN(d.getTime())
+}
+
 // Compara ignorando acento/maiúscula — pra campo de busca em lista longa
 // (Vendedores, Funções, Permissões, Grupos da Sidebar) não exigir digitar
 // "ç"/"ã" certinho pra achar "Prospecção"/"Região".
@@ -27,23 +36,30 @@ export function formatarPercentual(v: number | null | undefined): string {
 
 export function formatDate(date: string | Date | null | undefined): string {
   if (!date) return '—'
-  return format(toUtcDate(date), 'dd/MM/yyyy', { locale: ptBR })
+  const d = toUtcDate(date)
+  if (!dataValida(d)) return '—'
+  return format(d, 'dd/MM/yyyy', { locale: ptBR })
 }
 
 export function formatDateTime(date: string | Date | null | undefined): string {
   if (!date) return '—'
-  return format(toUtcDate(date), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
+  const d = toUtcDate(date)
+  if (!dataValida(d)) return '—'
+  return format(d, "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })
 }
 
 export function timeAgo(date: string | Date | null | undefined): string {
   if (!date) return '—'
-  return formatDistanceToNow(toUtcDate(date), { addSuffix: true, locale: ptBR })
+  const d = toUtcDate(date)
+  if (!dataValida(d)) return '—'
+  return formatDistanceToNow(d, { addSuffix: true, locale: ptBR })
 }
 
 // Usado no painel de TV (bloco 10) pro "tempo de venda ao vivo".
 export function formatElapsed(from: string | Date, to?: string | Date | null): string {
   const start = toUtcDate(from)
   const end = to ? toUtcDate(to) : new Date()
+  if (!dataValida(start) || !dataValida(end)) return '—'
   const duration = intervalToDuration({ start, end })
   const parts: string[] = []
   if (duration.days) parts.push(`${duration.days}d`)
