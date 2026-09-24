@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail,
+  ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -131,6 +131,11 @@ export const ADMIN_LINKS = [
   // mais conteúdo conforme o João for definindo o que entra. Pedido do
   // João, 2026-09-15.
   { to: '/admin/grupo-odin', label: 'Grupo Odin', icon: Building2, feature: 'grupo_odin' },
+  // Liberação de Crédito — cross-empresa igual os dois acima. Financeiro
+  // (hoje a Rubia) registra quando um cliente de qualquer empresa do grupo
+  // foi liberado pra comprar mesmo com pendência/limite estourado. Pedido
+  // do João, 2026-09-24.
+  { to: '/admin/liberacao-credito', label: 'Liberação de Crédito', icon: Unlock, feature: 'liberacao_credito' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,

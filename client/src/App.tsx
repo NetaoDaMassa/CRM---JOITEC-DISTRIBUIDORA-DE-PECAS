@@ -54,6 +54,7 @@ import FilaHoje from './pages/vendor/FilaHoje'
 import SolicitarDesign from './pages/vendor/SolicitarDesign'
 import RequisicaoPosto from './pages/admin/RequisicaoPosto'
 import GrupoOdin from './pages/admin/GrupoOdin'
+import LiberacaoCredito from './pages/admin/LiberacaoCredito'
 import CartaoCredito from './pages/vendor/CartaoCredito'
 import CartaoCreditoRelatorio from './pages/admin/CartaoCreditoRelatorio'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
@@ -229,6 +230,7 @@ export default function App() {
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cartao-relatorio" element={<AdminGuard><FeatureGuard feature="cartao_credito_relatorio"><CartaoCreditoRelatorio /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />

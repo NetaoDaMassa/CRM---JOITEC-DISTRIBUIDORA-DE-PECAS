@@ -131,6 +131,10 @@ export const FEATURES_ADMIN = [
   // Ambos 2026-09-15.
   'requisicao_posto',
   'grupo_odin',
+  // Liberação de Crédito — cross-empresa igual as duas acima. Pedido do
+  // João, 2026-09-24: registro de liberações feitas pelo Financeiro (hoje a
+  // Rubia), vale pras 4 empresas numa tela só.
+  'liberacao_credito',
 ] as const
 
 // "Arquivos/Mídia" (Marketing) NÃO tem chave aqui de propósito — é liberado

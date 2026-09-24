@@ -3096,6 +3096,47 @@ export const cartaoGastoAnexosRelations = relations(cartaoGastoAnexos, ({ one })
   gasto: one(cartaoGastos, { fields: [cartaoGastoAnexos.gastoId], references: [cartaoGastos.id] }),
 }))
 
+// ── Liberação de Crédito (Financeiro, cross-empresa) ────────────────────────
+// Pedido do João, 2026-09-24: registro de "liberei esse cliente pra comprar
+// mesmo com pendência/limite estourado" — feito por alguém do Financeiro
+// que atende as 4 empresas do grupo de uma vez (mesmo padrão cross-empresa
+// de requisicaoPosto/grupo_odin: sem trava de empresaId no router, só a
+// permissão 'liberacao_credito' concedida em Permissões decide quem usa).
+// empresaId/vendedorId são um SNAPSHOT do cliente no momento da liberação —
+// de propósito não seguem se o cliente trocar de vendedor depois, pro
+// relatório continuar mostrando quem era o vendedor responsável na hora.
+export const liberacoesCredito = sqliteTable(
+  'liberacoes_credito',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    // Texto livre — nem sempre é alguém com login no CRM (às vezes é uma
+    // liberação combinada por telefone com a diretoria), então não é FK.
+    quemLiberou: text('quem_liberou').notNull(),
+    motivo: text('motivo').notNull(),
+    // Anexo único e opcional (comprovante da liberação, se tiver) — mesmo
+    // shape de cartaoGastoAnexos, só que direto na linha por ser 0-ou-1.
+    urlArquivo: text('url_arquivo'),
+    nomeArquivo: text('nome_arquivo'),
+    tipoArquivo: text('tipo_arquivo'),
+    criadoPor: integer('criado_por').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('liberacoes_credito_cliente_idx').on(t.clienteId),
+    createdAtIdx: index('liberacoes_credito_created_at_idx').on(t.createdAt),
+  })
+)
+
+export const liberacoesCreditoRelations = relations(liberacoesCredito, ({ one }) => ({
+  cliente: one(clientes, { fields: [liberacoesCredito.clienteId], references: [clientes.id] }),
+  empresa: one(empresas, { fields: [liberacoesCredito.empresaId], references: [empresas.id] }),
+  vendedor: one(users, { fields: [liberacoesCredito.vendedorId], references: [users.id] }),
+  criador: one(users, { fields: [liberacoesCredito.criadoPor], references: [users.id] }),
+}))
+
 // ── Instagram (captação de leads via Direct) ────────────────────────────────
 // Pedido do João, 2026-09-21. UM Meta App só, compartilhado por todas as
 // empresas (webhook único — ver server/src/routes/instagram.ts); cada
