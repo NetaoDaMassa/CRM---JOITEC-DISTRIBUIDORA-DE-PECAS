@@ -11,6 +11,7 @@ interface ImportFileResult {
   arquivo: string
   sucesso: number
   erros: ImportRowError[]
+  avisos: ImportRowError[]
 }
 
 export default function AdminImportar() {
@@ -25,12 +26,19 @@ export default function AdminImportar() {
     setResultados(null)
     try {
       const token = localStorage.getItem('odin_token')
+      const empresaAtivaId = localStorage.getItem('empresa_ativa_id')
       const form = new FormData()
       for (const file of Array.from(files)) form.append('files', file)
 
       const res = await fetch('/upload/clientes-csv', {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Sem isso, importar com outra empresa selecionada (superAdmin
+          // trocando de empresa no seletor) ia sempre cair na empresa "de
+          // casa" do login, sem avisar nada — achado do João, 2026-09-24.
+          ...(empresaAtivaId ? { 'x-empresa-id': empresaAtivaId } : {}),
+        },
         body: form,
       })
       const data = await res.json()
@@ -76,8 +84,18 @@ export default function AdminImportar() {
             <div key={r.arquivo} className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
               <p className="text-sm font-medium text-dark-100">
                 {r.arquivo} — <span className="text-green-400">{r.sucesso} importado(s)</span>
+                {r.avisos.length > 0 && <span className="text-amber-400"> · {r.avisos.length} aviso(s)</span>}
                 {r.erros.length > 0 && <span className="text-red-400"> · {r.erros.length} erro(s)</span>}
               </p>
+              {r.avisos.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-amber-400">
+                  {r.avisos.map((a, i) => (
+                    <li key={i}>
+                      Linha {a.linha}: {a.motivo}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {r.erros.length > 0 && (
                 <ul className="mt-2 space-y-1 text-xs text-dark-400">
                   {r.erros.map((e, i) => (

@@ -424,17 +424,20 @@ app.post('/upload/clientes-csv', uploadMemoria.array('files'), async (req, res) 
   const files = req.files as Express.Multer.File[] | undefined
   if (!files || files.length === 0) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
 
-  try {
-    const resultados = []
-    for (const file of files) {
+  // Cada arquivo isolado no próprio try/catch — um .xlsx corrompido não pode
+  // derrubar a resposta inteira e esconder o resultado dos outros arquivos
+  // do mesmo lote que já tinham processado certo.
+  const resultados = []
+  for (const file of files) {
+    try {
       const resultado = await importarClientesCsv(file.buffer, file.originalname, user.id, empresaId)
       resultados.push(resultado)
+    } catch (err) {
+      console.error(`[upload/clientes-csv] falha lendo ${file.originalname}:`, err)
+      resultados.push({ arquivo: file.originalname, sucesso: 0, erros: [{ linha: 0, motivo: 'Não consegui abrir esse arquivo — confirme se é um Excel/CSV válido' }], avisos: [] })
     }
-    res.json({ resultados })
-  } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: 'Falha ao processar a importação' })
   }
+  res.json({ resultados })
 })
 
 // Callback do OAuth da GoTo — precisa ser uma rota simples (não tRPC) porque
