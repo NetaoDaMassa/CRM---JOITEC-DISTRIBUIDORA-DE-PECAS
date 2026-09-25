@@ -488,6 +488,33 @@ function ImportarRcModal({ open, onClose }: { open: boolean; onClose: () => void
   )
 }
 
+function RelatorioPorVendedorRc() {
+  const { data } = trpc.negociacoes.rcRelatorioPorVendedor.useQuery()
+  const [aberto, setAberto] = useState(false)
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl mb-4">
+      <button onClick={() => setAberto((a) => !a)} className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-dark-100">
+        Por vendedor
+        <span className="text-xs text-dark-500">{aberto ? 'esconder' : 'mostrar'}</span>
+      </button>
+      {aberto && (
+        <div className="px-4 pb-4 space-y-1.5">
+          {data?.map((r) => (
+            <div key={r.vendedorId ?? 'sem-vendedor'} className="flex items-center justify-between text-xs">
+              <span className="text-dark-300">{r.vendedorNome}</span>
+              <span className="text-dark-100 font-medium">
+                {r.qtd} cliente(s) · {formatarMoeda(r.valorTotal)}
+              </span>
+            </div>
+          ))}
+          {!data?.length && <p className="text-xs text-dark-500">Nada por aqui ainda.</p>}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AbaRc() {
   const { user } = useAuth()
   const utils = trpc.useUtils()
@@ -503,6 +530,7 @@ function AbaRc() {
 
   return (
     <>
+      <RelatorioPorVendedorRc />
       <TabelaStatus
         titulo="Cliente enviado à RC"
         rotuloEnviado="Enviado à RC"

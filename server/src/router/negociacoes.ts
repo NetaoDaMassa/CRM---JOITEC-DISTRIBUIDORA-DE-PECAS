@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, isNull, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
 import { router, featureProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { cobrancasRegistro, clientesCartorio, clientesRc, clientes, empresas } from '../db/schema.js'
+import { cobrancasRegistro, clientesCartorio, clientesRc, clientes, empresas, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 
 async function validarCliente(clienteId: number, empresaId: number) {
@@ -167,6 +167,27 @@ export const negociacoesRouter = router({
       .where(eq(clientes.empresaId, ctx.empresaId))
       .orderBy(desc(clientesRc.updatedAt))
     return linhas.map((l) => ({ ...l, cliente: { id: l.clienteId, razaoSocial: l.clienteNome } }))
+  }),
+
+  // Quebra por vendedor (o atual, de clientes.vendedorAtualId — RC não
+  // guarda retrato de quem era o vendedor na hora, diferente de
+  // liberacaoCredito) — pedido do João, 2026-09-25, mesma ideia do "Por
+  // vendedor" que já existe em Liberação de Crédito.
+  rcRelatorioPorVendedor: featureProcedure('negociacoes').query(async ({ ctx }) => {
+    const linhas = await db
+      .select({
+        vendedorId: clientes.vendedorAtualId,
+        vendedorNome: users.name,
+        qtd: sql<number>`count(*)`,
+        valorTotal: sql<number>`coalesce(sum(${clientesRc.valor}), 0)`,
+      })
+      .from(clientesRc)
+      .innerJoin(clientes, eq(clientesRc.clienteId, clientes.id))
+      .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
+      .where(eq(clientes.empresaId, ctx.empresaId))
+      .groupBy(clientes.vendedorAtualId, users.name)
+      .orderBy(desc(sql`count(*)`))
+    return linhas.map((l) => ({ ...l, vendedorNome: l.vendedorNome ?? 'Sem vendedor' }))
   }),
 
   rcCriar: featureProcedure('negociacoes')
