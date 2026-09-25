@@ -104,6 +104,28 @@ export const requisicaoPostoRouter = router({
       return { success: true }
     }),
 
+  // Corrige um lançamento já feito (valor digitado errado, carro/data
+  // trocados) sem precisar apagar e recriar — pedido do João, 2026-09-25.
+  editar: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        colaboradorId: z.number(),
+        veiculoId: z.number(),
+        data: z.string(),
+        valor: z.number().positive('Valor precisa ser maior que zero'),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const existente = await db.query.requisicaoPosto.findFirst({ where: eq(requisicaoPosto.id, input.id) })
+      if (!existente) throw new Error('Lançamento não encontrado')
+      await db
+        .update(requisicaoPosto)
+        .set({ colaboradorId: input.colaboradorId, veiculoId: input.veiculoId, data: input.data, valor: input.valor })
+        .where(eq(requisicaoPosto.id, input.id))
+      return { success: true }
+    }),
+
   atualizarCanhoto: adminProcedure
     .input(z.object({ id: z.number(), canhotoEntregue: z.boolean() }))
     .mutation(async ({ input }) => {

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Fuel, Plus, Trash2 } from 'lucide-react'
+import { Fuel, Plus, Trash2, Pencil } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
@@ -182,14 +182,27 @@ type Requisicao = {
   data: string
   valor: number
   canhotoEntregue: boolean
+  colaboradorId: number
   colaboradorNome: string
   empresaNome: string
+  veiculoId: number
   placa: string
   criadoPorNome: string | null
 }
 
+// Edição de um lançamento já feito (data/colaborador/carro/valor) — pedido
+// do João, 2026-09-25: corrigir valor digitado errado sem apagar e
+// relançar. Canhoto continua editável direto na lista (não entra aqui).
 function LinhaRequisicao({ r }: { r: Requisicao }) {
   const utils = trpc.useUtils()
+  const [editando, setEditando] = useState(false)
+  const [data, setData] = useState(r.data)
+  const [colaboradorId, setColaboradorId] = useState(String(r.colaboradorId))
+  const [veiculoId, setVeiculoId] = useState(String(r.veiculoId))
+  const [valor, setValor] = useState(String(r.valor))
+
+  const { data: colaboradores } = trpc.requisicaoPosto.colaboradoresListar.useQuery(undefined, { enabled: editando })
+  const { data: veiculos } = trpc.requisicaoPosto.veiculosListar.useQuery(undefined, { enabled: editando })
 
   function invalidar() {
     utils.requisicaoPosto.listar.invalidate()
@@ -198,6 +211,52 @@ function LinhaRequisicao({ r }: { r: Requisicao }) {
 
   const canhotoMut = trpc.requisicaoPosto.atualizarCanhoto.useMutation({ onSuccess: invalidar, onError: (e) => toast.error(e.message) })
   const excluirMut = trpc.requisicaoPosto.excluir.useMutation({ onSuccess: invalidar, onError: (e) => toast.error(e.message) })
+  const editarMut = trpc.requisicaoPosto.editar.useMutation({
+    onSuccess() {
+      toast.success('Lançamento atualizado')
+      setEditando(false)
+      invalidar()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  if (editando) {
+    return (
+      <tr className="border-t border-dark-700 bg-dark-750">
+        <td className="px-3 py-2">
+          <Input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-36" />
+        </td>
+        <td className="px-3 py-2" colSpan={2}>
+          <Select
+            value={colaboradorId}
+            onChange={(e) => setColaboradorId(e.target.value)}
+            options={(colaboradores ?? []).map((c) => ({ value: c.id, label: `${c.nome} (${c.empresaNome})` }))}
+          />
+        </td>
+        <td className="px-3 py-2">
+          <Select value={veiculoId} onChange={(e) => setVeiculoId(e.target.value)} options={(veiculos ?? []).map((v) => ({ value: v.id, label: v.placa }))} />
+        </td>
+        <td className="px-3 py-2">
+          <Input value={valor} onChange={(e) => setValor(e.target.value)} className="w-24" />
+        </td>
+        <td className="px-3 py-2 text-xs text-dark-500">canhoto: {r.canhotoEntregue ? 'entregue' : 'não entregue'}</td>
+        <td className="px-3 py-2 text-right whitespace-nowrap">
+          <Button
+            size="sm"
+            loading={editarMut.isPending}
+            onClick={() =>
+              editarMut.mutate({ id: r.id, data, colaboradorId: Number(colaboradorId), veiculoId: Number(veiculoId), valor: parseValorBr(valor) })
+            }
+          >
+            Salvar
+          </Button>
+          <button type="button" onClick={() => setEditando(false)} className="text-xs text-dark-500 hover:text-dark-200 ml-2">
+            cancelar
+          </button>
+        </td>
+      </tr>
+    )
+  }
 
   return (
     <tr className="border-t border-dark-700">
@@ -219,7 +278,10 @@ function LinhaRequisicao({ r }: { r: Requisicao }) {
           {r.canhotoEntregue ? 'entregue' : 'não entregue'}
         </button>
       </td>
-      <td className="px-3 py-2 text-right">
+      <td className="px-3 py-2 text-right whitespace-nowrap">
+        <button type="button" onClick={() => setEditando(true)} className="text-dark-500 hover:text-gold-400 mr-2" title="Editar">
+          <Pencil size={14} />
+        </button>
         <button
           type="button"
           onClick={() => {
