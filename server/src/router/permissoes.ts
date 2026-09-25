@@ -266,23 +266,33 @@ export const permissoesRouter = router({
     .input(
       z.object({
         userId: z.number(),
-        features: z.array(z.enum([...FEATURES_ADMIN, ...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS])),
+        // string solto (não z.enum) de propósito: quando uma feature é
+        // aposentada (ex: 'importar' virou parte de Carteira, 2026-09-24),
+        // quem já tinha ela concedida carregava o valor antigo pro
+        // formulário sem checkbox pra desmarcar — com z.enum, QUALQUER save
+        // dessa pessoa quebrava com "invalid_enum_value" (achado do João,
+        // 2026-09-25). Agora só ignora silenciosamente o que não é mais
+        // válido, em vez de travar a tela inteira.
+        features: z.array(z.string()),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const alvo = await db.query.users.findFirst({ where: eq(users.id, input.userId) })
       if (!alvo || (alvo.role !== 'admin' && alvo.role !== 'vendor')) throw new Error('Usuário não encontrado')
 
+      const featuresValidas = new Set<string>([...FEATURES_ADMIN, ...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS])
+      const features = input.features.filter((f) => featuresValidas.has(f))
+
       await db.delete(permissoesAdmin).where(eq(permissoesAdmin.userId, input.userId))
-      if (input.features.length > 0) {
-        await db.insert(permissoesAdmin).values(input.features.map((feature) => ({ userId: input.userId, feature })))
+      if (features.length > 0) {
+        await db.insert(permissoesAdmin).values(features.map((feature) => ({ userId: input.userId, feature })))
       }
 
       await registrarAuditoria({
         tabela: 'permissoes_admin',
         registroId: input.userId,
         acao: 'editar',
-        valorNovo: input.features.join(','),
+        valorNovo: features.join(','),
         alteradoPor: ctx.user.id,
       })
       return { success: true }
