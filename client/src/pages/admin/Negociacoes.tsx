@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Plus, Download, MessageCircle, Phone, Mail } from 'lucide-react'
+import { Plus, Download, MessageCircle, Phone, Mail, Upload } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
-import { Input } from '../../components/ui/Input'
+import { Input, Textarea } from '../../components/ui/Input'
+import Modal from '../../components/ui/Modal'
 import CobrancaModal from '../../components/CobrancaModal'
 import NegociacaoStatusModal from '../../components/NegociacaoStatusModal'
 import { paraCsv, baixarCsv } from '../../lib/csv'
@@ -223,7 +225,9 @@ function TabelaStatus({
   onCriar,
   onAtualizarStatus,
   onExcluir,
+  onExcluirLote,
   onExportar,
+  acoesExtras,
 }: {
   titulo: string
   rotuloEnviado: string
@@ -233,13 +237,28 @@ function TabelaStatus({
   onCriar: (input: { clienteId: number; valor?: number; enviadoEm: string; observacoes?: string }, aoTerminar: () => void) => void
   onAtualizarStatus: (id: number, status: string) => void
   onExcluir: (id: number) => void
+  // Opcional — só a aba RC usa hoje. Sem isso, não mostra checkbox nem
+  // barra de seleção (Cartório continua só com exclusão 1 a 1).
+  onExcluirLote?: (ids: number[]) => void
   onExportar: () => void
+  acoesExtras?: React.ReactNode
 }) {
   const [modalAberto, setModalAberto] = useState(false)
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
+
+  function alternar(id: number) {
+    setSelecionados((prev) => {
+      const novo = new Set(prev)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+  }
 
   return (
     <div>
       <div className="flex justify-end gap-2 mb-4">
+        {acoesExtras}
         <Button variant="secondary" onClick={onExportar}>
           <Download size={16} /> Exportar CSV
         </Button>
@@ -247,11 +266,43 @@ function TabelaStatus({
           <Plus size={16} /> Novo
         </Button>
       </div>
+
+      {onExcluirLote && selecionados.size > 0 && (
+        <div className="flex items-center justify-between gap-3 mb-3 bg-red-900/15 border border-red-700/40 rounded-xl px-3 py-2">
+          <p className="text-sm text-red-300">{selecionados.size} selecionado(s)</p>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setSelecionados(new Set())}>
+              Limpar seleção
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                if (!confirm(`Excluir ${selecionados.size} registro(s)?`)) return
+                onExcluirLote([...selecionados])
+                setSelecionados(new Set())
+              }}
+            >
+              Excluir selecionados
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-dark-700 text-left text-xs text-dark-500 uppercase tracking-wide">
+                {onExcluirLote && (
+                  <th className="px-4 py-3 font-medium w-8">
+                    <input
+                      type="checkbox"
+                      checked={dados.length > 0 && selecionados.size === dados.length}
+                      onChange={() => setSelecionados(selecionados.size === dados.length ? new Set() : new Set(dados.map((d) => d.id)))}
+                    />
+                  </th>
+                )}
                 <th className="px-4 py-3 font-medium">Cliente</th>
                 <th className="px-4 py-3 font-medium">Valor</th>
                 <th className="px-4 py-3 font-medium">{rotuloEnviado}</th>
@@ -262,6 +313,11 @@ function TabelaStatus({
             <tbody>
               {dados.map((r) => (
                 <tr key={r.id} className="border-b border-dark-700 last:border-0 hover:bg-dark-700/40">
+                  {onExcluirLote && (
+                    <td className="px-4 py-3">
+                      <input type="checkbox" checked={selecionados.has(r.id)} onChange={() => alternar(r.id)} />
+                    </td>
+                  )}
                   <td className="px-4 py-3 text-dark-100 font-medium">{r.cliente.razaoSocial}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono">{formatarMoeda(r.valor)}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono">{formatarData(r.enviadoEm)}</td>
@@ -289,7 +345,7 @@ function TabelaStatus({
               ))}
               {dados.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-dark-500">
+                  <td colSpan={onExcluirLote ? 6 : 5} className="px-4 py-8 text-center text-dark-500">
                     Nenhum cliente cadastrado aqui ainda.
                   </td>
                 </tr>
@@ -368,42 +424,131 @@ function AbaCartorio() {
   )
 }
 
+// Cola um relatório externo (CNPJ/CPF, razão social, nome jurídico da
+// empresa, quantidade de pendências, valor em aberto), uma linha por
+// cliente, cruzando com a base de cada empresa — quem não bater vira
+// cliente novo. Só superAdmin (escreve em qualquer empresa de uma vez).
+function ImportarRcModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const utils = trpc.useUtils()
+  const [texto, setTexto] = useState('')
+  const [resultado, setResultado] = useState<{ total: number; criados: number; processados: number; erros: { linha: number; motivo: string }[] } | null>(
+    null
+  )
+
+  const mut = trpc.negociacoes.rcImportarLote.useMutation({
+    onSuccess(data) {
+      setResultado(data)
+      toast.success(`${data.processados} cliente(s) processado(s) (${data.criados} novo(s))`)
+      utils.negociacoes.rcListar.invalidate()
+      setTexto('')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function fechar() {
+    setResultado(null)
+    onClose()
+  }
+
+  return (
+    <Modal open={open} onClose={fechar} title="Importar em lote pra RC" size="md">
+      <div className="space-y-4">
+        <p className="text-xs text-dark-400">
+          Cole um relatório externo — uma linha por cliente, colunas separadas por tab ou vários espaços: CNPJ/CPF,
+          razão social, nome jurídico da empresa, quantidade de pendências, valor em aberto. Cliente que já existe
+          (por CNPJ/CPF) é atualizado; quem não existe é criado sem vendedor/região.
+        </p>
+        <Textarea rows={8} placeholder="Cole aqui..." value={texto} onChange={(e) => setTexto(e.target.value)} />
+        <Button loading={mut.isPending} disabled={!texto.trim()} onClick={() => mut.mutate({ texto })}>
+          Importar
+        </Button>
+
+        {resultado && (
+          <div className="bg-dark-900/50 border border-dark-700 rounded-xl p-3 space-y-2">
+            <p className="text-sm text-dark-100">
+              {resultado.total} linha(s) · <span className="text-green-400">{resultado.criados} cliente(s) novo(s)</span> ·{' '}
+              <span className="text-cyan-400">{resultado.processados} processado(s)</span>
+              {resultado.erros.length > 0 && <span className="text-red-400"> · {resultado.erros.length} erro(s)</span>}
+            </p>
+            {resultado.erros.length > 0 && (
+              <ul className="text-xs text-dark-400 space-y-0.5 max-h-40 overflow-y-auto">
+                {resultado.erros.map((e, i) => (
+                  <li key={i}>
+                    Linha {e.linha}: {e.motivo}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function AbaRc() {
+  const { user } = useAuth()
   const utils = trpc.useUtils()
   const { data } = trpc.negociacoes.rcListar.useQuery()
   const criarMut = trpc.negociacoes.rcCriar.useMutation()
   const atualizarStatusMut = trpc.negociacoes.rcAtualizarStatus.useMutation()
   const excluirMut = trpc.negociacoes.rcExcluir.useMutation()
+  const excluirLoteMut = trpc.negociacoes.rcExcluirLote.useMutation()
   const invalidar = () => utils.negociacoes.rcListar.invalidate()
+  const [importarAberto, setImportarAberto] = useState(false)
 
   if (!data) return <p className="text-dark-500">Carregando...</p>
 
   return (
-    <TabelaStatus
-      titulo="Cliente enviado à RC"
-      rotuloEnviado="Enviado à RC"
-      statusConfig={STATUS_RC}
-      dados={data}
-      criando={criarMut.isPending}
-      onExportar={() => exportarNegociacaoCsv('rc.csv', 'Enviado à RC', STATUS_RC, data)}
-      onCriar={(input, aoTerminar) =>
-        criarMut.mutate(input, {
-          onSuccess() {
-            toast.success('Registrado')
-            invalidar()
-            aoTerminar()
-          },
-          onError: (e) => toast.error(e.message),
-        })
-      }
-      onAtualizarStatus={(id, status) =>
-        atualizarStatusMut.mutate(
-          { id, status: status as 'em_negociacao' | 'acordo_fechado' | 'nao_fechou' },
-          { onSuccess: invalidar, onError: (err) => toast.error(err.message) }
-        )
-      }
-      onExcluir={(id) => excluirMut.mutate({ id }, { onSuccess: invalidar, onError: (err) => toast.error(err.message) })}
-    />
+    <>
+      <TabelaStatus
+        titulo="Cliente enviado à RC"
+        rotuloEnviado="Enviado à RC"
+        statusConfig={STATUS_RC}
+        dados={data}
+        criando={criarMut.isPending}
+        onExportar={() => exportarNegociacaoCsv('rc.csv', 'Enviado à RC', STATUS_RC, data)}
+        acoesExtras={
+          user?.superAdmin ? (
+            <Button variant="secondary" onClick={() => setImportarAberto(true)}>
+              <Upload size={16} /> Importar em lote
+            </Button>
+          ) : undefined
+        }
+        onCriar={(input, aoTerminar) =>
+          criarMut.mutate(input, {
+            onSuccess() {
+              toast.success('Registrado')
+              invalidar()
+              aoTerminar()
+            },
+            onError: (e) => toast.error(e.message),
+          })
+        }
+        onAtualizarStatus={(id, status) =>
+          atualizarStatusMut.mutate(
+            { id, status: status as 'em_negociacao' | 'acordo_fechado' | 'nao_fechou' },
+            { onSuccess: invalidar, onError: (err) => toast.error(err.message) }
+          )
+        }
+        onExcluir={(id) => excluirMut.mutate({ id }, { onSuccess: invalidar, onError: (err) => toast.error(err.message) })}
+        onExcluirLote={(ids) =>
+          excluirLoteMut.mutate(
+            { ids },
+            {
+              onSuccess(res) {
+                toast.success(`${res.excluidos} registro(s) excluído(s)`)
+                invalidar()
+              },
+              onError: (err) => toast.error(err.message),
+            }
+          )
+        }
+      />
+      <ImportarRcModal open={importarAberto} onClose={() => setImportarAberto(false)} />
+    </>
   )
 }
 

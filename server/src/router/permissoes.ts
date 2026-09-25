@@ -135,9 +135,6 @@ export const FEATURES_ADMIN = [
   // João, 2026-09-24: registro de liberações feitas pelo Financeiro (hoje a
   // Rubia), vale pras 4 empresas numa tela só.
   'liberacao_credito',
-  // Restrição de Crédito — contraparte de liberacao_credito, mesmo padrão
-  // cross-empresa. 2026-09-24.
-  'restricao_credito',
 ] as const
 
 // "Arquivos/Mídia" (Marketing) NÃO tem chave aqui de propósito — é liberado

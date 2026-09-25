@@ -3141,33 +3141,6 @@ export const liberacoesCreditoRelations = relations(liberacoesCredito, ({ one })
   criador: one(users, { fields: [liberacoesCredito.criadoPor], references: [users.id] }),
 }))
 
-// ── Restrição de Crédito (Financeiro, cross-empresa) ────────────────────────
-// Contraparte de liberacoesCredito: aqui é a marcação "esse cliente está com
-// pendência" — 1 linha ativa por cliente (unique), removida quando a
-// restrição é levantada (não é log de eventos, é status atual). Pedido do
-// João, 2026-09-24: carga inicial de ~300 clientes vindos de um relatório
-// de inadimplência externo (CNPJ/razão social/quantidade de pendências/
-// valor em aberto), cruzado por CNPJ contra a base de cada empresa — quem
-// não bateu virou cliente novo (sem vendedor, sem região — ver comentário
-// em `clientes.regiao`).
-export const restricoesCredito = sqliteTable('restricoes_credito', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
-  clienteId: integer('cliente_id').notNull().unique().references(() => clientes.id, { onDelete: 'cascade' }),
-  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
-  quantidadePendencias: integer('quantidade_pendencias'),
-  valorPendencia: real('valor_pendencia'),
-  motivo: text('motivo'),
-  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
-  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
-})
-
-export const restricoesCreditoRelations = relations(restricoesCredito, ({ one }) => ({
-  cliente: one(clientes, { fields: [restricoesCredito.clienteId], references: [clientes.id] }),
-  empresa: one(empresas, { fields: [restricoesCredito.empresaId], references: [empresas.id] }),
-  criador: one(users, { fields: [restricoesCredito.criadoPor], references: [users.id] }),
-}))
-
 // ── Instagram (captação de leads via Direct) ────────────────────────────────
 // Pedido do João, 2026-09-21. UM Meta App só, compartilhado por todas as
 // empresas (webhook único — ver server/src/routes/instagram.ts); cada
