@@ -157,6 +157,7 @@ export const negociacoesRouter = router({
         valor: clientesRc.valor,
         enviadoEm: clientesRc.enviadoEm,
         status: clientesRc.status,
+        parcelas: clientesRc.parcelas,
         observacoes: clientesRc.observacoes,
         updatedAt: clientesRc.updatedAt,
         clienteId: clientes.id,
@@ -191,13 +192,22 @@ export const negociacoesRouter = router({
   }),
 
   rcCriar: featureProcedure('negociacoes')
-    .input(z.object({ clienteId: z.number(), valor: z.number().positive().optional(), enviadoEm: z.string(), observacoes: z.string().optional() }))
+    .input(
+      z.object({
+        clienteId: z.number(),
+        valor: z.number().positive().optional(),
+        enviadoEm: z.string(),
+        parcelas: z.number().int().positive().optional(),
+        observacoes: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       await validarCliente(input.clienteId, ctx.empresaId)
       await db.insert(clientesRc).values({
         clienteId: input.clienteId,
         valor: input.valor ?? null,
         enviadoEm: input.enviadoEm,
+        parcelas: input.parcelas ?? null,
         observacoes: input.observacoes || null,
         criadoPorId: ctx.user.id,
       })
@@ -210,6 +220,17 @@ export const negociacoesRouter = router({
       const registro = await db.query.clientesRc.findFirst({ where: eq(clientesRc.id, input.id), with: { cliente: true } })
       if (!registro || registro.cliente.empresaId !== ctx.empresaId) throw new Error('Registro não encontrado')
       await db.update(clientesRc).set({ status: input.status, updatedAt: agoraSqlite() }).where(eq(clientesRc.id, input.id))
+      return { success: true }
+    }),
+
+  // Parcela é ajustável depois — o acordo (e a quantidade de parcelas) às
+  // vezes só se define depois de já ter enviado o cliente pra RC.
+  rcAtualizarParcelas: featureProcedure('negociacoes')
+    .input(z.object({ id: z.number(), parcelas: z.number().int().positive().nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const registro = await db.query.clientesRc.findFirst({ where: eq(clientesRc.id, input.id), with: { cliente: true } })
+      if (!registro || registro.cliente.empresaId !== ctx.empresaId) throw new Error('Registro não encontrado')
+      await db.update(clientesRc).set({ parcelas: input.parcelas, updatedAt: agoraSqlite() }).where(eq(clientesRc.id, input.id))
       return { success: true }
     }),
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { Plus, Download, MessageCircle, Phone, Mail, Upload } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
@@ -209,7 +209,14 @@ function AbaCobrancas() {
   )
 }
 
-type LinhaStatus = { id: number; valor: number | null; enviadoEm: string; status: string; cliente: { id: number; razaoSocial: string } }
+type LinhaStatus = {
+  id: number
+  valor: number | null
+  enviadoEm: string
+  status: string
+  parcelas?: number | null
+  cliente: { id: number; razaoSocial: string }
+}
 type StatusOpcao = { value: string; label: string; cor: string }
 
 // Visual compartilhado por Cartório e RC (mesma forma de dado, só muda o
@@ -228,13 +235,15 @@ function TabelaStatus({
   onExcluirLote,
   onExportar,
   acoesExtras,
+  mostrarParcelas,
+  onAtualizarParcelas,
 }: {
   titulo: string
   rotuloEnviado: string
   statusConfig: StatusOpcao[]
   dados: LinhaStatus[]
   criando: boolean
-  onCriar: (input: { clienteId: number; valor?: number; enviadoEm: string; observacoes?: string }, aoTerminar: () => void) => void
+  onCriar: (input: { clienteId: number; valor?: number; enviadoEm: string; parcelas?: number; observacoes?: string }, aoTerminar: () => void) => void
   onAtualizarStatus: (id: number, status: string) => void
   onExcluir: (id: number) => void
   // Opcional — só a aba RC usa hoje. Sem isso, não mostra checkbox nem
@@ -242,6 +251,8 @@ function TabelaStatus({
   onExcluirLote?: (ids: number[]) => void
   onExportar: () => void
   acoesExtras?: React.ReactNode
+  mostrarParcelas?: boolean
+  onAtualizarParcelas?: (id: number, parcelas: number | null) => void
 }) {
   const [modalAberto, setModalAberto] = useState(false)
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
@@ -306,6 +317,7 @@ function TabelaStatus({
                 <th className="px-4 py-3 font-medium">Cliente</th>
                 <th className="px-4 py-3 font-medium">Valor</th>
                 <th className="px-4 py-3 font-medium">{rotuloEnviado}</th>
+                {mostrarParcelas && <th className="px-4 py-3 font-medium">Parcelas</th>}
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
@@ -321,6 +333,11 @@ function TabelaStatus({
                   <td className="px-4 py-3 text-dark-100 font-medium">{r.cliente.razaoSocial}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono">{formatarMoeda(r.valor)}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono">{formatarData(r.enviadoEm)}</td>
+                  {mostrarParcelas && (
+                    <td className="px-4 py-3">
+                      <CelulaParcelas valor={r.parcelas ?? null} onSalvar={(v) => onAtualizarParcelas?.(r.id, v)} />
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <select
                       value={r.status}
@@ -345,7 +362,7 @@ function TabelaStatus({
               ))}
               {dados.length === 0 && (
                 <tr>
-                  <td colSpan={onExcluirLote ? 6 : 5} className="px-4 py-8 text-center text-dark-500">
+                  <td colSpan={5 + (onExcluirLote ? 1 : 0) + (mostrarParcelas ? 1 : 0)} className="px-4 py-8 text-center text-dark-500">
                     Nenhum cliente cadastrado aqui ainda.
                   </td>
                 </tr>
@@ -359,26 +376,71 @@ function TabelaStatus({
         onClose={() => setModalAberto(false)}
         titulo={titulo}
         criando={criando}
+        mostrarParcelas={mostrarParcelas}
         onCriar={(input) => onCriar(input, () => setModalAberto(false))}
       />
     </div>
   )
 }
 
-function exportarNegociacaoCsv(nomeArquivo: string, rotuloEnviado: string, statusConfig: StatusOpcao[], dados: LinhaStatus[]) {
+// Editável direto na célula (sem abrir modal) — digita e sai do campo (ou
+// aperta Enter) pra salvar. Estado local só pra não disparar a mutation a
+// cada tecla; sincroniza de volta se o valor do servidor mudar por fora.
+function CelulaParcelas({ valor, onSalvar }: { valor: number | null; onSalvar: (v: number | null) => void }) {
+  const [texto, setTexto] = useState(valor != null ? String(valor) : '')
+
+  useEffect(() => {
+    setTexto(valor != null ? String(valor) : '')
+  }, [valor])
+
+  function commit() {
+    const numero = texto.trim() === '' ? null : Number(texto)
+    if (numero !== null && (!Number.isInteger(numero) || numero <= 0)) {
+      toast.error('Parcelas inválidas — use um número inteiro maior que 0.')
+      setTexto(valor != null ? String(valor) : '')
+      return
+    }
+    if (numero !== valor) onSalvar(numero)
+  }
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={texto}
+      placeholder="—"
+      onChange={(e) => setTexto(e.target.value.replace(/\D/g, ''))}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+      }}
+      className="w-14 bg-dark-900/60 border border-dark-600 rounded-lg px-2 py-1 text-sm text-dark-200 text-center focus:outline-none focus:border-gold-600"
+    />
+  )
+}
+
+function exportarNegociacaoCsv(
+  nomeArquivo: string,
+  rotuloEnviado: string,
+  statusConfig: StatusOpcao[],
+  dados: LinhaStatus[],
+  mostrarParcelas?: boolean
+) {
   baixarCsv(
     nomeArquivo,
     paraCsv(
       [
-        { chave: 'cliente', rotulo: 'Cliente' },
-        { chave: 'valor', rotulo: 'Valor' },
-        { chave: 'enviadoEm', rotulo: rotuloEnviado },
-        { chave: 'status', rotulo: 'Status' },
+        { chave: 'cliente' as const, rotulo: 'Cliente' },
+        { chave: 'valor' as const, rotulo: 'Valor' },
+        { chave: 'enviadoEm' as const, rotulo: rotuloEnviado },
+        ...(mostrarParcelas ? [{ chave: 'parcelas' as const, rotulo: 'Parcelas' }] : []),
+        { chave: 'status' as const, rotulo: 'Status' },
       ],
       dados.map((r) => ({
         cliente: r.cliente.razaoSocial,
         valor: r.valor ?? '',
         enviadoEm: formatarData(r.enviadoEm),
+        parcelas: r.parcelas ?? '',
         status: statusConfig.find((s) => s.value === r.status)?.label ?? r.status,
       }))
     )
@@ -521,6 +583,7 @@ function AbaRc() {
   const { data } = trpc.negociacoes.rcListar.useQuery()
   const criarMut = trpc.negociacoes.rcCriar.useMutation()
   const atualizarStatusMut = trpc.negociacoes.rcAtualizarStatus.useMutation()
+  const atualizarParcelasMut = trpc.negociacoes.rcAtualizarParcelas.useMutation()
   const excluirMut = trpc.negociacoes.rcExcluir.useMutation()
   const excluirLoteMut = trpc.negociacoes.rcExcluirLote.useMutation()
   const invalidar = () => utils.negociacoes.rcListar.invalidate()
@@ -537,7 +600,8 @@ function AbaRc() {
         statusConfig={STATUS_RC}
         dados={data}
         criando={criarMut.isPending}
-        onExportar={() => exportarNegociacaoCsv('rc.csv', 'Enviado à RC', STATUS_RC, data)}
+        mostrarParcelas
+        onExportar={() => exportarNegociacaoCsv('rc.csv', 'Enviado à RC', STATUS_RC, data, true)}
         acoesExtras={
           user?.superAdmin ? (
             <Button variant="secondary" onClick={() => setImportarAberto(true)}>
@@ -558,6 +622,12 @@ function AbaRc() {
         onAtualizarStatus={(id, status) =>
           atualizarStatusMut.mutate(
             { id, status: status as 'em_negociacao' | 'acordo_fechado' | 'nao_fechou' },
+            { onSuccess: invalidar, onError: (err) => toast.error(err.message) }
+          )
+        }
+        onAtualizarParcelas={(id, parcelas) =>
+          atualizarParcelasMut.mutate(
+            { id, parcelas },
             { onSuccess: invalidar, onError: (err) => toast.error(err.message) }
           )
         }

@@ -1078,6 +1078,10 @@ export const clientesRc = sqliteTable('clientes_rc', {
   valor: real('valor'),
   enviadoEm: text('enviado_em').notNull(),
   status: text('status', { enum: ['em_negociacao', 'acordo_fechado', 'nao_fechou'] }).notNull().default('em_negociacao'),
+  // Quantidade de parcelas do acordo fechado com a RC — só um número (não
+  // um cronograma linha-a-linha tipo Boletos). Nulo até o acordo definir
+  // quantas parcelas, editável a qualquer momento. Pedido do João, 2026-09-25.
+  parcelas: integer('parcelas'),
   observacoes: text('observacoes'),
   criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
