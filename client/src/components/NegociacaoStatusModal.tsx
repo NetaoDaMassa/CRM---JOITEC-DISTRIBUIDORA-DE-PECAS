@@ -8,34 +8,46 @@ import { parseValorBr } from '../lib/valorBr'
 
 // Formulário de criação compartilhado entre Cartório e RC — mesma forma
 // (cliente, valor opcional, data de envio, observações), só muda o título
-// e pra onde a mutation manda o registro.
+// e pra onde a mutation manda o registro. `mostrarParcelas` (só RC) liga o
+// campo opcional de quantidade de parcelas do acordo.
 export default function NegociacaoStatusModal({
   open,
   onClose,
   titulo,
   onCriar,
   criando,
+  mostrarParcelas,
 }: {
   open: boolean
   onClose: () => void
   titulo: string
-  onCriar: (input: { clienteId: number; valor?: number; enviadoEm: string; observacoes?: string }) => void
+  onCriar: (input: { clienteId: number; valor?: number; enviadoEm: string; parcelas?: number; observacoes?: string }) => void
   criando: boolean
+  mostrarParcelas?: boolean
 }) {
   const [cliente, setCliente] = useState<{ id: number; razaoSocial: string } | null>(null)
   const [valor, setValor] = useState('')
   const [enviadoEm, setEnviadoEm] = useState('')
+  const [parcelas, setParcelas] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
   function handleSalvar() {
     if (!cliente) return toast.error('Escolha o cliente')
     if (!enviadoEm) return toast.error('Informe a data de envio')
     if (valor && Number.isNaN(parseValorBr(valor))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
+    if (parcelas && (!Number.isInteger(Number(parcelas)) || Number(parcelas) <= 0)) return toast.error('Parcelas inválidas — use um número inteiro maior que 0.')
     const valorNumero = valor ? parseValorBr(valor) : undefined
-    onCriar({ clienteId: cliente.id, valor: valorNumero, enviadoEm, observacoes: observacoes || undefined })
+    onCriar({
+      clienteId: cliente.id,
+      valor: valorNumero,
+      enviadoEm,
+      parcelas: parcelas ? Number(parcelas) : undefined,
+      observacoes: observacoes || undefined,
+    })
     setCliente(null)
     setValor('')
     setEnviadoEm('')
+    setParcelas('')
     setObservacoes('')
   }
 
@@ -47,6 +59,15 @@ export default function NegociacaoStatusModal({
           <Input label="Valor (opcional)" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" inputMode="decimal" />
           <Input label="Enviado em" type="date" value={enviadoEm} onChange={(e) => setEnviadoEm(e.target.value)} />
         </div>
+        {mostrarParcelas && (
+          <Input
+            label="Parcelas (opcional)"
+            value={parcelas}
+            onChange={(e) => setParcelas(e.target.value.replace(/\D/g, ''))}
+            placeholder="Ex: 3"
+            inputMode="numeric"
+          />
+        )}
         <Textarea label="Observações" value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} placeholder="Opcional" />
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose}>

@@ -1,0 +1,1 @@
+ALTER TABLE `clientes_rc` ADD `parcelas` integer;
