@@ -117,6 +117,10 @@ export const FEATURES_ADMIN = [
   // Final e envia pra carteira). Só Odin Compressores; também em
   // FEATURES_VENDEDOR (é tela de uso diário dela).
   'prospeccao_odin',
+  // Controle de Demonstrações (máquinas enviadas pro cliente testar) — só
+  // Odin Compressores. Também em FEATURES_VENDEDOR: o vendedor acompanha as
+  // próprias demonstrações, o admin vê as da empresa toda. 2026-09-28.
+  'demonstracoes_odin',
   // Controle de Qualidade (resumo de anexos+histórico de Pedidos) — só Odin
   // Compressores, gestor-only, não existe em FEATURES_VENDEDOR.
   'qualidade_odin',
@@ -189,6 +193,8 @@ export const FEATURES_VENDEDOR = [
   'visitas_odin',
   // Prospecção Odin (esteira da Bruna) — mesma chave de FEATURES_ADMIN acima.
   'prospeccao_odin',
+  // Controle de Demonstrações — mesma chave de FEATURES_ADMIN acima.
+  'demonstracoes_odin',
   // Cartão de Crédito (gastos com comprovante) — pensado pro vendedor
   // externo da Odin Compressores. 2026-09-15.
   'cartao_credito',

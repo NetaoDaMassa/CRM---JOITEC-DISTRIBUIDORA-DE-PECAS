@@ -94,6 +94,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/estoque', label: 'Almoxarifado', icon: Warehouse, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'estoque_odin' },
   { to: '/admin/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/admin/prospeccao-odin', label: 'Prospecção', icon: Search, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao_odin' },
+  { to: '/admin/demonstracoes', label: 'Controle de Demonstrações', icon: PackageSearch, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'demonstracoes_odin' },
   { to: '/admin/qualidade', label: 'Controle de Qualidade', icon: ShieldCheck, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'qualidade_odin' },
   { to: '/admin/configuracoes-odin', label: 'Config. Odin', icon: Settings2, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'configuracoes_odin' },
   { to: '/admin/relatorios-odin', label: 'Relatórios Odin', icon: BarChart3, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'relatorios_odin' },
@@ -171,6 +172,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/revendas', label: 'Revendas', icon: Store, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'revendas_odin' },
   { to: '/vendedor/visitas', label: 'Visitas de Campo', icon: MapPinned, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'visitas_odin' },
   { to: '/vendedor/prospeccao-odin', label: 'Prospecção', icon: Search, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao_odin' },
+  { to: '/vendedor/demonstracoes', label: 'Controle de Demonstrações', icon: PackageSearch, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'demonstracoes_odin' },
   // Gastos com cartão corporativo — pensado pro vendedor EXTERNO da Odin
   // Compressores (visita → proposta → venda), mas quem controla quem vê é
   // Permissões (mesmo espírito do resto do menu) — não trava aqui por

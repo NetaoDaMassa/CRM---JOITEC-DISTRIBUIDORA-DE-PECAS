@@ -58,6 +58,7 @@ import { relatoriosOdinRouter } from './relatoriosOdin.js'
 import { dashboardOdinRouter } from './dashboardOdin.js'
 import { calendarioOdinRouter } from './calendarioOdin.js'
 import { demandasRouter } from './demandas.js'
+import { demonstracoesRouter } from './demonstracoes.js'
 import { boletosRouter } from './boletos.js'
 import { negociacoesRouter } from './negociacoes.js'
 import { leadCampaignsRouter } from './leadCampaigns.js'
@@ -127,6 +128,7 @@ export const appRouter = router({
   dashboardOdin: dashboardOdinRouter,
   calendarioOdin: calendarioOdinRouter,
   demandas: demandasRouter,
+  demonstracoes: demonstracoesRouter,
   boletos: boletosRouter,
   negociacoes: negociacoesRouter,
   leadCampaigns: leadCampaignsRouter,

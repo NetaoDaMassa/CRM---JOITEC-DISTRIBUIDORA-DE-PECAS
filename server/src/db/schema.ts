@@ -3198,3 +3198,88 @@ export const requisicaoPostoRelations = relations(requisicaoPosto, ({ one }) => 
   veiculo: one(requisicaoPostoVeiculos, { fields: [requisicaoPosto.veiculoId], references: [requisicaoPostoVeiculos.id] }),
   criadoPorUser: one(users, { fields: [requisicaoPosto.criadoPor], references: [users.id] }),
 }))
+
+// ── Controle de Demonstrações (Odin Compressores) ───────────────────────────
+// Pedido do João, 2026-09-28: substitui a planilha de máquinas enviadas pra
+// cliente testar. Diferente de `devolucaoDemonstracoes` (módulo Devolução,
+// Kanban com status da demonstração inteira — continua existindo, intocado):
+// aqui CADA MÁQUINA tem status/prazo/retorno/venda próprios, porque uma
+// máquina vendida não pode encerrar as outras da mesma nota.
+//
+// `demonstracoes` é o cabeçalho (1 nota fiscal de remessa = 1 linha aqui),
+// `demonstracaoItens` é cada máquina enviada naquela nota, e
+// `demonstracaoItemHistorico` é a "Conclusão" da planilha — virou log com
+// várias entradas por máquina em vez de um campo de texto só, pra não
+// perder o que foi escrito antes a cada atualização.
+export const demonstracoes = sqliteTable('demonstracoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  clienteNome: text('cliente_nome').notNull(),
+  clienteCidade: text('cliente_cidade'),
+  clienteEstado: text('cliente_estado'),
+  vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+  dataSaida: text('data_saida').notNull(), // YYYY-MM-DD
+  numeroNotaSaida: text('numero_nota_saida'),
+  // Prazo combinado no cadastro — copiado pra cada item na criação. Depois
+  // disso só o item manda (o "Alterar prazo" mexe num item só), esse campo
+  // fica como referência do que foi combinado originalmente.
+  retornoPrevistoEm: text('retorno_previsto_em'),
+  observacao: text('observacao'),
+  criadoPorUserId: integer('criado_por_user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const demonstracaoItens = sqliteTable(
+  'demonstracao_itens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    demonstracaoId: integer('demonstracao_id').notNull().references(() => demonstracoes.id, { onDelete: 'cascade' }),
+    produto: text('produto').notNull(),
+    numeroSerie: text('numero_serie'),
+    // 'aguardando_nf' cobre os dois lados (venda OU retorno informado sem
+    // documento fiscal ainda) — o que aconteceu de fato fica no histórico.
+    status: text('status', {
+      enum: ['em_demonstracao', 'aguardando_nf', 'vendido', 'retorno_solicitado', 'retornado'],
+    }).notNull().default('em_demonstracao'),
+    retornoPrevistoEm: text('retorno_previsto_em'),
+    retornoEfetivoEm: text('retorno_efetivo_em'),
+    numeroNotaRetorno: text('numero_nota_retorno'),
+    dataVenda: text('data_venda'),
+    numeroNotaVenda: text('numero_nota_venda'),
+    // Às vezes quem compra não é o mesmo cliente que ficou com a máquina em
+    // teste (revenda repassa pro cliente final) — por isso separado.
+    clienteVenda: text('cliente_venda'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    demonstracaoIdx: index('demonstracao_itens_demonstracao_idx').on(t.demonstracaoId),
+    statusIdx: index('demonstracao_itens_status_idx').on(t.status),
+  })
+)
+
+export const demonstracaoItemHistorico = sqliteTable('demonstracao_item_historico', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  itemId: integer('item_id').notNull().references(() => demonstracaoItens.id, { onDelete: 'cascade' }),
+  texto: text('texto').notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const demonstracoesRelations = relations(demonstracoes, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [demonstracoes.empresaId], references: [empresas.id] }),
+  vendedor: one(users, { fields: [demonstracoes.vendedorId], references: [users.id] }),
+  criadoPorUser: one(users, { fields: [demonstracoes.criadoPorUserId], references: [users.id] }),
+  itens: many(demonstracaoItens),
+}))
+
+export const demonstracaoItensRelations = relations(demonstracaoItens, ({ one, many }) => ({
+  demonstracao: one(demonstracoes, { fields: [demonstracaoItens.demonstracaoId], references: [demonstracoes.id] }),
+  historico: many(demonstracaoItemHistorico),
+}))
+
+export const demonstracaoItemHistoricoRelations = relations(demonstracaoItemHistorico, ({ one }) => ({
+  item: one(demonstracaoItens, { fields: [demonstracaoItemHistorico.itemId], references: [demonstracaoItens.id] }),
+  user: one(users, { fields: [demonstracaoItemHistorico.userId], references: [users.id] }),
+}))

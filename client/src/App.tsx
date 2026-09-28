@@ -10,6 +10,7 @@ import ClienteNovo from './pages/ClienteNovo'
 import ClienteDetail from './pages/ClienteDetail'
 import Prospeccao from './pages/Prospeccao'
 import ProspeccaoOdin from './pages/ProspeccaoOdin'
+import Demonstracoes from './pages/Demonstracoes'
 import AdminAprovacoes from './pages/admin/Aprovacoes'
 
 import AdminDashboard from './pages/admin/Dashboard'
@@ -247,6 +248,7 @@ export default function App() {
           <Route path="admin/estoque" element={<AdminGuard><FeatureGuard feature="estoque_odin"><Estoque /></FeatureGuard></AdminGuard>} />
           <Route path="admin/visitas" element={<AdminGuard><FeatureGuard feature="visitas_odin"><Visitas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/prospeccao-odin" element={<AdminGuard><FeatureGuard feature="prospeccao_odin"><ProspeccaoOdin /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/demonstracoes" element={<AdminGuard><FeatureGuard feature="demonstracoes_odin"><Demonstracoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/qualidade" element={<AdminGuard><FeatureGuard feature="qualidade_odin"><ControleQualidade /></FeatureGuard></AdminGuard>} />
           <Route path="admin/configuracoes-odin" element={<AdminGuard><FeatureGuard feature="configuracoes_odin"><ConfiguracoesOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/relatorios-odin" element={<AdminGuard><FeatureGuard feature="relatorios_odin"><RelatoriosOdin /></FeatureGuard></AdminGuard>} />
@@ -260,6 +262,7 @@ export default function App() {
           <Route path="vendedor/clientes" element={<Clientes />} />
           <Route path="vendedor/prospeccao" element={<Prospeccao />} />
           <Route path="vendedor/prospeccao-odin" element={<ProspeccaoOdin />} />
+          <Route path="vendedor/demonstracoes" element={<Demonstracoes />} />
           <Route path="vendedor/clientes/novo" element={<ClienteNovo />} />
           <Route path="vendedor/clientes/:id" element={<ClienteDetail />} />
           <Route path="vendedor/relatorios" element={<AdminReports />} />
