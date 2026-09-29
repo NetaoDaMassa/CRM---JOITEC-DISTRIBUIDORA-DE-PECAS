@@ -12,11 +12,18 @@ import { textoContem } from '../../lib/utils'
 // aqui na mão pra aparecerem junto no checklist de permissões. Itens em
 // FEATURES_SEMPRE_LIBERADAS (ex: Arquivos/Mídia) ficam de fora da lista —
 // já são visíveis pra todo mundo, marcar/desmarcar não faria diferença.
+//
+// 'funil_excluir_card' também entra na mão — é um PODER dentro de uma tela
+// que todo admin já vê (Kanban), não um item de menu à parte, então não
+// existe em ADMIN_LINKS. Achado do João, 2026-09-29: sem isso aqui, a
+// permissão existia no backend mas não tinha como marcar pra ninguém na
+// tela.
 const FEATURES = [
   ...ADMIN_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
+  { feature: 'funil_excluir_card', label: 'Excluir card do Kanban' },
 ]
 
 const FEATURES_VENDEDOR = VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label }))
