@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql } from 'drizzle-orm'
-import { router, adminProcedure } from './_base.js'
+import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
 
@@ -10,12 +10,20 @@ import { liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
 // só (é assim que a Rubia, do Financeiro, acompanha as 4 empresas sem ficar
 // trocando de empresa ativa). Nenhuma query aqui filtra por ctx.empresaId de
 // propósito.
+//
+// Era `adminProcedure` puro (só checava "é admin", a permissão só escondia
+// o link no menu) — trocado pra `featureProcedure('liberacao_credito')` em
+// 2026-09-29 (achado via auditoria + pedido do João): sem isso, QUALQUER
+// admin de QUALQUER empresa, mesmo sem a permissão concedida, conseguia
+// chamar essas rotas direto e ver dado financeiro sigiloso das outras 4
+// empresas. superAdmin continua passando sempre (featureProcedure já
+// bypassa).
 export const liberacaoCreditoRouter = router({
   // Busca cliente cross-empresa pra "anexar" na liberação — mínimo 2
   // caracteres, procura em razão social/código/CNPJ. Mostra a empresa e o
   // vendedor atual de cada resultado (a linha da liberação depois guarda um
   // snapshot dos dois, ver `criar`).
-  clientesBuscar: adminProcedure
+  clientesBuscar: featureProcedure('liberacao_credito')
     .input(z.object({ q: z.string().min(2) }))
     .query(async ({ input }) => {
       const termo = `%${input.q.trim()}%`
@@ -45,7 +53,7 @@ export const liberacaoCreditoRouter = router({
 
   // Sem filtro nenhum, undefined em tudo — traz as últimas 500. `mesReferencia`
   // no formato "YYYY-MM"; `dataDe`/`dataAte` no formato "YYYY-MM-DD".
-  listar: adminProcedure
+  listar: featureProcedure('liberacao_credito')
     .input(
       z
         .object({
@@ -108,7 +116,7 @@ export const liberacaoCreditoRouter = router({
   // Nomes já usados em "quem liberou" — alimenta o filtro/autocomplete sem
   // deixar a lista virar um campo 100% livre e cheio de grafia diferente pra
   // mesma pessoa.
-  quemLiberouOpcoes: adminProcedure.query(async () => {
+  quemLiberouOpcoes: featureProcedure('liberacao_credito').query(async () => {
     const linhas = await db
       .selectDistinct({ quemLiberou: liberacoesCredito.quemLiberou })
       .from(liberacoesCredito)
@@ -116,7 +124,7 @@ export const liberacaoCreditoRouter = router({
     return linhas.map((l) => l.quemLiberou)
   }),
 
-  criar: adminProcedure
+  criar: featureProcedure('liberacao_credito')
     .input(
       z.object({
         clienteId: z.number(),
@@ -145,14 +153,14 @@ export const liberacaoCreditoRouter = router({
       return { success: true }
     }),
 
-  excluir: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  excluir: featureProcedure('liberacao_credito').input(z.object({ id: z.number() })).mutation(async ({ input }) => {
     await db.delete(liberacoesCredito).where(eq(liberacoesCredito.id, input.id))
     return { success: true }
   }),
 
   // Quebras do relatório — por cliente/vendedor/quem-liberou/dia — dentro do
   // período pedido (sem período, considera tudo).
-  relatorio: adminProcedure
+  relatorio: featureProcedure('liberacao_credito')
     .input(z.object({ dataDe: z.string().optional(), dataAte: z.string().optional() }).optional())
     .query(async ({ input }) => {
       const filtros = []

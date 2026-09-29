@@ -14,6 +14,7 @@ import {
   logAuditoria,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
+import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 
 // Vendedores que o usuário logado tem permissão de ver neste relatório —
@@ -1007,14 +1008,22 @@ export const reportsRouter = router({
 
       const nomePorVendedor = new Map(vendedores.map((v) => [v.id, v.name]))
 
+      // `alteradoEm` é gravado em UTC sem sufixo de fuso — cortar a string
+      // direto (`.slice`) jogava orçamento lançado entre 21h e meia-noite
+      // (horário de Brasília) pro dia seguinte (00h-02h59 em UTC), e perto
+      // da virada do mês, pro mês seguinte também. Corrigido em 2026-09-29
+      // (achado via auditoria) convertendo pra data local de Brasília
+      // primeiro (mesmo helper usado no resto do sistema pra isso), só
+      // depois cortando em dia/mês/semana.
       function bucketDe(dataHora: string): string {
-        if (input.granularidade === 'mes') return dataHora.slice(0, 7)
-        if (input.granularidade === 'dia') return dataHora.slice(0, 10)
-        const d = new Date(dataHora.replace(' ', 'T') + 'Z')
+        const dataLocal = toLocalDateKey(toUtcISO(dataHora)) // "YYYY-MM-DD" já em horário de Brasília
+        if (input.granularidade === 'mes') return dataLocal.slice(0, 7)
+        if (input.granularidade === 'dia') return dataLocal
+        const [ano, mes, dia] = dataLocal.split('-').map(Number)
+        const d = new Date(Date.UTC(ano, mes - 1, dia))
         const diaSemana = (d.getUTCDay() + 6) % 7 // 0 = segunda
-        const segunda = new Date(d)
-        segunda.setUTCDate(d.getUTCDate() - diaSemana)
-        return segunda.toISOString().slice(0, 10)
+        d.setUTCDate(d.getUTCDate() - diaSemana)
+        return d.toISOString().slice(0, 10)
       }
 
       const contagem = new Map<string, number>()

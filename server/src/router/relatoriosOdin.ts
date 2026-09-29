@@ -8,11 +8,12 @@
 // simplificada aqui pra contagem por etapa — o essencial pra gestão do
 // dia a dia sem a complexidade de recalcular série temporal.
 import { z } from 'zod'
-import { eq, and, gte, lte } from 'drizzle-orm'
+import { eq, and, gte, lte, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, propostas, propostaArquivos, ordens, ordemPosVenda, ordemDetalhes, ordemFaturamento, estoqueMaquinas, visitas } from '../db/schema.js'
+import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
 
 const SLUG_RELATORIOS = 'odin-compressores'
 
@@ -131,44 +132,58 @@ export const relatoriosOdinRouter = router({
     return { total: daEmpresa.length, comFeedback: daEmpresa.filter((r) => r.feedbackCliente).length, mediaNps, comLembretePendente: daEmpresa.filter((r) => r.dataLembrete).length }
   }),
 
+  // Antes filtrava `ordens.createdAt` (data de CRIAÇÃO do pedido) e somava
+  // pedido de qualquer etapa, inclusive cancelado — uma conta própria,
+  // diferente da regra única fixada em lib/faturamentoOdin.ts (faturado =
+  // entrou na etapa Faturamento ou além, data de referência = quando entrou
+  // lá, exclui cancelado), que Painel Financeiro e Dashboard Odin já usam.
+  // Resultado do bug: esse card mostrava um número que não batia com as
+  // outras duas telas pro mesmo período. Corrigido em 2026-09-29 (achado
+  // via auditoria) pra usar a mesma fonte — `buscarOrdensFaturadas` já
+  // filtra cancelado e resolve a data de entrada em Faturamento sozinha.
   faturamento: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
     await assertEmpresa(ctx.empresaId)
-    const condicoes = [eq(ordens.empresaId, ctx.empresaId)]
-    if (input?.dataDe) condicoes.push(gte(ordens.createdAt, input.dataDe))
-    if (input?.dataAte) condicoes.push(lte(ordens.createdAt, `${input.dataAte} 23:59:59`))
-    if (input?.vendedorId) condicoes.push(eq(ordens.vendedorId, input.vendedorId))
 
-    // Pega cliente/valor/confirmação junto (with:) em vez de varrer as
-    // tabelas de detalhes/faturamento inteiras (todas as empresas) e cruzar
-    // na mão — além de mais simples, isso trazia linhas de toda a base a
-    // cada consulta. `pedidos` na resposta é a lista por trás de cada
-    // card, pra clicar e ver quem é (pedido do João, 2026-09-11).
-    const pedidos = await db.query.ordens.findMany({
-      where: and(...condicoes),
-      columns: { id: true },
-      with: {
-        cliente: { columns: { razaoSocial: true } },
-        detalhes: { columns: { valorPedido: true } },
-        faturamento: { columns: { pagamentoConfirmado: true } },
-      },
-      orderBy: (o, { desc }) => [desc(o.createdAt)],
+    const todasFaturadas = await buscarOrdensFaturadas(ctx.empresaId)
+    const faturadas = todasFaturadas.filter((o) => {
+      if (input?.vendedorId && o.vendedorId !== input.vendedorId) return false
+      if (input?.dataDe && o.dataRef.slice(0, 10) < input.dataDe) return false
+      if (input?.dataAte && o.dataRef.slice(0, 10) > input.dataAte) return false
+      return true
     })
+
+    // buscarOrdensFaturadas não traz cliente/confirmação de pagamento (é
+    // reaproveitada pelo Painel Financeiro/Dashboard, que não precisam
+    // disso) — busca só pelos ids que sobraram do filtro, igual o Dashboard
+    // Odin já faz.
+    const ids = faturadas.map((o) => o.id)
+    const detalhesPedidos = ids.length
+      ? await db.query.ordens.findMany({
+          where: inArray(ordens.id, ids),
+          columns: { id: true },
+          with: {
+            cliente: { columns: { razaoSocial: true } },
+            faturamento: { columns: { pagamentoConfirmado: true } },
+          },
+        })
+      : []
+    const detalhePorId = new Map(detalhesPedidos.map((p) => [p.id, p]))
 
     let valorTotal = 0
     let valorConfirmado = 0
     let qtdConfirmado = 0
-    const lista = pedidos.map((p) => {
-      const valor = p.detalhes?.valorPedido ?? 0
-      const confirmado = !!p.faturamento?.pagamentoConfirmado
-      valorTotal += valor
+    const lista = faturadas.map((o) => {
+      const detalhe = detalhePorId.get(o.id)
+      const confirmado = !!detalhe?.faturamento?.pagamentoConfirmado
+      valorTotal += o.valor
       if (confirmado) {
-        valorConfirmado += valor
+        valorConfirmado += o.valor
         qtdConfirmado++
       }
-      return { id: p.id, clienteNome: p.cliente?.razaoSocial ?? '—', valor, confirmado }
+      return { id: o.id, clienteNome: detalhe?.cliente?.razaoSocial ?? '—', valor: o.valor, confirmado }
     })
 
-    return { totalPedidos: pedidos.length, valorTotal, valorConfirmado, qtdConfirmado, pedidos: lista }
+    return { totalPedidos: faturadas.length, valorTotal, valorConfirmado, qtdConfirmado, pedidos: lista }
   }),
 
   maquinas: adminProcedure.query(async ({ ctx }) => {

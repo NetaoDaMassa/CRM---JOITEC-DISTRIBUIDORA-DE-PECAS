@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, desc, eq, like, sql } from 'drizzle-orm'
-import { router, adminProcedure } from './_base.js'
+import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { requisicaoPosto, requisicaoPostoColaboradores, requisicaoPostoVeiculos, empresas, users } from '../db/schema.js'
 import { mesReferenciaAtual } from '../lib/dataBr.js'
@@ -11,8 +11,15 @@ import { mesReferenciaAtual } from '../lib/dataBr.js'
 // inteiro, sem precisar trocar de empresa ativa). Colaborador (motorista)
 // não tem login — é sempre alguém do Financeiro/Compras que lança em nome
 // dele, escolhendo o nome num menu. Ver schema.ts pro resto do contexto.
+//
+// Era `adminProcedure` puro (só checava "é admin", a permissão só escondia
+// o link no menu) — trocado pra `featureProcedure('requisicao_posto')` em
+// 2026-09-29 (achado via auditoria + pedido do João), mesmo motivo de
+// liberacaoCredito.ts: sem isso, qualquer admin de qualquer empresa
+// conseguia chamar essas rotas direto e ver gasto de abastecimento das
+// outras empresas mesmo sem a permissão concedida.
 export const requisicaoPostoRouter = router({
-  colaboradoresListar: adminProcedure.query(async () => {
+  colaboradoresListar: featureProcedure('requisicao_posto').query(async () => {
     return db
       .select({
         id: requisicaoPostoColaboradores.id,
@@ -25,7 +32,7 @@ export const requisicaoPostoRouter = router({
       .orderBy(requisicaoPostoColaboradores.nome)
   }),
 
-  colaboradorCriar: adminProcedure
+  colaboradorCriar: featureProcedure('requisicao_posto')
     .input(z.object({ nome: z.string().min(1), empresaId: z.number() }))
     .mutation(async ({ input }) => {
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, input.empresaId) })
@@ -37,13 +44,13 @@ export const requisicaoPostoRouter = router({
       return criado
     }),
 
-  veiculosListar: adminProcedure.query(async () => {
+  veiculosListar: featureProcedure('requisicao_posto').query(async () => {
     return db.select().from(requisicaoPostoVeiculos).orderBy(requisicaoPostoVeiculos.placa)
   }),
 
   // Placa em caixa alta sem espaço extra — mesma placa digitada diferente
   // (minúsculo, espaço a mais) não pode virar 2 opções no menu.
-  veiculoCriar: adminProcedure
+  veiculoCriar: featureProcedure('requisicao_posto')
     .input(z.object({ placa: z.string().min(1) }))
     .mutation(async ({ input }) => {
       const placa = input.placa.trim().toUpperCase()
@@ -55,7 +62,7 @@ export const requisicaoPostoRouter = router({
 
   // `mesReferencia` no formato "YYYY-MM" (mesmo formato de mesReferenciaAtual)
   // — sem filtro, undefined, traz tudo (útil pra listagem geral/histórico).
-  listar: adminProcedure
+  listar: featureProcedure('requisicao_posto')
     .input(z.object({ mesReferencia: z.string().optional() }))
     .query(async ({ input }) => {
       return db
@@ -82,7 +89,7 @@ export const requisicaoPostoRouter = router({
         .limit(500)
     }),
 
-  criar: adminProcedure
+  criar: featureProcedure('requisicao_posto')
     .input(
       z.object({
         colaboradorId: z.number(),
@@ -106,7 +113,7 @@ export const requisicaoPostoRouter = router({
 
   // Corrige um lançamento já feito (valor digitado errado, carro/data
   // trocados) sem precisar apagar e recriar — pedido do João, 2026-09-25.
-  editar: adminProcedure
+  editar: featureProcedure('requisicao_posto')
     .input(
       z.object({
         id: z.number(),
@@ -126,14 +133,14 @@ export const requisicaoPostoRouter = router({
       return { success: true }
     }),
 
-  atualizarCanhoto: adminProcedure
+  atualizarCanhoto: featureProcedure('requisicao_posto')
     .input(z.object({ id: z.number(), canhotoEntregue: z.boolean() }))
     .mutation(async ({ input }) => {
       await db.update(requisicaoPosto).set({ canhotoEntregue: input.canhotoEntregue }).where(eq(requisicaoPosto.id, input.id))
       return { success: true }
     }),
 
-  excluir: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+  excluir: featureProcedure('requisicao_posto').input(z.object({ id: z.number() })).mutation(async ({ input }) => {
     await db.delete(requisicaoPosto).where(eq(requisicaoPosto.id, input.id))
     return { success: true }
   }),
@@ -141,7 +148,7 @@ export const requisicaoPostoRouter = router({
   // Fechamento do mês pro Financeiro: total geral, quebra por empresa e por
   // colaborador, mais quantos canhotos ainda faltam entregar. `mesReferencia`
   // default é o mês atual (mesma regra do Painel Financeiro).
-  relatorioMensal: adminProcedure
+  relatorioMensal: featureProcedure('requisicao_posto')
     .input(z.object({ mesReferencia: z.string().optional() }))
     .query(async ({ input }) => {
       const mes = input.mesReferencia ?? mesReferenciaAtual()

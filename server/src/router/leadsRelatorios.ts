@@ -5,7 +5,7 @@ import { router, featureProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadHistory, leadContactAttempts, users, metasMarketing } from '../db/schema.js'
 import { businessHoursElapsedMs } from '../lib/businessHours.js'
-import { STATUS_VALUES, STATUS_LABELS } from '../lib/leadsStatus.js'
+import { STATUS_VALUES, STATUS_LABELS, getLeadEffectiveDate } from '../lib/leadsStatus.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 
 const PAYMENT_LABEL: Record<string, string> = {
@@ -162,11 +162,25 @@ export const leadsRelatoriosRouter = router({
   reportGeral: featureProcedure('leads')
     .input(z.object({ dataInicio: z.string().optional(), dataFim: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
-      const filtros = [eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)]
-      if (input?.dataInicio) filtros.push(gte(leads.createdAt, input.dataInicio))
-      if (input?.dataFim) filtros.push(lte(leads.createdAt, `${input.dataFim} 23:59:59`))
-
-      const todosLeads = await db.query.leads.findMany({ where: and(...filtros) })
+      // Filtro de data era feito em SQL direto sobre `createdAt` — pra lead
+      // fechado (ganho/perdido/desqualificado/consumidor_final), a data que
+      // CONTA é `statusChangedAt` (getLeadEffectiveDate), não createdAt: um
+      // lead criado em julho e fechado em agosto tinha que aparecer no
+      // relatório de agosto, mas sumia dos dois (não aparecia nem em julho
+      // nem em agosto, já que createdAt=julho ficava fora do filtro
+      // "agosto"). Mesmo bug já resolvido em leads.list (ver
+      // getLeadEffectiveDate) — corrigido aqui em 2026-09-29 filtrando em
+      // memória pela data efetiva, igual leads.list já faz, em vez de
+      // filtrar no SQL por createdAt.
+      const todosLeadsEmpresa = await db.query.leads.findMany({
+        where: and(eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
+      })
+      const todosLeads = todosLeadsEmpresa.filter((l) => {
+        const efetiva = getLeadEffectiveDate(l)
+        if (input?.dataInicio && efetiva < input.dataInicio) return false
+        if (input?.dataFim && efetiva > `${input.dataFim} 23:59:59`) return false
+        return true
+      })
 
       const primeirasTentativas = await db.query.leadContactAttempts.findMany({
         where: and(inArray(leadContactAttempts.leadId, todosLeads.map((l) => l.id)), isNotNull(leadContactAttempts.result)),

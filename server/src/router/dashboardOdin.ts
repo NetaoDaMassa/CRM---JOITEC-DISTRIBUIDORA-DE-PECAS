@@ -173,7 +173,11 @@ export const dashboardOdinRouter = router({
     const condVis = [eq(visitas.empresaId, ctx.empresaId)]
     if (vendedorId) condVis.push(eq(visitas.vendedorId, vendedorId))
     if (input?.dataDe) condVis.push(gte(visitas.dataVisita, input.dataDe))
-    if (input?.dataAte) condVis.push(lte(visitas.dataVisita, input.dataAte))
+    // `dataVisita` guarda data+hora — sem o `23:59:59`, qualquer visita
+    // depois da meia-noite do dia final ficava fora (achado via auditoria,
+    // 2026-09-29; mesmo padrão já correto em relatoriosOdin.ts pra essa
+    // mesma coluna).
+    if (input?.dataAte) condVis.push(lte(visitas.dataVisita, `${input.dataAte} 23:59:59`))
     const visitasEncontradas = await db.query.visitas.findMany({
       where: and(...condVis),
       columns: { id: true, clienteNome: true, nomeEmpresa: true, dataVisita: true },
