@@ -934,6 +934,14 @@ function CardModal({
         .filter((e) => (e.value === 'consumidor_final_loja' ? mostrarConsumidorFinalLoja : true))
         .filter((e) => (e.value === 'outras_linhas_ppr_verde' ? mostrarOutrasLinhas : true))
   const { user } = useAuth()
+  // Excluir card era só pra superAdmin; virou delegável em 2026-09-29 —
+  // qualquer admin com a feature 'funil_excluir_card' concedida em
+  // Permissões também vê o botão (o backend confere de novo, isso aqui é
+  // só pra não mostrar a ação pra quem não pode).
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: user?.role === 'admin' && !user.superAdmin,
+  })
+  const podeExcluirCard = !!user?.superAdmin || !!minhasFeatures?.includes('funil_excluir_card')
   const [confirmarExclusaoCard, setConfirmarExclusaoCard] = useState(false)
   const excluirCardMut = trpc.funil.excluirCard.useMutation({
     onSuccess() {
@@ -1367,7 +1375,7 @@ function CardModal({
   return (
     <Modal open onClose={onClose} title={card.orcamentoLabel ? `${nomeComPedido(card)} — ${card.orcamentoLabel}` : nomeComPedido(card)} size="lg">
       <div className="space-y-5">
-        {user?.superAdmin && (
+        {podeExcluirCard && (
           <div className="flex justify-end">
             {!confirmarExclusaoCard ? (
               <button

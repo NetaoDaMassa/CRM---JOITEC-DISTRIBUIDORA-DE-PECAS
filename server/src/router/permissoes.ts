@@ -23,6 +23,12 @@ export const FEATURES_ADMIN = [
   // saiu daqui. Quem gerencia carteira (feature 'carteira') já gerencia
   // importação também.
   'carteira',
+  // Excluir card do Kanban direto (descarte de cliente/limpeza da carteira,
+  // não é a Lixeira — o cliente continua existindo, só o card do mês some).
+  // Era poder só do superAdmin; virou delegável em 2026-09-29 pra outros
+  // admins não precisarem chamar o João toda vez. Não liga com 'carteira'
+  // (dá pra ter uma sem a outra).
+  'funil_excluir_card',
   'banco_clientes',
   'relatorios',
   'usuarios',

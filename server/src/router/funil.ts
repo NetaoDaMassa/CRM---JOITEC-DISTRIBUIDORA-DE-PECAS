@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, superAdminProcedure, temFeature } from './_base.js'
+import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString } from '../lib/dataBr.js'
@@ -742,39 +742,47 @@ export const funilRouter = router({
 
   // Exclui um card do Kanban direto (não é a Lixeira — o cliente continua
   // existindo, só esse card/pipeline do mês some). Não existia nenhum jeito
-  // de fazer isso pela tela antes (só via SQL direto) — pedido do João pra
-  // limpar duplicatas/erros sem precisar me chamar toda vez. Só o admin
-  // master, em qualquer empresa (ctx.empresaId não trava — ele já troca de
-  // empresa pelo seletor, então o card sempre pertence à empresa ativa dele
-  // no momento, mas nunca precisa bater userId/vendedor como os outros).
-  excluirCard: superAdminProcedure.input(z.object({ funilMensalId: z.number() })).mutation(async ({ ctx, input }) => {
-    const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.funilMensalId) })
-    if (!funil || funil.deletedAt) throw new Error('Card não encontrado')
+  // de fazer isso pela tela antes (só via SQL direto) — pedido do João.
+  // Era superAdminProcedure (só ele); virou featureProcedure em 2026-09-29
+  // pra dar pra delegar a admins específicos (Permissões > 'funil_excluir_
+  // card') sem abrir mão do controle — cada admin concedido só mexe nos
+  // cards da PRÓPRIA empresa ativa (ver checagem de empresa logo abaixo,
+  // que antes não existia porque só o superAdmin chegava aqui).
+  excluirCard: featureProcedure('funil_excluir_card')
+    .input(z.object({ funilMensalId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const funil = await db.query.funilMensal.findFirst({
+        where: eq(funilMensal.id, input.funilMensalId),
+        with: { cliente: { columns: { empresaId: true } } },
+      })
+      if (!funil || funil.deletedAt) throw new Error('Card não encontrado')
+      if (funil.cliente.empresaId !== ctx.empresaId) throw new Error('Card não encontrado')
 
-    const agora = agoraSqlite()
-    await db.update(funilMensal).set({ deletedAt: agora }).where(eq(funilMensal.id, input.funilMensalId))
+      const agora = agoraSqlite()
+      await db.update(funilMensal).set({ deletedAt: agora }).where(eq(funilMensal.id, input.funilMensalId))
 
-    // Sem isso, vendas já lançadas nesse card continuam com deletedAt nulo e
-    // seguem somando pra sempre no Painel Financeiro/relatórios mesmo com o
-    // card fora do Kanban — foi exatamente isso que gerou um "fantasma" de
-    // R$100 mil no total de agosto da Compretec Loja Física (2026-08-18).
-    const vendasDoCard = await db.query.vendas.findMany({
-      where: and(eq(vendas.funilMensalId, input.funilMensalId), isNull(vendas.deletedAt)),
-    })
-    if (vendasDoCard.length) {
-      await db.update(vendas).set({ deletedAt: agora }).where(eq(vendas.funilMensalId, input.funilMensalId))
-      await db
-        .update(caixaMovimentacoes)
-        .set({ deletedAt: agora })
-        .where(inArray(caixaMovimentacoes.origemVendaId, vendasDoCard.map((v) => v.id)))
-    }
+      // Sem isso, vendas já lançadas nesse card continuam com deletedAt nulo
+      // e seguem somando pra sempre no Painel Financeiro/relatórios mesmo
+      // com o card fora do Kanban — foi exatamente isso que gerou um
+      // "fantasma" de R$100 mil no total de agosto da Compretec Loja
+      // Física (2026-08-18).
+      const vendasDoCard = await db.query.vendas.findMany({
+        where: and(eq(vendas.funilMensalId, input.funilMensalId), isNull(vendas.deletedAt)),
+      })
+      if (vendasDoCard.length) {
+        await db.update(vendas).set({ deletedAt: agora }).where(eq(vendas.funilMensalId, input.funilMensalId))
+        await db
+          .update(caixaMovimentacoes)
+          .set({ deletedAt: agora })
+          .where(inArray(caixaMovimentacoes.origemVendaId, vendasDoCard.map((v) => v.id)))
+      }
 
-    await registrarAuditoria({
-      tabela: 'funil_mensal',
-      registroId: input.funilMensalId,
-      acao: 'excluir',
-      alteradoPor: ctx.user.id,
-    })
-    return { success: true }
-  }),
+      await registrarAuditoria({
+        tabela: 'funil_mensal',
+        registroId: input.funilMensalId,
+        acao: 'excluir',
+        alteradoPor: ctx.user.id,
+      })
+      return { success: true }
+    }),
 })
