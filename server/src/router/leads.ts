@@ -22,7 +22,7 @@ import {
   leadRegionVendedores,
 } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD, assignNextVendor } from '../lib/leadsRoundRobin.js'
-import { validateNextContactLimit, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO } from '../lib/businessHours.js'
+import { validateNextContactLimit, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
@@ -115,12 +115,16 @@ async function findEmpresaAdmin(empresaId: number): Promise<{ id: number; name: 
   )
 }
 
-// Vendedor com o poder de transferir e/ou excluir liberado em Permissões
-// (pedido do João, 2026-09-30 — a Emily é vendedora E gestora numa conta só)
-// enxerga lead de qualquer um, igual admin — sem nenhuma das duas
-// features, continua restrito à própria carteira.
+// Vendedor com qualquer poder de gestor liberado em Permissões (pedido do
+// João, 2026-09-30 — a Emily é vendedora E gestora numa conta só) enxerga
+// lead de qualquer um, igual admin — sem nenhuma das features, continua
+// restrito à própria carteira.
 async function vendedorVeTudo(userId: number): Promise<boolean> {
-  return (await temFeature(userId, 'leads_transferir')) || (await temFeature(userId, 'leads_excluir'))
+  return (
+    (await temFeature(userId, 'leads_transferir')) ||
+    (await temFeature(userId, 'leads_excluir')) ||
+    (await temFeature(userId, 'leads_gerenciar_todos'))
+  )
 }
 
 export const leadsRouter = router({
@@ -250,14 +254,16 @@ export const leadsRouter = router({
       // intervalo. Quem digita um nome/telefone quer achar, não importa
       // quando o lead entrou.
       if (!search) {
+        // Comparação era com objetos Date direto sobre o horário cru em UTC
+        // do banco, sem converter pra Brasília — divergia da aba "Vendas"
+        // de Relatórios de Leads pro mesmo período (achado do João,
+        // 2026-09-30). Agora converte pra data local antes de comparar,
+        // igual leadsRelatorios.ts (reportGeral/buscarVendasLeads) já faz.
         if (dateFrom) {
-          const from = new Date(dateFrom)
-          filtered = filtered.filter((l) => new Date(getLeadEffectiveDate(l)) >= from)
+          filtered = filtered.filter((l) => toLocalDateKey(toUtcISO(getLeadEffectiveDate(l))) >= dateFrom)
         }
         if (dateTo) {
-          const to = new Date(dateTo)
-          to.setHours(23, 59, 59)
-          filtered = filtered.filter((l) => new Date(getLeadEffectiveDate(l)) <= to)
+          filtered = filtered.filter((l) => toLocalDateKey(toUtcISO(getLeadEffectiveDate(l))) <= dateTo)
         }
       }
 
@@ -523,7 +529,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       const updates: Record<string, unknown> = { ...rest }
       if (nextContactAt !== undefined) {
@@ -599,7 +605,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       // "Novo (Consumidor Final)" só entra na criação (leads.create) — não é
       // uma etapa pra onde dá pra mover um lead manualmente (é uma fila sem
@@ -809,7 +815,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       await db
         .update(leads)
@@ -828,7 +834,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
       if (empresa?.slug !== 'odin-tubos') {
@@ -848,7 +854,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       if (input.type === 'lembrete') await validateLeadNextContact(lead, input.nextContactAt)
 
@@ -879,7 +885,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, note.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       if (note.type === 'lembrete') await validateLeadNextContact(lead, input.nextContactAt)
 
@@ -904,7 +910,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       if (!isTerminalStatus(lead.status) && !input.nextActionAt && !lead.nextContactAt) {
         throw new Error('Registrar uma tentativa requer uma data de próximo contato para leads ativos')
@@ -958,7 +964,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attempt.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       await validateLeadNextContact(lead, input.nextActionAt)
 
@@ -989,7 +995,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       const result = await db.insert(leadContactAttempts).values({
         leadId: input.leadId,
@@ -1016,7 +1022,7 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attempt.leadId), isNull(leads.deletedAt)) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
     const now = new Date().toISOString()
 
@@ -1083,7 +1089,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       const { leadId, ...rest } = input
       await db.insert(leadAttachments).values({ leadId, userId: ctx.user.id, ...rest })
@@ -1097,7 +1103,7 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attachment.leadId), isNull(leads.deletedAt)) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
     await db.delete(leadAttachments).where(eq(leadAttachments.id, input.id))
     fs.unlink(path.join(process.env.UPLOADS_DIR ?? './uploads', attachment.filename), () => {})
@@ -1440,13 +1446,10 @@ export const leadsRouter = router({
 
       let allLeads = allLeadsRaw
       if (input?.dateFrom) {
-        const from = new Date(input.dateFrom)
-        allLeads = allLeads.filter((l) => new Date(getLeadEffectiveDate(l)) >= from)
+        allLeads = allLeads.filter((l) => toLocalDateKey(toUtcISO(getLeadEffectiveDate(l))) >= input.dateFrom!)
       }
       if (input?.dateTo) {
-        const to = new Date(input.dateTo)
-        to.setHours(23, 59, 59)
-        allLeads = allLeads.filter((l) => new Date(getLeadEffectiveDate(l)) <= to)
+        allLeads = allLeads.filter((l) => toLocalDateKey(toUtcISO(getLeadEffectiveDate(l))) <= input.dateTo!)
       }
 
       const myLeads = ctx.user.role === 'vendor' ? allLeads.filter((l) => l.vendorId === ctx.user.id) : allLeads
@@ -1525,7 +1528,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
       if (lead.status !== 'ganho') throw new Error('Só dá pra transferir um lead que já está na etapa Ganho')
       if (lead.convertidoParaClienteId || lead.convertidoParaPropostaId) throw new Error('Este lead já foi transferido')
       if (!lead.vendorId) throw new Error('Este lead não tem vendedor atribuído')
@@ -1607,7 +1610,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
       // Pedido do João, 2026-08-31: pra Odin Compressores o botão de
       // transferir pra Propostas libera já em "Em Negociação", não só em
       // "Ganho" — o time quer levar o lead pro módulo de Propostas (que já
@@ -1670,7 +1673,7 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
     if (!lead.convertidoParaPropostaId) throw new Error('Só dá pra marcar como Ganho depois de transferir o lead pra Propostas')
     if (lead.status === 'ganho') throw new Error('Este lead já está marcado como Ganho')
 

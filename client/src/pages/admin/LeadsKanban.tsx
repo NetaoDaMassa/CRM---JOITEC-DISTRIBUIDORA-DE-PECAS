@@ -17,7 +17,7 @@ export default function LeadsKanban() {
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: isGestor || user?.role === 'vendor',
   })
-  const verTudo = isAdmin || isGestor || !!minhasFeatures?.includes('leads_transferir') || !!minhasFeatures?.includes('leads_excluir')
+  const verTudo = isAdmin || isGestor || !!minhasFeatures?.includes('leads_transferir') || !!minhasFeatures?.includes('leads_excluir') || !!minhasFeatures?.includes('leads_gerenciar_todos')
 
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug

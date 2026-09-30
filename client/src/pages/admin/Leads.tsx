@@ -47,7 +47,7 @@ export default function Leads() {
   // Lista/coluna Vendedor/filtro completos pra quem pode transferir ou
   // excluir (precisa enxergar lead de todo mundo pra isso) — o backend
   // (leads.list) já aplica a mesma regra de verdade.
-  const verTudo = isAdmin || isGestor || !!minhasFeatures?.includes('leads_transferir') || !!minhasFeatures?.includes('leads_excluir')
+  const verTudo = isAdmin || isGestor || !!minhasFeatures?.includes('leads_transferir') || !!minhasFeatures?.includes('leads_excluir') || !!minhasFeatures?.includes('leads_gerenciar_todos')
 
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
@@ -332,7 +332,7 @@ export default function Leads() {
                       </td>
                       {verTudo && <td className="px-5 py-3 text-dark-300">{lead.vendor?.name ?? '—'}</td>}
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
-                        {(isAdmin || lead.vendorId === user?.id) && <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />}
+                        {(isAdmin || !!minhasFeatures?.includes('leads_gerenciar_todos') || lead.vendorId === user?.id) && <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />}
                       </td>
                       <td className="px-5 py-3 text-dark-400">
                         {formatElapsed(lead.createdAt)}
@@ -341,7 +341,7 @@ export default function Leads() {
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          {lead.phone && (isAdmin || lead.vendorId === user?.id) && (
+                          {lead.phone && (isAdmin || !!minhasFeatures?.includes('leads_gerenciar_todos') || lead.vendorId === user?.id) && (
                             <>
                               <LeadLigarButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
                               <LeadWhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />

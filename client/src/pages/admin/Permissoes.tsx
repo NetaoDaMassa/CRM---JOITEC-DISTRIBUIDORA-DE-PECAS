@@ -38,13 +38,16 @@ const FEATURES_RELATORIOS = [
 // Poderes extras de "gestor" que um vendedor comum pode ganhar sem virar
 // admin — pedido do João, 2026-09-30 (a Emily é vendedora e precisa
 // transferir/excluir lead de qualquer vendedor, numa conta só). Com
-// qualquer uma das duas marcadas, a pessoa passa a enxergar TODOS os leads
+// qualquer uma das três marcadas, a pessoa passa a enxergar TODOS os leads
 // da empresa na tela de Leads (ver leads.ts, vendedorVeTudo), não só os
 // próprios — é o mesmo mecanismo do papel Gestor, só que sem trocar o
-// `role` da pessoa.
+// `role` da pessoa. "Editar/mudar etapa de qualquer lead" é o poder mais
+// forte: sem ele, mesmo com transferir/excluir, só mexe de verdade
+// (editar dados, mudar etapa, anotar) nos próprios leads.
 const FEATURES_GESTOR = [
   { feature: 'leads_transferir', label: 'Leads — transferir pra outro vendedor' },
   { feature: 'leads_excluir', label: 'Leads — excluir' },
+  { feature: 'leads_gerenciar_todos', label: 'Leads — editar/mudar etapa de qualquer lead' },
 ]
 
 // Tela do superAdmin pra controlar, pessoa por pessoa, quais itens do menu

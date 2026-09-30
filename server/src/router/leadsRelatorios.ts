@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull, isNotNull, gte, lte } from 'drizzle-orm'
+import { and, eq, inArray, isNull, isNotNull } from 'drizzle-orm'
 import * as XLSX from 'xlsx'
 import { router, featureProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadHistory, leadContactAttempts, users, metasMarketing } from '../db/schema.js'
-import { businessHoursElapsedMs } from '../lib/businessHours.js'
+import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { STATUS_VALUES, STATUS_LABELS, getLeadEffectiveDate } from '../lib/leadsStatus.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 
@@ -26,16 +26,32 @@ const vendasFiltroSchema = z
 // Linha a linha dos leads "ganhos" (vendas de fato fechadas) no período —
 // diferente de `reportGeral`, que só soma/agrega. Base pro relatório de
 // vendas de leads que o João pediu, com exportação em Excel.
+//
+// O filtro de data era feito em SQL direto (`gte`/`lte` sobre
+// `statusChangedAt`), comparando o horário cru em UTC do banco contra a
+// data "01/09"-"30/09" sem converter pra Brasília — um lead ganho tarde da
+// noite (ex: 23h30 BRT = 02h30 UTC do dia seguinte) ficava fora do mês
+// certo, mesmo aparecendo corretamente na tela de Leads (que já usa
+// getLeadEffectiveDate + fuso). Achado do João, 2026-09-30 (números da
+// aba Vendas não batiam com a lista de Leads filtrada por "Ganho" no mesmo
+// período). Agora filtra em memória pela data já convertida, igual
+// leads.list/reportGeral já fazem.
 async function buscarVendasLeads(empresaId: number, input: z.infer<typeof vendasFiltroSchema>) {
   const filtros = [eq(leads.empresaId, empresaId), eq(leads.status, 'ganho'), isNull(leads.deletedAt)]
-  if (input?.dataInicio) filtros.push(gte(leads.statusChangedAt, input.dataInicio))
-  if (input?.dataFim) filtros.push(lte(leads.statusChangedAt, `${input.dataFim} 23:59:59`))
   if (input?.vendedorId) filtros.push(eq(leads.vendorId, input.vendedorId))
 
-  return db.query.leads.findMany({
+  const rows = await db.query.leads.findMany({
     where: and(...filtros),
     with: { vendor: { columns: { name: true } } },
     orderBy: (l, { desc }) => [desc(l.statusChangedAt)],
+  })
+
+  return rows.filter((l) => {
+    if (!l.statusChangedAt) return false
+    const dataLocal = toLocalDateKey(toUtcISO(l.statusChangedAt))
+    if (input?.dataInicio && dataLocal < input.dataInicio) return false
+    if (input?.dataFim && dataLocal > input.dataFim) return false
+    return true
   })
 }
 
@@ -172,13 +188,19 @@ export const leadsRelatoriosRouter = router({
       // getLeadEffectiveDate) — corrigido aqui em 2026-09-29 filtrando em
       // memória pela data efetiva, igual leads.list já faz, em vez de
       // filtrar no SQL por createdAt.
+      //
+      // 2026-09-30: a comparação ainda era direto contra o horário cru em
+      // UTC do banco (sem converter pra Brasília) — um lead fechado tarde
+      // da noite ficava fora do mês certo (achado do João, números da aba
+      // Vendas não batendo com a lista de Leads). Agora converte pra data
+      // local antes de comparar, igual buscarVendasLeads.
       const todosLeadsEmpresa = await db.query.leads.findMany({
         where: and(eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
       })
       const todosLeads = todosLeadsEmpresa.filter((l) => {
-        const efetiva = getLeadEffectiveDate(l)
-        if (input?.dataInicio && efetiva < input.dataInicio) return false
-        if (input?.dataFim && efetiva > `${input.dataFim} 23:59:59`) return false
+        const efetivaLocal = toLocalDateKey(toUtcISO(getLeadEffectiveDate(l)))
+        if (input?.dataInicio && efetivaLocal < input.dataInicio) return false
+        if (input?.dataFim && efetivaLocal > input.dataFim) return false
         return true
       })
 

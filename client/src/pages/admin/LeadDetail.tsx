@@ -265,7 +265,15 @@ export default function LeadDetail() {
   if (isLoading) return <LeadDetailSkeleton />
   if (!lead) return <div className="p-6 text-dark-400 text-sm">Lead não encontrado.</div>
 
-  const isOwner = !isAdmin || lead.vendorId === user?.id
+  // Corrigido 2026-09-30: antes `isOwner` dava true pra QUALQUER não-admin,
+  // mesmo olhando lead de outra pessoa — só não dava problema porque um
+  // vendedor comum nunca conseguia abrir lead alheio (o backend barrava
+  // antes de chegar aqui). Com o poder de "vê tudo" (vendedorVeTudo em
+  // leads.ts), isso passou a esconder mal as ações — agora é dono de
+  // verdade, e quem tem 'leads_gerenciar_todos' concedido usa
+  // podeGerenciarTudo pra liberar as mesmas ações em qualquer lead.
+  const isOwner = lead.vendorId === user?.id
+  const podeGerenciarTudo = isAdmin || !!minhasFeatures?.includes('leads_gerenciar_todos')
   const urgency = lead.nextContactAt ? getLeadContactUrgency(lead.nextContactAt, lead.status) : null
   const terminal = isLeadTerminalStatus(lead.status)
   const tempoAtendimento = lead.assignedAt
@@ -312,7 +320,7 @@ export default function LeadDetail() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap mt-4">
-          {(isAdmin || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
+          {(podeGerenciarTudo || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
             <>
               {empresaSlug === 'odin-compressores'
                 ? // Odin Compressores libera já em "Em Negociação", não só em
@@ -339,7 +347,7 @@ export default function LeadDetail() {
               Ver Proposta
             </Button>
           )}
-          {(isAdmin || isOwner) && lead.convertidoParaProposta && lead.status !== 'ganho' && (
+          {(podeGerenciarTudo || isOwner) && lead.convertidoParaProposta && lead.status !== 'ganho' && (
             <Button size="sm" onClick={() => marcarGanhoMut.mutate({ id: lead.id })} disabled={marcarGanhoMut.isPending}>
               Marcar como Ganho
             </Button>
@@ -352,7 +360,7 @@ export default function LeadDetail() {
           {/* Editar o cadastro do lead: sempre liberado pro admin. Na Odin
               Compressores o vendedor dono do lead também edita — pedido do
               João, 2026-09-08 (o backend leads.update já autoriza o dono). */}
-          {(isAdmin || (empresaSlug === 'odin-compressores' && isOwner)) && (
+          {(podeGerenciarTudo || (empresaSlug === 'odin-compressores' && isOwner)) && (
             <Button size="sm" variant="secondary" onClick={() => setEditarInfoOpen(true)}>
               <Pencil size={14} /> Editar informações
             </Button>
@@ -379,14 +387,14 @@ export default function LeadDetail() {
             Admin vê e pode mudar em qualquer lead da empresa (não só nos próprios), mesma
             regra do botão de transferir logo acima — precisa enxergar a etapa de qualquer
             lead pra saber quando dá pra transferir. */}
-        {(isAdmin || isOwner) && (lead.convertidoParaCliente || lead.convertidoParaProposta) && (
+        {(podeGerenciarTudo || isOwner) && (lead.convertidoParaCliente || lead.convertidoParaProposta) && (
           <div className="mt-4 pt-4 border-t border-dark-700">
             <Badge className="text-dark-400 bg-dark-700/50 border-dark-600">
               Etapa travada em "{LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS]}" — lead já transferido
             </Badge>
           </div>
         )}
-        {(isAdmin || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
+        {(podeGerenciarTudo || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
           <div className="flex items-center gap-1.5 flex-wrap mt-4 pt-4 border-t border-dark-700">
             {/* 'novo_consumidor_final' fica de fora do seletor manual — só entra na
                 criação do lead (fila sem dono) e sai só pegando na fila, nunca
@@ -497,7 +505,7 @@ export default function LeadDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <p className="text-sm font-semibold text-dark-100 mb-3">Tentativas de contato</p>
-          {isOwner && <LeadContactAttemptForm leadId={lead.id} hasNextContact={!!lead.nextContactAt} />}
+          {(podeGerenciarTudo || isOwner) && <LeadContactAttemptForm leadId={lead.id} hasNextContact={!!lead.nextContactAt} />}
           <div className="space-y-2 mt-3 max-h-80 overflow-y-auto">
             {lead.contactAttempts.length === 0 ? (
               <p className="text-xs text-dark-500">Nenhuma tentativa registrada.</p>
@@ -513,7 +521,7 @@ export default function LeadDetail() {
                   <p className="text-dark-500 mt-0.5">
                     {a.user?.name ?? '—'} · {timeAgo(a.createdAt)}
                   </p>
-                  {a.result === null && isOwner && (
+                  {a.result === null && (podeGerenciarTudo || isOwner) && (
                     <button
                       type="button"
                       onClick={() => confirmarContatoMut.mutate({ id: a.id })}
@@ -531,7 +539,7 @@ export default function LeadDetail() {
 
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <p className="text-sm font-semibold text-dark-100 mb-3">Notas e lembretes</p>
-          {isOwner && (
+          {(podeGerenciarTudo || isOwner) && (
             <form
               onSubmit={(e) => {
                 e.preventDefault()
@@ -603,7 +611,7 @@ export default function LeadDetail() {
                               <p className="text-dark-500">
                                 {n.user?.name ?? '—'} · {timeAgo(n.createdAt)}
                               </p>
-                              {isOwner && (
+                              {(podeGerenciarTudo || isOwner) && (
                                 <button
                                   onClick={() => {
                                     setEditingNoteId(n.id)
@@ -632,7 +640,7 @@ export default function LeadDetail() {
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-dark-100">Anexos</p>
-            {isOwner && (
+            {(podeGerenciarTudo || isOwner) && (
               <label className="text-xs text-gold-400 hover:underline cursor-pointer">
                 <Paperclip size={12} className="inline mr-1" />
                 {uploading ? 'Enviando...' : 'Anexar arquivo'}
@@ -658,7 +666,7 @@ export default function LeadDetail() {
                   </span>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span className="text-dark-500">{timeAgo(a.createdAt)}</span>
-                    {isOwner && (
+                    {(podeGerenciarTudo || isOwner) && (
                       <button
                         onClick={(e) => {
                           e.preventDefault()

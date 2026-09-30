@@ -220,14 +220,18 @@ export const FEATURES_RELATORIOS = [
   'relatorio_alertas',
 ] as const
 
-// Papel "Gestor" (pedido do João, 2026-09-30) — abaixo de admin, nasce sem
-// poder nenhum. Cada feature aqui é uma ação pontual em Leads (não uma
-// tela inteira — a tela de Leads em si o Gestor já vê por completo, ver
-// gestorFeatureProcedure em _base.ts e o guard em App.tsx), liberada 1 a 1
-// pelo superAdmin na mesma tela de Permissões.
+// "Poderes de gestor" em Leads (pedido do João, 2026-09-30) — nascem sem
+// efeito nenhum, liberados 1 a 1 pelo superAdmin na tela de Permissões.
+// Concedíveis tanto pro papel 'gestor' quanto pra um vendedor comum sem
+// ele virar gestor de verdade (ex: a Emily, vendedora E com esses
+// poderes numa conta só — ver gestorFeatureProcedure em _base.ts).
+// 'leads_gerenciar_todos' é o poder mais forte dos três: sem ele, mesmo
+// com transferir/excluir liberado, a pessoa só edita/muda etapa/anota nos
+// PRÓPRIOS leads — com ele, pode fazer isso em qualquer lead da empresa.
 export const FEATURES_GESTOR = [
   'leads_transferir',
   'leads_excluir',
+  'leads_gerenciar_todos',
 ] as const
 
 export const permissoesRouter = router({

@@ -22,6 +22,7 @@ const FEATURES_VENDEDOR_UI = VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERAD
 const FEATURES_GESTOR_UI = [
   { feature: 'leads_transferir', label: 'Leads — transferir pra outro vendedor' },
   { feature: 'leads_excluir', label: 'Leads — excluir' },
+  { feature: 'leads_gerenciar_todos', label: 'Leads — editar/mudar etapa de qualquer lead' },
 ]
 const FEATURES_RELATORIOS_UI = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
