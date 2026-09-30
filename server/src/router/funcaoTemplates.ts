@@ -24,7 +24,7 @@ export const funcaoTemplatesRouter = router({
     .input(
       z.object({
         nome: z.string().min(2),
-        role: z.enum(['admin', 'vendor']),
+        role: z.enum(['admin', 'vendor', 'gestor']),
         features: z.array(featureSchema),
       })
     )
@@ -46,7 +46,7 @@ export const funcaoTemplatesRouter = router({
       z.object({
         id: z.number(),
         nome: z.string().min(2).optional(),
-        role: z.enum(['admin', 'vendor']).optional(),
+        role: z.enum(['admin', 'vendor', 'gestor']).optional(),
         features: z.array(featureSchema).optional(),
       })
     )

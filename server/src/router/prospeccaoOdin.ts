@@ -35,7 +35,7 @@ async function assertEmpresaOdin(empresaId: number) {
   }
 }
 
-async function carregarProspect(id: number, empresaId: number, userId: number, role: 'admin' | 'vendor') {
+async function carregarProspect(id: number, empresaId: number, userId: number, role: 'admin' | 'vendor' | 'gestor') {
   const cliente = await db.query.clientes.findFirst({
     where: and(eq(clientes.id, id), eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt)),
   })

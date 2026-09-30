@@ -45,6 +45,26 @@ export function featureProcedure(feature: string) {
   })
 }
 
+// Gestor — papel abaixo de admin (pedido do João, 2026-09-30): nasce sem
+// poder nenhum, só o que for liberado explicitamente feature por feature em
+// Permissões (mesma tabela permissoesAdmin, mesma tela, lista de features
+// própria — ver FEATURES_GESTOR em permissoes.ts). Admin/superAdmin sempre
+// passam direto, sem depender de linha na tabela (nunca ficam mais
+// restritos que hoje). Diferente de featureProcedure (que exige role
+// admin): esse aqui é o único jeito de um 'gestor' chegar numa rota.
+export function gestorFeatureProcedure(feature: string) {
+  return protectedProcedure.use(async ({ ctx, next }) => {
+    if (ctx.user.superAdmin || ctx.user.role === 'admin') return next({ ctx })
+    if (ctx.user.role !== 'gestor')
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito ao administrador' })
+    const liberado = await db.query.permissoesAdmin.findFirst({
+      where: and(eq(permissoesAdmin.userId, ctx.user.id), eq(permissoesAdmin.feature, feature)),
+    })
+    if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Ação não liberada pra esse gestor' })
+    return next({ ctx })
+  })
+}
+
 // Telas que hoje são "admin-only" mas o superAdmin pode liberar pra um
 // vendedor específico (ex: Banco de Clientes) — qualquer admin continua
 // passando direto (nunca fica mais restrito que hoje), vendedor só passa

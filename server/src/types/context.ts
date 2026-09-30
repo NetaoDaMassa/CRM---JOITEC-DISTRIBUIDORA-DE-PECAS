@@ -2,7 +2,7 @@ export interface AuthUser {
   id: number
   username: string
   name: string
-  role: 'admin' | 'vendor'
+  role: 'admin' | 'vendor' | 'gestor'
   empresaId: number
   superAdmin: boolean
 }

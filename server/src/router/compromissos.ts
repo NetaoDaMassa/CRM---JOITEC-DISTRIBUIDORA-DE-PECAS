@@ -22,12 +22,12 @@ function proximaOcorrencia(dataHoraBase: string, recorrencia: (typeof RECORRENCI
   return d.toISOString().slice(0, 19).replace('T', ' ')
 }
 
-function filtroVendedorFunil(ctxRole: 'admin' | 'vendor', ctxUserId: number, vendedorId: number | undefined) {
+function filtroVendedorFunil(ctxRole: 'admin' | 'vendor' | 'gestor', ctxUserId: number, vendedorId: number | undefined) {
   if (ctxRole === 'admin') return vendedorId ? eq(funilMensal.vendedorId, vendedorId) : undefined
   return eq(funilMensal.vendedorId, ctxUserId)
 }
 
-function filtroVendedor(ctxRole: 'admin' | 'vendor', ctxUserId: number, vendedorId: number | undefined) {
+function filtroVendedor(ctxRole: 'admin' | 'vendor' | 'gestor', ctxUserId: number, vendedorId: number | undefined) {
   if (ctxRole === 'admin') return vendedorId ? eq(compromissos.vendedorId, vendedorId) : undefined
   return eq(compromissos.vendedorId, ctxUserId)
 }

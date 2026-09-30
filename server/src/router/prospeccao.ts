@@ -7,7 +7,7 @@ import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { CANAL_ORIGEM_VALUES } from '../lib/canalOrigem.js'
 
-async function assertProspectAlcancavel(clienteId: number, empresaId: number, userId: number, role: 'admin' | 'vendor') {
+async function assertProspectAlcancavel(clienteId: number, empresaId: number, userId: number, role: 'admin' | 'vendor' | 'gestor') {
   const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, clienteId), eq(clientes.empresaId, empresaId)) })
   if (!cliente) throw new Error('Prospect não encontrado')
   if (role !== 'admin' && cliente.vendedorAtualId !== userId) throw new Error('Acesso negado')

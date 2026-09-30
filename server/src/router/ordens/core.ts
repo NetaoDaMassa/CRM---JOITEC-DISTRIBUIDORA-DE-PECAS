@@ -31,7 +31,7 @@ async function assertEmpresaOrdens(empresaId: number) {
 // Pedidos (anexos/faturamento/conferencia/financeiro/frete/pos/
 // preparacao), então corrigir aqui já fecha o buraco no módulo inteiro de
 // uma vez, sem precisar duplicar a checagem em cada arquivo.
-async function assertOrdemAlcancavel(ordemId: number, empresaId: number, userId: number, role: 'admin' | 'vendor') {
+async function assertOrdemAlcancavel(ordemId: number, empresaId: number, userId: number, role: 'admin' | 'vendor' | 'gestor') {
   const ordem = await db.query.ordens.findFirst({ where: and(eq(ordens.id, ordemId), eq(ordens.empresaId, empresaId)) })
   if (!ordem) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
   if (role !== 'admin' && ordem.vendedorId !== userId) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' })

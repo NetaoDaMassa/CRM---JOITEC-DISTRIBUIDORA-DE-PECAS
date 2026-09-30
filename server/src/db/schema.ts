@@ -46,7 +46,7 @@ export const funcaoTemplates = sqliteTable('funcao_templates', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id),
   nome: text('nome').notNull(),
-  role: text('role', { enum: ['admin', 'vendor'] }).notNull().default('admin'),
+  role: text('role', { enum: ['admin', 'vendor', 'gestor'] }).notNull().default('admin'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -122,7 +122,7 @@ export const users = sqliteTable('users', {
   // tem seletor de empresa, resolve o usuário só pelo username.
   username: text('username').notNull().unique(),
   passwordHash: text('password_hash').notNull(),
-  role: text('role', { enum: ['admin', 'vendor'] }).notNull().default('vendor'),
+  role: text('role', { enum: ['admin', 'vendor', 'gestor'] }).notNull().default('vendor'),
   // Função escolhida na criação (aponta pra um modelo em funcaoTemplates,
   // que o próprio superAdmin cria/edita em Funções) — só rótulo + atalho pra
   // semear as permissões certas na hora de criar o usuário. Quem decide o

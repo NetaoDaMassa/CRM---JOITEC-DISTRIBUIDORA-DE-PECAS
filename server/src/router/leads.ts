@@ -2,7 +2,7 @@ import { z } from 'zod'
 import fs from 'fs'
 import path from 'path'
 import { eq, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure, superAdminProcedure } from './_base.js'
+import { router, protectedProcedure, adminProcedure, superAdminProcedure, gestorFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import {
   leads,
@@ -363,6 +363,7 @@ export const leadsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role === 'gestor') throw new Error('Acesso negado')
       const paraFilaConsumidorFinal = input.status === 'novo_consumidor_final'
       let vendorId: number | null = null
 
@@ -508,7 +509,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       const updates: Record<string, unknown> = { ...rest }
       if (nextContactAt !== undefined) {
@@ -584,7 +585,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       // "Novo (Consumidor Final)" só entra na criação (leads.create) — não é
       // uma etapa pra onde dá pra mover um lead manualmente (é uma fila sem
@@ -794,7 +795,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       await db
         .update(leads)
@@ -813,7 +814,7 @@ export const leadsRouter = router({
       const existing = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
       if (!existing) throw new Error('Lead não encontrado')
       if (existing.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
       if (empresa?.slug !== 'odin-tubos') {
@@ -833,7 +834,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       if (input.type === 'lembrete') await validateLeadNextContact(lead, input.nextContactAt)
 
@@ -864,7 +865,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, note.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       if (note.type === 'lembrete') await validateLeadNextContact(lead, input.nextContactAt)
 
@@ -889,7 +890,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       if (!isTerminalStatus(lead.status) && !input.nextActionAt && !lead.nextContactAt) {
         throw new Error('Registrar uma tentativa requer uma data de próximo contato para leads ativos')
@@ -943,7 +944,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attempt.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       await validateLeadNextContact(lead, input.nextActionAt)
 
@@ -974,7 +975,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       const result = await db.insert(leadContactAttempts).values({
         leadId: input.leadId,
@@ -1001,7 +1002,7 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attempt.leadId), isNull(leads.deletedAt)) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
     const now = new Date().toISOString()
 
@@ -1068,7 +1069,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
       const { leadId, ...rest } = input
       await db.insert(leadAttachments).values({ leadId, userId: ctx.user.id, ...rest })
@@ -1082,14 +1083,14 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, attachment.leadId), isNull(leads.deletedAt)) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
 
     await db.delete(leadAttachments).where(eq(leadAttachments.id, input.id))
     fs.unlink(path.join(process.env.UPLOADS_DIR ?? './uploads', attachment.filename), () => {})
     return { success: true }
   }),
 
-  transfer: adminProcedure
+  transfer: gestorFeatureProcedure('leads_transferir')
     .input(z.object({ leadId: z.number(), newVendorId: z.number(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
@@ -1139,7 +1140,7 @@ export const leadsRouter = router({
   // relógio de rodízio, grava histórico por lead), rodada em loop pra cada
   // id marcado na tela de Leads. 1 notificação só no final (em vez de 1 por
   // lead) pra não inundar o vendedor de destino.
-  transferMuitos: adminProcedure
+  transferMuitos: gestorFeatureProcedure('leads_transferir')
     .input(z.object({ leadIds: z.array(z.number()).min(1), newVendorId: z.number(), reason: z.string().optional() }))
     .mutation(async ({ ctx, input }) => {
       const newVendor = await db.query.users.findFirst({ where: eq(users.id, input.newVendorId) })
@@ -1352,7 +1353,7 @@ export const leadsRouter = router({
       return { success: true, criados, semVendedor, falhas }
     }),
 
-  delete: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+  delete: gestorFeatureProcedure('leads_excluir').input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     const existing = await db.query.leads.findFirst({
       where: and(eq(leads.id, input.id), eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
     })
@@ -1510,7 +1511,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
       if (lead.status !== 'ganho') throw new Error('Só dá pra transferir um lead que já está na etapa Ganho')
       if (lead.convertidoParaClienteId || lead.convertidoParaPropostaId) throw new Error('Este lead já foi transferido')
       if (!lead.vendorId) throw new Error('Este lead não tem vendedor atribuído')
@@ -1592,7 +1593,7 @@ export const leadsRouter = router({
       const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.leadId), isNull(leads.deletedAt)) })
       if (!lead) throw new Error('Lead não encontrado')
       if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-      if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
       // Pedido do João, 2026-08-31: pra Odin Compressores o botão de
       // transferir pra Propostas libera já em "Em Negociação", não só em
       // "Ganho" — o time quer levar o lead pro módulo de Propostas (que já
@@ -1655,7 +1656,7 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
     if (!lead.convertidoParaPropostaId) throw new Error('Só dá pra marcar como Ganho depois de transferir o lead pra Propostas')
     if (lead.status === 'ganho') throw new Error('Este lead já está marcado como Ganho')
 

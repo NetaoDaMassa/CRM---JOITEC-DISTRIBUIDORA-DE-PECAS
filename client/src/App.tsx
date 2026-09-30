@@ -288,7 +288,12 @@ export default function App() {
 
           <Route
             index
-            element={<Navigate to={user?.role === 'admin' ? '/admin' : '/vendedor'} replace />}
+            element={
+              <Navigate
+                to={user?.role === 'admin' ? '/admin' : user?.role === 'gestor' ? '/vendedor/leads' : '/vendedor'}
+                replace
+              />
+            }
           />
         </Route>
 

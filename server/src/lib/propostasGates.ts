@@ -13,7 +13,7 @@ import { agoraSqlite } from './dataBr.js'
 
 type PropostaRow = typeof propostas.$inferSelect
 
-export function assertDonoOuGestor(proposta: PropostaRow, userId: number, role: 'admin' | 'vendor') {
+export function assertDonoOuGestor(proposta: PropostaRow, userId: number, role: 'admin' | 'vendor' | 'gestor') {
   if (role === 'admin') return
   if (proposta.vendedorId !== userId) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' })
 }

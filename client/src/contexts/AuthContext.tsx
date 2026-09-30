@@ -5,7 +5,7 @@ interface AuthUser {
   id: number
   name: string
   username: string
-  role: 'admin' | 'vendor'
+  role: 'admin' | 'vendor' | 'gestor'
   empresaId: number
   superAdmin: boolean
   senhaTrocarNoLogin?: boolean

@@ -33,7 +33,16 @@ export default function Leads() {
   const navigate = useNavigate()
   const utils = trpc.useUtils()
   const isAdmin = user?.role === 'admin'
+  const isGestor = user?.role === 'gestor'
+  // Gestor (papel novo, 2026-09-30) vê a lista completa igual admin
+  // (filtro de vendedor, coluna Vendedor, seleção em massa) — só os
+  // botões de transferir/excluir dependem do que foi liberado em
+  // Permissões (ver podeTransferir/podeExcluir abaixo).
+  const verTudo = isAdmin || isGestor
   const basePath = isAdmin ? '/admin/leads' : '/vendedor/leads'
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, { enabled: isGestor })
+  const podeTransferir = isAdmin || (isGestor && !!minhasFeatures?.includes('leads_transferir'))
+  const podeExcluir = isAdmin || (isGestor && !!minhasFeatures?.includes('leads_excluir'))
 
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
@@ -61,11 +70,11 @@ export default function Leads() {
     setSelecionados(new Set())
   }, [status, vendorId, search, dateFrom, dateTo, soDoSite, soDeEmailMarketing, page])
 
-  const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
+  const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: verTudo })
 
   const { data, isLoading } = trpc.leads.list.useQuery({
     status: (status || undefined) as any,
-    vendorId: isAdmin && vendorId ? Number(vendorId) : undefined,
+    vendorId: verTudo && vendorId ? Number(vendorId) : undefined,
     search: search || undefined,
     dateFrom: dateFrom || undefined,
     dateTo: dateTo || undefined,
@@ -142,7 +151,7 @@ export default function Leads() {
             }))}
           />
         </div>
-        {isAdmin && (
+        {verTudo && (
           <div className="w-48">
             <Select
               label="Vendedor"
@@ -196,7 +205,7 @@ export default function Leads() {
         </label>
       </div>
 
-      {isAdmin && selecionados.size > 0 && (
+      {podeTransferir && selecionados.size > 0 && (
         <div className="bg-gold-900/15 border border-gold-700/40 rounded-2xl p-3 flex items-center justify-between gap-3 flex-wrap">
           <p className="text-sm text-gold-300">{selecionados.size} lead(s) selecionado(s)</p>
           <div className="flex items-center gap-2">
@@ -237,7 +246,7 @@ export default function Leads() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-dark-600 bg-dark-900/40">
-                  {isAdmin && (
+                  {podeTransferir && (
                     <th className="px-3 py-3 w-8">
                       <input
                         type="checkbox"
@@ -250,11 +259,11 @@ export default function Leads() {
                   )}
                   <th className="text-left text-dark-400 font-medium px-5 py-3">Lead</th>
                   <th className="text-left text-dark-400 font-medium px-5 py-3">Etapa</th>
-                  {isAdmin && <th className="text-left text-dark-400 font-medium px-5 py-3">Vendedor</th>}
+                  {verTudo && <th className="text-left text-dark-400 font-medium px-5 py-3">Vendedor</th>}
                   <th className="text-left text-dark-400 font-medium px-5 py-3">Tag</th>
                   <th className="text-left text-dark-400 font-medium px-5 py-3">Recebido há</th>
                   <th className="text-right text-dark-400 font-medium px-5 py-3">Contato</th>
-                  {isAdmin && <th className="text-right text-dark-400 font-medium px-5 py-3">Ações</th>}
+                  {(podeTransferir || podeExcluir) && <th className="text-right text-dark-400 font-medium px-5 py-3">Ações</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-dark-700">
@@ -262,7 +271,7 @@ export default function Leads() {
                   const urgency = lead.nextContactAt ? getLeadContactUrgency(lead.nextContactAt, lead.status) : null
                   return (
                     <tr key={lead.id} className="hover:bg-dark-700/30 transition-colors cursor-pointer" onClick={() => navigate(`${basePath}/${lead.id}`)}>
-                      {isAdmin && (
+                      {podeTransferir && (
                         <td className="px-3 py-3" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
@@ -316,9 +325,9 @@ export default function Leads() {
                           </div>
                         )}
                       </td>
-                      {isAdmin && <td className="px-5 py-3 text-dark-300">{lead.vendor?.name ?? '—'}</td>}
+                      {verTudo && <td className="px-5 py-3 text-dark-300">{lead.vendor?.name ?? '—'}</td>}
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
-                        <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />
+                        {!isGestor && <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />}
                       </td>
                       <td className="px-5 py-3 text-dark-400">
                         {formatElapsed(lead.createdAt)}
@@ -327,7 +336,7 @@ export default function Leads() {
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          {lead.phone && (
+                          {lead.phone && !isGestor && (
                             <>
                               <LeadLigarButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
                               <LeadWhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
@@ -335,16 +344,19 @@ export default function Leads() {
                           )}
                         </div>
                       </td>
-                      {isAdmin && (
+                      {(podeTransferir || podeExcluir) && (
                         <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-end gap-1">
-                            <button
-                              onClick={() => setTransferLead({ id: lead.id, name: lead.name })}
-                              className="p-1.5 rounded-lg hover:bg-blue-900/30 text-dark-400 hover:text-blue-400 transition-colors"
-                              title="Transferir"
-                            >
-                              <ArrowRightLeft size={15} />
-                            </button>
+                            {podeTransferir && (
+                              <button
+                                onClick={() => setTransferLead({ id: lead.id, name: lead.name })}
+                                className="p-1.5 rounded-lg hover:bg-blue-900/30 text-dark-400 hover:text-blue-400 transition-colors"
+                                title="Transferir"
+                              >
+                                <ArrowRightLeft size={15} />
+                              </button>
+                            )}
+                            {podeExcluir && (
                             <button
                               onClick={() => setDeleteLead({ id: lead.id, name: lead.name })}
                               className="p-1.5 rounded-lg hover:bg-red-900/30 text-dark-500 hover:text-red-400 transition-colors"
@@ -352,6 +364,7 @@ export default function Leads() {
                             >
                               <Trash2 size={15} />
                             </button>
+                            )}
                           </div>
                         </td>
                       )}

@@ -47,7 +47,7 @@ const OCORRENCIA_VALUES = ['envio_errado', 'falta_materiais', 'produto_defeito',
 async function sanitizarAnalise<T extends Record<string, unknown> | null>(
   analise: T,
   userId: number,
-  role: 'admin' | 'vendor',
+  role: 'admin' | 'vendor' | 'gestor',
   superAdmin: boolean
 ): Promise<T> {
   if (!analise) return analise

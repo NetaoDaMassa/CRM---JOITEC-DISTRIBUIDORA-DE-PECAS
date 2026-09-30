@@ -23,7 +23,7 @@ import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 // "de quantos clientes" por vendedor, não só filtrar registros já existentes
 // (ex: positivação/cobertura de contato precisam do denominador mesmo pro
 // vendedor que não tem nenhum registro no período).
-async function vendedoresPermitidos(ctx: { user: { role: 'admin' | 'vendor'; id: number }; empresaId: number }, vendedorId: number | undefined) {
+async function vendedoresPermitidos(ctx: { user: { role: 'admin' | 'vendor' | 'gestor'; id: number }; empresaId: number }, vendedorId: number | undefined) {
   const vendedores = await db.query.users.findMany({
     where: and(eq(users.empresaId, ctx.empresaId), eq(users.isActive, true), eq(users.superAdmin, false)),
     columns: { id: true, name: true },
@@ -98,7 +98,7 @@ const filtroAtualInput = z.object({
   regiao: regiaoEnum,
 })
 
-function filtroVendedor(ctxRole: 'admin' | 'vendor', ctxUserId: number, vendedorId: number | undefined, coluna: any) {
+function filtroVendedor(ctxRole: 'admin' | 'vendor' | 'gestor', ctxUserId: number, vendedorId: number | undefined, coluna: any) {
   if (ctxRole === 'admin') return vendedorId ? eq(coluna, vendedorId) : undefined
   return eq(coluna, ctxUserId)
 }

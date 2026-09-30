@@ -17,6 +17,12 @@ const FEATURES_ADMIN_UI = [
   { feature: 'painel_tv', label: 'Painel de TV' },
 ]
 const FEATURES_VENDEDOR_UI = VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label }))
+// Gestor (papel novo, 2026-09-30) — nasce sem tela nenhuma, só ações
+// pontuais liberadas 1 a 1 (ver FEATURES_GESTOR no backend, permissoes.ts).
+const FEATURES_GESTOR_UI = [
+  { feature: 'leads_transferir', label: 'Leads — transferir pra outro vendedor' },
+  { feature: 'leads_excluir', label: 'Leads — excluir' },
+]
 const FEATURES_RELATORIOS_UI = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
   { feature: 'relatorio_contatos', label: 'Contatos & Ligações' },
@@ -26,7 +32,7 @@ const FEATURES_RELATORIOS_UI = [
 
 interface TemplateForm {
   nome: string
-  role: 'admin' | 'vendor'
+  role: 'admin' | 'vendor' | 'gestor'
   features: string[]
 }
 
@@ -107,7 +113,8 @@ export default function Funcoes() {
     }
   }
 
-  const featuresDisponiveis = form.role === 'vendor' ? FEATURES_VENDEDOR_UI : FEATURES_ADMIN_UI
+  const featuresDisponiveis =
+    form.role === 'vendor' ? FEATURES_VENDEDOR_UI : form.role === 'gestor' ? FEATURES_GESTOR_UI : FEATURES_ADMIN_UI
 
   return (
     <div className="p-6 max-w-4xl space-y-6">
@@ -138,7 +145,8 @@ export default function Funcoes() {
                 >
                   <p className="font-medium truncate">{t.nome}</p>
                   <p className="text-xs text-dark-500">
-                    {t.role === 'vendor' ? 'Vendedor' : 'Admin'} · {t.features.length} tela{t.features.length !== 1 ? 's' : ''}
+                    {t.role === 'vendor' ? 'Vendedor' : t.role === 'gestor' ? 'Gestor' : 'Admin'} · {t.features.length} tela
+                    {t.features.length !== 1 ? 's' : ''}
                   </p>
                 </button>
               ))}
@@ -156,10 +164,11 @@ export default function Funcoes() {
                   <Select
                     label="Tipo de conta"
                     value={form.role}
-                    onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'vendor', features: [] })}
+                    onChange={(e) => setForm({ ...form, role: e.target.value as 'admin' | 'vendor' | 'gestor', features: [] })}
                     options={[
                       { value: 'admin', label: 'Administrador (telas de retaguarda)' },
                       { value: 'vendor', label: 'Vendedor (carteira/Kanban de vendas)' },
+                      { value: 'gestor', label: 'Gestor (ações pontuais, sem telas)' },
                     ]}
                   />
                 </div>

@@ -134,7 +134,7 @@ export const usersRouter = router({
         name: z.string().min(2).optional(),
         username: z.string().min(3).optional(),
         regiao: z.enum(REGIAO_VALUES).optional(),
-        role: z.enum(['admin', 'vendor']).optional(),
+        role: z.enum(['admin', 'vendor', 'gestor']).optional(),
         funcaoTemplateId: z.number().optional(),
         isActive: z.boolean().optional(),
         ocultoPainelTv: z.boolean().optional(),
@@ -155,7 +155,7 @@ export const usersRouter = router({
         if (existing) throw new Error('Nome de usuário já existe')
       }
 
-      let finalUpdates: typeof updates & { funcaoTemplateId?: number; role?: 'admin' | 'vendor' } = updates
+      let finalUpdates: typeof updates & { funcaoTemplateId?: number; role?: 'admin' | 'vendor' | 'gestor' } = updates
       if (funcaoTemplateId !== undefined) {
         const template = await db.query.funcaoTemplates.findFirst({
           where: and(eq(funcaoTemplates.id, funcaoTemplateId), eq(funcaoTemplates.empresaId, ctx.empresaId)),

@@ -220,6 +220,16 @@ export const FEATURES_RELATORIOS = [
   'relatorio_alertas',
 ] as const
 
+// Papel "Gestor" (pedido do João, 2026-09-30) — abaixo de admin, nasce sem
+// poder nenhum. Cada feature aqui é uma ação pontual em Leads (não uma
+// tela inteira — a tela de Leads em si o Gestor já vê por completo, ver
+// gestorFeatureProcedure em _base.ts e o guard em App.tsx), liberada 1 a 1
+// pelo superAdmin na mesma tela de Permissões.
+export const FEATURES_GESTOR = [
+  'leads_transferir',
+  'leads_excluir',
+] as const
+
 export const permissoesRouter = router({
   // Lista todos os admins (de qualquer empresa) pra tela de configuração —
   // só o superAdmin monta essa tela.
@@ -260,6 +270,26 @@ export const permissoesRouter = router({
     return vendedores.map((v) => ({ ...v, features: porUsuario.get(v.id) ?? [] }))
   }),
 
+  // Mesma ideia, pra gestores (papel novo, 2026-09-30) — features próprias
+  // (FEATURES_GESTOR), não as de admin/vendedor.
+  listarGestores: superAdminProcedure.query(async () => {
+    const gestores = await db.query.users.findMany({
+      where: eq(users.role, 'gestor'),
+      columns: { id: true, name: true, username: true, empresaId: true, isActive: true },
+      orderBy: (u, { asc }) => [asc(u.name)],
+    })
+    const todasPermissoes = await db.query.permissoesAdmin.findMany({
+      where: inArray(permissoesAdmin.feature, [...FEATURES_GESTOR]),
+    })
+    const porUsuario = new Map<number, string[]>()
+    for (const p of todasPermissoes) {
+      const lista = porUsuario.get(p.userId) ?? []
+      lista.push(p.feature)
+      porUsuario.set(p.userId, lista)
+    }
+    return gestores.map((g) => ({ ...g, features: porUsuario.get(g.id) ?? [] }))
+  }),
+
   // Features liberadas pro usuário logado — usado pelo Sidebar/route guard.
   // superAdmin sempre recebe a lista completa, sem depender de linhas na tabela.
   minhasPermissoes: protectedProcedure.query(async ({ ctx }) => {
@@ -287,9 +317,9 @@ export const permissoesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const alvo = await db.query.users.findFirst({ where: eq(users.id, input.userId) })
-      if (!alvo || (alvo.role !== 'admin' && alvo.role !== 'vendor')) throw new Error('Usuário não encontrado')
+      if (!alvo || (alvo.role !== 'admin' && alvo.role !== 'vendor' && alvo.role !== 'gestor')) throw new Error('Usuário não encontrado')
 
-      const featuresValidas = new Set<string>([...FEATURES_ADMIN, ...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS])
+      const featuresValidas = new Set<string>([...FEATURES_ADMIN, ...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS, ...FEATURES_GESTOR])
       const features = input.features.filter((f) => featuresValidas.has(f))
 
       await db.delete(permissoesAdmin).where(eq(permissoesAdmin.userId, input.userId))

@@ -188,6 +188,16 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },
 ]
 
+// Gestor (papel novo, 2026-09-30) — nasce só com isso, sem passar pelo
+// filtro de features de VENDOR_LINKS/ADMIN_LINKS (o menu dele é fixo, quem
+// controla o que ele PODE FAZER lá dentro é FEATURES_GESTOR em Permissões,
+// não a visibilidade da tela). Lista de Leads igual o admin vê (todos os
+// vendedores, com botão pra abrir o Kanban também), só os botões de
+// transferir/excluir dependem do que foi liberado.
+const GESTOR_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
+  { to: '/vendedor/leads', label: 'Leads', icon: UserPlus },
+]
+
 // Uma linha da sidebar (link normal ou externo em nova aba) — usado tanto
 // solto quanto dentro de um grupo aberto, mesmo visual dos dois jeitos.
 function SidebarItemLink({
@@ -268,8 +278,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
   // Mesma regra pros dois papéis agora: superAdmin sempre vê tudo; qualquer
   // outro (admin ou vendedor) precisa ter a `feature` do item liberada em
-  // Permissões.
-  const links = (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter((l) => {
+  // Permissões. Gestor nem passa por esse filtro — o menu dele é fixo
+  // (GESTOR_LINKS), não depende de feature liberada em Permissões.
+  const links = user?.role === 'gestor' ? GESTOR_LINKS : (user?.role === 'admin' ? ADMIN_LINKS : VENDOR_LINKS).filter((l) => {
     const somenteEmpresas: string[] | undefined = 'somenteEmpresas' in l ? (l as { somenteEmpresas?: string[] }).somenteEmpresas : undefined
     return (
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
@@ -497,7 +508,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           <div className="flex-1 min-w-0">
             <div className="text-sm text-dark-100 font-medium truncate">{user?.name}</div>
             <div className="text-xs text-dark-400 capitalize">
-              {user?.role === 'admin' ? 'Administrador' : 'Vendedor'}
+              {user?.role === 'admin' ? 'Administrador' : user?.role === 'gestor' ? 'Gestor' : 'Vendedor'}
             </div>
           </div>
         </div>

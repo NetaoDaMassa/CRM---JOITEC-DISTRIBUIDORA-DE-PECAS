@@ -18,7 +18,7 @@ async function assertEmpresaVisitas(empresaId: number) {
   if (empresa?.slug !== SLUG_VISITAS) throw new TRPCError({ code: 'FORBIDDEN', message: 'Módulo disponível só pra Odin Compressores' })
 }
 
-function assertDonoOuGestor(vendedorId: number, userId: number, role: 'admin' | 'vendor') {
+function assertDonoOuGestor(vendedorId: number, userId: number, role: 'admin' | 'vendor' | 'gestor') {
   if (role === 'admin') return
   if (vendedorId !== userId) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' })
 }
