@@ -301,6 +301,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { to: '/admin/permissoes', label: 'Permissões', icon: ShieldCheck, visivel: !!user?.superAdmin },
     { to: '/admin/funcoes', label: 'Funções', icon: UserCog, visivel: !!user?.superAdmin },
     { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
+    { to: '/admin/marketing-geral', label: 'Marketing — Geral', icon: BarChart3, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },

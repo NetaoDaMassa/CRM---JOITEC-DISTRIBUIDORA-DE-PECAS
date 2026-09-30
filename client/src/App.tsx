@@ -33,6 +33,7 @@ import AdminVagas from './pages/admin/Vagas'
 import AdminCandidatos from './pages/admin/Candidatos'
 import AdminMensagensRh from './pages/admin/MensagensRh'
 import AdminAnalytics from './pages/admin/Analytics'
+import MarketingRelatorioGeral from './pages/admin/MarketingRelatorioGeral'
 import Leads from './pages/admin/Leads'
 import LeadDetail from './pages/admin/LeadDetail'
 import LeadsKanban from './pages/admin/LeadsKanban'
@@ -219,6 +220,7 @@ export default function App() {
           <Route path="admin/candidatos" element={<AdminGuard><FeatureGuard feature="candidatos"><AdminCandidatos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/mensagens-rh" element={<AdminGuard><FeatureGuard feature="mensagens_rh"><AdminMensagensRh /></FeatureGuard></AdminGuard>} />
           <Route path="admin/analytics" element={<AdminGuard><FeatureGuard feature="marketing_analytics"><AdminAnalytics /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/marketing-geral" element={<AdminGuard><SuperAdminGuard><MarketingRelatorioGeral /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/leads" element={<AdminGuard><FeatureGuard feature="leads"><Leads /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads/kanban" element={<AdminGuard><FeatureGuard feature="leads"><LeadsKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads/:id" element={<AdminGuard><FeatureGuard feature="leads"><LeadDetail /></FeatureGuard></AdminGuard>} />

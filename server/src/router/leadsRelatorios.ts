@@ -55,6 +55,123 @@ async function buscarVendasLeads(empresaId: number, input: z.infer<typeof vendas
   })
 }
 
+// Núcleo de `reportGeral` (abaixo), extraído pra função solta em 2026-09-30
+// pra poder ser chamado de outra empresa que não `ctx.empresaId` — usado
+// pelo relatório geral de Marketing (todas as empresas, marketingGeral.ts,
+// só o admin principal). Mesmo cálculo, mesmas regras de fuso já corrigidas.
+//
+// `amostraPrimeiroContato`/`amostraFechamento` vão junto pra quem for tirar
+// uma média ponderada entre empresas (média de médias simples distorce
+// quando uma empresa tem muito mais leads que outra).
+export async function calcularReportGeral(empresaId: number, dataInicio?: string, dataFim?: string) {
+  const todosLeadsEmpresa = await db.query.leads.findMany({
+    where: and(eq(leads.empresaId, empresaId), isNull(leads.deletedAt)),
+  })
+  const todosLeads = todosLeadsEmpresa.filter((l) => {
+    const efetivaLocal = toLocalDateKey(toUtcISO(getLeadEffectiveDate(l)))
+    if (dataInicio && efetivaLocal < dataInicio) return false
+    if (dataFim && efetivaLocal > dataFim) return false
+    return true
+  })
+
+  const primeirasTentativas = await db.query.leadContactAttempts.findMany({
+    where: and(inArray(leadContactAttempts.leadId, todosLeadsEmpresa.map((l) => l.id)), isNotNull(leadContactAttempts.result)),
+    orderBy: (c, { asc }) => [asc(c.createdAt)],
+  })
+  const primeiraTentativaPorLead = new Map<number, string>()
+  for (const t of primeirasTentativas) {
+    if (!primeiraTentativaPorLead.has(t.leadId)) primeiraTentativaPorLead.set(t.leadId, t.createdAt)
+  }
+
+  const temposPrimeiroContato: number[] = []
+  for (const l of todosLeads) {
+    const primeira = primeiraTentativaPorLead.get(l.id)
+    if (primeira) temposPrimeiroContato.push(businessHoursElapsedMs(l.createdAt, primeira) / (60 * 60 * 1000))
+  }
+  const avg = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0)
+
+  const ganhos = todosLeads.filter((l) => l.status === 'ganho')
+  const perdidos = todosLeads.filter((l) => l.status === 'perdido')
+  const desqualificados = todosLeads.filter((l) => l.status === 'desqualificado')
+  const ticketMedio = avg(ganhos.map((l) => l.finalOrderValue ?? 0).filter((v) => v > 0))
+
+  const naoNovos = todosLeads.filter((l) => l.status !== 'novo')
+  const taxaConversao = naoNovos.length ? (ganhos.length / naoNovos.length) * 100 : 0
+
+  const total = todosLeads.length
+  const taxaPerda = total > 0 ? ((perdidos.length + desqualificados.length) / total) * 100 : 0
+
+  // "Fechamento" = da atribuição ao vendedor até a etapa terminal
+  // (ganho/perdido/desqualificado) — mesmo critério do CRM antigo de
+  // marketing (reports.ts de lá), adaptado pro schema daqui.
+  const diasEntre = (de: string, ate: string) => (new Date(ate).getTime() - new Date(de).getTime()) / (1000 * 60 * 60 * 24)
+  const encerrados = [...ganhos, ...perdidos, ...desqualificados]
+  const tempoMedioFechamentoDias = avg(encerrados.map((l) => diasEntre(l.assignedAt ?? l.createdAt, l.statusChangedAt ?? l.updatedAt)))
+
+  const emNegociacao = todosLeads.filter((l) => l.status === 'em_negociacao')
+  const valorEmNegociacao = emNegociacao.reduce((sum, l) => sum + (l.orderValue ?? 0), 0)
+  const totalVendas = ganhos.reduce((sum, l) => sum + (l.finalOrderValue ?? 0), 0)
+
+  // % de cada etapa em relação ao total de leads do período (não da etapa
+  // anterior) — contagens são uma fotografia do status atual, não
+  // acumulativas, então "etapa atual / etapa anterior" pode passar de
+  // 100% ou zerar sempre que a etapa anterior estiver vazia.
+  const funnel = STATUS_VALUES.map((status) => {
+    const count = todosLeads.filter((l) => l.status === status).length
+    return { status, label: STATUS_LABELS[status], count, conversionRate: total > 0 ? (count / total) * 100 : 0 }
+  })
+
+  // Só tem sentido pra Odin Tubos e Conexões (única empresa que usa a
+  // etiqueta), mas calcula sempre — pra quem não usa, fica zerado.
+  const totalPprVerde = todosLeads.filter((l) => l.tagPprVerde).length
+  const totalOutrasLinhas = todosLeads.filter((l) => l.tagOutrasLinhas).length
+
+  // "Leads que entraram no período" — por createdAt puro, diferente de
+  // `totalLeads` (que é por data EFETIVA, criação ou fechamento). Pedido
+  // do João, 2026-09-30, pro relatório geral de Marketing.
+  const leadsCriadosNoPeriodo = todosLeadsEmpresa.filter((l) => {
+    const criadoLocal = toLocalDateKey(toUtcISO(l.createdAt))
+    if (dataInicio && criadoLocal < dataInicio) return false
+    if (dataFim && criadoLocal > dataFim) return false
+    return true
+  }).length
+
+  // "Leads atendidos no período" — tiveram pelo menos 1 tentativa de
+  // contato (confirmada ou não) registrada dentro do período, não importa
+  // quando o lead em si foi criado.
+  const todasTentativas = await db.query.leadContactAttempts.findMany({
+    where: inArray(leadContactAttempts.leadId, todosLeadsEmpresa.map((l) => l.id)),
+    columns: { leadId: true, createdAt: true },
+  })
+  const leadsAtendidosSet = new Set<number>()
+  for (const t of todasTentativas) {
+    const dataLocal = toLocalDateKey(toUtcISO(t.createdAt))
+    if (dataInicio && dataLocal < dataInicio) continue
+    if (dataFim && dataLocal > dataFim) continue
+    leadsAtendidosSet.add(t.leadId)
+  }
+
+  return {
+    tempoMedioPrimeiroContatoHoras: avg(temposPrimeiroContato),
+    amostraPrimeiroContato: temposPrimeiroContato.length,
+    ticketMedio,
+    taxaConversaoPct: taxaConversao,
+    valorEmNegociacao,
+    totalLeads: total,
+    totalGanhos: ganhos.length,
+    taxaPerda,
+    totalPerdidosDesqualificados: perdidos.length + desqualificados.length,
+    tempoMedioFechamentoDias,
+    amostraFechamento: encerrados.length,
+    totalVendas,
+    funnel,
+    totalPprVerde,
+    totalOutrasLinhas,
+    leadsCriadosNoPeriodo,
+    leadsAtendidosNoPeriodo: leadsAtendidosSet.size,
+  }
+}
+
 // Relatórios de marketing do módulo de Leads (bloco E do plano em
 // /Users/weslley/.claude/plans/stateful-soaring-moore.md). `slaOverview` e
 // `transferHistory` portados de odin-tubos-crm--master/server/src/router/reports.ts,
@@ -177,103 +294,7 @@ export const leadsRelatoriosRouter = router({
   // é que ela passa a contar aqui (pedido do João, 2026-09-02).
   reportGeral: featureProcedure('leads')
     .input(z.object({ dataInicio: z.string().optional(), dataFim: z.string().optional() }).optional())
-    .query(async ({ ctx, input }) => {
-      // Filtro de data era feito em SQL direto sobre `createdAt` — pra lead
-      // fechado (ganho/perdido/desqualificado/consumidor_final), a data que
-      // CONTA é `statusChangedAt` (getLeadEffectiveDate), não createdAt: um
-      // lead criado em julho e fechado em agosto tinha que aparecer no
-      // relatório de agosto, mas sumia dos dois (não aparecia nem em julho
-      // nem em agosto, já que createdAt=julho ficava fora do filtro
-      // "agosto"). Mesmo bug já resolvido em leads.list (ver
-      // getLeadEffectiveDate) — corrigido aqui em 2026-09-29 filtrando em
-      // memória pela data efetiva, igual leads.list já faz, em vez de
-      // filtrar no SQL por createdAt.
-      //
-      // 2026-09-30: a comparação ainda era direto contra o horário cru em
-      // UTC do banco (sem converter pra Brasília) — um lead fechado tarde
-      // da noite ficava fora do mês certo (achado do João, números da aba
-      // Vendas não batendo com a lista de Leads). Agora converte pra data
-      // local antes de comparar, igual buscarVendasLeads.
-      const todosLeadsEmpresa = await db.query.leads.findMany({
-        where: and(eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
-      })
-      const todosLeads = todosLeadsEmpresa.filter((l) => {
-        const efetivaLocal = toLocalDateKey(toUtcISO(getLeadEffectiveDate(l)))
-        if (input?.dataInicio && efetivaLocal < input.dataInicio) return false
-        if (input?.dataFim && efetivaLocal > input.dataFim) return false
-        return true
-      })
-
-      const primeirasTentativas = await db.query.leadContactAttempts.findMany({
-        where: and(inArray(leadContactAttempts.leadId, todosLeads.map((l) => l.id)), isNotNull(leadContactAttempts.result)),
-        orderBy: (c, { asc }) => [asc(c.createdAt)],
-      })
-      const primeiraTentativaPorLead = new Map<number, string>()
-      for (const t of primeirasTentativas) {
-        if (!primeiraTentativaPorLead.has(t.leadId)) primeiraTentativaPorLead.set(t.leadId, t.createdAt)
-      }
-
-      const temposPrimeiroContato: number[] = []
-      for (const l of todosLeads) {
-        const primeira = primeiraTentativaPorLead.get(l.id)
-        if (primeira) temposPrimeiroContato.push(businessHoursElapsedMs(l.createdAt, primeira) / (60 * 60 * 1000))
-      }
-      const avg = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0)
-
-      const ganhos = todosLeads.filter((l) => l.status === 'ganho')
-      const perdidos = todosLeads.filter((l) => l.status === 'perdido')
-      const desqualificados = todosLeads.filter((l) => l.status === 'desqualificado')
-      const ticketMedio = avg(ganhos.map((l) => l.finalOrderValue ?? 0).filter((v) => v > 0))
-
-      const naoNovos = todosLeads.filter((l) => l.status !== 'novo')
-      const taxaConversao = naoNovos.length ? (ganhos.length / naoNovos.length) * 100 : 0
-
-      const total = todosLeads.length
-      const taxaPerda = total > 0 ? ((perdidos.length + desqualificados.length) / total) * 100 : 0
-
-      // "Fechamento" = da atribuição ao vendedor até a etapa terminal
-      // (ganho/perdido/desqualificado) — mesmo critério do CRM antigo de
-      // marketing (reports.ts de lá), adaptado pro schema daqui.
-      const diasEntre = (de: string, ate: string) => (new Date(ate).getTime() - new Date(de).getTime()) / (1000 * 60 * 60 * 24)
-      const encerrados = [...ganhos, ...perdidos, ...desqualificados]
-      const tempoMedioFechamentoDias = avg(
-        encerrados.map((l) => diasEntre(l.assignedAt ?? l.createdAt, l.statusChangedAt ?? l.updatedAt))
-      )
-
-      const emNegociacao = todosLeads.filter((l) => l.status === 'em_negociacao')
-      const valorEmNegociacao = emNegociacao.reduce((sum, l) => sum + (l.orderValue ?? 0), 0)
-      const totalVendas = ganhos.reduce((sum, l) => sum + (l.finalOrderValue ?? 0), 0)
-
-      // % de cada etapa em relação ao total de leads do período (não da etapa
-      // anterior) — contagens são uma fotografia do status atual, não
-      // acumulativas, então "etapa atual / etapa anterior" pode passar de
-      // 100% ou zerar sempre que a etapa anterior estiver vazia.
-      const funnel = STATUS_VALUES.map((status) => {
-        const count = todosLeads.filter((l) => l.status === status).length
-        return { status, label: STATUS_LABELS[status], count, conversionRate: total > 0 ? (count / total) * 100 : 0 }
-      })
-
-      // Só tem sentido pra Odin Tubos e Conexões (única empresa que usa a
-      // etiqueta), mas calcula sempre — pra quem não usa, fica zerado.
-      const totalPprVerde = todosLeads.filter((l) => l.tagPprVerde).length
-      const totalOutrasLinhas = todosLeads.filter((l) => l.tagOutrasLinhas).length
-
-      return {
-        tempoMedioPrimeiroContatoHoras: avg(temposPrimeiroContato),
-        ticketMedio,
-        taxaConversaoPct: taxaConversao,
-        valorEmNegociacao,
-        totalLeads: total,
-        totalGanhos: ganhos.length,
-        taxaPerda,
-        totalPerdidosDesqualificados: perdidos.length + desqualificados.length,
-        tempoMedioFechamentoDias,
-        totalVendas,
-        funnel,
-        totalPprVerde,
-        totalOutrasLinhas,
-      }
-    }),
+    .query(async ({ ctx, input }) => calcularReportGeral(ctx.empresaId, input?.dataInicio, input?.dataFim)),
 
   vendas: featureProcedure('leads')
     .input(vendasFiltroSchema)
