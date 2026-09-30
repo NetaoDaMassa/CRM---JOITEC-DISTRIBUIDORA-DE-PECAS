@@ -55,11 +55,11 @@ function EventoPill({ e }: { e: Evento }) {
   return (
     <Link
       to={e.link}
-      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium truncate ${TIPO_COR_BADGE[e.tipo]}`}
+      className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${TIPO_COR_BADGE[e.tipo]}`}
       title={e.titulo}
     >
       {e.concluido ? <CheckCircle2 size={9} className="shrink-0" /> : e.atrasado ? <AlertTriangle size={9} className="shrink-0" /> : null}
-      <span className="truncate">{e.titulo}</span>
+      <span className="truncate min-w-0">{e.titulo}</span>
     </Link>
   )
 }

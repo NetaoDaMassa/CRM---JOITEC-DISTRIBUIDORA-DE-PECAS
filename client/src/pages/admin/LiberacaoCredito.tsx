@@ -170,8 +170,9 @@ function NovaLiberacaoModal({ open, onClose, quemLiberouOpcoes }: { open: boolea
           <label className="text-sm text-dark-200 font-medium mb-1 block">Anexo (opcional)</label>
           {arquivo ? (
             <div className="flex items-center justify-between rounded-lg border border-dark-600 px-3 py-2 text-sm">
-              <span className="text-dark-200 truncate flex items-center gap-1.5">
-                <Paperclip size={13} /> {arquivo.nomeArquivo}
+              <span className="text-dark-200 flex items-center gap-1.5 min-w-0">
+                <Paperclip size={13} className="shrink-0" />
+                <span className="truncate">{arquivo.nomeArquivo}</span>
               </span>
               <button onClick={() => setArquivo(null)} className="text-dark-400 hover:text-red-400">
                 <Trash2 size={14} />

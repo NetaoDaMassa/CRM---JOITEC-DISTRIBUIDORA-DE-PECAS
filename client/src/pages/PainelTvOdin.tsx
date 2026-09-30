@@ -201,7 +201,7 @@ function SlideEquipe({ equipe, tituloTopo, campoTopo }: { equipe: Equipe; titulo
         {porVendedor.map((v) => (
           <div key={v.id} className="flex items-center gap-3">
             <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} size="sm" />
-            <span className="flex-1 font-medium text-dark-100 truncate">{v.nome}</span>
+            <span className="flex-1 min-w-0 font-medium text-dark-100 truncate">{v.nome}</span>
             <span className="text-xs text-dark-500 font-mono w-20 text-right">
               {tituloTopo} {campoTopo === 'visitas' ? v.visitas : v.leads}
             </span>

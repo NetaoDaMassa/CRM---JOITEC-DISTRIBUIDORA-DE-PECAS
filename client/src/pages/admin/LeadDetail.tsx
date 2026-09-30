@@ -105,7 +105,7 @@ function MessageTemplateMenu({ phone, email, leadId }: { phone: string; email: s
           <div className="absolute right-0 z-50 mt-2 w-72 bg-dark-800 border border-dark-600 rounded-xl shadow-2xl p-2 max-h-80 overflow-y-auto">
             {templates.map((t) => (
               <div key={t.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg hover:bg-dark-700">
-                <span className="text-xs text-dark-200 truncate">{t.label}</span>
+                <span className="text-xs text-dark-200 truncate min-w-0 flex-1">{t.label}</span>
                 <div className="flex items-center gap-1.5 shrink-0">
                   {email && <EmailButton email={email} subject={t.emailSubject} body={t.emailBody} size="sm" />}
                   <LeadWhatsappButton telefone={phone} leadId={leadId} mensagem={t.whatsappText} size="sm" />
@@ -648,7 +648,7 @@ export default function LeadDetail() {
                 >
                   <span className="flex items-center gap-2 min-w-0 text-dark-200 hover:text-gold-400">
                     <Paperclip size={12} className="shrink-0" />
-                    <span className="truncate">{a.originalName}</span>
+                    <span className="truncate min-w-0">{a.originalName}</span>
                   </span>
                   <div className="flex items-center gap-2 shrink-0 ml-2">
                     <span className="text-dark-500">{timeAgo(a.createdAt)}</span>

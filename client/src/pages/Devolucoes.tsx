@@ -343,7 +343,7 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
             <ul className="mt-2 space-y-1">
               {arquivosPendentes.map((f, i) => (
                 <li key={i} className="flex items-center justify-between text-xs text-dark-300 bg-dark-800 rounded px-2 py-1">
-                  <span className="truncate">{f.name}</span>
+                  <span className="truncate min-w-0 flex-1">{f.name}</span>
                   <button type="button" className="text-red-400 hover:text-red-300 ml-2 shrink-0" onClick={() => setArquivosPendentes((prev) => prev.filter((_, idx) => idx !== i))}>
                     remover
                   </button>

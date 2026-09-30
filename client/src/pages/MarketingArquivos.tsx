@@ -201,7 +201,7 @@ function ModalAcessoPasta({ pasta, onClose }: { pasta: { id: number; nome: strin
               .map((u) => (
                 <label key={u.id} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50 cursor-pointer">
                   <input type="checkbox" checked={selecionados.has(u.id)} onChange={() => toggle(u.id)} className="rounded accent-gold-500" />
-                  <span className="flex-1 truncate">{u.name}</span>
+                  <span className="flex-1 min-w-0 truncate">{u.name}</span>
                   <span className="text-[10px] text-dark-500 uppercase shrink-0">{u.role === 'admin' ? 'Admin' : 'Vendedor'}</span>
                 </label>
               ))
@@ -474,8 +474,8 @@ export default function MarketingArquivos() {
               onClick={() => setPastaAtualId(pasta.id)}
             >
               <Folder size={26} className="text-gold-400 shrink-0" />
-              <span className="text-sm text-dark-100 font-medium truncate flex-1 flex items-center gap-1.5">
-                {pasta.nome}
+              <span className="text-sm text-dark-100 font-medium flex-1 min-w-0 flex items-center gap-1.5">
+                <span className="truncate">{pasta.nome}</span>
                 {pasta.restrita && (
                   <span title="Só usuários específicos podem ver essa pasta">
                     <Lock size={11} className="text-amber-400 shrink-0" />

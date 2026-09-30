@@ -38,7 +38,7 @@ function baixarCsvVisitas(visitas: { dataVisita: string | null; nomeEmpresa: str
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-      <p className={`text-2xl font-bold ${color}`}>{value}</p>
+      <p className={`text-2xl font-bold break-words ${color}`}>{value}</p>
       <p className="text-xs text-dark-400 mt-0.5">{label}</p>
     </div>
   )

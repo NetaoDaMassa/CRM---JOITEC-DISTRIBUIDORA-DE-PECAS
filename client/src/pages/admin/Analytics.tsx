@@ -42,7 +42,13 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
       <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">{label}</p>
-      <p className="text-2xl font-bold font-mono tabular-nums text-dark-50 mt-1">{value}</p>
+      <p
+        className={`font-bold font-mono tabular-nums text-dark-50 mt-1 break-words ${
+          String(value).length > 13 ? 'text-lg' : String(value).length > 9 ? 'text-xl' : 'text-2xl'
+        }`}
+      >
+        {value}
+      </p>
       {sub && <p className="text-xs text-dark-500 mt-0.5">{sub}</p>}
     </div>
   )

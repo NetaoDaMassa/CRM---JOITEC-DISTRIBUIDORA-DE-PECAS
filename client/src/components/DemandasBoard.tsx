@@ -42,8 +42,8 @@ function CardDemanda({ demanda, onClick, onDragStart }: { demanda: DemandaCard; 
 
       {demanda.atribuidoPara && (
         <div className="flex items-center gap-1.5 text-xs text-dark-400 mb-1.5">
-          <User size={11} />
-          <span className="truncate">{demanda.atribuidoPara.name}</span>
+          <User size={11} className="shrink-0" />
+          <span className="truncate min-w-0 flex-1">{demanda.atribuidoPara.name}</span>
         </div>
       )}
 

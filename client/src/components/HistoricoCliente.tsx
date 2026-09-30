@@ -98,7 +98,7 @@ export default function HistoricoCliente({ clienteId }: { clienteId: number }) {
               <div key={i.descricao} className="flex items-center justify-between py-2 text-sm gap-3">
                 <span className="text-dark-200 flex items-center gap-2 min-w-0">
                   <span className="text-xs text-dark-500 font-mono shrink-0">{idx + 1}º</span>
-                  <span className="truncate">{i.descricao}</span>
+                  <span className="truncate min-w-0">{i.descricao}</span>
                 </span>
                 <span className="text-xs text-dark-400 text-right shrink-0">
                   {i.qtdPedidos} {i.qtdPedidos === 1 ? 'pedido' : 'pedidos'}

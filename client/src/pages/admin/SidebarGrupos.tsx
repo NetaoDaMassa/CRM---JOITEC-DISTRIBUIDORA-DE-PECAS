@@ -262,7 +262,7 @@ export default function SidebarGrupos() {
                               <ChevronDown size={13} />
                             </button>
                           </div>
-                          <span className="truncate">{LABEL_POR_ITEM.get(to) ?? to}</span>
+                          <span className="truncate min-w-0">{LABEL_POR_ITEM.get(to) ?? to}</span>
                         </div>
                       ))}
                     </div>

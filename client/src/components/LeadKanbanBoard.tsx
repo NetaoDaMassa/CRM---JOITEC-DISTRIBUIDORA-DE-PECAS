@@ -214,8 +214,8 @@ export default function LeadKanbanBoard({
 
                       {lead.company && (
                         <div className="flex items-center gap-1.5 text-xs text-dark-400 mb-1.5">
-                          <Building2 size={11} />
-                          <span className="truncate">{lead.company}</span>
+                          <Building2 size={11} className="shrink-0" />
+                          <span className="truncate min-w-0 flex-1">{lead.company}</span>
                         </div>
                       )}
 

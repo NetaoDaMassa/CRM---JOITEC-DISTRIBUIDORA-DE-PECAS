@@ -617,7 +617,7 @@ export default function FunilBoard({
                             }`}
                           >
                             <span>{COMPROMISSO_ICONE[card.proximoCompromisso.tipo]}</span>
-                            <span className="truncate">
+                            <span className="truncate min-w-0">
                               {cp.texto} · {card.proximoCompromisso.titulo}
                             </span>
                           </div>

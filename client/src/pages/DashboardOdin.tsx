@@ -111,7 +111,13 @@ function StatCard({
     >
       <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${colorClass}`}>{icon}</div>
       <div className="min-w-0">
-        <p className="text-xl font-bold text-dark-50 leading-tight">{value}</p>
+        <p
+          className={`font-bold text-dark-50 leading-tight break-words ${
+            String(value).length > 13 ? 'text-base' : String(value).length > 9 ? 'text-lg' : 'text-xl'
+          }`}
+        >
+          {value}
+        </p>
         <p className="text-xs text-dark-400 leading-tight mt-0.5">{label}</p>
         {sub && <p className="text-[11px] text-dark-500 mt-0.5">{sub}</p>}
       </div>

@@ -42,7 +42,13 @@ function StatTile({ label, valor, sublabel }: { label: string; valor: string; su
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
       <p className="text-xs text-dark-500 uppercase tracking-wide">{label}</p>
-      <p className="text-2xl font-bold text-dark-50 font-mono tabular-nums mt-1">{valor}</p>
+      <p
+        className={`font-bold text-dark-50 font-mono tabular-nums mt-1 break-words ${
+          String(valor).length > 13 ? 'text-lg' : String(valor).length > 9 ? 'text-xl' : 'text-2xl'
+        }`}
+      >
+        {valor}
+      </p>
       {sublabel && <p className="text-xs text-dark-500 mt-0.5">{sublabel}</p>}
     </div>
   )

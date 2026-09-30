@@ -130,8 +130,8 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
 
                       {ordem.cliente && (
                         <div className="flex items-center gap-1.5 text-xs text-dark-400 mb-1.5">
-                          <Building2 size={11} />
-                          <span className="truncate">{ordem.cliente.razaoSocial}</span>
+                          <Building2 size={11} className="shrink-0" />
+                          <span className="truncate min-w-0 flex-1">{ordem.cliente.razaoSocial}</span>
                         </div>
                       )}
 

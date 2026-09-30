@@ -388,7 +388,7 @@ function PropostaForm({
               {cadFiles.map((f) => (
                 <div key={f.id} className="flex items-center gap-2 rounded-lg bg-dark-900 px-2.5 py-1.5">
                   <Paperclip size={11} className="text-blue-400 shrink-0" />
-                  <a href={`/uploads/${f.nomeArmazenado}`} download={f.nomeOriginal} className="flex-1 text-xs text-blue-400 hover:underline truncate">{f.nomeOriginal}</a>
+                  <a href={`/uploads/${f.nomeArmazenado}`} download={f.nomeOriginal} className="flex-1 min-w-0 text-xs text-blue-400 hover:underline truncate">{f.nomeOriginal}</a>
                   {podeEditar && <button onClick={() => excluirArquivoMut.mutate({ id: f.id, propostaId })} className="text-dark-500 hover:text-red-400 shrink-0"><Trash2 size={11} /></button>}
                 </div>
               ))}

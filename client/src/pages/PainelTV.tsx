@@ -95,7 +95,11 @@ function StatTile({ titulo, quantidade, valor, ticketMedio }: { titulo: string; 
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6">
       <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">{titulo}</p>
-      <p className="text-4xl font-bold text-dark-50 mt-1 font-mono tabular-nums">
+      <p
+        className={`font-bold text-dark-50 mt-1 font-mono tabular-nums break-words ${
+          mostrarFinanceiro && String(formatarMoeda(valor as number)).length > 13 ? 'text-2xl' : 'text-4xl'
+        }`}
+      >
         {mostrarFinanceiro ? formatarMoeda(valor as number) : quantidade}
       </p>
       {mostrarFinanceiro ? (
@@ -261,52 +265,54 @@ const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelDa
                 </BarChart>
               </ResponsiveContainer>
             )}
-            <table className="w-full text-sm mt-4">
-              <thead>
-                <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-                  <th className="text-left font-semibold py-2">Vendedor</th>
-                  <th className="text-right font-semibold py-2">Qtde</th>
-                  <th className="text-right font-semibold py-2">Ticket médio</th>
-                  <th className="text-right font-semibold py-2">% da meta</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-dark-700/60">
-                {porPercentual.map((v, i) => (
-                  <tr key={v.id}>
-                    <td className="py-2.5">
-                      <div className="flex items-center gap-3">
-                        <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-                        <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} size="sm" />
-                        <span className="font-medium text-dark-100">{v.nome}</span>
-                        {v.sequenciaDiasVendendo >= 2 && (
-                          <span
-                            className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full"
-                            title="Dias seguidos vendendo"
-                          >
-                            🔥{v.sequenciaDiasVendendo}
-                          </span>
-                        )}
-                        {v.bateuMetaDia && <span className="text-xs" title="No ritmo da meta do dia">🎯</span>}
-                        {v.bateuMetaFaturamento && <span className="text-xs">🎉</span>}
-                      </div>
-                    </td>
-                    <td className="text-right font-mono tabular-nums text-dark-300">{v.qtdVendasMes}</td>
-                    <td className="text-right font-mono tabular-nums text-dark-300">{formatarMoeda(v.ticketMedioMes)}</td>
-                    <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
-                      {formatarPercentual(v.percentualMetaFaturamento)}%
-                    </td>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm mt-4">
+                <thead>
+                  <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
+                    <th className="text-left font-semibold py-2">Vendedor</th>
+                    <th className="text-right font-semibold py-2">Qtde</th>
+                    <th className="text-right font-semibold py-2">Ticket médio</th>
+                    <th className="text-right font-semibold py-2">% da meta</th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-dark-600 font-semibold">
-                  <td className="py-2.5 text-dark-100">Total</td>
-                  <td className="text-right font-mono tabular-nums text-dark-300">{porPercentual.reduce((acc, v) => acc + v.qtdVendasMes, 0)}</td>
-                  <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-                  <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-                </tr>
-              </tfoot>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-dark-700/60">
+                  {porPercentual.map((v, i) => (
+                    <tr key={v.id}>
+                      <td className="py-2.5">
+                        <div className="flex items-center gap-3">
+                          <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
+                          <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} size="sm" />
+                          <span className="font-medium text-dark-100">{v.nome}</span>
+                          {v.sequenciaDiasVendendo >= 2 && (
+                            <span
+                              className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full"
+                              title="Dias seguidos vendendo"
+                            >
+                              🔥{v.sequenciaDiasVendendo}
+                            </span>
+                          )}
+                          {v.bateuMetaDia && <span className="text-xs" title="No ritmo da meta do dia">🎯</span>}
+                          {v.bateuMetaFaturamento && <span className="text-xs">🎉</span>}
+                        </div>
+                      </td>
+                      <td className="text-right font-mono tabular-nums text-dark-300">{v.qtdVendasMes}</td>
+                      <td className="text-right font-mono tabular-nums text-dark-300">{formatarMoeda(v.ticketMedioMes)}</td>
+                      <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
+                        {formatarPercentual(v.percentualMetaFaturamento)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-dark-600 font-semibold">
+                    <td className="py-2.5 text-dark-100">Total</td>
+                    <td className="text-right font-mono tabular-nums text-dark-300">{porPercentual.reduce((acc, v) => acc + v.qtdVendasMes, 0)}</td>
+                    <td className="text-right font-mono tabular-nums text-dark-300">—</td>
+                    <td className="text-right font-mono tabular-nums text-dark-300">—</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
           </div>
         )
       })()}
@@ -418,45 +424,47 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
           </BarChart>
         </ResponsiveContainer>
       )}
-      <table className="w-full text-sm mt-4">
-        <thead>
-          <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-            <th className="text-left font-semibold py-2">Vendedor</th>
-            <th className="text-right font-semibold py-2">Tentativas hoje</th>
-            <th className="text-right font-semibold py-2">Efetivas hoje</th>
-            <th className="text-right font-semibold py-2">% efetiva</th>
-            <th className="text-right font-semibold py-2">Ligações (mês)</th>
-            <th className="text-right font-semibold py-2">Meta (mês)</th>
-            <th className="text-right font-semibold py-2">% da meta</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-dark-700/60">
-          {data.rankingLigacoes.map((v, i) => (
-            <tr key={v.id}>
-              <td className="py-2.5">
-                <div className="flex items-center gap-3">
-                  <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-                  <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoes} size="sm" />
-                  <span className="font-medium text-dark-100">{v.nome}</span>
-                  {v.bateuMetaLigacoes && <span className="text-xs">🎉</span>}
-                </div>
-              </td>
-              <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesHoje}</td>
-              <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
-              <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
-              <td className="text-right font-mono tabular-nums text-dark-400">{v.ligacoesMes}</td>
-              <td className="text-right font-mono tabular-nums text-dark-400">{v.metaLigacoesAcumulada}</td>
-              <td
-                className={`text-right font-mono tabular-nums ${
-                  v.bateuMetaLigacoes ? 'text-green-400 font-semibold' : 'text-dark-300'
-                }`}
-              >
-                {formatarPercentual(v.percentualMetaLigacoes)}%
-              </td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm mt-4">
+          <thead>
+            <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
+              <th className="text-left font-semibold py-2">Vendedor</th>
+              <th className="text-right font-semibold py-2">Tentativas hoje</th>
+              <th className="text-right font-semibold py-2">Efetivas hoje</th>
+              <th className="text-right font-semibold py-2">% efetiva</th>
+              <th className="text-right font-semibold py-2">Ligações (mês)</th>
+              <th className="text-right font-semibold py-2">Meta (mês)</th>
+              <th className="text-right font-semibold py-2">% da meta</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-dark-700/60">
+            {data.rankingLigacoes.map((v, i) => (
+              <tr key={v.id}>
+                <td className="py-2.5">
+                  <div className="flex items-center gap-3">
+                    <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
+                    <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoes} size="sm" />
+                    <span className="font-medium text-dark-100">{v.nome}</span>
+                    {v.bateuMetaLigacoes && <span className="text-xs">🎉</span>}
+                  </div>
+                </td>
+                <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesHoje}</td>
+                <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
+                <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
+                <td className="text-right font-mono tabular-nums text-dark-400">{v.ligacoesMes}</td>
+                <td className="text-right font-mono tabular-nums text-dark-400">{v.metaLigacoesAcumulada}</td>
+                <td
+                  className={`text-right font-mono tabular-nums ${
+                    v.bateuMetaLigacoes ? 'text-green-400 font-semibold' : 'text-dark-300'
+                  }`}
+                >
+                  {formatarPercentual(v.percentualMetaLigacoes)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )
 })
@@ -593,28 +601,30 @@ const SlideNegociacoes = memo(function SlideNegociacoes({ data }: { data: Painel
           {data.orcamentosAbertos.quantidade} propostas · {formatarMoeda(data.orcamentosAbertos.valor)}
         </span>
       </div>
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-            <th className="text-left font-semibold py-2">Cliente</th>
-            <th className="text-left font-semibold py-2">Vendedor</th>
-            <th className="text-right font-semibold py-2">Orçamento</th>
-            <th className="text-right font-semibold py-2">Tempo na etapa</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-dark-700/50">
-          {data.negociosAbertos.map((n) => (
-            <tr key={n.clienteId}>
-              <td className="py-2.5 text-dark-100">{n.razaoSocial}</td>
-              <td className="py-2.5 text-dark-400">{n.vendedorNome}</td>
-              <td className="py-2.5 text-right font-mono tabular-nums text-amber-400">
-                {n.valorOrcado != null ? formatarMoeda(n.valorOrcado) : '—'}
-              </td>
-              <td className="py-2.5 text-right font-mono tabular-nums text-blue-400">há {formatElapsed(n.dataEntradaEtapa)}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
+              <th className="text-left font-semibold py-2">Cliente</th>
+              <th className="text-left font-semibold py-2">Vendedor</th>
+              <th className="text-right font-semibold py-2">Orçamento</th>
+              <th className="text-right font-semibold py-2">Tempo na etapa</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-dark-700/50">
+            {data.negociosAbertos.map((n) => (
+              <tr key={n.clienteId}>
+                <td className="py-2.5 text-dark-100">{n.razaoSocial}</td>
+                <td className="py-2.5 text-dark-400">{n.vendedorNome}</td>
+                <td className="py-2.5 text-right font-mono tabular-nums text-amber-400">
+                  {n.valorOrcado != null ? formatarMoeda(n.valorOrcado) : '—'}
+                </td>
+                <td className="py-2.5 text-right font-mono tabular-nums text-blue-400">há {formatElapsed(n.dataEntradaEtapa)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {!data.negociosAbertos.length && <p className="text-sm text-dark-500 mt-2">Nenhuma negociação em andamento.</p>}
     </div>
   )
