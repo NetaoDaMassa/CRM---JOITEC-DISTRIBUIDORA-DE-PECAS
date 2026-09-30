@@ -75,7 +75,14 @@ export const aprovacoesRouter = router({
   }),
 
   aprovar: adminProcedure
-    .input(z.object({ id: z.number(), vendedorDestinoId: z.number().optional(), paraBanco: z.boolean().optional() }))
+    .input(
+      z.object({
+        id: z.number(),
+        vendedorDestinoId: z.number().optional(),
+        paraBanco: z.boolean().optional(),
+        rotuloBanco: z.string().trim().min(1).optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const solicitacao = await db.query.solicitacoesCarteira.findFirst({ where: eq(solicitacoesCarteira.id, input.id) })
       if (!solicitacao) throw new Error('Pedido não encontrado')
@@ -103,6 +110,12 @@ export const aprovacoesRouter = router({
           valorNovo: solicitacao.motivo,
           alteradoPor: ctx.user.id,
         })
+      } else if (input.rotuloBanco) {
+        // Admin escolheu um banco já existente na hora de aprovar (em vez do
+        // genérico "veio de quem") — junta direto nesse banco. Pedido do
+        // João, 2026-09-30: fazer os bancos já existentes aparecerem como
+        // opção de destino aqui, não só o genérico.
+        await moverClienteParaBanco(cliente.id, input.rotuloBanco, ctx.user.id)
       } else if (input.paraBanco) {
         // Rotula com o nome de quem estava com o cliente antes — mesmo padrão
         // já usado quando o admin move manualmente em Carteira.tsx, pra dar

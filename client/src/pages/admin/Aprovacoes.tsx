@@ -10,6 +10,7 @@ import PastaPicker from '../../components/PastaPicker'
 import { buildDesignFinalizadoWaLink } from '../../lib/designWhatsapp'
 
 const BANCO_CLIENTES_VALUE = 'banco'
+const BANCO_ESPECIFICO_PREFIXO = 'banco:'
 
 const TIPO_LABELS: Record<string, string> = {
   descartar: 'Descartar cliente',
@@ -27,6 +28,10 @@ function CarteiraTab() {
   const utils = trpc.useUtils()
   const { data: pedidos, isLoading } = trpc.aprovacoes.listarPendentes.useQuery()
   const { data: vendedores } = trpc.users.vendors.useQuery()
+  // Bancos que já existem (mesmo resumo da tela Banco de Clientes) — pedido
+  // do João, 2026-09-30: além do genérico "sem vendedor", poder mandar
+  // direto pra um banco específico já existente, sem digitar de novo.
+  const { data: bancosExistentes } = trpc.clientes.bancoResumo.useQuery()
   const [destinoPorPedido, setDestinoPorPedido] = useState<Record<number, string>>({})
 
   function invalidar() {
@@ -94,7 +99,11 @@ function CarteiraTab() {
                   onChange={(e) => setDestinoPorPedido((prev) => ({ ...prev, [p.id]: e.target.value }))}
                   placeholder="Escolha o destino..."
                   options={[
-                    { value: BANCO_CLIENTES_VALUE, label: '📥 Banco de Clientes (sem vendedor)' },
+                    { value: BANCO_CLIENTES_VALUE, label: '📥 Banco de Clientes (rotulado com o vendedor anterior)' },
+                    ...(bancosExistentes ?? []).map((b) => ({
+                      value: `${BANCO_ESPECIFICO_PREFIXO}${b.origemBanco}`,
+                      label: `📥 ${b.origemBanco} (${b.quantidade})`,
+                    })),
                     ...(vendedores ?? []).map((v) => ({ value: String(v.id), label: v.name })),
                   ]}
                 />
@@ -108,10 +117,13 @@ function CarteiraTab() {
                   return toast.error('Escolha o destino (um vendedor ou Banco de Clientes) antes de aprovar.')
                 }
                 const destino = destinoPorPedido[p.id]
+                const ehBancoEspecifico = destino?.startsWith(BANCO_ESPECIFICO_PREFIXO)
                 aprovarMut.mutate({
                   id: p.id,
                   paraBanco: destino === BANCO_CLIENTES_VALUE,
-                  vendedorDestinoId: destino && destino !== BANCO_CLIENTES_VALUE ? Number(destino) : undefined,
+                  rotuloBanco: ehBancoEspecifico ? destino!.slice(BANCO_ESPECIFICO_PREFIXO.length) : undefined,
+                  vendedorDestinoId:
+                    destino && destino !== BANCO_CLIENTES_VALUE && !ehBancoEspecifico ? Number(destino) : undefined,
                 })
               }}
             >
