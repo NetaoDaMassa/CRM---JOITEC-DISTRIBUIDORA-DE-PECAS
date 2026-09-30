@@ -139,8 +139,10 @@ export default function LeadDetail() {
   const isGestor = user?.role === 'gestor'
   const basePath = isAdmin ? '/admin/leads' : '/vendedor/leads'
   const utils = trpc.useUtils()
-  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, { enabled: isGestor })
-  const podeExcluir = isAdmin || (isGestor && !!minhasFeatures?.includes('leads_excluir'))
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: isGestor || user?.role === 'vendor',
+  })
+  const podeExcluir = isAdmin || !!minhasFeatures?.includes('leads_excluir')
 
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug

@@ -34,15 +34,20 @@ export default function Leads() {
   const utils = trpc.useUtils()
   const isAdmin = user?.role === 'admin'
   const isGestor = user?.role === 'gestor'
-  // Gestor (papel novo, 2026-09-30) vê a lista completa igual admin
-  // (filtro de vendedor, coluna Vendedor, seleção em massa) — só os
-  // botões de transferir/excluir dependem do que foi liberado em
-  // Permissões (ver podeTransferir/podeExcluir abaixo).
-  const verTudo = isAdmin || isGestor
   const basePath = isAdmin ? '/admin/leads' : '/vendedor/leads'
-  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, { enabled: isGestor })
-  const podeTransferir = isAdmin || (isGestor && !!minhasFeatures?.includes('leads_transferir'))
-  const podeExcluir = isAdmin || (isGestor && !!minhasFeatures?.includes('leads_excluir'))
+  // Gestor (papel novo, 2026-09-30) sempre passa por aqui; um vendedor
+  // normal também pode ganhar o mesmo poder sem virar gestor de verdade
+  // (pedido do João: "a Emily é vendedora E gestora, numa conta só") — por
+  // isso a query roda pros dois papéis, não só gestor.
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: isGestor || user?.role === 'vendor',
+  })
+  const podeTransferir = isAdmin || !!minhasFeatures?.includes('leads_transferir')
+  const podeExcluir = isAdmin || !!minhasFeatures?.includes('leads_excluir')
+  // Lista/coluna Vendedor/filtro completos pra quem pode transferir ou
+  // excluir (precisa enxergar lead de todo mundo pra isso) — o backend
+  // (leads.list) já aplica a mesma regra de verdade.
+  const verTudo = isAdmin || isGestor || !!minhasFeatures?.includes('leads_transferir') || !!minhasFeatures?.includes('leads_excluir')
 
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
@@ -327,7 +332,7 @@ export default function Leads() {
                       </td>
                       {verTudo && <td className="px-5 py-3 text-dark-300">{lead.vendor?.name ?? '—'}</td>}
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
-                        {!isGestor && <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />}
+                        {(isAdmin || lead.vendorId === user?.id) && <LeadNegotiationTagPicker leadId={lead.id} tag={lead.negotiationTag} />}
                       </td>
                       <td className="px-5 py-3 text-dark-400">
                         {formatElapsed(lead.createdAt)}
@@ -336,7 +341,7 @@ export default function Leads() {
                       <td className="px-5 py-3" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1.5">
                           {lead.email && <EmailButton email={lead.email} size="sm" />}
-                          {lead.phone && !isGestor && (
+                          {lead.phone && (isAdmin || lead.vendorId === user?.id) && (
                             <>
                               <LeadLigarButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />
                               <LeadWhatsappButton telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} leadId={lead.id} size="sm" />

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import fs from 'fs'
 import path from 'path'
 import { eq, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
-import { router, protectedProcedure, adminProcedure, superAdminProcedure, gestorFeatureProcedure } from './_base.js'
+import { router, protectedProcedure, adminProcedure, superAdminProcedure, gestorFeatureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import {
   leads,
@@ -115,6 +115,14 @@ async function findEmpresaAdmin(empresaId: number): Promise<{ id: number; name: 
   )
 }
 
+// Vendedor com o poder de transferir e/ou excluir liberado em Permissões
+// (pedido do João, 2026-09-30 — a Emily é vendedora E gestora numa conta só)
+// enxerga lead de qualquer um, igual admin — sem nenhuma das duas
+// features, continua restrito à própria carteira.
+async function vendedorVeTudo(userId: number): Promise<boolean> {
+  return (await temFeature(userId, 'leads_transferir')) || (await temFeature(userId, 'leads_excluir'))
+}
+
 export const leadsRouter = router({
   // Leads parados em "Novo" por vendedor — pro slide "Leads aguardando" do
   // Painel de TV. Antes vinha do CRM de marketing externo (odin-tubos-crm,
@@ -203,7 +211,9 @@ export const leadsRouter = router({
 
       let filtered = allLeads
 
-      if (ctx.user.role === 'vendor') {
+      const podeVerTudo = ctx.user.role === 'vendor' && (await vendedorVeTudo(ctx.user.id))
+
+      if (ctx.user.role === 'vendor' && !podeVerTudo) {
         // Além dos próprios, o vendedor também vê a fila de "Novo (Consumidor
         // Final)" das regiões que ele atende — sem dono, é isso que dá pra
         // ele "pegar" (ver assumirConsumidorFinal). Pedido do João, 2026-09-21.
@@ -308,7 +318,9 @@ export const leadsRouter = router({
     })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id && !(await vendedorVeTudo(ctx.user.id))) {
+      throw new Error('Acesso negado')
+    }
     return lead
   }),
 
@@ -316,7 +328,9 @@ export const leadsRouter = router({
     const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.id) })
     if (!lead) throw new Error('Lead não encontrado')
     if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
-    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id && !(await vendedorVeTudo(ctx.user.id))) {
+      throw new Error('Acesso negado')
+    }
 
     const visitors = await db.query.leadTrackingVisitors.findMany({
       where: eq(leadTrackingVisitors.leadId, input.id),

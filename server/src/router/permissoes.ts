@@ -259,7 +259,7 @@ export const permissoesRouter = router({
       orderBy: (u, { asc }) => [asc(u.name)],
     })
     const todasPermissoes = await db.query.permissoesAdmin.findMany({
-      where: inArray(permissoesAdmin.feature, [...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS]),
+      where: inArray(permissoesAdmin.feature, [...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS, ...FEATURES_GESTOR]),
     })
     const porUsuario = new Map<number, string[]>()
     for (const p of todasPermissoes) {

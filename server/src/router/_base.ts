@@ -45,22 +45,24 @@ export function featureProcedure(feature: string) {
   })
 }
 
-// Gestor — papel abaixo de admin (pedido do João, 2026-09-30): nasce sem
-// poder nenhum, só o que for liberado explicitamente feature por feature em
-// Permissões (mesma tabela permissoesAdmin, mesma tela, lista de features
-// própria — ver FEATURES_GESTOR em permissoes.ts). Admin/superAdmin sempre
-// passam direto, sem depender de linha na tabela (nunca ficam mais
-// restritos que hoje). Diferente de featureProcedure (que exige role
-// admin): esse aqui é o único jeito de um 'gestor' chegar numa rota.
+// Poder de "gestor" — nasce sem efeito nenhum, só o que for liberado
+// explicitamente feature por feature em Permissões (mesma tabela
+// permissoesAdmin, lista de features própria — ver FEATURES_GESTOR em
+// permissoes.ts). Admin/superAdmin sempre passam direto, sem depender de
+// linha na tabela (nunca ficam mais restritos que hoje).
+//
+// De propósito NÃO exige role — um vendedor também pode ganhar esse poder
+// sem virar admin/gestor de verdade (pedido do João, 2026-09-30: a Emily é
+// vendedora E precisa poder transferir/excluir lead de qualquer um, numa
+// conta só, sem duplicar login). O papel 'gestor' continua existindo pra
+// quem não tem/não deveria ter carteira própria nenhuma.
 export function gestorFeatureProcedure(feature: string) {
   return protectedProcedure.use(async ({ ctx, next }) => {
     if (ctx.user.superAdmin || ctx.user.role === 'admin') return next({ ctx })
-    if (ctx.user.role !== 'gestor')
-      throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito ao administrador' })
     const liberado = await db.query.permissoesAdmin.findFirst({
       where: and(eq(permissoesAdmin.userId, ctx.user.id), eq(permissoesAdmin.feature, feature)),
     })
-    if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Ação não liberada pra esse gestor' })
+    if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Ação não liberada' })
     return next({ ctx })
   })
 }

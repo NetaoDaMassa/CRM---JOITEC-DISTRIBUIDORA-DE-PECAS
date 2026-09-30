@@ -9,11 +9,15 @@ import LeadKanbanBoard from '../../components/LeadKanbanBoard'
 export default function LeadsKanban() {
   const { user, empresaAtivaId } = useAuth()
   const isAdmin = user?.role === 'admin'
-  // Gestor (papel novo, 2026-09-30) vê o Kanban igual admin (todos os
-  // vendedores) — só os botões de transferir/excluir, dentro do card, é
-  // que dependem do que foi liberado em Permissões (ver LeadKanbanBoard).
-  const verTudo = isAdmin || user?.role === 'gestor'
+  const isGestor = user?.role === 'gestor'
   const basePath = isAdmin ? '/admin/leads' : '/vendedor/leads'
+  // Gestor (papel novo, 2026-09-30) vê o Kanban igual admin (todos os
+  // vendedores); um vendedor com transferir/excluir liberado (ex: Emily,
+  // vendedora E gestora numa conta só) também — pedido do João, 2026-09-30.
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: isGestor || user?.role === 'vendor',
+  })
+  const verTudo = isAdmin || isGestor || !!minhasFeatures?.includes('leads_transferir') || !!minhasFeatures?.includes('leads_excluir')
 
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug

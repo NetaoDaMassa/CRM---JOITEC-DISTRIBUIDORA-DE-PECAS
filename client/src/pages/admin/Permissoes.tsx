@@ -35,6 +35,18 @@ const FEATURES_RELATORIOS = [
   { feature: 'relatorio_alertas', label: 'Alertas' },
 ]
 
+// Poderes extras de "gestor" que um vendedor comum pode ganhar sem virar
+// admin — pedido do João, 2026-09-30 (a Emily é vendedora e precisa
+// transferir/excluir lead de qualquer vendedor, numa conta só). Com
+// qualquer uma das duas marcadas, a pessoa passa a enxergar TODOS os leads
+// da empresa na tela de Leads (ver leads.ts, vendedorVeTudo), não só os
+// próprios — é o mesmo mecanismo do papel Gestor, só que sem trocar o
+// `role` da pessoa.
+const FEATURES_GESTOR = [
+  { feature: 'leads_transferir', label: 'Leads — transferir pra outro vendedor' },
+  { feature: 'leads_excluir', label: 'Leads — excluir' },
+]
+
 // Tela do superAdmin pra controlar, pessoa por pessoa, quais itens do menu
 // (admin) e quais abas de Relatórios (admin e vendedor) cada um enxerga.
 // Presença de uma feature na lista = acesso liberado; quem é superAdmin
@@ -275,6 +287,25 @@ function PermissoesVendedor() {
                   </p>
                   <div className="grid grid-cols-2 gap-2">
                     {FEATURES_RELATORIOS.map(({ feature, label }) => (
+                      <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
+                        <input
+                          type="checkbox"
+                          className="accent-gold-500"
+                          checked={featuresSelecionadas.includes(feature)}
+                          onChange={() => toggleFeature(feature)}
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-dark-700">
+                  <p className="text-xs text-dark-500 mb-2">
+                    Poderes extras (o vendedor passa a ver TODOS os leads da empresa, não só os próprios)
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {FEATURES_GESTOR.map(({ feature, label }) => (
                       <label key={feature} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                         <input
                           type="checkbox"
