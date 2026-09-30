@@ -45,9 +45,25 @@ export default function AdminCarteira() {
   const [clienteSelecionado, setClienteSelecionado] = useState<{ id: number; razaoSocial: string; vendedorAtual: { name: string } | null } | null>(null)
   const [vendedorDestino, setVendedorDestino] = useState('')
 
+  // "Mover vários pro banco" — diferente do "Transferir um cliente
+  // específico" acima (que é 1 cliente por vez) e do "Redistribuir carteira
+  // completa" abaixo (que move TODOS os clientes de um vendedor). Esse aqui
+  // é pra um punhado escolhido na mão, de vendedores diferentes até,
+  // direto pra um banco (novo ou já existente — digitar um nome que ainda
+  // não existe já cria o banco, não tem cadastro separado). Pedido do
+  // João, 2026-09-30.
+  const [buscaMultipla, setBuscaMultipla] = useState('')
+  const [selecionadosMultiplos, setSelecionadosMultiplos] = useState<{ id: number; razaoSocial: string }[]>([])
+  const [rotuloMultiplo, setRotuloMultiplo] = useState('')
+
   const { data: buscaResultado } = trpc.clientes.list.useQuery(
     { q: buscaCliente, pagina: 1 },
     { enabled: buscaCliente.trim().length >= 2 }
+  )
+
+  const { data: buscaResultadoMultiplo } = trpc.clientes.list.useQuery(
+    { q: buscaMultipla, pagina: 1 },
+    { enabled: buscaMultipla.trim().length >= 2 }
   )
 
   const atribuirMut = trpc.carteira.atribuirPorRegiao.useMutation({
@@ -101,6 +117,20 @@ export default function AdminCarteira() {
       setClienteSelecionado(null)
       setBuscaCliente('')
       setVendedorDestino('')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  const moverVariosParaBancoMut = trpc.carteira.moverVariosParaBanco.useMutation({
+    onSuccess(data) {
+      toast.success(`${data.quantidade} cliente(s) movido(s) para o banco "${rotuloMultiplo.trim()}"`)
+      utils.clientes.list.invalidate()
+      utils.clientes.bancoResumo.invalidate()
+      setSelecionadosMultiplos([])
+      setBuscaMultipla('')
+      setRotuloMultiplo('')
     },
     onError(err) {
       toast.error(err.message)
@@ -280,6 +310,69 @@ export default function AdminCarteira() {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="space-y-3 bg-dark-800 border border-dark-600 rounded-2xl p-5">
+        <h2 className="text-sm font-semibold text-dark-100">Mover vários clientes pro Banco de Clientes</h2>
+        <p className="text-xs text-dark-400">
+          Escolhe um a um (podem ser de vendedores diferentes) e manda todos pra um banco — digita o nome de um banco
+          novo pra criar na hora, ou o nome de um já existente pra juntar com ele.
+        </p>
+
+        <Input
+          placeholder="Buscar por razão social, CNPJ ou código..."
+          value={buscaMultipla}
+          onChange={(e) => setBuscaMultipla(e.target.value)}
+        />
+        {buscaMultipla.trim().length >= 2 && (
+          <div className="max-h-56 overflow-y-auto rounded-lg border border-dark-600 divide-y divide-dark-700">
+            {buscaResultadoMultiplo?.items.length === 0 && <p className="px-3 py-2 text-sm text-dark-500">Nenhum cliente encontrado.</p>}
+            {buscaResultadoMultiplo?.items.map((c) => {
+              const jaSelecionado = selecionadosMultiplos.some((s) => s.id === c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  disabled={jaSelecionado}
+                  onClick={() => setSelecionadosMultiplos((prev) => [...prev, { id: c.id, razaoSocial: c.razaoSocial }])}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-dark-700/50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <p className="text-dark-100">{c.razaoSocial}</p>
+                  <p className="text-xs text-dark-500">
+                    {c.codigo} · vendedor atual: {c.vendedorAtual?.name ?? 'sem vendedor'} {jaSelecionado && '· já selecionado'}
+                  </p>
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {selecionadosMultiplos.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {selecionadosMultiplos.map((s) => (
+              <span key={s.id} className="flex items-center gap-1 text-xs bg-dark-700 border border-dark-600 rounded-full px-2.5 py-1 text-dark-200">
+                {s.razaoSocial}
+                <button
+                  type="button"
+                  onClick={() => setSelecionadosMultiplos((prev) => prev.filter((x) => x.id !== s.id))}
+                  className="text-dark-500 hover:text-red-400"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <Input label="Nome do banco" placeholder="Ex: Clientes inativos 2026, Sem retorno, etc." value={rotuloMultiplo} onChange={(e) => setRotuloMultiplo(e.target.value)} />
+
+        <Button
+          loading={moverVariosParaBancoMut.isPending}
+          disabled={!selecionadosMultiplos.length || !rotuloMultiplo.trim()}
+          onClick={() => moverVariosParaBancoMut.mutate({ clienteIds: selecionadosMultiplos.map((s) => s.id), rotulo: rotuloMultiplo.trim() })}
+        >
+          Mover {selecionadosMultiplos.length || ''} cliente(s) pro banco
+        </Button>
       </div>
 
       <form

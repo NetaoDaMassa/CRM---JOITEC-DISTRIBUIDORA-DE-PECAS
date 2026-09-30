@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, carteiraHistorico, funilMensal, users } from '../db/schema.js'
@@ -188,6 +188,25 @@ export const carteiraRouter = router({
 
       await moverClienteParaBanco(input.clienteId, input.rotulo, ctx.user.id)
       return { success: true }
+    }),
+
+  // Move uma LISTA escolhida na mão de clientes (não "todos de um vendedor",
+  // isso já existe em redistribuirParaBanco) pra um banco — `rotulo` vira o
+  // nome do banco na tela Banco de Clientes; digitar um nome que ainda não
+  // existe já "cria" o banco na hora (não tem tabela de bancos separada,
+  // é só um agrupamento por texto em `clientes.origemBanco`). Pedido do
+  // João, 2026-09-30: "direcionar uns clientes de carteira pra banco".
+  moverVariosParaBanco: adminProcedure
+    .input(z.object({ clienteIds: z.array(z.number()).min(1), rotulo: z.string().trim().min(1, 'Dá um nome pro banco') }))
+    .mutation(async ({ ctx, input }) => {
+      const clientesValidos = await db.query.clientes.findMany({
+        where: and(inArray(clientes.id, input.clienteIds), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
+        columns: { id: true },
+      })
+      for (const cliente of clientesValidos) {
+        await moverClienteParaBanco(cliente.id, input.rotulo, ctx.user.id)
+      }
+      return { quantidade: clientesValidos.length }
     }),
 
   desativarVendedor: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
