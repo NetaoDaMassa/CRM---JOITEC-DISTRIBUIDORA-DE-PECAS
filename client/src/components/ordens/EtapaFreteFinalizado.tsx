@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { CheckCircle2, Truck, DollarSign, Clock } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import Button from '../ui/Button'
 import { Input } from '../ui/Input'
 
@@ -10,7 +11,7 @@ import { Input } from '../ui/Input'
 // etapa "Cotação de Frete") pra dar pra trocar de cotação até a última
 // hora, com o selo de "melhor preço" e destaque de qual está selecionada.
 function formatarMoeda(v: number | null | undefined): string {
-  return v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
+  return formatarMoedaBr(v)
 }
 
 export default function EtapaFreteFinalizado({ ordemId, isAdmin, readonly }: { ordemId: number; isAdmin: boolean; readonly: boolean }) {

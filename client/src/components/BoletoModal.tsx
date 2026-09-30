@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { History, Trash2 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
+import { formatarMoeda } from '../lib/moeda'
 import Modal from './ui/Modal'
 import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
@@ -125,11 +126,11 @@ export default function BoletoModal({ open, onClose, boletoId }: { open: boolean
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div>
               <p className="text-xs text-dark-500 uppercase tracking-wide">Valor original</p>
-              <p className="text-dark-200 font-mono">{boletoAtual.valorOriginal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+              <p className="text-dark-200 font-mono">{formatarMoeda(boletoAtual.valorOriginal)}</p>
             </div>
             <div>
               <p className="text-xs text-dark-500 uppercase tracking-wide">Valor atual</p>
-              <p className="text-dark-100 font-mono font-semibold">{boletoAtual.valorAtual.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</p>
+              <p className="text-dark-100 font-mono font-semibold">{formatarMoeda(boletoAtual.valorAtual)}</p>
             </div>
           </div>
 

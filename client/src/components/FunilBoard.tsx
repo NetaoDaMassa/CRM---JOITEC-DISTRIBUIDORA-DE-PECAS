@@ -6,6 +6,7 @@ import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { timeAgo } from '../lib/utils'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { parseValorBr, formatarValorInput } from '../lib/valorBr'
 import { useAuth } from '../contexts/AuthContext'
 import Modal from './ui/Modal'
@@ -79,8 +80,7 @@ const ORIGEM_LABEL: Record<string, string> = {
 }
 
 function formatarMoeda(v: number | null): string {
-  if (v === null || v === undefined) return ''
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v, { vazio: '' })
 }
 
 // "Consumidor Final - 10210" — só vendas de balcão (venda rápida) têm

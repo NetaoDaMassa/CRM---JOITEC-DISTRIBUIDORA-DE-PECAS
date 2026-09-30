@@ -4,6 +4,7 @@ import { CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip
 import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
 import { formatarPercentual } from '../../lib/utils'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import Button from '../../components/ui/Button'
 import AvatarMeta from '../../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../../lib/useCelebrarMeta'
@@ -14,7 +15,7 @@ const COR_CONTATOS = '#c2691a'
 const COR_META_BATIDA = '#0ca30c'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 function TooltipHistorico({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {

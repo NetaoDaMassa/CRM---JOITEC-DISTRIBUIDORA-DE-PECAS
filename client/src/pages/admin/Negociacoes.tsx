@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Plus, Download, MessageCircle, Phone, Mail, Upload } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import { Input, Textarea } from '../../components/ui/Input'
@@ -12,8 +13,7 @@ import NegociacaoStatusModal from '../../components/NegociacaoStatusModal'
 import { paraCsv, baixarCsv } from '../../lib/csv'
 
 function formatarMoeda(v: number | null): string {
-  if (v === null) return '—'
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 function formatarData(d: string): string {

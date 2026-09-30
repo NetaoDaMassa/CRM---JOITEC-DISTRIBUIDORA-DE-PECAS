@@ -3,12 +3,13 @@ import toast from 'react-hot-toast'
 import { Settings } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAutoScroll } from '../lib/useAutoScroll'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { Input } from '../components/ui/Input'
 import Button from '../components/ui/Button'
 import PainelConfigModal from '../components/PainelConfigModal'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 // Empresas sem arte própria ainda (Compretec) caem no fallback de iniciais

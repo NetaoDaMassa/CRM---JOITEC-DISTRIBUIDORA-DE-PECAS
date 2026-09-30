@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { trpc } from '../../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input, Textarea } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -16,7 +17,7 @@ const COR_GRID = '#2a3644'
 const COR_TICK = '#898781'
 
 function formatarMoedaCompacta(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 function TooltipMoeda({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
@@ -173,8 +174,7 @@ function formatarDolar(v: number | null): string {
 }
 
 function formatarReais(v: number | null): string {
-  if (v === null || v === undefined) return '—'
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 type FormInvoice = {
@@ -477,7 +477,7 @@ const PROXIMO_STATUS: Record<string, 'a_caminho' | 'chegou' | 'entrada_nota' | n
 }
 
 function formatarReaisNacional(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 const FORM_NACIONAL_VAZIO = { fornecedor: '', produtos: '', valorTotal: '', dataPrevistaChegada: '', observacoes: '' }

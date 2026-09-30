@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { useAuth } from '../contexts/AuthContext'
 import Modal from '../components/ui/Modal'
 import Button from '../components/ui/Button'
@@ -526,8 +527,7 @@ function ServicosForm({ chamadoId, onSalvo }: { chamadoId: number; onSalvo: () =
 }
 
 function formatarMoeda(v: number | null | undefined): string {
-  if (v == null) return '—'
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 // Separado da logística de transporte porque corresponde a uma etapa

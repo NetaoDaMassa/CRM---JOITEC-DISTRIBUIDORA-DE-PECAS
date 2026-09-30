@@ -4,9 +4,10 @@ import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
 import { Badge } from '../../components/ui/Badge'
 import { hojeBrString } from '../../lib/utils'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 const CATEGORIA_LABEL: Record<string, string> = {

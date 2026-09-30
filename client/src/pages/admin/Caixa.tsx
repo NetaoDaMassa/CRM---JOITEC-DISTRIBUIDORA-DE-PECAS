@@ -6,11 +6,12 @@ import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { paraCsv, baixarCsv } from '../../lib/csv'
 import { parseValorBr } from '../../lib/valorBr'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 
 const MES_LABEL: Intl.DateTimeFormatOptions = { month: 'short', year: 'numeric' }
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 function mesAtualString(): string {

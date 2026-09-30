@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
 import { formatarPercentual } from '../../lib/utils'
 import { hojeBrString } from '../../lib/utils'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 
 // Mesma paleta validada (skill de dataviz) já usada no Painel de TV — azul
 // neutro pra vendas, âmbar pra contatos/ligações, verde de status só quando
@@ -14,7 +15,7 @@ const COR_META_BATIDA = '#0ca30c'
 const COR_ABAIXO = '#e5484d'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 function TooltipHistorico({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {

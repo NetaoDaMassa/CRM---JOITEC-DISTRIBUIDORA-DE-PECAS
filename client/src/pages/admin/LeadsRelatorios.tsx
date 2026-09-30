@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -237,7 +238,7 @@ function TransferenciasTab() {
 }
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 function formatarDias(n: number): string {

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { Fuel, Plus, Trash2, Pencil } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -11,7 +12,7 @@ import { hojeBrString } from '../../lib/utils'
 import { parseValorBr } from '../../lib/valorBr'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 // Novo colaborador (motorista) — nome + empresa, sem login próprio no CRM

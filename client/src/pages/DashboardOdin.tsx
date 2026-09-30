@@ -11,6 +11,7 @@ import {
 import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Legend } from 'recharts'
 import { useAuth } from '../contexts/AuthContext'
 import { trpc } from '../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
@@ -19,8 +20,7 @@ import { STAGE_LABELS, STAGE_COLORS, STAGE_COLORS_HEX, type Stage } from '../lib
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
 function money(v: number | null): string {
-  if (v == null) return '—'
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 function horasParaTexto(h: number | null): string {

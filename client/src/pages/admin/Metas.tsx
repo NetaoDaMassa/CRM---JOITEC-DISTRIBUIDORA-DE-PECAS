@@ -1,12 +1,12 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input } from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 
 function formatarMoeda(v: number | null | undefined): string {
-  if (v === null || v === undefined) return ''
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v, { vazio: '' })
 }
 
 // "2026-08-01" -> "agosto/2026"

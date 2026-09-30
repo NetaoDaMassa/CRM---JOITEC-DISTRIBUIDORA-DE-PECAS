@@ -1,4 +1,5 @@
 import { trpc } from '../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 
 const ETAPA_LABEL: Record<string, string> = {
   novo: 'Novo',
@@ -30,8 +31,7 @@ const EMPRESA_REPASSE_LABEL: Record<string, string> = {
 }
 
 function formatarMoedaHist(v: number | null): string {
-  if (v === null || v === undefined) return '—'
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 function formatarMes(mesReferencia: string): string {

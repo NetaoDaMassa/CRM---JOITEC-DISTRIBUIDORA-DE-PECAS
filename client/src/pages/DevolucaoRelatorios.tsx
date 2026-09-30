@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { formatarMoeda } from '../lib/moeda'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -218,7 +219,7 @@ export default function DevolucaoRelatorios() {
             <GraficoBarras
               dados={comissaoPorVendedor}
               corBarra={COR_ALERTA}
-              formatarValor={(v) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              formatarValor={(v) => formatarMoeda(v)}
             />
           </Secao>
         )}

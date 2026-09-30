@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -172,8 +173,7 @@ function AlertaClientesCard({
 }
 
 function formatarMoeda(v: number | null | undefined): string {
-  if (v === null || v === undefined) return 'R$ 0,00'
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v, { vazio: 'R$ 0,00' })
 }
 
 const RESULTADO_LABEL: Record<string, string> = {

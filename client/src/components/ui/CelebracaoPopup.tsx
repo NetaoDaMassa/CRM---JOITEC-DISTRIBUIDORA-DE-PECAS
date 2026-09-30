@@ -1,7 +1,8 @@
 import type { Celebracao } from '../../lib/useCelebrarMeta'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 export default function CelebracaoPopup({ celebracao, onFechar }: { celebracao: Celebracao | null; onFechar: () => void }) {

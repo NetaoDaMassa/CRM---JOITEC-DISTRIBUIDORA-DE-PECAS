@@ -5,6 +5,7 @@ import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContai
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
@@ -121,7 +122,7 @@ function Barra({ label, valor, total, cor }: { label: string; valor: number; tot
 }
 
 function money(v: number) {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 const TABS_COM_FILTRO_DATA: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing']

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import Button from '../ui/Button'
 import { Input } from '../ui/Input'
 import Select from '../ui/Select'
@@ -23,7 +24,7 @@ type Cotacao = {
 const COTACAO_VAZIA = { numeroCotacaoTransportadora: '', transportadora: '', valor: '', peso: '', volume: '', prazo: '', observacoes: '', tipoFrete: 'FOB' as 'CIF' | 'FOB' }
 
 function formatarMoeda(v: number | null): string {
-  return v != null ? v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—'
+  return formatarMoedaBr(v)
 }
 
 export default function EtapaFrete({

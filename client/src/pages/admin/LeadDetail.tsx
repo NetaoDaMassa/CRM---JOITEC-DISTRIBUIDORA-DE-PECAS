@@ -7,6 +7,7 @@ import {
 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { formatarMoeda } from '../../lib/moeda'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { Input, Textarea } from '../../components/ui/Input'
@@ -426,12 +427,12 @@ export default function LeadDetail() {
           </InfoRow>
           {lead.orderValue != null && (
             <InfoRow icon={Building2} label="Valor do pedido">
-              {lead.orderValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+              {formatarMoeda(lead.orderValue)}
             </InfoRow>
           )}
           {lead.finalOrderValue != null && (
             <InfoRow icon={Building2} label="Valor final">
-              <span className="text-green-400">{lead.finalOrderValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+              <span className="text-green-400">{formatarMoeda(lead.finalOrderValue)}</span>
             </InfoRow>
           )}
           {lead.paymentMethod && <InfoRow icon={Building2} label="Pagamento">{LEAD_PAYMENT_METHOD_LABELS[lead.paymentMethod]}</InfoRow>}

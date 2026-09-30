@@ -1,5 +1,6 @@
 import { memo, useEffect, useState } from 'react'
 import { Settings } from 'lucide-react'
+import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import {
   Area,
   AreaChart,
@@ -43,7 +44,7 @@ const COR_META_BATIDA = '#0ca30c'
 const SEGUNDOS_POR_SLIDE = 30
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+  return formatarMoedaBr(v, { casas: 0 })
 }
 
 function TooltipGrafico({

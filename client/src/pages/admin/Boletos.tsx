@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import BoletoModal from '../../components/BoletoModal'
@@ -9,7 +10,7 @@ import PedidoAlteracaoModal from '../../components/PedidoAlteracaoModal'
 import { paraCsv, baixarCsv } from '../../lib/csv'
 
 function formatarMoeda(v: number): string {
-  return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+  return formatarMoedaBr(v)
 }
 
 function formatarData(d: string): string {
