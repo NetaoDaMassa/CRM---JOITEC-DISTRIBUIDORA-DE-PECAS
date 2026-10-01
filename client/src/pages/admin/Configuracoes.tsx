@@ -342,7 +342,6 @@ export default function AdminConfiguracoes() {
   const [metaFaturamentoEmpresa, setMetaFaturamentoEmpresa] = useState('')
   const [metaLigacoesDiaPadrao, setMetaLigacoesDiaPadrao] = useState('')
   const [diasSemContatoAlerta, setDiasSemContatoAlerta] = useState('')
-  const [whatsappGerente, setWhatsappGerente] = useState('')
   const [leadsMaxDiasProximoContato, setLeadsMaxDiasProximoContato] = useState('')
   const [backupRetencaoDias, setBackupRetencaoDias] = useState('')
   const [gotoDuracaoMinima, setGotoDuracaoMinima] = useState('')
@@ -382,7 +381,6 @@ export default function AdminConfiguracoes() {
       setMetaFaturamentoEmpresa(String(data.meta_faturamento_empresa))
       setMetaLigacoesDiaPadrao(String(data.meta_ligacoes_dia_padrao))
       setDiasSemContatoAlerta(String(data.dias_sem_contato_alerta))
-      setWhatsappGerente(data.whatsapp_gerente)
       setLeadsMaxDiasProximoContato(String(data.leads_max_dias_proximo_contato))
       setBackupRetencaoDias(String(data.backup_retencao_dias))
       setGotoDuracaoMinima(String(data.goto_duracao_minima_segundos))
@@ -418,7 +416,6 @@ export default function AdminConfiguracoes() {
       meta_faturamento_empresa: Number(metaFaturamentoEmpresa),
       meta_ligacoes_dia_padrao: Number(metaLigacoesDiaPadrao),
       dias_sem_contato_alerta: Number(diasSemContatoAlerta),
-      whatsapp_gerente: whatsappGerente.trim(),
       leads_max_dias_proximo_contato: Number(leadsMaxDiasProximoContato),
       backup_retencao_dias: Number(backupRetencaoDias),
       goto_duracao_minima_segundos: Number(gotoDuracaoMinima),
@@ -558,23 +555,12 @@ export default function AdminConfiguracoes() {
         {bate('Notificações') && (
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Notificações</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <Input
-              label="Alertar cliente sem contato há quantos dias"
-              type="number"
-              value={diasSemContatoAlerta}
-              onChange={(e) => setDiasSemContatoAlerta(e.target.value)}
-            />
-            <Input
-              label="WhatsApp do gerente"
-              placeholder="(11) 91234-5678"
-              value={whatsappGerente}
-              onChange={(e) => setWhatsappGerente(e.target.value)}
-            />
-          </div>
-          <p className="text-xs text-dark-500 mt-1.5">
-            Número que recebe o aviso do botão "Notificar anexo no WhatsApp" em Arquivos/Mídia.
-          </p>
+          <Input
+            label="Alertar cliente sem contato há quantos dias"
+            type="number"
+            value={diasSemContatoAlerta}
+            onChange={(e) => setDiasSemContatoAlerta(e.target.value)}
+          />
         </div>
         )}
 

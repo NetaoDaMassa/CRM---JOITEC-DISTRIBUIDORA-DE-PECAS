@@ -245,6 +245,7 @@ export default function MarketingArquivos() {
   const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
   const [visualizando, setVisualizando] = useState<{ id: number; nomeOriginal: string; tipoArquivo: string | null } | null>(null)
   const [progressoUpload, setProgressoUpload] = useState<{ atual: number; total: number } | null>(null)
+  const [notificando, setNotificando] = useState<{ nomeOriginal: string; enviadoPorUser: { name: string } | null } | null>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
 
   // `webkitdirectory`/`directory` não são atributos reconhecidos pelo React
@@ -259,23 +260,25 @@ export default function MarketingArquivos() {
   const { data: pastas, isLoading: carregandoPastas, error: erroPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
   const { data: arquivos, isLoading: carregandoArquivos } = trpc.marketing.listarArquivos.useQuery(argPasta)
   const { data: trilha } = trpc.marketing.caminhoPasta.useQuery({ pastaId: pastaAtualId! }, { enabled: pastaAtualId != null })
-  const { data: whatsappGerente } = trpc.configuracoes.whatsappGerente.useQuery()
+  const { data: todosUsuarios } = trpc.users.list.useQuery()
   const nomePastaAtual = pastaAtualId == null ? 'Raiz' : (trilha?.[trilha.length - 1]?.nome ?? '')
+  // Só admin com WhatsApp cadastrado (em Usuários) pode receber o aviso —
+  // sem filtro de ativo/inativo de propósito, não vale a pena esconder um
+  // admin que ainda não desativou a conta por esquecimento.
+  const adminsComWhatsapp = (todosUsuarios ?? []).filter((u) => u.role === 'admin' && u.whatsapp)
 
-  function notificarAnexo(arquivo: { nomeOriginal: string; enviadoPorUser: { name: string } | null }) {
-    if (!whatsappGerente) {
-      toast.error('WhatsApp do gerente não cadastrado (Configurações > Notificações)')
-      return
-    }
+  function notificarAdmin(admin: { id: number; name: string; whatsapp: string | null }) {
+    if (!notificando || !admin.whatsapp) return
     const pastaUrl = `${window.location.origin}/${isAdmin ? 'admin' : 'vendedor'}/arquivos${pastaAtualId != null ? `?pasta=${pastaAtualId}` : ''}`
     const link = buildNotificarAnexoWaLink({
-      whatsappGerente,
-      nomeArquivo: arquivo.nomeOriginal,
+      adminWhatsapp: admin.whatsapp,
+      nomeArquivo: notificando.nomeOriginal,
       pastaNome: nomePastaAtual,
       pastaUrl,
-      enviadoPor: arquivo.enviadoPorUser?.name ?? user?.name ?? 'Alguém',
+      enviadoPor: notificando.enviadoPorUser?.name ?? user?.name ?? 'Alguém',
     })
     window.open(link, '_blank')
+    setNotificando(null)
   }
 
   // Link direto (ou volta atrás no navegador) pra uma pasta que não existe
@@ -558,7 +561,7 @@ export default function MarketingArquivos() {
                 )}
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => notificarAnexo(arquivo)}
+                    onClick={() => setNotificando(arquivo)}
                     className="text-dark-400 hover:text-green-400"
                     title="Notificar anexo no WhatsApp"
                   >
@@ -676,6 +679,25 @@ export default function MarketingArquivos() {
 
       <ModalVisualizarArquivo arquivo={visualizando} onClose={() => setVisualizando(null)} />
       <ModalAcessoPasta pasta={gerenciandoAcesso} onClose={() => setGerenciandoAcesso(null)} />
+
+      <Modal open={!!notificando} onClose={() => setNotificando(null)} title={`Notificar "${notificando?.nomeOriginal ?? ''}"`} size="sm">
+        <p className="text-xs text-dark-500 mb-3">Escolha pra quem avisar no WhatsApp:</p>
+        <div className="space-y-1">
+          {adminsComWhatsapp.map((admin) => (
+            <button
+              key={admin.id}
+              onClick={() => notificarAdmin(admin)}
+              className="w-full flex items-center gap-2 text-left text-sm text-dark-100 hover:bg-dark-700/50 rounded-lg px-3 py-2"
+            >
+              <MessageCircle size={14} className="text-green-500 shrink-0" />
+              {admin.name}
+            </button>
+          ))}
+          {!adminsComWhatsapp.length && (
+            <p className="text-dark-500 text-sm">Nenhum admin com WhatsApp cadastrado (cadastre em Usuários).</p>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

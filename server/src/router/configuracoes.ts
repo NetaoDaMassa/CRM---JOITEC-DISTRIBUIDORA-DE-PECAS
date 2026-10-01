@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { router, adminProcedure, protectedProcedure } from './_base.js'
-import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
+import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO } from '../lib/businessHours.js'
 
 const CHAVES_NUMERICAS = {
@@ -54,22 +54,13 @@ export const configuracoesRouter = router({
       `leads_max_dias_proximo_contato_${ctx.empresaId}`,
       LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO
     )
-    // WhatsApp do gerente — texto, não número, por isso fora do loop
-    // genérico (que só lida com CHAVES_NUMERICAS). Compartilhado entre
-    // empresas (não leva empresaId na chave) — é sempre o mesmo gerente
-    // pra quem usa Arquivos/Mídia em qualquer empresa do grupo. Botão
-    // "Notificar anexo no WhatsApp" em MarketingArquivos.tsx, pedido do
-    // João, 2026-10-01.
-    const whatsappGerente = (await getConfigTexto('whatsapp_gerente')) ?? ''
     return {
       ...Object.fromEntries(entradas),
       meta_faturamento_empresa: metaFaturamentoEmpresa,
       leads_max_dias_proximo_contato: leadsMaxDiasProximoContato,
-      whatsapp_gerente: whatsappGerente,
     } as Record<keyof typeof CHAVES_NUMERICAS, number> & {
       meta_faturamento_empresa: number
       leads_max_dias_proximo_contato: number
-      whatsapp_gerente: string
     }
   }),
 
@@ -99,7 +90,6 @@ export const configuracoesRouter = router({
         painel_financeiro_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
         painel_tv_odin_segundos: z.number().min(3).max(300).optional(),
         painel_tv_odin_autoplay: z.union([z.literal(0), z.literal(1)]).optional(),
-        whatsapp_gerente: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -149,10 +139,4 @@ export const configuracoesRouter = router({
     ])
     return { segundos, autoplay: autoplay === 1 }
   }),
-
-  // Só esse valor, liberado pra qualquer autenticado (não só admin) — o
-  // botão "Notificar anexo no WhatsApp" em Arquivos/Mídia é usado por
-  // vendedor também, não só admin. Mesmo motivo de painelTvSegundosPorSlide
-  // acima.
-  whatsappGerente: protectedProcedure.query(async () => getConfigTexto('whatsapp_gerente')),
 })
