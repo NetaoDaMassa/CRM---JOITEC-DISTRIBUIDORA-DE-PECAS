@@ -4,6 +4,7 @@ import { Plus, Download, RefreshCw, CalendarRange, X, Search } from 'lucide-reac
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
@@ -43,16 +44,16 @@ export default function OrdensKanban() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [orderType, setOrderType] = useState<OrderType>('maquina')
+  const [orderType, setOrderType] = usePersistedState<OrderType>('ordensKanban:orderType', 'maquina')
   const [modalAberto, setModalAberto] = useState(false)
   const [buscaCliente, setBuscaCliente] = useState('')
   const [clienteId, setClienteId] = useState('')
   const [novoOrderType, setNovoOrderType] = useState<OrderType>('maquina')
-  const [vendedorId, setVendedorId] = useState('')
-  const [mes, setMes] = useState('')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
-  const [busca, setBusca] = useState('')
+  const [vendedorId, setVendedorId] = usePersistedState('ordensKanban:vendedorId', '')
+  const [mes, setMes] = usePersistedState('ordensKanban:mes', '')
+  const [dataDe, setDataDe] = usePersistedState('ordensKanban:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('ordensKanban:dataAte', '')
+  const [busca, setBusca] = usePersistedState('ordensKanban:busca', '')
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })

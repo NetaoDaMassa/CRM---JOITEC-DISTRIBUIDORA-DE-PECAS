@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input } from '../../components/ui/Input'
@@ -147,7 +148,10 @@ const BOUNCE_THRESHOLD = 2
 
 function TransferenciasTab() {
   const { data, isLoading } = trpc.leadsRelatorios.transferHistory.useQuery()
-  const [filtro, setFiltro] = useState<'todos' | 'transferido' | 'reatribuicao_automatica' | 'excluido'>('todos')
+  const [filtro, setFiltro] = usePersistedState<'todos' | 'transferido' | 'reatribuicao_automatica' | 'excluido'>(
+    'leadsRelatorios:transferencias:filtro',
+    'todos'
+  )
 
   const autoCountByLead = useMemo(() => {
     const map = new Map<number, number>()
@@ -401,8 +405,8 @@ function EditarMetaModal({
 function GeralTab() {
   // Sem data escolhida, a tela ficava somando o histórico inteiro e o Funil
   // de Conversão perdia o sentido — padrão agora é o mês corrente.
-  const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
-  const [dataFim, setDataFim] = useState(hojeString())
+  const [dataInicio, setDataInicio] = usePersistedState('leadsRelatorios:geral:dataInicio', primeiroDiaMesString())
+  const [dataFim, setDataFim] = usePersistedState('leadsRelatorios:geral:dataFim', hojeString())
   const [editarMetaAberto, setEditarMetaAberto] = useState(false)
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
@@ -499,9 +503,9 @@ function GeralTab() {
 // Vendas de leads (leads "ganhos"), linha a linha, com exportação em Excel
 // — pedido separado do panorama agregado de GeralTab.
 function VendasTab() {
-  const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
-  const [dataFim, setDataFim] = useState(hojeString())
-  const [vendedorId, setVendedorId] = useState('')
+  const [dataInicio, setDataInicio] = usePersistedState('leadsRelatorios:vendas:dataInicio', primeiroDiaMesString())
+  const [dataFim, setDataFim] = usePersistedState('leadsRelatorios:vendas:dataFim', hojeString())
+  const [vendedorId, setVendedorId] = usePersistedState('leadsRelatorios:vendas:vendedorId', '')
 
   const { data: vendedores } = trpc.users.vendors.useQuery()
   const filtros = {

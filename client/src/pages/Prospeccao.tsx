@@ -4,6 +4,7 @@ import { ChevronDown, ChevronUp } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import { Input, Textarea } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
@@ -102,7 +103,7 @@ export default function Prospeccao() {
   const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
 
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
-  const [vendedorId, setVendedorId] = useState<number | null>(null)
+  const [vendedorId, setVendedorId] = usePersistedState<number | null>('prospeccao:vendedorId', null)
 
   // Admin não tem carteira própria — a tela sempre olha pra um vendedor
   // específico, igual o Kanban do admin (seleciona o primeiro da lista).

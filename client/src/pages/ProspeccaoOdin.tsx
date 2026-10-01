@@ -3,6 +3,7 @@ import { Plus, Search, Download, RefreshCw, ChevronDown, ChevronUp, Pencil, Tras
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
@@ -146,14 +147,14 @@ export default function ProspeccaoOdin() {
   const isAdmin = user?.role === 'admin'
   const utils = trpc.useUtils()
 
-  const [vendedorId, setVendedorId] = useState('')
-  const [filtroPor, setFiltroPor] = useState<'cadastro' | 'ultimo_contato'>('cadastro')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
-  const [mes, setMes] = useState('')
-  const [classificacao, setClassificacao] = useState('')
-  const [situacao, setSituacao] = useState('')
-  const [busca, setBusca] = useState('')
+  const [vendedorId, setVendedorId] = usePersistedState('prospeccaoOdin:vendedorId', '')
+  const [filtroPor, setFiltroPor] = usePersistedState<'cadastro' | 'ultimo_contato'>('prospeccaoOdin:filtroPor', 'cadastro')
+  const [dataDe, setDataDe] = usePersistedState('prospeccaoOdin:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('prospeccaoOdin:dataAte', '')
+  const [mes, setMes] = usePersistedState('prospeccaoOdin:mes', '')
+  const [classificacao, setClassificacao] = usePersistedState('prospeccaoOdin:classificacao', '')
+  const [situacao, setSituacao] = usePersistedState('prospeccaoOdin:situacao', '')
+  const [busca, setBusca] = usePersistedState('prospeccaoOdin:busca', '')
 
   const [expandidoId, setExpandidoId] = useState<number | null>(null)
   const [modalAberto, setModalAberto] = useState(false)

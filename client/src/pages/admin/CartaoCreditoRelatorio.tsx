@@ -1,6 +1,6 @@
-import { useState } from 'react'
 import { CreditCard, Paperclip } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { Input } from '../../components/ui/Input'
 import { Badge } from '../../components/ui/Badge'
 import { hojeBrString } from '../../lib/utils'
@@ -25,7 +25,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
 // por empresa (quem usa é decidido em Permissões). Pedido do João,
 // 2026-09-15.
 export default function CartaoCreditoRelatorio() {
-  const [mesReferencia, setMesReferencia] = useState(hojeBrString().slice(0, 7))
+  const [mesReferencia, setMesReferencia] = usePersistedState('cartaoCreditoRelatorio:mesReferencia', hojeBrString().slice(0, 7))
   const { data: relatorio, isLoading } = trpc.cartao.relatorio.useQuery({ mesReferencia })
 
   return (

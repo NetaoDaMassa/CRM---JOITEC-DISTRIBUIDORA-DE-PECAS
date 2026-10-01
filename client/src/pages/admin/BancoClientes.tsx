@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -107,9 +108,9 @@ function GerenciarLiberacoes({ onClose, vendorOptions }: { onClose: () => void; 
 // individual usada em /admin/carteira.
 export default function BancoClientes() {
   const { user } = useAuth()
-  const [q, setQ] = useState('')
-  const [origemBanco, setOrigemBanco] = useState('')
-  const [estado, setEstado] = useState('')
+  const [q, setQ] = usePersistedState('bancoClientes:q', '')
+  const [origemBanco, setOrigemBanco] = usePersistedState('bancoClientes:origemBanco', '')
+  const [estado, setEstado] = usePersistedState('bancoClientes:estado', '')
   const [pagina, setPagina] = useState(1)
   const [exportando, setExportando] = useState(false)
   const [vendedorPorLinha, setVendedorPorLinha] = useState<Record<number, string>>({})

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { trpc } from '../../lib/trpc'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input, Textarea } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
@@ -299,8 +300,8 @@ function InvoiceForm({ inicial, onSalvar, salvando }: { inicial: Invoice | null;
 }
 
 function AbaImportacoes() {
-  const [filtroEmpresa, setFiltroEmpresa] = useState('')
-  const [filtroStatus, setFiltroStatus] = useState('')
+  const [filtroEmpresa, setFiltroEmpresa] = usePersistedState('compras:importacoes:filtroEmpresa', '')
+  const [filtroStatus, setFiltroStatus] = usePersistedState('compras:importacoes:filtroStatus', '')
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<Invoice | null>(null)
 
@@ -522,7 +523,7 @@ function SolicitacaoForm({ onSalvar, salvando }: { onSalvar: (dados: typeof FORM
 // de nota) depois que o diretor de compras aprova; recusar não exclui,
 // só marca "recusado" pra manter histórico.
 function AbaComprasNacionais() {
-  const [filtroStatus, setFiltroStatus] = useState('')
+  const [filtroStatus, setFiltroStatus] = usePersistedState('compras:nacionais:filtroStatus', '')
   const [modalAberto, setModalAberto] = useState(false)
   const [recusandoId, setRecusandoId] = useState<number | null>(null)
   const [motivoRecusa, setMotivoRecusa] = useState('')

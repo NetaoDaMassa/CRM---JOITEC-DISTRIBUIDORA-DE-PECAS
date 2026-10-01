@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Plus, Search, Pencil, Trash2, Link2, Package, Layers, MapPin } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
+import { usePersistedState } from '../lib/usePersistedState'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
@@ -20,7 +21,7 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 export default function Estoque() {
-  const [tab, setTab] = useState<TabKey>('maquinas')
+  const [tab, setTab] = usePersistedState<TabKey>('estoque:tab', 'maquinas')
 
   return (
     <div className="p-6">
@@ -47,8 +48,8 @@ type MaquinaForm = { numeroSerie: string; modelo: string; voltagem: string; pres
 const MAQUINA_VAZIA: MaquinaForm = { numeroSerie: '', modelo: '', voltagem: '', pressaoBar: '', porte: 'pequeno', dataEntrada: '', observacoes: '' }
 
 function AbaMaquinas() {
-  const [busca, setBusca] = useState('')
-  const [statusFiltro, setStatusFiltro] = useState('')
+  const [busca, setBusca] = usePersistedState('estoque:maquinas:busca', '')
+  const [statusFiltro, setStatusFiltro] = usePersistedState('estoque:maquinas:statusFiltro', '')
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<number | null>(null)
   const [form, setForm] = useState<MaquinaForm>(MAQUINA_VAZIA)
@@ -143,7 +144,7 @@ type CatalogoForm = { categoria: string; linha: string; modelo: string; especifi
 const CATALOGO_VAZIO: CatalogoForm = { categoria: '', linha: '', modelo: '', especificacoes: '' }
 
 function AbaCatalogo() {
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = usePersistedState('estoque:catalogo:busca', '')
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<number | null>(null)
   const [form, setForm] = useState<CatalogoForm>(CATALOGO_VAZIO)

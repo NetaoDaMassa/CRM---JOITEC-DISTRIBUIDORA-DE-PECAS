@@ -4,6 +4,7 @@ import { Plus, MapPin, MapPinOff, Pencil, Trash2, LogIn, LogOut, Clock, Phone, U
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
@@ -68,11 +69,11 @@ const TAB_LABELS: Record<TabKey, string> = { hoje: 'Hoje', semana: 'Semana', tod
 export default function Visitas() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [tab, setTab] = useState<TabKey>('hoje')
-  const [vendedorId, setVendedorId] = useState('')
-  const [mes, setMes] = useState('')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
+  const [tab, setTab] = usePersistedState<TabKey>('visitas:tab', 'hoje')
+  const [vendedorId, setVendedorId] = usePersistedState('visitas:vendedorId', '')
+  const [mes, setMes] = usePersistedState('visitas:mes', '')
+  const [dataDe, setDataDe] = usePersistedState('visitas:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('visitas:dataAte', '')
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
   const filtro = { vendedorId: vendedorId ? Number(vendedorId) : undefined }
   const { data: resumo } = trpc.visitas.resumo.useQuery(filtro)
@@ -269,7 +270,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
   const [editando, setEditando] = useState<number | null>(null)
   const [form, setForm] = useState<VisitaForm>(novaVisita)
   const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = usePersistedState('visitas:abaVisitas:busca', '')
 
   const utils = trpc.useUtils()
   const { data: visitasTodas, isLoading } = trpc.visitas.listar.useQuery({ vendedorId })

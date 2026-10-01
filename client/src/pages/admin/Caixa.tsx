@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
@@ -40,16 +41,16 @@ function ultimoDiaDoMes(mes: string): string {
 // data, pedido pra Compretec Loja Física acompanhar o caixa físico da
 // loja mês a mês.
 export default function Caixa() {
-  const [mesReferencia, setMesReferencia] = useState(mesAtualString())
-  const [dataInicio, setDataInicio] = useState(primeiroDiaDoMes(mesAtualString()))
-  const [dataFim, setDataFim] = useState(ultimoDiaDoMes(mesAtualString()))
+  const [mesReferencia, setMesReferencia] = usePersistedState('caixa:mesReferencia', mesAtualString())
+  const [dataInicio, setDataInicio] = usePersistedState('caixa:dataInicio', primeiroDiaDoMes(mesAtualString()))
+  const [dataFim, setDataFim] = usePersistedState('caixa:dataFim', ultimoDiaDoMes(mesAtualString()))
   const [tipo, setTipo] = useState<'entrada' | 'saida'>('entrada')
   const [valor, setValor] = useState('')
   const [data, setData] = useState(hojeString())
   const [descricao, setDescricao] = useState('')
   // Filtro da listagem (não mexe nos cards de Entradas/Saídas/Saldo — esses
   // continuam somando o período inteiro, só a lista de baixo é filtrada).
-  const [filtroTipo, setFiltroTipo] = useState<'todos' | 'entrada' | 'saida'>('todos')
+  const [filtroTipo, setFiltroTipo] = usePersistedState<'todos' | 'entrada' | 'saida'>('caixa:filtroTipo', 'todos')
 
   // Trocar o seletor de mês realinha o período pro mês inteiro; editar
   // início/fim direto (abaixo) deixa o período livre, sem travar em mês

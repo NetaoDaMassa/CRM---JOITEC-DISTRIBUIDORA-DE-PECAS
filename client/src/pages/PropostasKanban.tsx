@@ -4,6 +4,7 @@ import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2, Search } fro
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
@@ -59,11 +60,11 @@ export default function PropostasKanban() {
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [docFiles, setDocFiles] = useState<File[]>([])
   const [enviandoArquivos, setEnviandoArquivos] = useState(false)
-  const [vendedorId, setVendedorId] = useState('')
-  const [mes, setMes] = useState('')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
-  const [busca, setBusca] = useState('')
+  const [vendedorId, setVendedorId] = usePersistedState('propostasKanban:vendedorId', '')
+  const [mes, setMes] = usePersistedState('propostasKanban:mes', '')
+  const [dataDe, setDataDe] = usePersistedState('propostasKanban:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('propostasKanban:dataAte', '')
+  const [busca, setBusca] = usePersistedState('propostasKanban:busca', '')
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Plus, Download, MessageCircle, Phone, Mail, Upload } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
@@ -70,8 +71,8 @@ function SeletorAba({ aba, onChange }: { aba: Aba; onChange: (a: Aba) => void })
 }
 
 function AbaCobrancas() {
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
+  const [dataDe, setDataDe] = usePersistedState('negociacoes:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('negociacoes:dataAte', '')
   const { data } = trpc.negociacoes.cobrancasListar.useQuery({ dataDe: dataDe || undefined, dataAte: dataAte || undefined })
   const [modalAberto, setModalAberto] = useState(false)
   const utils = trpc.useUtils()

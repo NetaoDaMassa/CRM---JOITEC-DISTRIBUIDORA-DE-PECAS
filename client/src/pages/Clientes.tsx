@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { Plus } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
@@ -20,9 +21,9 @@ const REGIAO_LABELS: Record<string, string> = {
 
 export default function Clientes() {
   const { user } = useAuth()
-  const [q, setQ] = useState('')
+  const [q, setQ] = usePersistedState('clientes:q', '')
   const [pagina, setPagina] = useState(1)
-  const [vendedorId, setVendedorId] = useState('')
+  const [vendedorId, setVendedorId] = usePersistedState('clientes:vendedorId', '')
   const [exportando, setExportando] = useState(false)
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })

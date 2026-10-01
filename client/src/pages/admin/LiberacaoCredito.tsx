@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { Plus, Paperclip, Trash2, Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { usePersistedState } from '../../lib/usePersistedState'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { Input, Textarea } from '../../components/ui/Input'
@@ -219,11 +220,11 @@ function FiltroTexto({ label, value, onChange, options }: { label: string; value
 
 function AbaLancamentos() {
   const [criarOpen, setCriarOpen] = useState(false)
-  const [q, setQ] = useState('')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
-  const [mesReferencia, setMesReferencia] = useState('')
-  const [quemLiberouFiltro, setQuemLiberouFiltro] = useState('')
+  const [q, setQ] = usePersistedState('liberacaoCredito:q', '')
+  const [dataDe, setDataDe] = usePersistedState('liberacaoCredito:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('liberacaoCredito:dataAte', '')
+  const [mesReferencia, setMesReferencia] = usePersistedState('liberacaoCredito:mesReferencia', '')
+  const [quemLiberouFiltro, setQuemLiberouFiltro] = usePersistedState('liberacaoCredito:quemLiberouFiltro', '')
   const utils = trpc.useUtils()
 
   const { data: opcoes } = trpc.liberacaoCredito.quemLiberouOpcoes.useQuery()

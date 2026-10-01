@@ -15,6 +15,7 @@ import {
 } from 'recharts'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
@@ -279,21 +280,21 @@ export default function AdminReports() {
   const abasPermitidas = ABAS.filter(
     (t) => (t.superAdminOnly ? user?.superAdmin : user?.superAdmin || !!minhasFeaturesRelatorio?.includes(t.feature ?? ''))
   )
-  const [dataInicio, setDataInicio] = useState(primeiroDiaMesString())
-  const [dataFim, setDataFim] = useState(hojeBrString())
-  const [vendedorId, setVendedorId] = useState('')
-  const [regiao, setRegiao] = useState('')
-  const [granularidadeOrcamentos, setGranularidadeOrcamentos] = useState<'dia' | 'semana' | 'mes'>('dia')
-  const [aba, setAba] = useState<Aba>('visao_geral')
-  const [dataInicioTodas, setDataInicioTodas] = useState(primeiroDiaMesString())
-  const [dataFimTodas, setDataFimTodas] = useState(hojeBrString())
+  const [dataInicio, setDataInicio] = usePersistedState('reports:dataInicio', primeiroDiaMesString())
+  const [dataFim, setDataFim] = usePersistedState('reports:dataFim', hojeBrString())
+  const [vendedorId, setVendedorId] = usePersistedState('reports:vendedorId', '')
+  const [regiao, setRegiao] = usePersistedState('reports:regiao', '')
+  const [granularidadeOrcamentos, setGranularidadeOrcamentos] = usePersistedState<'dia' | 'semana' | 'mes'>('reports:granularidadeOrcamentos', 'dia')
+  const [aba, setAba] = usePersistedState<Aba>('reports:aba', 'visao_geral')
+  const [dataInicioTodas, setDataInicioTodas] = usePersistedState('reports:dataInicioTodas', primeiroDiaMesString())
+  const [dataFimTodas, setDataFimTodas] = usePersistedState('reports:dataFimTodas', hojeBrString())
   // Período próprio do card "Itens mais comprados" — antes ele usava o
   // filtro geral da página (De/Até lá em cima), mas o João quer comparar
   // um período de itens sem mexer nos outros cards da aba. Começa igual ao
   // filtro geral, mas passa a ser independente assim que mexido (pedido do
   // João, 2026-09-11).
-  const [itensDataInicio, setItensDataInicio] = useState(primeiroDiaMesString())
-  const [itensDataFim, setItensDataFim] = useState(hojeBrString())
+  const [itensDataInicio, setItensDataInicio] = usePersistedState('reports:itensDataInicio', primeiroDiaMesString())
+  const [itensDataFim, setItensDataFim] = usePersistedState('reports:itensDataFim', hojeBrString())
 
   // Se a aba selecionada (ou a inicial "visao_geral") não estiver mais entre
   // as permitidas assim que a permissão carrega, pula pra primeira liberada.
@@ -303,10 +304,10 @@ export default function AdminReports() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minhasFeaturesRelatorio, user?.superAdmin])
 
-  const [buscaCurvaAbc, setBuscaCurvaAbc] = useState('')
-  const [buscaContatos, setBuscaContatos] = useState('')
-  const [buscaLigacoes, setBuscaLigacoes] = useState('')
-  const [buscaItens, setBuscaItens] = useState('')
+  const [buscaCurvaAbc, setBuscaCurvaAbc] = usePersistedState('reports:buscaCurvaAbc', '')
+  const [buscaContatos, setBuscaContatos] = usePersistedState('reports:buscaContatos', '')
+  const [buscaLigacoes, setBuscaLigacoes] = usePersistedState('reports:buscaLigacoes', '')
+  const [buscaItens, setBuscaItens] = usePersistedState('reports:buscaItens', '')
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
 

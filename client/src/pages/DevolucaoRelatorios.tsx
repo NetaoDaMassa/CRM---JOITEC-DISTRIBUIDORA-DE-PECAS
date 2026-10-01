@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Cell, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import { formatarMoeda } from '../lib/moeda'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
@@ -98,9 +99,9 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
 
 export default function DevolucaoRelatorios() {
   const { user } = useAuth()
-  const [empresaFiltro, setEmpresaFiltro] = useState('')
-  const [dataInicio, setDataInicio] = useState('')
-  const [dataFim, setDataFim] = useState('')
+  const [empresaFiltro, setEmpresaFiltro] = usePersistedState('devolucaoRelatorios:empresaFiltro', '')
+  const [dataInicio, setDataInicio] = usePersistedState('devolucaoRelatorios:dataInicio', '')
+  const [dataFim, setDataFim] = usePersistedState('devolucaoRelatorios:dataFim', '')
 
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: !!user && user.role === 'admin' && !user.superAdmin,

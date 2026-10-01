@@ -5,6 +5,7 @@ import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContai
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
+import { usePersistedState } from '../lib/usePersistedState'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
@@ -129,11 +130,11 @@ const TABS_COM_FILTRO_DATA: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'fat
 const TABS_COM_FILTRO_VENDEDOR: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing']
 
 export default function RelatoriosOdin() {
-  const [tab, setTab] = useState<TabKey>('pedidos')
-  const [mes, setMes] = useState('')
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
-  const [vendedorId, setVendedorId] = useState('')
+  const [tab, setTab] = usePersistedState<TabKey>('relatoriosOdin:tab', 'pedidos')
+  const [mes, setMes] = usePersistedState('relatoriosOdin:mes', '')
+  const [dataDe, setDataDe] = usePersistedState('relatoriosOdin:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('relatoriosOdin:dataAte', '')
+  const [vendedorId, setVendedorId] = usePersistedState('relatoriosOdin:vendedorId', '')
   const { data: vendedores } = trpc.users.vendors.useQuery()
   const utils = trpc.useUtils()
   const filtro = { dataDe: dataDe || undefined, dataAte: dataAte || undefined, vendedorId: vendedorId ? Number(vendedorId) : undefined }
@@ -234,7 +235,7 @@ function formatarData(dt: string): string {
 }
 
 function RelatorioPedidosProcesso({ filtro }: { filtro: Filtro }) {
-  const [status, setStatus] = useState<'' | 'ativo' | 'concluido' | 'cancelado'>('')
+  const [status, setStatus] = usePersistedState<'' | 'ativo' | 'concluido' | 'cancelado'>('relatoriosOdin:pedidosProcesso:status', '')
   const { data, isLoading } = trpc.relatoriosOdin.pedidosProcesso.useQuery({ ...filtro, status: status || undefined })
   if (isLoading || !data) return <p className="text-dark-400 text-sm">Carregando...</p>
 

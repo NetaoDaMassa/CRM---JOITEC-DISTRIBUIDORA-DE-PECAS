@@ -3,6 +3,7 @@ import { Plus, Search, Pencil, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
+import { usePersistedState } from '../lib/usePersistedState'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
@@ -22,7 +23,7 @@ const FORM_VAZIO: RevendaForm = { nome: '', nomeContato: '', telefoneContato: ''
 export default function Revendas() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = usePersistedState('revendas:busca', '')
   const [modalAberto, setModalAberto] = useState(false)
   const [editando, setEditando] = useState<number | null>(null)
   const [form, setForm] = useState<RevendaForm>(FORM_VAZIO)
