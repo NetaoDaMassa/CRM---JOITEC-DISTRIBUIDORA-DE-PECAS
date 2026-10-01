@@ -623,6 +623,11 @@ export default function FunilBoard({
                           </div>
                         )
                       })()}
+                      {card.cadastroRapido && (
+                        <p className="text-xs text-gold-400 mb-1" title="Cadastrado rápido via Negociações/Liberação de Crédito — falta completar o cadastro">
+                          🆕 Cadastro rápido — completar dados
+                        </p>
+                      )}
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
                       )}

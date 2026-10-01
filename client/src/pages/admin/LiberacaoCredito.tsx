@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { Plus, Paperclip, Trash2, Search } from 'lucide-react'
+import { Plus, Paperclip, Trash2, Search, UserPlus } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { usePersistedState } from '../../lib/usePersistedState'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { Input, Textarea } from '../../components/ui/Input'
 import { formatDateTime } from '../../lib/utils'
+import CadastroRapidoClienteModal from '../../components/CadastroRapidoClienteModal'
 
 type ClienteResultado = {
   id: number
@@ -28,6 +29,7 @@ function SeletorCliente({
   onSelecionar: (c: ClienteResultado | null) => void
 }) {
   const [busca, setBusca] = useState('')
+  const [cadastroRapidoAberto, setCadastroRapidoAberto] = useState(false)
   const { data: resultados } = trpc.liberacaoCredito.clientesBuscar.useQuery({ q: busca }, { enabled: busca.trim().length >= 2 })
 
   if (clienteSelecionado) {
@@ -72,8 +74,24 @@ function SeletorCliente({
               </p>
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setCadastroRapidoAberto(true)}
+            className="w-full text-left px-3 py-2 text-sm text-gold-400 hover:bg-dark-700/50 transition-colors flex items-center gap-1.5"
+          >
+            <UserPlus size={13} /> Não achou? Cadastrar cliente novo
+          </button>
         </div>
       )}
+      <CadastroRapidoClienteModal
+        open={cadastroRapidoAberto}
+        onClose={() => setCadastroRapidoAberto(false)}
+        onCriado={(cliente) => {
+          onSelecionar(cliente)
+          setCadastroRapidoAberto(false)
+          setBusca('')
+        }}
+      />
     </div>
   )
 }

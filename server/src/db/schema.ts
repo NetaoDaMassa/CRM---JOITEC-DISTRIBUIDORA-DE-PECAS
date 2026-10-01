@@ -325,6 +325,14 @@ export const clientes = sqliteTable('clientes', {
   // mesmo que o cliente seja restaurado (não se apagam ao restaurar).
   motivoExclusao: text('motivo_exclusao'),
   comprovanteExclusaoPath: text('comprovante_exclusao_path'),
+  // Cadastro-relâmpago feito de dentro de Negociações/Liberação de Crédito
+  // (financeiro precisa lançar algo pra um cliente que ainda não existe na
+  // base e não pode esperar) — só nome + vendedor + o mínimo, pra não travar
+  // o processo. Vira um selo "🆕 Cadastro rápido" no card do Kanban avisando
+  // o vendedor que falta completar o cadastro de verdade; zera sozinho
+  // assim que alguém salva uma edição no cliente (clientes.update). Pedido
+  // do João, 2026-10-01.
+  cadastroRapido: integer('cadastro_rapido', { mode: 'boolean' }).notNull().default(false),
 }, (t) => ({
   empresaCnpj: unique().on(t.empresaId, t.cnpj),
   empresaCodigo: unique().on(t.empresaId, t.codigo),

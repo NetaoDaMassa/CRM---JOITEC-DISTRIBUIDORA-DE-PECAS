@@ -54,7 +54,13 @@ export default function CobrancaModal({ open, onClose }: { open: boolean; onClos
   return (
     <Modal open={open} onClose={onClose} title="Nova cobrança">
       <div className="space-y-4">
-        <ClientePicker label="Cliente" clienteId={cliente?.id ?? null} clienteNome={cliente?.razaoSocial ?? null} onSelect={setCliente} />
+        <ClientePicker
+          label="Cliente"
+          clienteId={cliente?.id ?? null}
+          clienteNome={cliente?.razaoSocial ?? null}
+          onSelect={setCliente}
+          permitirCadastroRapido
+        />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Valor (opcional)" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" inputMode="decimal" />
           <Input label="Vencimento (opcional)" type="date" value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} />

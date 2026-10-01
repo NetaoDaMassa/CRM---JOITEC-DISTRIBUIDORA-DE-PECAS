@@ -243,7 +243,12 @@ export const clientesRouter = router({
         cpf: z.string().optional(),
         codigo: z.string().optional(),
         inscricaoEstadual: z.string().optional(),
-        regiao: z.enum(REGIAO_VALUES),
+        // Opcional (não exigido pelo banco, ver comentário no schema) — a
+        // tela de cadastro completo (ClienteNovo.tsx) continua obrigando
+        // escolher na hora de enviar o formulário; já o cadastro-relâmpago
+        // de Negociações/Liberação de Crédito não tem esse dado e não devia
+        // travar nisso.
+        regiao: z.enum(REGIAO_VALUES).optional(),
         estado: z.string().optional(),
         cidade: z.string().optional(),
         // Endereço completo — cadastro precisa sair já pronto pra alimentar
@@ -260,6 +265,9 @@ export const clientesRouter = router({
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
         origemMarketing: z.boolean().optional(),
+        // Cadastro-relâmpago feito de dentro de Negociações/Liberação de
+        // Crédito — ver comentário em schema.ts (clientes.cadastroRapido).
+        cadastroRapido: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -317,6 +325,7 @@ export const clientesRouter = router({
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
         origemMarketing: input.origemMarketing ?? false,
+        cadastroRapido: input.cadastroRapido ?? false,
       })
       const clienteId = Number(result.lastInsertRowid)
 
@@ -330,7 +339,7 @@ export const clientesRouter = router({
       }
 
       await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'criar', alteradoPor: ctx.user.id })
-      return { id: clienteId }
+      return { id: clienteId, codigo }
     }),
 
   update: protectedProcedure
@@ -368,6 +377,10 @@ export const clientesRouter = router({
       if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
 
       const updates: Record<string, unknown> = { ...rest, updatedAt: new Date().toISOString(), versao: versao + 1 }
+      // Primeira edição de verdade depois do cadastro-relâmpago (ver
+      // clientes.create) — tira o selo "🆕 Cadastro rápido" do Kanban, já
+      // que alguém completou o cadastro.
+      if (cliente.cadastroRapido) updates.cadastroRapido = false
       if (cnpj) {
         if (!cnpjValido(cnpj)) throw new Error('CNPJ inválido')
         const cnpjLimpo = limparCnpj(cnpj)

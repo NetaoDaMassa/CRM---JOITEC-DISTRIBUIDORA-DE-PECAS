@@ -1,0 +1,1 @@
+ALTER TABLE `clientes` ADD `cadastro_rapido` integer DEFAULT false NOT NULL;
