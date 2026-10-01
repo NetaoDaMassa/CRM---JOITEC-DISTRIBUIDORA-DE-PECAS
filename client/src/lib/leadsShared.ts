@@ -57,6 +57,21 @@ export const LEAD_SEGMENT_LABELS: Record<string, string> = {
   outros: 'Outros',
 }
 
+// `lead.source` é texto livre (vem de vários lugares: formulário manual,
+// site, e-mail marketing com prefixo "brevo_", loja online com prefixo
+// "ecommerce_") — por isso não é um enum fechado. Só os valores conhecidos
+// ganham rótulo amigável aqui; qualquer outra coisa (ex: texto digitado à
+// mão num cadastro manual) continua aparecendo como foi digitado.
+const LEAD_SOURCE_LABELS: Record<string, string> = {
+  ecommerce_cadastro: 'Cadastro na loja online',
+  ecommerce_carrinho_abandonado: 'Carrinho abandonado (loja online)',
+  ecommerce_venda: 'Venda na loja online',
+}
+export function labelOrigemLead(source: string | null | undefined): string {
+  if (!source) return '—'
+  return LEAD_SOURCE_LABELS[source] ?? source
+}
+
 export const LEAD_CHANNEL_VALUES = ['ligacao', 'whatsapp', 'email'] as const
 export const LEAD_CHANNEL_LABELS: Record<string, string> = { ligacao: 'Ligação', whatsapp: 'WhatsApp', email: 'E-mail' }
 

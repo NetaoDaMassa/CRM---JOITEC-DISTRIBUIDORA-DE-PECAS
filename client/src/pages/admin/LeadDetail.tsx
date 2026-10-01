@@ -38,6 +38,7 @@ import {
   getLeadContactUrgency,
   leadTelefoneCompleto,
   leadTelefoneFormatado,
+  labelOrigemLead,
 } from '../../lib/leadsShared'
 
 const HISTORY_ACTION_LABELS: Record<string, string> = {
@@ -428,7 +429,7 @@ export default function LeadDetail() {
           <InfoRow icon={MapPin} label="Vendedor">{lead.vendor?.name ?? 'Sem vendedor'}</InfoRow>
           <InfoRow icon={MapPin} label="Região">{lead.region?.name ?? '—'}</InfoRow>
           <InfoRow icon={Building2} label="Segmento">{lead.segment ? LEAD_SEGMENT_LABELS[lead.segment] : '—'}</InfoRow>
-          <InfoRow icon={Building2} label="Origem">{lead.source ?? '—'}</InfoRow>
+          <InfoRow icon={Building2} label="Origem">{labelOrigemLead(lead.source)}</InfoRow>
           {lead.campaign && <InfoRow icon={Building2} label="Campanha">{lead.campaign.name}</InfoRow>}
           {tempoAtendimento && (
             <InfoRow icon={Clock} label="Atendimento">
