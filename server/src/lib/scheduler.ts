@@ -179,5 +179,13 @@ export function startScheduler() {
   cron.schedule('*/5 * * * *', () => {
     sincronizarCarrinhosAbandonadosCompretec().catch((err) => console.error('[woocommerce-carrinho] erro ao sincronizar:', err))
   })
-  sincronizarCarrinhosAbandonadosCompretec().catch((err) => console.error('[woocommerce-carrinho] erro ao sincronizar inicial:', err))
+  // Atraso de 20s na chamada inicial (só essa, não a recorrente acima) —
+  // achado do João, 2026-10-01: na subida, várias integrações (WhatsApp,
+  // GoTo, Notion, PABXONE360) disputam CPU/IO ao mesmo tempo e a busca
+  // nessa janela específica dava timeout mesmo com 30s de espera (ver
+  // woocommerceCarrinhoAbandonadoPoller.ts). As tentativas recorrentes de
+  // 5 em 5 minutos não têm esse problema, só a que roda bem na largada.
+  setTimeout(() => {
+    sincronizarCarrinhosAbandonadosCompretec().catch((err) => console.error('[woocommerce-carrinho] erro ao sincronizar inicial:', err))
+  }, 20_000)
 }
