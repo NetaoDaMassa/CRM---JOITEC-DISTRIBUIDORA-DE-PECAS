@@ -291,6 +291,17 @@ export const clientesRouter = router({
         if (existente && !existente.deletedAt) throw new Error('Já existe um cliente com este CPF')
       }
 
+      // Código SAP digitado na mão (ex: cadastro-relâmpago de Negociações/
+      // Liberação de Crédito, que já sabe o código de cara) — mesma checagem
+      // de colisão do CNPJ/CPF, senão o erro que sobe é o UNIQUE cru do
+      // SQLite em vez de uma mensagem que faça sentido pra quem tá cadastrando.
+      if (input.codigo) {
+        const existente = await db.query.clientes.findFirst({
+          where: and(eq(clientes.codigo, input.codigo), eq(clientes.empresaId, ctx.empresaId)),
+        })
+        if (existente && !existente.deletedAt) throw new Error('Já existe um cliente com este Código SAP')
+      }
+
       // Cadastro manual não vem com o "Código" do sistema legado (só a
       // importação em massa traz) — gera um código próprio, prefixado "M"
       // pra nunca colidir com os códigos "C0xxxxx" importados.

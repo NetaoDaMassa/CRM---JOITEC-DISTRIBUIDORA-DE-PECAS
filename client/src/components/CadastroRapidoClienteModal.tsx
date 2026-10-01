@@ -45,6 +45,7 @@ export default function CadastroRapidoClienteModal({
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: open })
 
   const [razaoSocial, setRazaoSocial] = useState('')
+  const [codigoSap, setCodigoSap] = useState('')
   const [cnpj, setCnpj] = useState('')
   const [telefoneWhatsapp, setTelefoneWhatsapp] = useState('')
   const [regiao, setRegiao] = useState('')
@@ -52,6 +53,7 @@ export default function CadastroRapidoClienteModal({
 
   function limpar() {
     setRazaoSocial('')
+    setCodigoSap('')
     setCnpj('')
     setTelefoneWhatsapp('')
     setRegiao('')
@@ -84,6 +86,7 @@ export default function CadastroRapidoClienteModal({
     if (!vendedorId) return toast.error('Escolha o vendedor que vai ficar com esse cliente.')
     criarMut.mutate({
       razaoSocial: razaoSocial.trim(),
+      codigo: codigoSap.trim() || undefined,
       cnpj: cnpj.trim() || undefined,
       telefoneWhatsapp: telefoneWhatsapp.trim() || undefined,
       regiao: (regiao || undefined) as any,
@@ -108,6 +111,12 @@ export default function CadastroRapidoClienteModal({
           carteira e no Kanban do vendedor escolhido abaixo.
         </p>
         <Input label="Razão social / nome *" value={razaoSocial} onChange={(e) => setRazaoSocial(e.target.value)} autoFocus />
+        <Input
+          label="Código SAP (opcional)"
+          value={codigoSap}
+          onChange={(e) => setCodigoSap(e.target.value)}
+          placeholder="Se já souber o código..."
+        />
         <Input label="CNPJ (opcional)" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="Só números" />
         <Input
           label="Telefone/WhatsApp (opcional)"
