@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Folder, FolderPlus, FolderUp, Upload, Download, Trash2, ChevronRight, Home,
-  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock,
+  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock, MessageCircle,
 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,6 +11,7 @@ import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
 import { formatDateTime } from '../lib/utils'
+import { buildNotificarAnexoWaLink } from '../lib/marketingWhatsapp'
 
 // Renderiza cada página do PDF num <canvas> → vira <img> (PNG). Não usa o
 // visualizador nativo de PDF do navegador (iframe) de propósito: no celular
@@ -258,6 +259,24 @@ export default function MarketingArquivos() {
   const { data: pastas, isLoading: carregandoPastas, error: erroPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
   const { data: arquivos, isLoading: carregandoArquivos } = trpc.marketing.listarArquivos.useQuery(argPasta)
   const { data: trilha } = trpc.marketing.caminhoPasta.useQuery({ pastaId: pastaAtualId! }, { enabled: pastaAtualId != null })
+  const { data: whatsappGerente } = trpc.configuracoes.whatsappGerente.useQuery()
+  const nomePastaAtual = pastaAtualId == null ? 'Raiz' : (trilha?.[trilha.length - 1]?.nome ?? '')
+
+  function notificarAnexo(arquivo: { nomeOriginal: string; enviadoPorUser: { name: string } | null }) {
+    if (!whatsappGerente) {
+      toast.error('WhatsApp do gerente não cadastrado (Configurações > Notificações)')
+      return
+    }
+    const pastaUrl = `${window.location.origin}/${isAdmin ? 'admin' : 'vendedor'}/arquivos${pastaAtualId != null ? `?pasta=${pastaAtualId}` : ''}`
+    const link = buildNotificarAnexoWaLink({
+      whatsappGerente,
+      nomeArquivo: arquivo.nomeOriginal,
+      pastaNome: nomePastaAtual,
+      pastaUrl,
+      enviadoPor: arquivo.enviadoPorUser?.name ?? user?.name ?? 'Alguém',
+    })
+    window.open(link, '_blank')
+  }
 
   // Link direto (ou volta atrás no navegador) pra uma pasta que não existe
   // mais/foi apagada/perdeu o acesso — sem isso a página ficava travada
@@ -538,6 +557,13 @@ export default function MarketingArquivos() {
                   </button>
                 )}
                 <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => notificarAnexo(arquivo)}
+                    className="text-dark-400 hover:text-green-400"
+                    title="Notificar anexo no WhatsApp"
+                  >
+                    <MessageCircle size={13} />
+                  </button>
                   {isAdmin && (
                     <button
                       onClick={() => setRenomeando({ tipo: 'arquivo', id: arquivo.id, nome: arquivo.nomeOriginal })}
