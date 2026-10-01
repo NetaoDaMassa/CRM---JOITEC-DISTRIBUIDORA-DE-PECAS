@@ -15,10 +15,16 @@ const EMPRESA_ODIN_COMPRESSORES = 4
 //                                                    contador de contato zera; "entrou na etapa" = agora)
 //   fechado / perdido                             → "novo" (sem selo)
 //   faturamento / consumidor_final(_loja)         → NÃO cria card (fica parado onde está)
-//   outras_linhas_ppr_verde (só Odin Tubos)       → NÃO cria card (fica parado onde está)
+//   outras_linhas_ppr_verde (só Odin Tubos)       → CONTINUA em "outras_linhas_ppr_verde"
+//                                                   (mesmo card do mês anterior, "fica parado" de
+//                                                   verdade — antes esse card simplesmente sumia do
+//                                                   Kanban assim que o mês virava, já que a consulta do
+//                                                   funil só olha o mês atual; bug achado pelo João,
+//                                                   2026-10-01: 3 clientes dela sumiam do Kanban mas
+//                                                   continuavam "com ela" na Carteira)
 //   sem card no mês passado (cliente novo)        → "novo" (sem selo)
 const ETAPAS_VOLTA_NOVO_CARREGADO = ['novo', 'abordagem', 'interessado', 'sem_contato']
-const ETAPAS_TERMINAIS_SEM_CARD = ['faturamento', 'consumidor_final', 'consumidor_final_loja', 'outras_linhas_ppr_verde']
+const ETAPAS_TERMINAIS_SEM_CARD = ['faturamento', 'consumidor_final', 'consumidor_final_loja']
 
 // ── Regra ANTIGA (Odin Compressores) ───────────────────────────────────────
 // "aberto" = card volta pra "novo" com selo; o resto vira "novo" sem selo.
@@ -84,6 +90,9 @@ export async function executarResetMensal(): Promise<{ criados: number }> {
             valorOrcado: f.valorOrcado,
             pdfPropostaPath: f.pdfPropostaPath,
           })
+          criouAlgum = true
+        } else if (f.etapa === 'outras_linhas_ppr_verde') {
+          await db.insert(funilMensal).values({ ...base, etapa: 'outras_linhas_ppr_verde' })
           criouAlgum = true
         } else if (ETAPAS_VOLTA_NOVO_CARREGADO.includes(f.etapa)) {
           await db.insert(funilMensal).values({ ...base, etapa: 'novo', carregadoMesAnterior: true })
