@@ -36,8 +36,17 @@ export async function sincronizarCarrinhosAbandonadosCompretec(): Promise<{ proc
   }
 
   const ultimoId = await getConfigNumero(CONFIG_ULTIMO_ID, 0)
+  // Margem de 50 — achado do João, 2026-10-01: um carrinho pode nascer com
+  // id baixo mas só o plugin Recarto marcar ele como "abandonado" (de
+  // verdade, pronto pra aparecer nesse endpoint) um tempo depois — se nesse
+  // meio tempo outros carrinhos com id maior já tiverem sido sincronizados
+  // e empurrado o "desde_id" pra frente, esse carrinho atrasado nunca mais
+  // seria buscado de novo. Reconsultando sempre com uma margem pra trás,
+  // ele acaba entrando numa rodada seguinte — idempotente (telefone repetido
+  // só retorna o lead já criado, não duplica, ver criarLeadWoocommerce).
+  const desdeId = Math.max(0, ultimoId - 50)
 
-  const url = `${siteUrl.replace(/\/$/, '')}/wp-json/joitec-crm/v1/carrinhos-abandonados?desde_id=${ultimoId}`
+  const url = `${siteUrl.replace(/\/$/, '')}/wp-json/joitec-crm/v1/carrinhos-abandonados?desde_id=${desdeId}`
   let res: Response
   try {
     res = await fetch(url, {
@@ -55,9 +64,18 @@ export async function sincronizarCarrinhosAbandonadosCompretec(): Promise<{ proc
 
   const linhas = (await res.json()) as CarrinhoRecartoRow[]
   if (!Array.isArray(linhas) || linhas.length === 0) {
-    console.log(`[woocommerce-carrinho] sincronizado: nenhum carrinho novo (desde_id=${ultimoId})`)
+    console.log(`[woocommerce-carrinho] sincronizado: nenhum carrinho (desde_id=${desdeId}, watermark=${ultimoId})`)
     return { processados: 0 }
   }
+
+  // Lista cada carrinho recebido (id + telefone/nome) — pra conseguir
+  // confirmar pelo log se um carrinho específico veio ou não, sem precisar
+  // abrir o banco ou ficar testando o endpoint na mão.
+  console.log(
+    `[woocommerce-carrinho] recebidos ${linhas.length}: ${linhas
+      .map((l) => `#${l.id} ${l.billing_phone ?? '(sem tel)'} ${[l.billing_first_name, l.billing_last_name].filter(Boolean).join(' ')}`)
+      .join(' | ')}`
+  )
 
   let maiorId = ultimoId
   for (const linha of linhas) {
@@ -67,6 +85,6 @@ export async function sincronizarCarrinhosAbandonadosCompretec(): Promise<{ proc
 
   if (maiorId > ultimoId) await setConfig(CONFIG_ULTIMO_ID, maiorId)
 
-  console.log(`[woocommerce-carrinho] sincronizado: ${linhas.length} carrinho(s) processado(s), último id ${maiorId}`)
+  console.log(`[woocommerce-carrinho] sincronizado: ${linhas.length} carrinho(s) processado(s), watermark agora ${maiorId}`)
   return { processados: linhas.length }
 }
