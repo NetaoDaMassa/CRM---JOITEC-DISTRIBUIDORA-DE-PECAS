@@ -1,7 +1,7 @@
-import { useState } from 'react'
 import { Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import LeadKanbanBoard from '../../components/LeadKanbanBoard'
@@ -22,8 +22,8 @@ export default function LeadsKanban() {
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
 
-  const [vendorId, setVendorId] = useState('')
-  const [search, setSearch] = useState('')
+  const [vendorId, setVendorId] = usePersistedState('leadsKanban:vendorId', '')
+  const [search, setSearch] = usePersistedState('leadsKanban:search', '')
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: verTudo })
 
   const { data, isLoading } = trpc.leads.list.useQuery({

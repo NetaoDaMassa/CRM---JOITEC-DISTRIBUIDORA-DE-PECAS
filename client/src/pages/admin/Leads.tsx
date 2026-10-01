@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle, Building2, Copy } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
@@ -52,13 +53,13 @@ export default function Leads() {
   const { data: empresas } = trpc.empresas.list.useQuery(undefined, { enabled: !!user })
   const empresaSlug = empresas?.find((e) => e.id === empresaAtivaId)?.slug
 
-  const [status, setStatus] = useState('')
-  const [vendorId, setVendorId] = useState('')
-  const [search, setSearch] = useState('')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [soDoSite, setSoDoSite] = useState(false)
-  const [soDeEmailMarketing, setSoDeEmailMarketing] = useState(false)
+  const [status, setStatus] = usePersistedState('leadsList:status', '')
+  const [vendorId, setVendorId] = usePersistedState('leadsList:vendorId', '')
+  const [search, setSearch] = usePersistedState('leadsList:search', '')
+  const [dateFrom, setDateFrom] = usePersistedState('leadsList:dateFrom', '')
+  const [dateTo, setDateTo] = usePersistedState('leadsList:dateTo', '')
+  const [soDoSite, setSoDoSite] = usePersistedState('leadsList:soDoSite', false)
+  const [soDeEmailMarketing, setSoDeEmailMarketing] = usePersistedState('leadsList:soDeEmailMarketing', false)
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [transferLead, setTransferLead] = useState<{ id: number; name: string } | null>(null)
