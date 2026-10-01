@@ -51,7 +51,11 @@ export async function sincronizarCarrinhosAbandonadosCompretec(): Promise<{ proc
   try {
     res = await fetch(url, {
       headers: { 'x-joitec-secret': secret },
-      signal: AbortSignal.timeout(15000),
+      // 15s dava timeout direto na subida do container, quando várias
+      // outras integrações (WhatsApp, GoTo, Notion, PABXONE360) disputam
+      // CPU/IO ao mesmo tempo — achado do João, 2026-10-01, revisando os
+      // logs. 30s dá folga suficiente pra isso sem travar o processo.
+      signal: AbortSignal.timeout(30000),
     })
   } catch (err) {
     console.error(`[woocommerce-carrinho] falha de rede ao buscar ${url}:`, err)
