@@ -336,6 +336,25 @@ app.post('/upload/liberacao-credito-anexo', uploadLiberacaoCredito.single('file'
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// Anexos da Consulta/Solicitação de Crédito — qualquer tipo de arquivo
+// (print, PDF, áudio, vídeo), tanto do vendedor (pedido) quanto do
+// financeiro (resposta, ex: print do Serasa). Mesmo padrão de demanda-anexo
+// (sem fileFilter), limite maior de tamanho por causa de áudio/vídeo.
+const storageSolicitacaoCredito = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `solicitacao-credito-${randomUUID()}${ext}`)
+  },
+})
+const uploadSolicitacaoCredito = multer({ storage: storageSolicitacaoCredito, limits: { fileSize: 50 * 1024 * 1024 } })
+app.post('/upload/solicitacao-credito-anexo', uploadSolicitacaoCredito.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
 // Anexos de Demandas (board estilo Trello) — mesmo padrão de ordem-anexo/
 // proposta-anexo, aceita qualquer tipo de arquivo (planilha, doc, pdf,
 // imagem etc.), diferente dos outros dois que são só imagem/PDF.

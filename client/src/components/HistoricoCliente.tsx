@@ -1,5 +1,10 @@
+import type { inferRouterOutputs } from '@trpc/server'
+import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
+
+type RouterOutputs = inferRouterOutputs<AppRouter>
+type HistoricoData = RouterOutputs['clientes']['historico']
 
 const ETAPA_LABEL: Record<string, string> = {
   novo: 'Novo',
@@ -39,14 +44,12 @@ function formatarMes(mesReferencia: string): string {
   return new Date(Number(ano), Number(mes) - 1, 1).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 }
 
-// Histórico completo do cliente atravessando todos os meses (funil só
-// mostra o mês corrente) — usado tanto na tela cheia de detalhes do
-// cliente quanto direto no card do Kanban, pra "TUDO" ficar visível pro
-// vendedor sem precisar sair do card: etapa/venda de cada mês, todos os
-// itens já comprados e o histórico de contatos inteiro, não só do mês.
-export default function HistoricoCliente({ clienteId }: { clienteId: number }) {
-  const { data, isLoading } = trpc.clientes.historico.useQuery({ id: clienteId })
-
+// Parte visual, separada da busca — reaproveitada em Solicitação de Crédito
+// (admin/SolicitacaoCredito.tsx), que busca os mesmos dados via
+// `solicitacaoCredito.historicoCliente` (cross-empresa, não dá pra usar
+// `clientes.historico` direto porque esse é travado na empresa ativa da
+// sessão). Pedido do João, 2026-10-01.
+export function HistoricoClienteView({ data, isLoading }: { data: HistoricoData | undefined; isLoading: boolean }) {
   if (isLoading) return <p className="text-xs text-dark-500">Carregando histórico...</p>
   if (!data) return null
 
@@ -154,4 +157,14 @@ export default function HistoricoCliente({ clienteId }: { clienteId: number }) {
       </div>
     </div>
   )
+}
+
+// Histórico completo do cliente atravessando todos os meses (funil só
+// mostra o mês corrente) — usado tanto na tela cheia de detalhes do
+// cliente quanto direto no card do Kanban, pra "TUDO" ficar visível pro
+// vendedor sem precisar sair do card: etapa/venda de cada mês, todos os
+// itens já comprados e o histórico de contatos inteiro, não só do mês.
+export default function HistoricoCliente({ clienteId }: { clienteId: number }) {
+  const { data, isLoading } = trpc.clientes.historico.useQuery({ id: clienteId })
+  return <HistoricoClienteView data={data} isLoading={isLoading} />
 }

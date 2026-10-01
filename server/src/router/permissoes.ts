@@ -145,6 +145,12 @@ export const FEATURES_ADMIN = [
   // João, 2026-09-24: registro de liberações feitas pelo Financeiro (hoje a
   // Rubia), vale pras 4 empresas numa tela só.
   'liberacao_credito',
+  // Consulta/Solicitação de Crédito — fluxo pedido (vendedor) → resposta
+  // (financeiro), cross-empresa igual liberacao_credito. Mesma chave existe
+  // em FEATURES_VENDEDOR abaixo: aqui controla quem RESPONDE (financeiro),
+  // lá controla quem PODE PEDIR (vendedor) — nunca colide, Sidebar já separa
+  // por role antes de checar a feature. Pedido do João, 2026-10-01.
+  'solicitacao_credito',
 ] as const
 
 // "Arquivos/Mídia" (Marketing) NÃO tem chave aqui de propósito — é liberado
@@ -204,6 +210,9 @@ export const FEATURES_VENDEDOR = [
   // Cartão de Crédito (gastos com comprovante) — pensado pro vendedor
   // externo da Odin Compressores. 2026-09-15.
   'cartao_credito',
+  // Consulta/Solicitação de Crédito — mesma chave de FEATURES_ADMIN acima
+  // (lá controla quem responde, aqui quem pode abrir um pedido).
+  'solicitacao_credito',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima

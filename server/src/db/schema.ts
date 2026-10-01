@@ -3153,6 +3153,70 @@ export const liberacoesCreditoRelations = relations(liberacoesCredito, ({ one })
   criador: one(users, { fields: [liberacoesCredito.criadoPor], references: [users.id] }),
 }))
 
+// ── Consulta/Solicitação de Crédito ─────────────────────────────────────────
+// Diferente de `liberacoesCredito` acima (que é só um registro direto, o
+// financeiro lança já decidido) — aqui é o fluxo completo pedido→resposta:
+// o vendedor abre a solicitação com tudo que tem sobre o cliente (inclusive
+// anexos — print, áudio, vídeo), e quem cuida do financeiro (feature
+// 'solicitacao_credito' em Permissões) responde com a decisão. Pedido do
+// João, 2026-10-01. As duas telas convivem — essa não substitui a outra.
+export const solicitacoesCredito = sqliteTable(
+  'solicitacoes_credito',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    vendedorSolicitanteId: integer('vendedor_solicitante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    status: text('status', { enum: ['pendente', 'liberado', 'negado'] }).notNull().default('pendente'),
+    // Preenchido pelo vendedor na hora de abrir.
+    valorSolicitado: real('valor_solicitado'),
+    informacoesFiscais: text('informacoes_fiscais'),
+    observacoes: text('observacoes'),
+    // Preenchido pelo financeiro na hora de responder.
+    decididoPor: integer('decidido_por').references(() => users.id, { onDelete: 'set null' }),
+    decididoEm: text('decidido_em'),
+    valorLiberado: real('valor_liberado'),
+    // Texto livre, mesmo padrão de liberacoesCredito.quemLiberou — nem
+    // sempre é a mesma pessoa que está logada respondendo (ex: aprovado
+    // pela diretoria, registrado pelo financeiro).
+    quemLiberou: text('quem_liberou'),
+    motivoResposta: text('motivo_resposta'),
+    serasaObservacao: text('serasa_observacao'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('solicitacoes_credito_cliente_idx').on(t.clienteId),
+    statusIdx: index('solicitacoes_credito_status_idx').on(t.status),
+  })
+)
+
+export const solicitacoesCreditoRelations = relations(solicitacoesCredito, ({ one, many }) => ({
+  cliente: one(clientes, { fields: [solicitacoesCredito.clienteId], references: [clientes.id] }),
+  empresa: one(empresas, { fields: [solicitacoesCredito.empresaId], references: [empresas.id] }),
+  vendedorSolicitante: one(users, { fields: [solicitacoesCredito.vendedorSolicitanteId], references: [users.id] }),
+  decisor: one(users, { fields: [solicitacoesCredito.decididoPor], references: [users.id] }),
+  anexos: many(solicitacaoCreditoAnexos),
+}))
+
+// Anexos da solicitação — vários por pedido, de qualquer tipo (print, PDF,
+// áudio, vídeo), tanto do lado do vendedor (comprovantes do cliente) quanto
+// do financeiro (ex: consulta do Serasa). `origem` diferencia quem anexou,
+// pra render separar "anexos do pedido" de "anexos da resposta" na tela.
+export const solicitacaoCreditoAnexos = sqliteTable('solicitacao_credito_anexos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  solicitacaoId: integer('solicitacao_id').notNull().references(() => solicitacoesCredito.id, { onDelete: 'cascade' }),
+  origem: text('origem', { enum: ['vendedor', 'financeiro'] }).notNull(),
+  urlArquivo: text('url_arquivo').notNull(),
+  nomeArquivo: text('nome_arquivo').notNull(),
+  tipoArquivo: text('tipo_arquivo'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const solicitacaoCreditoAnexosRelations = relations(solicitacaoCreditoAnexos, ({ one }) => ({
+  solicitacao: one(solicitacoesCredito, { fields: [solicitacaoCreditoAnexos.solicitacaoId], references: [solicitacoesCredito.id] }),
+}))
+
 // ── Instagram (captação de leads via Direct) ────────────────────────────────
 // Pedido do João, 2026-09-21. UM Meta App só, compartilhado por todas as
 // empresas (webhook único — ver server/src/routes/instagram.ts); cada

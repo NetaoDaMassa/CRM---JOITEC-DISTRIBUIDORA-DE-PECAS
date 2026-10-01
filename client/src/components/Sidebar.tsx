@@ -137,6 +137,10 @@ export const ADMIN_LINKS = [
   // foi liberado pra comprar mesmo com pendência/limite estourado. Pedido
   // do João, 2026-09-24.
   { to: '/admin/liberacao-credito', label: 'Liberação de Crédito', icon: Unlock, feature: 'liberacao_credito' },
+  // Fluxo completo pedido→resposta (diferente da Liberação de Crédito acima,
+  // que é só um registro direto) — vendedor abre a solicitação, financeiro
+  // responde. Cross-empresa também. Pedido do João, 2026-10-01.
+  { to: '/admin/solicitacao-credito', label: 'Consulta/Solicitação de Crédito', icon: ShieldCheck, feature: 'solicitacao_credito' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -179,6 +183,10 @@ export const VENDOR_LINKS = [
   // `canalVenda` de propósito, pra não duplicar a mesma regra em 2 lugares.
   // Pedido do João, 2026-09-15.
   { to: '/vendedor/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
+  // Pedir liberação de crédito pro Financeiro — todas as empresas, não só
+  // Odin Compressores (diferente do Cartão de Crédito acima). Mesma chave
+  // de ADMIN_LINKS (ver comentário lá). Pedido do João, 2026-10-01.
+  { to: '/vendedor/solicitacao-credito', label: 'Consulta/Solicitação de Crédito', icon: ShieldCheck, feature: 'solicitacao_credito' },
   { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },

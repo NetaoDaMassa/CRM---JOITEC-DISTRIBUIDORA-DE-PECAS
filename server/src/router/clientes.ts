@@ -16,6 +16,105 @@ const PAGE_SIZE = 20
 // origemBanco preenchido (ex: cadastro manual sem vendedor escolhido).
 const SEM_ORIGEM = 'Sem origem definida'
 
+// Extraído de `historico` (abaixo) pra ser reaproveitado por
+// solicitacaoCredito.ts — a Consulta/Solicitação de Crédito é cross-empresa
+// (financeiro revisa cliente de qualquer uma das 7 empresas), então não pode
+// passar pela checagem de `ctx.empresaId`/dono-da-carteira que `historico`
+// faz antes de chamar isso aqui. A checagem de quem pode ver fica em cada
+// chamador (aqui: dono/admin da própria empresa; lá: feature
+// 'solicitacao_credito'), essa função só monta os dados.
+export async function buildHistoricoCliente(clienteId: number) {
+  const funis = await db.query.funilMensal.findMany({
+    where: and(eq(funilMensal.clienteId, clienteId), isNull(funilMensal.deletedAt)),
+    orderBy: (f, { desc }) => [desc(f.mesReferencia)],
+    with: {
+      vendedor: { columns: { id: true, name: true } },
+      vendas: { where: isNull(vendas.deletedAt), orderBy: (v, { desc }) => [desc(v.dataFechamento)] },
+    },
+  })
+  const funilIds = funis.map((f) => f.id)
+
+  const contatos = funilIds.length
+    ? await db.query.registroContato.findMany({
+        where: and(or(...funilIds.map((id) => eq(registroContato.funilMensalId, id))), isNull(registroContato.deletedAt)),
+        orderBy: (c, { desc }) => [desc(c.dataHora)],
+      })
+    : []
+
+  const itens = await db.query.itensPedido.findMany({
+    where: and(eq(itensPedido.clienteId, clienteId), isNull(itensPedido.deletedAt)),
+    orderBy: (i, { desc }) => [desc(i.createdAt)],
+  })
+
+  return {
+    funis: funis.map((f) => ({
+      id: f.id,
+      mesReferencia: f.mesReferencia,
+      etapa: f.etapa,
+      vendedorNome: f.vendedor.name,
+      valorOrcado: f.valorOrcado,
+      vendas: f.vendas.map((v) => ({
+        id: v.id,
+        valorFechado: v.valorFechado,
+        condicaoPagamento: v.condicaoPagamento,
+        pdfPedidoPath: v.pdfPedidoPath,
+        dataFechamento: v.dataFechamento,
+      })),
+      dataEntradaEtapa: f.dataEntradaEtapa,
+      motivoPerdaCategoria: f.motivoPerdaCategoria,
+      motivoPerdaObservacao: f.motivoPerdaObservacao,
+      empresaRepasse: f.empresaRepasse,
+      motivoRepasseObservacao: f.motivoRepasseObservacao,
+    })),
+    contatos: contatos.map((c) => ({
+      id: c.id,
+      tipo: c.tipo,
+      resultado: c.resultado,
+      observacao: c.observacao,
+      dataHora: c.dataHora,
+    })),
+    itens: itens.map((i) => ({
+      id: i.id,
+      descricao: i.descricao,
+      quantidade: i.quantidade,
+      valorUnitario: i.valorUnitario,
+      valorTotal: i.valorTotal,
+      createdAt: i.createdAt,
+    })),
+    // "Qual item ele mais compra" — agrupa por descrição normalizada
+    // (maiúsculas + espaços colapsados, pra "Filtro de óleo" e "FILTRO DE
+    // ÓLEO " contarem como o mesmo item) e ordena por nº de pedidos em que
+    // apareceu, não só quantidade total (1 pedido de 50un não deveria
+    // parecer "mais comprado" que o item que ele compra toda vez que fecha
+    // um pedido). Pedido do João, 2026-09-01.
+    itensMaisComprados: (() => {
+      const grupos = new Map<
+        string,
+        { descricao: string; qtdPedidos: number; quantidadeTotal: number; valorTotal: number; ultimaCompra: string }
+      >()
+      for (const i of itens) {
+        const chave = i.descricao.trim().toUpperCase().replace(/\s+/g, ' ')
+        const atual = grupos.get(chave)
+        if (atual) {
+          atual.qtdPedidos += 1
+          atual.quantidadeTotal += i.quantidade ?? 0
+          atual.valorTotal += i.valorTotal ?? 0
+          if (i.createdAt > atual.ultimaCompra) atual.ultimaCompra = i.createdAt
+        } else {
+          grupos.set(chave, {
+            descricao: i.descricao.trim(),
+            qtdPedidos: 1,
+            quantidadeTotal: i.quantidade ?? 0,
+            valorTotal: i.valorTotal ?? 0,
+            ultimaCompra: i.createdAt,
+          })
+        }
+      }
+      return Array.from(grupos.values()).sort((a, b) => b.qtdPedidos - a.qtdPedidos || b.quantidadeTotal - a.quantidadeTotal)
+    })(),
+  }
+}
+
 export const clientesRouter = router({
   cnpjLookup: protectedProcedure.input(z.object({ cnpj: z.string() })).query(async ({ input }) => {
     if (!cnpjValido(input.cnpj)) throw new Error('CNPJ inválido')
@@ -143,96 +242,7 @@ export const clientesRouter = router({
     if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) {
       throw new Error('Acesso negado')
     }
-
-    const funis = await db.query.funilMensal.findMany({
-      where: and(eq(funilMensal.clienteId, cliente.id), isNull(funilMensal.deletedAt)),
-      orderBy: (f, { desc }) => [desc(f.mesReferencia)],
-      with: {
-        vendedor: { columns: { id: true, name: true } },
-        vendas: { where: isNull(vendas.deletedAt), orderBy: (v, { desc }) => [desc(v.dataFechamento)] },
-      },
-    })
-    const funilIds = funis.map((f) => f.id)
-
-    const contatos = funilIds.length
-      ? await db.query.registroContato.findMany({
-          where: and(or(...funilIds.map((id) => eq(registroContato.funilMensalId, id))), isNull(registroContato.deletedAt)),
-          orderBy: (c, { desc }) => [desc(c.dataHora)],
-        })
-      : []
-
-    const itens = await db.query.itensPedido.findMany({
-      where: and(eq(itensPedido.clienteId, cliente.id), isNull(itensPedido.deletedAt)),
-      orderBy: (i, { desc }) => [desc(i.createdAt)],
-    })
-
-    return {
-      funis: funis.map((f) => ({
-        id: f.id,
-        mesReferencia: f.mesReferencia,
-        etapa: f.etapa,
-        vendedorNome: f.vendedor.name,
-        valorOrcado: f.valorOrcado,
-        vendas: f.vendas.map((v) => ({
-          id: v.id,
-          valorFechado: v.valorFechado,
-          condicaoPagamento: v.condicaoPagamento,
-          pdfPedidoPath: v.pdfPedidoPath,
-          dataFechamento: v.dataFechamento,
-        })),
-        dataEntradaEtapa: f.dataEntradaEtapa,
-        motivoPerdaCategoria: f.motivoPerdaCategoria,
-        motivoPerdaObservacao: f.motivoPerdaObservacao,
-        empresaRepasse: f.empresaRepasse,
-        motivoRepasseObservacao: f.motivoRepasseObservacao,
-      })),
-      contatos: contatos.map((c) => ({
-        id: c.id,
-        tipo: c.tipo,
-        resultado: c.resultado,
-        observacao: c.observacao,
-        dataHora: c.dataHora,
-      })),
-      itens: itens.map((i) => ({
-        id: i.id,
-        descricao: i.descricao,
-        quantidade: i.quantidade,
-        valorUnitario: i.valorUnitario,
-        valorTotal: i.valorTotal,
-        createdAt: i.createdAt,
-      })),
-      // "Qual item ele mais compra" — agrupa por descrição normalizada
-      // (maiúsculas + espaços colapsados, pra "Filtro de óleo" e "FILTRO DE
-      // ÓLEO " contarem como o mesmo item) e ordena por nº de pedidos em que
-      // apareceu, não só quantidade total (1 pedido de 50un não deveria
-      // parecer "mais comprado" que o item que ele compra toda vez que fecha
-      // um pedido). Pedido do João, 2026-09-01.
-      itensMaisComprados: (() => {
-        const grupos = new Map<
-          string,
-          { descricao: string; qtdPedidos: number; quantidadeTotal: number; valorTotal: number; ultimaCompra: string }
-        >()
-        for (const i of itens) {
-          const chave = i.descricao.trim().toUpperCase().replace(/\s+/g, ' ')
-          const atual = grupos.get(chave)
-          if (atual) {
-            atual.qtdPedidos += 1
-            atual.quantidadeTotal += i.quantidade ?? 0
-            atual.valorTotal += i.valorTotal ?? 0
-            if (i.createdAt > atual.ultimaCompra) atual.ultimaCompra = i.createdAt
-          } else {
-            grupos.set(chave, {
-              descricao: i.descricao.trim(),
-              qtdPedidos: 1,
-              quantidadeTotal: i.quantidade ?? 0,
-              valorTotal: i.valorTotal ?? 0,
-              ultimaCompra: i.createdAt,
-            })
-          }
-        }
-        return Array.from(grupos.values()).sort((a, b) => b.qtdPedidos - a.qtdPedidos || b.quantidadeTotal - a.quantidadeTotal)
-      })(),
-    }
+    return buildHistoricoCliente(cliente.id)
   }),
 
   create: protectedProcedure
