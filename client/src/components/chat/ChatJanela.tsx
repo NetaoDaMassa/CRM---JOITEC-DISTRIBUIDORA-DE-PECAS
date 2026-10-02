@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Paperclip, Send, Mic, Square, Play, Pause, X } from 'lucide-react'
+import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { useChat } from '../../contexts/ChatContext'
 import { formatDateTime } from '../../lib/utils'
+import Avatar from './Avatar'
+import PessoaPicker from './PessoaPicker'
 
 type Mensagem = {
   id: number
   conversaId: number
   autorId: number
-  autor: { id: number; name: string }
+  autor: { id: number; name: string; fotoUrl?: string | null }
   tipo: 'texto' | 'arquivo' | 'imagem' | 'video' | 'audio'
   texto: string | null
   urlArquivo: string | null
@@ -61,7 +63,8 @@ function BolhaAudio({ url, duracao }: { url: string; duracao: number | null }) {
 
 function BolhaMensagem({ m, minha }: { m: Mensagem; minha: boolean }) {
   return (
-    <div className={`flex ${minha ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-end gap-2 ${minha ? 'justify-end' : 'justify-start'}`}>
+      {!minha && <Avatar nome={m.autor.name} fotoUrl={m.autor.fotoUrl} size="xs" />}
       <div className={`max-w-[75%] ${minha ? 'items-end' : 'items-start'} flex flex-col gap-0.5`}>
         {!minha && <span className="text-[10px] text-dark-500 px-1">{m.autor.name}</span>}
         <div className={`rounded-2xl px-3 py-2 text-sm ${minha ? 'bg-gold-600 text-dark-950' : 'bg-dark-700 text-dark-100'}`}>
@@ -94,20 +97,28 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
   const { user } = useAuth()
   const { socket } = useChat()
   const utils = trpc.useUtils()
-  const { data: historico } = trpc.chat.mensagens.listar.useQuery({ conversaId })
+  const { data: primeiraPagina } = trpc.chat.mensagens.listar.useQuery({ conversaId })
+  const { data: participantes } = trpc.chat.conversas.participantes.useQuery({ conversaId })
   const [mensagens, setMensagens] = useState<Mensagem[]>([])
+  const [temMais, setTemMais] = useState(false)
+  const [carregandoMais, setCarregandoMais] = useState(false)
+  const [adicionarAberto, setAdicionarAberto] = useState(false)
   const [texto, setTexto] = useState('')
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
   const [gravando, setGravando] = useState(false)
   const [segundosGravando, setSegundosGravando] = useState(0)
+  const listaRef = useRef<HTMLDivElement>(null)
   const fimRef = useRef<HTMLDivElement>(null)
+  const primeiraCargaFeita = useRef(false)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
-    if (historico) setMensagens(historico as Mensagem[])
-  }, [historico])
+    if (!primeiraPagina) return
+    setMensagens(primeiraPagina.mensagens as Mensagem[])
+    setTemMais(primeiraPagina.temMais)
+  }, [primeiraPagina])
 
   const marcarLidaMut = trpc.chat.mensagens.marcarLida.useMutation({
     onSuccess: () => utils.chat.conversas.listar.invalidate(),
@@ -132,13 +143,51 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
     }
   }, [socket, conversaId])
 
+  // Rola pro fim só na primeira carga e quando uma mensagem nova chega — ao
+  // CARREGAR MAIS (histórico antigo, no topo) a posição é restaurada pela
+  // função carregarMais() em vez disso, senão a tela "pularia" pro fim de
+  // novo toda vez que o usuário tentasse ler o passado.
   useEffect(() => {
+    if (!primeiraCargaFeita.current && mensagens.length) {
+      primeiraCargaFeita.current = true
+      fimRef.current?.scrollIntoView()
+      return
+    }
     fimRef.current?.scrollIntoView({ behavior: 'smooth' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mensagens.length])
+
+  async function carregarMais() {
+    if (!mensagens.length || carregandoMais) return
+    setCarregandoMais(true)
+    const container = listaRef.current
+    const alturaAntes = container?.scrollHeight ?? 0
+    try {
+      const pagina = await utils.chat.mensagens.listar.fetch({ conversaId, antesDe: mensagens[0].createdAt })
+      setMensagens((prev) => [...(pagina.mensagens as Mensagem[]), ...prev])
+      setTemMais(pagina.temMais)
+      requestAnimationFrame(() => {
+        if (container) container.scrollTop = container.scrollHeight - alturaAntes
+      })
+    } catch (err: any) {
+      toast.error(err.message ?? 'Erro ao carregar histórico')
+    } finally {
+      setCarregandoMais(false)
+    }
+  }
 
   const enviarMut = trpc.chat.mensagens.enviar.useMutation({
     onSuccess: (msg) => {
       setMensagens((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg as Mensagem]))
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  const adicionarMut = trpc.chat.conversas.adicionarParticipante.useMutation({
+    onSuccess: () => {
+      utils.chat.conversas.participantes.invalidate({ conversaId })
+      setAdicionarAberto(false)
+      toast.success('Pessoa adicionada à conversa')
     },
     onError: (e) => toast.error(e.message),
   })
@@ -219,8 +268,37 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <div className="flex-1 overflow-y-auto min-h-0 space-y-2 p-3">
+    <div className="flex flex-col h-full min-h-0 relative">
+      {!!participantes?.length && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-700 shrink-0">
+          <div className="flex items-center -space-x-2">
+            {participantes
+              .filter((p) => p.id !== user?.id)
+              .map((p) => (
+                <div key={p.id} title={p.name} className="ring-2 ring-dark-800 rounded-full">
+                  <Avatar nome={p.name} fotoUrl={p.fotoUrl} online={p.chatOnline} size="sm" />
+                </div>
+              ))}
+          </div>
+          <button type="button" onClick={() => setAdicionarAberto(true)} className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300 shrink-0">
+            <UserPlus size={13} /> Adicionar
+          </button>
+        </div>
+      )}
+
+      <div ref={listaRef} className="flex-1 overflow-y-auto min-h-0 space-y-2 p-3">
+        {temMais && (
+          <div className="flex justify-center pb-1">
+            <button
+              type="button"
+              onClick={carregarMais}
+              disabled={carregandoMais}
+              className="flex items-center gap-1 text-xs text-dark-400 hover:text-gold-400 disabled:opacity-50"
+            >
+              <ChevronUp size={12} /> {carregandoMais ? 'Carregando...' : 'Ver mensagens mais antigas'}
+            </button>
+          </div>
+        )}
         {mensagens.map((m) => (
           <BolhaMensagem key={m.id} m={m} minha={m.autorId === user?.id} />
         ))}
@@ -269,6 +347,21 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
           </>
         )}
       </div>
+
+      {adicionarAberto && (
+        <div className="absolute inset-0 z-10 bg-dark-800 flex flex-col">
+          <div className="flex items-center justify-between p-3 border-b border-dark-700 shrink-0">
+            <p className="text-sm font-semibold text-dark-100">Adicionar à conversa</p>
+            <button onClick={() => setAdicionarAberto(false)} className="text-dark-400 hover:text-dark-100">
+              <X size={16} />
+            </button>
+          </div>
+          <PessoaPicker
+            excluirIds={participantes?.map((p) => p.id)}
+            onEscolher={(userId) => adicionarMut.mutate({ conversaId, userId })}
+          />
+        </div>
+      )}
     </div>
   )
 }

@@ -9,6 +9,7 @@ interface AuthUser {
   empresaId: number
   superAdmin: boolean
   senhaTrocarNoLogin?: boolean
+  fotoUrl?: string | null
 }
 
 interface AuthContextValue {

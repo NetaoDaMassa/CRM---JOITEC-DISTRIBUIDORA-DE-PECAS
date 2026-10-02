@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, desc, eq, inArray, isNull, ne } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito } from '../db/schema.js'
@@ -80,27 +80,35 @@ export const chatRouter = router({
         const existente = await db.query.chatConversas.findFirst({
           where: and(eq(chatConversas.tipoOrigem, input.tipoOrigem), eq(chatConversas.idOrigem, input.idOrigem)),
         })
+        let conversaId: number
         if (existente) {
-          await garantirParticipante(existente.id, ctx.user.id)
-          return { id: existente.id }
+          conversaId = existente.id
+          await garantirParticipante(conversaId, ctx.user.id)
+        } else {
+          const origem = await resolverOrigem(input.tipoOrigem, input.idOrigem)
+          const result = await db.insert(chatConversas).values({
+            tipoOrigem: input.tipoOrigem,
+            idOrigem: input.idOrigem,
+            tituloSnapshot: origem?.titulo ?? null,
+            criadoPor: ctx.user.id,
+          })
+          conversaId = Number(result.lastInsertRowid)
+
+          await garantirParticipante(conversaId, ctx.user.id)
+          if (origem?.vendedorId && origem.vendedorId !== ctx.user.id) {
+            await garantirParticipante(conversaId, origem.vendedorId)
+            emitirParaUsuario(origem.vendedorId, 'chat:conversaAtualizada', { conversaId })
+          }
         }
 
-        const origem = await resolverOrigem(input.tipoOrigem, input.idOrigem)
-        const result = await db.insert(chatConversas).values({
-          tipoOrigem: input.tipoOrigem,
-          idOrigem: input.idOrigem,
-          tituloSnapshot: origem?.titulo ?? null,
-          criadoPor: ctx.user.id,
-        })
-        const conversaId = Number(result.lastInsertRowid)
-
-        await garantirParticipante(conversaId, ctx.user.id)
-        if (origem?.vendedorId && origem.vendedorId !== ctx.user.id) {
-          await garantirParticipante(conversaId, origem.vendedorId)
-          emitirParaUsuario(origem.vendedorId, 'chat:conversaAtualizada', { conversaId })
-        }
-
-        return { id: conversaId }
+        // O vendedor costuma já SER o responsável do lead/cliente — auto-
+        // adicionar "o dono do registro" não ajuda em nada nesse caso comum.
+        // Em vez de adivinhar quem mais deveria entrar, avisa o front que
+        // essa conversa ainda está "sozinha" (só quem abriu) pra oferecer
+        // escolher com quem falar (financeiro, gestor, admin, marketing,
+        // qualquer um) — pedido do João, 2026-10-02.
+        const totalParticipantes = await db.query.chatParticipantes.findMany({ where: eq(chatParticipantes.conversaId, conversaId) })
+        return { id: conversaId, precisaEscolherComQuemFalar: totalParticipantes.length <= 1 }
       }),
 
     // Conversa direta (sem vínculo com registro nenhum) entre duas pessoas
@@ -155,6 +163,25 @@ export const chatRouter = router({
         return { success: true }
       }),
 
+    // Quem participa de uma conversa — alimenta o cabeçalho da janela de
+    // chat (avatares) e o botão "+" de adicionar mais gente a qualquer
+    // momento (não só na criação).
+    participantes: protectedProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
+      const souParticipante = await db.query.chatParticipantes.findFirst({
+        where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
+      })
+      if (!souParticipante) throw new Error('Você não participa dessa conversa.')
+      const todos = await db.query.chatParticipantes.findMany({ where: eq(chatParticipantes.conversaId, input.conversaId) })
+      const pessoas = await db.query.users.findMany({
+        where: inArray(
+          users.id,
+          todos.map((p) => p.userId)
+        ),
+        columns: { id: true, name: true, fotoUrl: true, chatOnline: true },
+      })
+      return pessoas
+    }),
+
     // Lista as conversas do usuário logado, mais recente primeiro, com
     // prévia da última mensagem + contagem de não lidas.
     listar: protectedProcedure.query(async ({ ctx }) => {
@@ -176,7 +203,7 @@ export const chatRouter = router({
         : []
       const outrosIds = [...new Set(todosParticipantes.map((p) => p.userId).filter((id) => id !== ctx.user.id))]
       const outrosUsers = outrosIds.length
-        ? await db.query.users.findMany({ where: inArray(users.id, outrosIds), columns: { id: true, name: true, chatOnline: true } })
+        ? await db.query.users.findMany({ where: inArray(users.id, outrosIds), columns: { id: true, name: true, chatOnline: true, fotoUrl: true } })
         : []
       const userPorId = new Map(outrosUsers.map((u) => [u.id, u]))
       const participantesPorConversa = new Map<number, number[]>()
@@ -231,6 +258,10 @@ export const chatRouter = router({
   }),
 
   mensagens: router({
+    // `antesDe` pagina pra trás no histórico (mensagem mais antiga já
+    // carregada) — a tela pede mais 50 ao rolar pro topo da conversa, até
+    // acabar. Sem isso, "histórico completo" só valeria pras últimas 50
+    // mensagens. Pedido do João, 2026-10-02.
     listar: protectedProcedure
       .input(z.object({ conversaId: z.number(), antesDe: z.string().optional() }))
       .query(async ({ ctx, input }) => {
@@ -240,13 +271,14 @@ export const chatRouter = router({
         if (!souParticipante) throw new Error('Você não participa dessa conversa.')
 
         const filtros = [eq(chatMensagens.conversaId, input.conversaId), isNull(chatMensagens.deletedAt)]
+        if (input.antesDe) filtros.push(lt(chatMensagens.createdAt, input.antesDe))
         const msgs = await db.query.chatMensagens.findMany({
           where: and(...filtros),
           orderBy: (m, { desc }) => [desc(m.createdAt)],
           limit: 50,
-          with: { autor: { columns: { id: true, name: true } } },
+          with: { autor: { columns: { id: true, name: true, fotoUrl: true } } },
         })
-        return msgs.reverse()
+        return { mensagens: msgs.reverse(), temMais: msgs.length === 50 }
       }),
 
     enviar: protectedProcedure
@@ -289,11 +321,15 @@ export const chatRouter = router({
           .where(and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)))
 
         const participantes = await db.query.chatParticipantes.findMany({ where: eq(chatParticipantes.conversaId, input.conversaId) })
+        // Busca a foto fresca do banco — o JWT não carrega fotoUrl (pode ter
+        // mudado depois do login), e a bolha da própria mensagem enviada
+        // agora precisa mostrar a foto certa sem esperar um F5.
+        const autorAtual = await db.query.users.findFirst({ where: eq(users.id, ctx.user.id), columns: { fotoUrl: true } })
         const mensagem = {
           id: Number(result.lastInsertRowid),
           conversaId: input.conversaId,
           autorId: ctx.user.id,
-          autor: { id: ctx.user.id, name: ctx.user.name },
+          autor: { id: ctx.user.id, name: ctx.user.name, fotoUrl: autorAtual?.fotoUrl ?? null },
           tipo: input.tipo,
           texto: input.texto?.trim() ?? null,
           urlArquivo: input.urlArquivo ?? null,

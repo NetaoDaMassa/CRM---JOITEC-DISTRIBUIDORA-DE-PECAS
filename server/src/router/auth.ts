@@ -74,7 +74,13 @@ export const authRouter = router({
       }
     }),
 
-  me: protectedProcedure.query(({ ctx }) => ctx.user),
+  // `ctx.user` vem só do JWT (name/role/empresaId/superAdmin) — fotoUrl
+  // pode ter mudado depois do login (ex: trocou a própria foto no Chat
+  // Grupo Odin), então busca fresco do banco em vez de confiar no token.
+  me: protectedProcedure.query(async ({ ctx }) => {
+    const fresco = await db.query.users.findFirst({ where: eq(users.id, ctx.user.id), columns: { fotoUrl: true } })
+    return { ...ctx.user, fotoUrl: fresco?.fotoUrl ?? null }
+  }),
 
   // Contas vinculadas (mesma pessoa, empresa diferente — ver
   // contas_vinculadas no schema) que o usuário logado pode trocar sem

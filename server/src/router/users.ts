@@ -59,6 +59,15 @@ export const usersRouter = router({
 
   // "Vendors" aqui não é só quem tem role='vendor' — um admin de uma
   // empresa (ex: Pamela na Joitec Automação) também pode ter carteira
+  // Autoatendimento — qualquer pessoa logada troca a PRÓPRIA foto (antes só
+  // o admin conseguia, lá em Usuários). Pedido do João, 2026-10-02, puxado
+  // pelo Chat Grupo Odin, mas vale pro sistema inteiro (ex: aparece também
+  // no Painel de TV).
+  atualizarMinhaFoto: protectedProcedure.input(z.object({ fotoUrl: z.string() })).mutation(async ({ ctx, input }) => {
+    await db.update(users).set({ fotoUrl: input.fotoUrl }).where(eq(users.id, ctx.user.id))
+    return { success: true }
+  }),
+
   // própria e vender. Só o superAdmin (cross-empresa, puramente
   // administrativo) fica de fora dessa lista.
   vendors: protectedProcedure.query(async ({ ctx }) => {
