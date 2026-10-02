@@ -4,7 +4,7 @@ import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
-import { emitirNovaMensagem, emitirParaUsuario } from '../lib/chatSocket.js'
+import { emitirNovaMensagem, emitirParaUsuario, emitirParaConversa } from '../lib/chatSocket.js'
 
 const TIPO_ORIGEM_VALUES = ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito'] as const
 
@@ -179,7 +179,10 @@ export const chatRouter = router({
         ),
         columns: { id: true, name: true, fotoUrl: true, chatOnline: true },
       })
-      return pessoas
+      const leituraPorUser = new Map(todos.map((p) => [p.userId, p.ultimaLeituraEm]))
+      // `ultimaLeituraEm` de cada um — alimenta o "✓✓ Lido" nas MINHAS
+      // mensagens (comparado com a data de cada uma, ver ChatJanela.tsx).
+      return pessoas.map((p) => ({ ...p, ultimaLeituraEm: leituraPorUser.get(p.id) ?? null }))
     }),
 
     // Lista as conversas do usuário logado, mais recente primeiro, com
@@ -344,14 +347,42 @@ export const chatRouter = router({
           mensagem
         )
 
+        // Pop-up (toast) pra quem NÃO está com essa conversa aberta na hora
+        // — ChatContext decide se mostra (compara com qual conversa está
+        // aberta agora) ou ignora. Pedido do João, 2026-10-02.
+        const preview =
+          input.tipo === 'texto'
+            ? (input.texto?.trim() ?? '').slice(0, 80)
+            : input.tipo === 'imagem'
+              ? '📷 Foto'
+              : input.tipo === 'video'
+                ? '🎥 Vídeo'
+                : input.tipo === 'audio'
+                  ? '🎤 Áudio'
+                  : `📎 ${input.nomeArquivo ?? 'Arquivo'}`
+        for (const p of participantes) {
+          if (p.userId === ctx.user.id) continue
+          emitirParaUsuario(p.userId, 'chat:mensagemRecebida', {
+            conversaId: input.conversaId,
+            autorNome: ctx.user.name,
+            autorFotoUrl: autorAtual?.fotoUrl ?? null,
+            preview,
+          })
+        }
+
         return mensagem
       }),
 
     marcarLida: protectedProcedure.input(z.object({ conversaId: z.number() })).mutation(async ({ ctx, input }) => {
+      const agora = agoraSqlite()
       await db
         .update(chatParticipantes)
-        .set({ ultimaLeituraEm: agoraSqlite() })
+        .set({ ultimaLeituraEm: agora })
         .where(and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)))
+      // Avisa quem está com essa conversa aberta AGORA (ex: quem mandou a
+      // mensagem) pra atualizar o "✓✓ Lido" na hora, sem precisar sair e
+      // voltar da tela.
+      emitirParaConversa(input.conversaId, 'chat:lida', { conversaId: input.conversaId, userId: ctx.user.id, ultimaLeituraEm: agora })
       return { success: true }
     }),
   }),

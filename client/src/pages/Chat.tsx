@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { MessageCircleMore, Plus, X, Camera } from 'lucide-react'
 import { trpc } from '../lib/trpc'
@@ -90,9 +91,24 @@ function NovaConversaModal({ onClose, onCriada }: { onClose: () => void; onCriad
 }
 
 export default function Chat() {
-  const [selecionada, setSelecionada] = useState<number | null>(null)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const [selecionada, setSelecionada] = useState<number | null>(() => {
+    const doLink = searchParams.get('conversa')
+    return doLink ? Number(doLink) : null
+  })
   const [novaConversaAberta, setNovaConversaAberta] = useState(false)
   const { data: conversas, isLoading } = trpc.chat.conversas.listar.useQuery()
+
+  // Veio de um link (ex: clicou no pop-up de mensagem nova) — seleciona a
+  // conversa certa e limpa a URL, pra não ficar preso nela se navegar.
+  useEffect(() => {
+    const doLink = searchParams.get('conversa')
+    if (doLink) {
+      setSelecionada(Number(doLink))
+      setSearchParams({}, { replace: true })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const conversaAtual = conversas?.find((c) => c.id === selecionada)
 

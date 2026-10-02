@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp } from 'lucide-react'
+import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp, Check, CheckCheck } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { useChat } from '../../contexts/ChatContext'
@@ -61,7 +61,7 @@ function BolhaAudio({ url, duracao }: { url: string; duracao: number | null }) {
   )
 }
 
-function BolhaMensagem({ m, minha }: { m: Mensagem; minha: boolean }) {
+function BolhaMensagem({ m, minha, lida }: { m: Mensagem; minha: boolean; lida: boolean }) {
   return (
     <div className={`flex items-end gap-2 ${minha ? 'justify-end' : 'justify-start'}`}>
       {!minha && <Avatar nome={m.autor.name} fotoUrl={m.autor.fotoUrl} size="xs" />}
@@ -82,7 +82,10 @@ function BolhaMensagem({ m, minha }: { m: Mensagem; minha: boolean }) {
             </a>
           )}
         </div>
-        <span className="text-[10px] text-dark-600 px-1">{formatDateTime(m.createdAt)}</span>
+        <span className="text-[10px] text-dark-600 px-1 flex items-center gap-1">
+          {formatDateTime(m.createdAt)}
+          {minha && (lida ? <CheckCheck size={11} className="text-blue-400" /> : <Check size={11} className="text-dark-600" />)}
+        </span>
       </div>
     </div>
   )
@@ -95,10 +98,18 @@ function BolhaMensagem({ m, minha }: { m: Mensagem; minha: boolean }) {
 // João, 2026-10-02 (projeto Chat Grupo Odin).
 export default function ChatJanela({ conversaId }: { conversaId: number }) {
   const { user } = useAuth()
-  const { socket } = useChat()
+  const { socket, setConversaAbertaId } = useChat()
   const utils = trpc.useUtils()
   const { data: primeiraPagina } = trpc.chat.mensagens.listar.useQuery({ conversaId })
   const { data: participantes } = trpc.chat.conversas.participantes.useQuery({ conversaId })
+
+  // Avisa o ChatContext que essa conversa está com a tela aberta — ele usa
+  // isso pra não mostrar o pop-up de "mensagem nova" de uma conversa que a
+  // pessoa já está vendo. Limpa ao fechar/trocar de conversa.
+  useEffect(() => {
+    setConversaAbertaId(conversaId)
+    return () => setConversaAbertaId(null)
+  }, [conversaId, setConversaAbertaId])
   const [mensagens, setMensagens] = useState<Mensagem[]>([])
   const [temMais, setTemMais] = useState(false)
   const [carregandoMais, setCarregandoMais] = useState(false)
@@ -136,12 +147,20 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
       if (msg.conversaId !== conversaId) return
       setMensagens((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
     }
+    // Alguém (dos outros participantes) acabou de ler — atualiza o "✓✓
+    // Lido" das MINHAS mensagens na hora, sem precisar sair e voltar.
+    function onLida(payload: { conversaId: number }) {
+      if (payload.conversaId !== conversaId) return
+      utils.chat.conversas.participantes.invalidate({ conversaId })
+    }
     socket.on('chat:novaMensagem', onNovaMensagem)
+    socket.on('chat:lida', onLida)
     return () => {
       socket.emit('chat:sairConversa', conversaId)
       socket.off('chat:novaMensagem', onNovaMensagem)
+      socket.off('chat:lida', onLida)
     }
-  }, [socket, conversaId])
+  }, [socket, conversaId, utils])
 
   // Rola pro fim só na primeira carga e quando uma mensagem nova chega — ao
   // CARREGAR MAIS (histórico antigo, no topo) a posição é restaurada pela
@@ -267,6 +286,14 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
     }
   }
 
+  // "Lida" (✓✓) só quando TODO MUNDO que não sou eu já leu depois do
+  // momento em que mandei — se alguém nunca abriu a conversa ainda, ou leu
+  // antes dessa mensagem existir, continua "✓ Enviado".
+  function estaLida(m: Mensagem): boolean {
+    const outros = (participantes ?? []).filter((p) => p.id !== user?.id)
+    return outros.length > 0 && outros.every((p) => p.ultimaLeituraEm && p.ultimaLeituraEm >= m.createdAt)
+  }
+
   return (
     <div className="flex flex-col h-full min-h-0 relative">
       {!!participantes?.length && (
@@ -300,7 +327,7 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
           </div>
         )}
         {mensagens.map((m) => (
-          <BolhaMensagem key={m.id} m={m} minha={m.autorId === user?.id} />
+          <BolhaMensagem key={m.id} m={m} minha={m.autorId === user?.id} lida={estaLida(m)} />
         ))}
         <div ref={fimRef} />
       </div>

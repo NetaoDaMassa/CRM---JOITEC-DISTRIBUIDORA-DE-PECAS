@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { io, type Socket } from 'socket.io-client'
+import toast from 'react-hot-toast'
 import { useAuth } from './AuthContext'
 import { trpc } from '../lib/trpc'
+import Avatar from '../components/chat/Avatar'
 
 interface ChatContextValue {
   socket: Socket | null
@@ -11,9 +13,20 @@ interface ChatContextValue {
   // no banco) pra não ficar em branco antes do primeiro evento chegar.
   presencaOnline: Map<number, boolean>
   naoLidasTotal: number
+  // Qual conversa está com a tela aberta agora (ver ChatJanela.tsx) — usado
+  // só pra NÃO mostrar o pop-up de mensagem nova de uma conversa que a
+  // pessoa já está olhando.
+  conversaAbertaId: number | null
+  setConversaAbertaId: (id: number | null) => void
 }
 
-const ChatContext = createContext<ChatContextValue>({ socket: null, presencaOnline: new Map(), naoLidasTotal: 0 })
+const ChatContext = createContext<ChatContextValue>({
+  socket: null,
+  presencaOnline: new Map(),
+  naoLidasTotal: 0,
+  conversaAbertaId: null,
+  setConversaAbertaId: () => {},
+})
 
 export function useChat() {
   return useContext(ChatContext)
@@ -28,7 +41,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const utils = trpc.useUtils()
   const [socket, setSocket] = useState<Socket | null>(null)
   const [presencaOnline, setPresencaOnline] = useState<Map<number, boolean>>(new Map())
+  const [conversaAbertaId, setConversaAbertaId] = useState<number | null>(null)
   const socketRef = useRef<Socket | null>(null)
+  const conversaAbertaRef = useRef<number | null>(null)
+  conversaAbertaRef.current = conversaAbertaId
 
   const { data: conversas } = trpc.chat.conversas.listar.useQuery(undefined, {
     enabled: !!token,
@@ -54,6 +70,38 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       utils.chat.conversas.listar.invalidate()
     })
 
+    // Pop-up de mensagem nova — só quando a pessoa NÃO está com aquela
+    // conversa aberta na hora (senão ela já está vendo a mensagem chegar na
+    // tela, o aviso seria redundante). Clicar leva direto pra conversa.
+    // Pedido do João, 2026-10-02.
+    s.on(
+      'chat:mensagemRecebida',
+      (payload: { conversaId: number; autorNome: string; autorFotoUrl: string | null; preview: string }) => {
+        if (payload.conversaId === conversaAbertaRef.current) return
+        const basePath = user.role === 'admin' ? '/admin' : '/vendedor'
+        toast.custom(
+          (t) => (
+            <button
+              onClick={() => {
+                toast.dismiss(t.id)
+                window.location.href = `${basePath}/chat?conversa=${payload.conversaId}`
+              }}
+              className={`flex items-center gap-3 bg-dark-800 border border-dark-600 rounded-xl shadow-2xl shadow-black/50 px-4 py-3 text-left max-w-sm ${
+                t.visible ? 'animate-in fade-in' : 'opacity-0'
+              }`}
+            >
+              <Avatar nome={payload.autorNome} fotoUrl={payload.autorFotoUrl} size="sm" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-dark-100">{payload.autorNome}</p>
+                <p className="text-xs text-dark-400 truncate">{payload.preview}</p>
+              </div>
+            </button>
+          ),
+          { duration: 6000 }
+        )
+      }
+    )
+
     return () => {
       s.disconnect()
       socketRef.current = null
@@ -63,5 +111,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   const naoLidasTotal = (conversas ?? []).reduce((soma, c) => soma + c.naoLidas, 0)
 
-  return <ChatContext.Provider value={{ socket, presencaOnline, naoLidasTotal }}>{children}</ChatContext.Provider>
+  return (
+    <ChatContext.Provider value={{ socket, presencaOnline, naoLidasTotal, conversaAbertaId, setConversaAbertaId }}>
+      {children}
+    </ChatContext.Provider>
+  )
 }

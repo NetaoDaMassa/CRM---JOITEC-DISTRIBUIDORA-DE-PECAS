@@ -108,3 +108,10 @@ export function emitirNovaMensagem(conversaId: number, participanteIds: number[]
 export function emitirParaUsuario(userId: number, evento: string, payload: unknown) {
   io?.to(`user:${userId}`).emit(evento, payload)
 }
+
+// Avisa quem está com a tela daquela conversa aberta (ex: alguém marcou
+// como lida — os outros participantes vendo a conversa agora mesmo
+// precisam atualizar o "✓✓ Lido" das próprias mensagens na hora).
+export function emitirParaConversa(conversaId: number, evento: string, payload: unknown) {
+  io?.to(`conversa:${conversaId}`).emit(evento, payload)
+}
