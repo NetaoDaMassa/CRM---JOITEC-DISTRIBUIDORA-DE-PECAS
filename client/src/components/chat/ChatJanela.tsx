@@ -8,6 +8,7 @@ import { useChat } from '../../contexts/ChatContext'
 import { formatDateTime } from '../../lib/utils'
 import Avatar from './Avatar'
 import PessoaPicker from './PessoaPicker'
+import CameraCapture from './CameraCapture'
 
 // wa.me só aceita dígitos — mesmo padrão simples já usado em
 // designWhatsapp.ts/creditoWhatsapp.ts.
@@ -123,6 +124,7 @@ export default function ChatJanela({ conversaId, onExcluida }: { conversaId: num
   const [temMais, setTemMais] = useState(false)
   const [carregandoMais, setCarregandoMais] = useState(false)
   const [adicionarAberto, setAdicionarAberto] = useState(false)
+  const [cameraAberta, setCameraAberta] = useState(false)
   const [texto, setTexto] = useState('')
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
   const [gravando, setGravando] = useState(false)
@@ -415,15 +417,14 @@ export default function ChatJanela({ conversaId, onExcluida }: { conversaId: num
               <Paperclip size={18} />
               <input type="file" className="hidden" onChange={onSelecionarArquivo} disabled={enviandoArquivo} />
             </label>
-            {/* `capture="environment"` abre a câmera do celular direto, sem
-                passar pela galeria — pedido do João, 2026-10-03: "muito
-                difícil ter a função da câmera na hora". No desktop
-                (sem câmera/captura nativa), o navegador cai pro seletor de
-                arquivo normal. */}
-            <label className="text-dark-400 hover:text-gold-400 cursor-pointer shrink-0">
+            {/* Câmera de verdade via getUserMedia (CameraCapture.tsx) —
+                funciona tanto no celular quanto na webcam do notebook,
+                diferente de um input de arquivo com `capture` (que só abre
+                câmera em alguns celulares e nunca no notebook). Pedido do
+                João, 2026-10-03: "é a câmera do celular ou do notebook?". */}
+            <button type="button" onClick={() => setCameraAberta(true)} disabled={enviandoArquivo} className="text-dark-400 hover:text-gold-400 shrink-0">
               <Camera size={18} />
-              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onSelecionarArquivo} disabled={enviandoArquivo} />
-            </label>
+            </button>
             <input
               value={texto}
               onChange={(e) => setTexto(e.target.value)}
@@ -462,6 +463,24 @@ export default function ChatJanela({ conversaId, onExcluida }: { conversaId: num
             onEscolher={(userId) => adicionarMut.mutate({ conversaId, userId })}
           />
         </div>
+      )}
+
+      {cameraAberta && (
+        <CameraCapture
+          onClose={() => setCameraAberta(false)}
+          onFoto={async (blob) => {
+            setCameraAberta(false)
+            setEnviandoArquivo(true)
+            try {
+              const up = await fazerUpload(blob, `foto_${Date.now()}.jpg`)
+              enviarMut.mutate({ conversaId, tipo: 'imagem', urlArquivo: up.urlArquivo, nomeArquivo: up.nomeArquivo, tipoArquivoMime: up.tipoArquivoMime })
+            } catch (err: any) {
+              toast.error(err.message ?? 'Erro ao enviar foto')
+            } finally {
+              setEnviandoArquivo(false)
+            }
+          }}
+        />
       )}
     </div>
   )
