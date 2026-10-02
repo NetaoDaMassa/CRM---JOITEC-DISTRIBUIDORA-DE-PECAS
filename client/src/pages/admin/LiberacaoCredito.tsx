@@ -6,8 +6,16 @@ import { usePersistedState } from '../../lib/usePersistedState'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { Input, Textarea } from '../../components/ui/Input'
+import { Badge } from '../../components/ui/Badge'
 import { formatDateTime } from '../../lib/utils'
+import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import CadastroRapidoClienteModal from '../../components/CadastroRapidoClienteModal'
+
+const STATUS_LABEL: Record<string, string> = { liberado: 'Liberado', negado: 'Negado' }
+const STATUS_COR: Record<string, string> = {
+  liberado: 'text-green-400 bg-green-900/20 border-green-700/40',
+  negado: 'text-red-400 bg-red-900/20 border-red-700/40',
+}
 
 type ClienteResultado = {
   id: number
@@ -298,12 +306,15 @@ function AbaLancamentos() {
         {linhas?.map((l) => (
           <div key={l.id} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
             <div className="min-w-0">
-              <p className="font-medium text-dark-100">
+              <p className="font-medium text-dark-100 flex items-center gap-2 flex-wrap">
                 {l.clienteNome} <span className="text-dark-500 font-normal">(Cód. {l.clienteCodigo} · {l.empresaNome})</span>
+                <Badge className={STATUS_COR[l.status]}>{STATUS_LABEL[l.status]}</Badge>
+                {l.origemSolicitacaoId && <span className="text-[10px] text-dark-500">via Solicitação de Crédito</span>}
               </p>
               <p className="text-xs text-dark-400 mt-0.5">
-                Liberado por <span className="text-dark-200">{l.quemLiberou}</span> · vendedor: {l.vendedorNome ?? 'sem vendedor'} · lançado por{' '}
-                {l.criadoPorNome} em {formatDateTime(l.createdAt)}
+                {l.status === 'liberado' ? 'Liberado' : 'Negado'} por <span className="text-dark-200">{l.quemLiberou}</span> · vendedor:{' '}
+                {l.vendedorNome ?? 'sem vendedor'} · lançado por {l.criadoPorNome} em {formatDateTime(l.createdAt)}
+                {l.valorLiberado != null && <> · {formatarMoedaBr(l.valorLiberado)}</>}
               </p>
               <p className="text-xs text-dark-300 mt-1.5 bg-dark-900/60 rounded-lg px-2.5 py-1.5">{l.motivo}</p>
               {l.urlArquivo && (

@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, desc, eq, inArray } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, like, lte, or } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { solicitacoesCredito, solicitacaoCreditoAnexos, clientes, empresas, users } from '../db/schema.js'
+import { solicitacoesCredito, solicitacaoCreditoAnexos, liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { buildHistoricoCliente } from './clientes.js'
 
@@ -121,12 +121,42 @@ export const solicitacaoCreditoRouter = router({
       }))
   }),
 
+  // Nomes dos vendedores que já têm alguma solicitação — alimenta o filtro
+  // de vendedor na fila do Financeiro. Cross-empresa também (não dá pra
+  // reaproveitar `users.vendors`, que só traz os da empresa ativa da
+  // sessão).
+  vendedoresOpcoes: featureProcedure('solicitacao_credito').query(async () => {
+    return db
+      .selectDistinct({ id: users.id, name: users.name })
+      .from(solicitacoesCredito)
+      .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
+      .orderBy(users.name)
+  }),
+
   // Fila do Financeiro — cross-empresa, sem filtro de ctx.empresaId de
   // propósito (mesmo padrão de liberacaoCredito.listar).
   listar: featureProcedure('solicitacao_credito')
-    .input(z.object({ status: z.enum(['pendente', 'liberado', 'negado']).optional() }).optional())
+    .input(
+      z
+        .object({
+          status: z.enum(['pendente', 'liberado', 'negado']).optional(),
+          dataDe: z.string().optional(),
+          dataAte: z.string().optional(),
+          vendedorId: z.number().optional(),
+          q: z.string().optional(),
+        })
+        .optional()
+    )
     .query(async ({ input }) => {
-      const filtros = input?.status ? [eq(solicitacoesCredito.status, input.status)] : []
+      const filtros = []
+      if (input?.status) filtros.push(eq(solicitacoesCredito.status, input.status))
+      if (input?.dataDe) filtros.push(gte(solicitacoesCredito.createdAt, input.dataDe))
+      if (input?.dataAte) filtros.push(lte(solicitacoesCredito.createdAt, `${input.dataAte} 23:59:59`))
+      if (input?.vendedorId) filtros.push(eq(solicitacoesCredito.vendedorSolicitanteId, input.vendedorId))
+      if (input?.q) {
+        const termo = `%${input.q.trim()}%`
+        filtros.push(or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo))!)
+      }
 
       const linhas = await db
         .select({
@@ -230,6 +260,23 @@ export const solicitacaoCreditoRouter = router({
           }))
         )
       }
+
+      // Pedido do João, 2026-10-01: toda resposta (liberado OU negado) também
+      // entra no histórico de Liberação de Crédito — ela vira o registro
+      // único de "o que já foi decidido" pra esse cliente, cross-empresa,
+      // sem precisar abrir as duas telas pra reconstruir o histórico.
+      const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) })
+      await db.insert(liberacoesCredito).values({
+        clienteId: solicitacao.clienteId,
+        empresaId: solicitacao.empresaId,
+        vendedorId: cliente?.vendedorAtualId ?? solicitacao.vendedorSolicitanteId,
+        quemLiberou: input.quemLiberou.trim(),
+        motivo: input.motivoResposta.trim(),
+        status: input.decisao,
+        valorLiberado: input.decisao === 'liberado' ? input.valorLiberado : undefined,
+        origemSolicitacaoId: input.id,
+        criadoPor: ctx.user.id,
+      })
 
       return { success: true }
     }),

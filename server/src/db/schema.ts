@@ -3132,6 +3132,19 @@ export const liberacoesCredito = sqliteTable(
     // liberação combinada por telefone com a diretoria), então não é FK.
     quemLiberou: text('quem_liberou').notNull(),
     motivo: text('motivo').notNull(),
+    // 'liberado' é o default pra não mudar o sentido de nenhuma linha já
+    // existente (essa tela sempre foi só lançamento de liberação de
+    // verdade). 'negado' só passa a existir a partir da Consulta/
+    // Solicitação de Crédito (que também registra a negativa aqui, pra
+    // virar histórico único) — a tela de lançamento direto (`criar`
+    // abaixo) nunca lança 'negado'. Pedido do João, 2026-10-01.
+    status: text('status', { enum: ['liberado', 'negado'] }).notNull().default('liberado'),
+    // Só preenchido quando vem de uma Solicitação de Crédito respondida — o
+    // lançamento direto nunca pediu valor.
+    valorLiberado: real('valor_liberado'),
+    // Rastreia de qual solicitação essa linha veio, quando aplicável — só
+    // pra auditoria, nenhuma tela depende disso pra funcionar.
+    origemSolicitacaoId: integer('origem_solicitacao_id').references(() => solicitacoesCredito.id, { onDelete: 'set null' }),
     // Anexo único e opcional (comprovante da liberação, se tiver) — mesmo
     // shape de cartaoGastoAnexos, só que direto na linha por ser 0-ou-1.
     urlArquivo: text('url_arquivo'),

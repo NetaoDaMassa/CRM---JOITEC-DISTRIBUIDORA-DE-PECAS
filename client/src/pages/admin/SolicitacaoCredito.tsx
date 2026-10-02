@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, Paperclip, X } from 'lucide-react'
+import { ShieldCheck, Paperclip, X, Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { usePersistedState } from '../../lib/usePersistedState'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { parseValorBr } from '../../lib/valorBr'
 import { formatDateTime } from '../../lib/utils'
@@ -234,22 +235,50 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
 }
 
 export default function SolicitacaoCredito() {
-  const [status, setStatus] = useState<'pendente' | 'liberado' | 'negado' | ''>('pendente')
+  const [status, setStatus] = usePersistedState<'pendente' | 'liberado' | 'negado' | ''>('solicitacaoCredito:status', 'pendente')
+  const [dataDe, setDataDe] = usePersistedState('solicitacaoCredito:dataDe', '')
+  const [dataAte, setDataAte] = usePersistedState('solicitacaoCredito:dataAte', '')
+  const [vendedorId, setVendedorId] = usePersistedState('solicitacaoCredito:vendedorId', '')
+  const [busca, setBusca] = usePersistedState('solicitacaoCredito:busca', '')
   const [abertoId, setAbertoId] = useState<number | null>(null)
-  const { data: linhas, isLoading } = trpc.solicitacaoCredito.listar.useQuery({ status: status || undefined })
+
+  const { data: vendedores } = trpc.solicitacaoCredito.vendedoresOpcoes.useQuery()
+  const { data: linhas, isLoading } = trpc.solicitacaoCredito.listar.useQuery({
+    status: status || undefined,
+    dataDe: dataDe || undefined,
+    dataAte: dataAte || undefined,
+    vendedorId: vendedorId ? Number(vendedorId) : undefined,
+    q: busca || undefined,
+  })
 
   return (
     <div className="p-6 max-w-4xl space-y-4">
-      <div className="flex items-center justify-between flex-wrap gap-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck size={20} className="text-gold-400" />
-          <div>
-            <h1 className="font-heading text-xl text-dark-50">Consulta/Solicitação de Crédito</h1>
-            <p className="text-sm text-dark-400">Pedidos de liberação de crédito feitos pelos vendedores.</p>
-          </div>
+      <div className="flex items-center gap-2">
+        <ShieldCheck size={20} className="text-gold-400" />
+        <div>
+          <h1 className="font-heading text-xl text-dark-50">Consulta/Solicitação de Crédito</h1>
+          <p className="text-sm text-dark-400">Pedidos de liberação de crédito feitos pelos vendedores.</p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-3 bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="w-56">
+          <Input icon={<Search size={14} />} label="Buscar cliente" placeholder="Razão social ou código..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+        </div>
+        <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
+        <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+        <div className="w-48">
+          <Select
+            label="Vendedor"
+            value={vendedorId}
+            onChange={(e) => setVendedorId(e.target.value)}
+            placeholder="Todos"
+            options={(vendedores ?? []).map((v) => ({ value: v.id, label: v.name }))}
+          />
         </div>
         <div className="w-44">
           <Select
+            label="Status"
             value={status}
             onChange={(e) => setStatus(e.target.value as typeof status)}
             options={[
