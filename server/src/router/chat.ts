@@ -14,38 +14,66 @@ const TIPO_ORIGEM_VALUES = ['lead', 'cliente', 'pedido', 'visita', 'consulta_cre
 // banco só serve de fallback se o registro tiver sido excluído depois).
 // Genérico de propósito — novo tipo de origem no futuro só precisa de um
 // `case` novo aqui, não mexe em mais nada do chat.
+// `titulo` aqui é só a parte "do que se trata" (nome do lead/cliente, nº do
+// pedido...) — quem monta o título final da conversa (abrirPorOrigem) põe
+// o nome do FUNCIONÁRIO responsável na frente, pra identificar de cara
+// quem tá envolvido numa lista com muitas conversas. Pedido do João,
+// 2026-10-02: "mostrar primeiro quem tá de funcionário, depois o nome do
+// cliente/lead".
 async function resolverOrigem(
   tipoOrigem: (typeof TIPO_ORIGEM_VALUES)[number],
   idOrigem: number
-): Promise<{ titulo: string; vendedorId: number | null } | null> {
+): Promise<{ titulo: string; vendedorId: number | null; vendedorNome: string | null } | null> {
   switch (tipoOrigem) {
     case 'lead': {
-      const l = await db.query.leads.findFirst({ where: eq(leads.id, idOrigem), columns: { name: true, vendorId: true } })
-      return l ? { titulo: l.name, vendedorId: l.vendorId } : null
+      const l = await db.query.leads.findFirst({
+        where: eq(leads.id, idOrigem),
+        columns: { name: true, vendorId: true },
+        with: { vendor: { columns: { name: true } } },
+      })
+      return l ? { titulo: l.name, vendedorId: l.vendorId, vendedorNome: l.vendor?.name ?? null } : null
     }
     case 'cliente': {
-      const c = await db.query.clientes.findFirst({ where: eq(clientes.id, idOrigem), columns: { razaoSocial: true, vendedorAtualId: true } })
-      return c ? { titulo: c.razaoSocial, vendedorId: c.vendedorAtualId } : null
+      const c = await db.query.clientes.findFirst({
+        where: eq(clientes.id, idOrigem),
+        columns: { razaoSocial: true, vendedorAtualId: true },
+        with: { vendedorAtual: { columns: { name: true } } },
+      })
+      return c ? { titulo: c.razaoSocial, vendedorId: c.vendedorAtualId, vendedorNome: c.vendedorAtual?.name ?? null } : null
     }
     case 'pedido': {
       const o = await db.query.ordens.findFirst({
         where: eq(ordens.id, idOrigem),
         columns: { vendedorId: true },
-        with: { cliente: { columns: { razaoSocial: true } } },
+        with: { cliente: { columns: { razaoSocial: true } }, vendedor: { columns: { name: true } } },
       })
-      return o ? { titulo: `Pedido #${idOrigem}${o.cliente ? ` — ${o.cliente.razaoSocial}` : ''}`, vendedorId: o.vendedorId } : null
+      return o
+        ? { titulo: `Pedido #${idOrigem}${o.cliente ? ` — ${o.cliente.razaoSocial}` : ''}`, vendedorId: o.vendedorId, vendedorNome: o.vendedor?.name ?? null }
+        : null
     }
     case 'visita': {
-      const v = await db.query.visitas.findFirst({ where: eq(visitas.id, idOrigem), columns: { clienteNome: true, vendedorId: true } })
-      return v ? { titulo: `Visita${v.clienteNome ? ` — ${v.clienteNome}` : ''}`, vendedorId: v.vendedorId } : null
+      const v = await db.query.visitas.findFirst({
+        where: eq(visitas.id, idOrigem),
+        columns: { clienteNome: true, vendedorId: true },
+        with: { vendedor: { columns: { name: true } } },
+      })
+      return v
+        ? { titulo: `Visita${v.clienteNome ? ` — ${v.clienteNome}` : ''}`, vendedorId: v.vendedorId, vendedorNome: v.vendedor?.name ?? null }
+        : null
     }
     case 'consulta_credito': {
       const s = await db.query.solicitacoesCredito.findFirst({
         where: eq(solicitacoesCredito.id, idOrigem),
         columns: { vendedorSolicitanteId: true },
-        with: { cliente: { columns: { razaoSocial: true } } },
+        with: { cliente: { columns: { razaoSocial: true } }, vendedorSolicitante: { columns: { name: true } } },
       })
-      return s ? { titulo: `Consulta de crédito — ${s.cliente?.razaoSocial ?? '—'}`, vendedorId: s.vendedorSolicitanteId } : null
+      return s
+        ? {
+            titulo: `Consulta de crédito — ${s.cliente?.razaoSocial ?? '—'}`,
+            vendedorId: s.vendedorSolicitanteId,
+            vendedorNome: s.vendedorSolicitante?.name ?? null,
+          }
+        : null
     }
   }
 }
@@ -94,10 +122,14 @@ export const chatRouter = router({
           await garantirParticipante(conversaId, ctx.user.id)
         } else {
           const origem = await resolverOrigem(input.tipoOrigem, input.idOrigem)
+          // "Fulano — Lead/Cliente/Pedido tal": o funcionário responsável
+          // primeiro, pra identificar de cara numa lista com muitas
+          // conversas quem está envolvido, antes mesmo do que se trata.
+          const titulo = origem ? (origem.vendedorNome ? `${origem.vendedorNome} — ${origem.titulo}` : origem.titulo) : null
           const result = await db.insert(chatConversas).values({
             tipoOrigem: input.tipoOrigem,
             idOrigem: input.idOrigem,
-            tituloSnapshot: origem?.titulo ?? null,
+            tituloSnapshot: titulo,
             criadoPor: ctx.user.id,
           })
           conversaId = Number(result.lastInsertRowid)
