@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, like, lte, or } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { solicitacoesCredito, solicitacaoCreditoAnexos, liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
@@ -34,7 +34,7 @@ export const solicitacaoCreditoRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const cliente = await db.query.clientes.findFirst({
-        where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId)),
+        where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
       })
       if (!cliente) throw new Error('Cliente não encontrado')
       // Vendedor só pode pedir crédito pra cliente que já é dele — mesma
@@ -42,6 +42,15 @@ export const solicitacaoCreditoRouter = router({
       if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) {
         throw new Error('Esse cliente não está na sua carteira')
       }
+
+      // Mesmo padrão de aprovacoes.solicitar — evita o vendedor abrir vários
+      // pedidos em paralelo pro mesmo cliente (o financeiro teria que
+      // decidir qual vale, e o segundo pedido ficaria com dados
+      // desatualizados assim que o primeiro for respondido).
+      const pendente = await db.query.solicitacoesCredito.findFirst({
+        where: and(eq(solicitacoesCredito.clienteId, input.clienteId), eq(solicitacoesCredito.status, 'pendente')),
+      })
+      if (pendente) throw new Error('Já existe uma solicitação de crédito pendente pra este cliente.')
 
       const result = await db.insert(solicitacoesCredito).values({
         empresaId: cliente.empresaId,

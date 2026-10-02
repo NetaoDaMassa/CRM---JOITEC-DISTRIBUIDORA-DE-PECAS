@@ -62,6 +62,11 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
       toast.success('Resposta registrada')
       utils.solicitacaoCredito.listar.invalidate()
       utils.solicitacaoCredito.detalhe.invalidate({ id })
+      // Toda resposta também vira uma linha em Liberação de Crédito (ver
+      // solicitacaoCredito.ts, responder) — invalida pra quem tiver aquela
+      // tela aberta numa aba já ver sem precisar recarregar.
+      utils.liberacaoCredito.listar.invalidate()
+      utils.liberacaoCredito.relatorio.invalidate()
     },
     onError: (e) => toast.error(e.message),
   })
