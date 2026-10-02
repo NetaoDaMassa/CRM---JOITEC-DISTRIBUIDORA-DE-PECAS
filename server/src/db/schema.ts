@@ -2535,6 +2535,143 @@ export const ordemAnexosRelations = relations(ordemAnexos, ({ one }) => ({
   enviadoPorUser: one(users, { fields: [ordemAnexos.enviadoPor], references: [users.id] }),
 }))
 
+// ─────────────────────────────────────────────────────────────────────────
+// Garantias (Odin Compressores) — pedido do João, 2026-10-02: processo de
+// atendimento de garantia (substituição de máquina completa, peça com
+// retorno, peça sem retorno, ou peça enviada direto ao técnico autorizado).
+// Pode nascer vinculado a um Pedido (ordens) já existente ou avulso, só com
+// cliente/máquina preenchidos na mão. ETAPA 1 (abertura → ... →
+// recebimento na Odin) fica toda nas colunas de `garantias`, igual o resto
+// do CRM faz pra etapas simples de 1-2 campos; ETAPA 2 (oficina — só roda
+// quando `comRetorno` é true) tem tabela própria `garantiaOficina`, 1:1,
+// porque é um sub-fluxo com etapas dela mesma (entrada/avaliação/aprovação/
+// entrega), igual padrão de ordemLiberacaoFinanceira etc.
+export const garantias = sqliteTable(
+  'garantias',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    pedidoId: integer('pedido_id').references(() => ordens.id, { onDelete: 'set null' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    tipoAtendimento: text('tipo_atendimento', {
+      enum: ['maquina_completa', 'peca_com_retorno', 'peca_sem_retorno', 'peca_tecnico'],
+    }).notNull(),
+    // Deriva do tipo (máquina/peça-com-retorno = sempre true, peça-sem-
+    // retorno = sempre false), exceto "peça ao técnico", onde quem abre
+    // escolhe na hora (pode seguir os dois jeitos, conforme a peça avaliada
+    // tiver ou não conserto — ver descrição do processo do João).
+    comRetorno: integer('com_retorno', { mode: 'boolean' }).notNull(),
+    destinoEnvio: text('destino_envio', { enum: ['cliente', 'tecnico'] }).notNull(),
+    descricaoDefeito: text('descricao_defeito').notNull(),
+    modeloMaquina: text('modelo_maquina'),
+    numeroSerie: text('numero_serie'),
+    // Só preenchido quando destinoEnvio = 'tecnico'.
+    tecnicoNome: text('tecnico_nome'),
+    tecnicoWhatsapp: text('tecnico_whatsapp'),
+    stage: text('stage').notNull().default('aberto'),
+    status: text('status', { enum: ['ativo', 'encerrado', 'cancelado'] }).notNull().default('ativo'),
+    cancelMotivo: text('cancel_motivo'),
+
+    nfDevolucaoNumero: text('nf_devolucao_numero'),
+    nfDevolucaoData: text('nf_devolucao_data'),
+    preparacaoNovoItemEm: text('preparacao_novo_item_em'),
+    preparacaoObservacao: text('preparacao_observacao'),
+    nfSaidaNumero: text('nf_saida_numero'),
+    nfSaidaData: text('nf_saida_data'),
+    envioTransportadora: text('envio_transportadora'),
+    envioCodigoRastreio: text('envio_codigo_rastreio'),
+    rastreioObservacao: text('rastreio_observacao'),
+    retornoSolicitadoEm: text('retorno_solicitado_em'),
+    retornoObservacao: text('retorno_observacao'),
+    recebidoOdinEm: text('recebido_odin_em'),
+
+    // Trava otimista, mesmo padrão de ordens.versao.
+    versao: integer('versao').notNull().default(1),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaStageIdx: index('garantias_empresa_stage_idx').on(t.empresaId, t.stage),
+    empresaStatusIdx: index('garantias_empresa_status_idx').on(t.empresaId, t.status),
+  })
+)
+
+// ETAPA 2 do processo — "tratamento do item retornado". Só existe de
+// verdade (linha criada) quando a garantia chega na etapa 'oficina' (ver
+// garantiasGates.ts) — antes disso não tem o que mostrar.
+export const garantiaOficina = sqliteTable('garantia_oficina', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  garantiaId: integer('garantia_id').notNull().unique().references(() => garantias.id, { onDelete: 'cascade' }),
+  oficinaEtapa: text('oficina_etapa', { enum: ['entrada', 'avaliacao', 'aprovacao', 'entrega', 'encerrado'] }).notNull().default('entrada'),
+  entradaEm: text('entrada_em'),
+  modelo: text('modelo'),
+  numeroSerie: text('numero_serie'),
+  nomeCliente: text('nome_cliente'),
+  avaliacaoTecnica: text('avaliacao_tecnica'),
+  destinacao: text('destinacao', { enum: ['reparo', 'descarte', 'retorno_estoque', 'sem_conserto'] }),
+  pecasUsadas: text('pecas_usadas'),
+  aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  aprovadoEm: text('aprovado_em'),
+  entregaEstoqueEm: text('entrega_estoque_em'),
+  entreguePor: text('entregue_por'),
+  recebidoPor: text('recebido_por'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Mesmo padrão de ordemAnexos — nome randomizado em disco, nome original só
+// no banco.
+export const garantiaAnexos = sqliteTable('garantia_anexos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  garantiaId: integer('garantia_id').notNull().references(() => garantias.id, { onDelete: 'cascade' }),
+  stage: text('stage').notNull(),
+  nomeOriginal: text('nome_original').notNull(),
+  nomeArmazenado: text('nome_armazenado').notNull(),
+  tipoArquivo: text('tipo_arquivo'),
+  tamanhoBytes: integer('tamanho_bytes'),
+  enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const garantiaHistorico = sqliteTable('garantia_historico', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  garantiaId: integer('garantia_id').notNull().references(() => garantias.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  fieldName: text('field_name'),
+  oldValue: text('old_value'),
+  newValue: text('new_value'),
+  description: text('description').notNull(),
+  stage: text('stage'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const garantiasRelations = relations(garantias, ({ one, many }) => ({
+  empresa: one(empresas, { fields: [garantias.empresaId], references: [empresas.id] }),
+  pedido: one(ordens, { fields: [garantias.pedidoId], references: [ordens.id] }),
+  cliente: one(clientes, { fields: [garantias.clienteId], references: [clientes.id] }),
+  criadoPorUser: one(users, { fields: [garantias.criadoPor], references: [users.id] }),
+  oficina: one(garantiaOficina, { fields: [garantias.id], references: [garantiaOficina.garantiaId] }),
+  anexos: many(garantiaAnexos),
+  historico: many(garantiaHistorico),
+}))
+
+export const garantiaOficinaRelations = relations(garantiaOficina, ({ one }) => ({
+  garantia: one(garantias, { fields: [garantiaOficina.garantiaId], references: [garantias.id] }),
+  aprovadoPorUser: one(users, { fields: [garantiaOficina.aprovadoPor], references: [users.id] }),
+}))
+
+export const garantiaAnexosRelations = relations(garantiaAnexos, ({ one }) => ({
+  garantia: one(garantias, { fields: [garantiaAnexos.garantiaId], references: [garantias.id] }),
+  enviadoPorUser: one(users, { fields: [garantiaAnexos.enviadoPor], references: [users.id] }),
+}))
+
+export const garantiaHistoricoRelations = relations(garantiaHistorico, ({ one }) => ({
+  garantia: one(garantias, { fields: [garantiaHistorico.garantiaId], references: [garantias.id] }),
+  user: one(users, { fields: [garantiaHistorico.userId], references: [users.id] }),
+}))
+
 // ── Propostas (funil de vendas Odin Compressores, portado do odincrm.duckdns.org) ──
 // Funil de propostas comerciais anterior ao pedido — diferente de
 // `funilMensal`/`vendas` (o funil próprio do Joitec CRM): aqui o cliente

@@ -269,6 +269,29 @@ app.post('/upload/ordem-anexo', uploadOrdem.single('file'), async (req, res) => 
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// Anexos do módulo de Garantias (documento/foto de cada etapa + foto de
+// entrada/entrega da oficina) — mesmo padrão de ordem-anexo.
+const storageGarantia = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `garantia-${randomUUID()}${ext}`)
+  },
+})
+const uploadGarantia = multer({
+  storage: storageGarantia,
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => {
+    cb(null, MIME_PERMITIDOS_ORDEM.some((m) => file.mimetype.startsWith(m)))
+  },
+})
+app.post('/upload/garantia-anexo', uploadGarantia.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
 // Anexos de Propostas (PDF da proposta, dados cadastrais etc.) — mesmo
 // padrão de ordem-anexo.
 const storageProposta = multer.diskStorage({

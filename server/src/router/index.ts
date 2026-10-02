@@ -51,6 +51,7 @@ import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { ordensRouter } from './ordens/index.js'
+import { garantiasRouter } from './garantias.js'
 import { propostasRouter } from './propostas.js'
 import { revendasRouter } from './revendas.js'
 import { estoqueRouter } from './estoque.js'
@@ -124,6 +125,7 @@ export const appRouter = router({
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
   ordens: ordensRouter,
+  garantias: garantiasRouter,
   propostas: propostasRouter,
   revendas: revendasRouter,
   estoque: estoqueRouter,

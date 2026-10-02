@@ -29,6 +29,11 @@ export const FEATURES_ADMIN = [
   // admins não precisarem chamar o João toda vez. Não liga com 'carteira'
   // (dá pra ter uma sem a outra).
   'funil_excluir_card',
+  // Garantias — ETAPA 2 (oficina/avaliação técnica), liberada à parte de
+  // 'garantias_odin' — não tem item de menu próprio (fica numa aba dentro
+  // do detalhe do processo), entra na mão igual 'funil_excluir_card'.
+  // Pedido do João, 2026-10-02.
+  'garantias_oficina',
   'banco_clientes',
   'relatorios',
   'usuarios',
@@ -105,6 +110,11 @@ export const FEATURES_ADMIN = [
   // odincrm.duckdns.org. Também existe em FEATURES_VENDEDOR (é tela de uso
   // diário do vendedor, que cria pedido e preenche dados de várias etapas).
   'pedidos_odin',
+  // Garantias — só Odin Compressores. Processo de atendimento (ETAPA 1) +
+  // 'garantias_oficina' abaixo é a ETAPA 2 (avaliação técnica), liberada à
+  // parte pro time de Manutenção. Também existe em FEATURES_VENDEDOR.
+  // Pedido do João, 2026-10-02.
+  'garantias_odin',
   // Funil de Propostas — só Odin Compressores, portado do odincrm.duckdns.org.
   // Também existe em FEATURES_VENDEDOR (vendedor cria e acompanha as próprias).
   'propostas_odin',
@@ -204,6 +214,9 @@ export const FEATURES_VENDEDOR = [
   'dashboard_odin',
   // Kanban de Pedidos (pós-venda) — mesma chave de FEATURES_ADMIN acima.
   'pedidos_odin',
+  // Garantias — mesma chave de FEATURES_ADMIN acima.
+  'garantias_odin',
+  'garantias_oficina',
   // Funil de Propostas — mesma chave de FEATURES_ADMIN acima.
   'propostas_odin',
   // Lista de Revendas — mesma chave de FEATURES_ADMIN acima.

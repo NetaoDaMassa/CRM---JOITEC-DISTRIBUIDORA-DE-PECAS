@@ -24,6 +24,10 @@ const FEATURES = [
   { feature: 'painel_tv', label: 'Painel de TV' },
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
   { feature: 'funil_excluir_card', label: 'Excluir card do Kanban' },
+  // ETAPA 2 de Garantias (oficina/avaliação técnica) — não tem item de menu
+  // próprio (fica numa aba dentro do processo), entra na mão igual
+  // 'funil_excluir_card'. Pedido do João, 2026-10-02.
+  { feature: 'garantias_oficina', label: 'Garantias — Oficina (avaliação técnica)' },
   // Chat Grupo Odin saiu do menu lateral (virou popup + botão flutuante),
   // então não tem mais item em ADMIN_LINKS/VENDOR_LINKS — entra na mão,
   // igual Painel Financeiro. Pedido do João, 2026-10-02: controlar pessoa
@@ -34,6 +38,7 @@ const FEATURES = [
 const FEATURES_VENDEDOR = [
   ...VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'chat', label: 'Chat Grupo Odin' },
+  { feature: 'garantias_oficina', label: 'Garantias — Oficina (avaliação técnica)' },
 ]
 
 const FEATURES_RELATORIOS = [

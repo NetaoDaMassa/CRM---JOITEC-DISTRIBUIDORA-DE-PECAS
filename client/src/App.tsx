@@ -70,6 +70,7 @@ import PainelTvOdin from './pages/PainelTvOdin'
 import Devolucoes from './pages/Devolucoes'
 import MarketingArquivos from './pages/MarketingArquivos'
 import OrdensKanban from './pages/OrdensKanban'
+import GarantiasKanban from './pages/GarantiasKanban'
 import PropostasKanban from './pages/PropostasKanban'
 import Revendas from './pages/Revendas'
 import Estoque from './pages/Estoque'
@@ -250,6 +251,7 @@ export default function App() {
           <Route path="admin/dashboard-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><DashboardOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/calendario-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><CalendarioOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ordens/:id?" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/garantias/:id?" element={<AdminGuard><FeatureGuard feature="garantias_odin"><GarantiasKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/propostas/:id?" element={<AdminGuard><FeatureGuard feature="propostas_odin"><PropostasKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/revendas" element={<AdminGuard><FeatureGuard feature="revendas_odin"><Revendas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/estoque" element={<AdminGuard><FeatureGuard feature="estoque_odin"><Estoque /></FeatureGuard></AdminGuard>} />
@@ -287,6 +289,7 @@ export default function App() {
           <Route path="vendedor/dashboard-odin" element={<DashboardOdin />} />
           <Route path="vendedor/calendario-odin" element={<CalendarioOdin />} />
           <Route path="vendedor/ordens/:id?" element={<OrdensKanban />} />
+          <Route path="vendedor/garantias/:id?" element={<GarantiasKanban />} />
           <Route path="vendedor/propostas/:id?" element={<PropostasKanban />} />
           <Route path="vendedor/revendas" element={<Revendas />} />
           <Route path="vendedor/visitas" element={<Visitas />} />
