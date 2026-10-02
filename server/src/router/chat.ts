@@ -163,6 +163,43 @@ export const chatRouter = router({
         return { success: true }
       }),
 
+    // Dados do registro de origem, pra mostrar direto na janela do chat
+    // (sem precisar sair pra ficha do cliente) — hoje só 'cliente' traz
+    // informação extra (telefone, código, vendedor); os outros tipos só
+    // confirmam tipoOrigem/idOrigem. Pedido do João, 2026-10-02: conversa
+    // sobre cliente da carteira (ou aberta pelo Kanban) já vem com os
+    // dados dele.
+    detalhe: protectedProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
+      const souParticipante = await db.query.chatParticipantes.findFirst({
+        where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
+      })
+      if (!souParticipante) throw new Error('Você não participa dessa conversa.')
+      const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId) })
+      if (!conversa) throw new Error('Conversa não encontrada')
+
+      if (conversa.tipoOrigem !== 'cliente' || !conversa.idOrigem) {
+        return { tipoOrigem: conversa.tipoOrigem, idOrigem: conversa.idOrigem, cliente: null }
+      }
+      const c = await db.query.clientes.findFirst({
+        where: eq(clientes.id, conversa.idOrigem),
+        columns: { id: true, razaoSocial: true, codigo: true, telefoneWhatsapp: true, email: true, vendedorAtualId: true },
+      })
+      if (!c) return { tipoOrigem: conversa.tipoOrigem, idOrigem: conversa.idOrigem, cliente: null }
+      const vendedor = c.vendedorAtualId ? await db.query.users.findFirst({ where: eq(users.id, c.vendedorAtualId), columns: { name: true } }) : null
+      return {
+        tipoOrigem: conversa.tipoOrigem,
+        idOrigem: conversa.idOrigem,
+        cliente: {
+          id: c.id,
+          razaoSocial: c.razaoSocial,
+          codigo: c.codigo,
+          telefoneWhatsapp: c.telefoneWhatsapp,
+          email: c.email,
+          vendedorNome: vendedor?.name ?? null,
+        },
+      }
+    }),
+
     // Quem participa de uma conversa — alimenta o cabeçalho da janela de
     // chat (avatares) e o botão "+" de adicionar mais gente a qualquer
     // momento (não só na criação).

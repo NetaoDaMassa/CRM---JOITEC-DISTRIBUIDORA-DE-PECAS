@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { MessageCircleMore, Plus, X, Camera } from 'lucide-react'
+import { MessageCircleMore, Plus, X, Camera, Search } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { timeAgo } from '../lib/utils'
@@ -110,7 +110,21 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const [buscaConversa, setBuscaConversa] = useState('')
   const conversaAtual = conversas?.find((c) => c.id === selecionada)
+
+  // Vai ter MUITA conversa com o tempo — filtra pelo título (nome do
+  // lead/cliente/pedido, ou da pessoa na conversa direta) e por quem mais
+  // participa, pra achar mesmo sem lembrar exatamente como foi nomeada.
+  // Pedido do João, 2026-10-02.
+  const termoBusca = buscaConversa.trim().toLowerCase()
+  const conversasFiltradas = !termoBusca
+    ? conversas
+    : conversas?.filter(
+        (c) =>
+          c.titulo.toLowerCase().includes(termoBusca) ||
+          c.outrosParticipantes.some((p) => p.name.toLowerCase().includes(termoBusca))
+      )
 
   return (
     <div className="p-6 h-[calc(100vh-2rem)] max-h-[900px]">
@@ -134,10 +148,24 @@ export default function Chat() {
               <Plus size={14} /> Nova
             </button>
           </div>
+          <div className="p-2 border-b border-dark-700 shrink-0">
+            <div className="relative">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-dark-500" />
+              <input
+                value={buscaConversa}
+                onChange={(e) => setBuscaConversa(e.target.value)}
+                placeholder="Buscar conversa..."
+                className="w-full bg-dark-900 border border-dark-600 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-dark-100 placeholder-dark-500 focus:outline-none focus:border-gold-600"
+              />
+            </div>
+          </div>
           <div className="flex-1 overflow-y-auto divide-y divide-dark-700">
             {isLoading && <p className="p-3 text-sm text-dark-500">Carregando...</p>}
             {!isLoading && !conversas?.length && <p className="p-3 text-sm text-dark-500">Nenhuma conversa ainda.</p>}
-            {conversas?.map((c) => {
+            {!isLoading && !!conversas?.length && !conversasFiltradas?.length && (
+              <p className="p-3 text-sm text-dark-500">Nenhuma conversa encontrada.</p>
+            )}
+            {conversasFiltradas?.map((c) => {
               const outro = c.outrosParticipantes[0]
               return (
                 <button

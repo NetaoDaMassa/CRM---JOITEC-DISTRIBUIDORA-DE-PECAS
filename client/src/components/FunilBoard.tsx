@@ -19,6 +19,7 @@ import TelefonesExtras from './ui/TelefonesExtras'
 import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
 import HistoricoCliente from './HistoricoCliente'
+import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
 
 const ETAPAS = [
@@ -1690,7 +1691,7 @@ function CardModal({
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-dark-700 pt-4">
+        <div className="flex items-center justify-between border-t border-dark-700 pt-4 flex-wrap gap-2">
           <ContatoButtons
             telefone={card.telefoneWhatsapp}
             telefonesExtras={card.telefonesExtras}
@@ -1700,9 +1701,12 @@ function CardModal({
             funilMensalId={card.funilMensalId}
             size="md"
           />
-          <Button size="sm" variant="secondary" onClick={() => setAgendarAberto(true)}>
-            📅 Agendar
-          </Button>
+          <div className="flex items-center gap-2">
+            <ConversarSobreIssoButton tipoOrigem="cliente" idOrigem={card.clienteId} titulo={`Cliente — ${card.razaoSocial}`} />
+            <Button size="sm" variant="secondary" onClick={() => setAgendarAberto(true)}>
+              📅 Agendar
+            </Button>
+          </div>
         </div>
 
         <SugestaoMensagem

@@ -1,12 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp, Check, CheckCheck } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp, Check, CheckCheck, Building2, Phone } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { useChat } from '../../contexts/ChatContext'
 import { formatDateTime } from '../../lib/utils'
 import Avatar from './Avatar'
 import PessoaPicker from './PessoaPicker'
+
+// wa.me só aceita dígitos — mesmo padrão simples já usado em
+// designWhatsapp.ts/creditoWhatsapp.ts.
+function waLink(telefone: string): string {
+  const digitos = telefone.replace(/\D/g, '')
+  return `https://wa.me/${digitos.length <= 11 ? `55${digitos}` : digitos}`
+}
 
 type Mensagem = {
   id: number
@@ -102,6 +110,7 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
   const utils = trpc.useUtils()
   const { data: primeiraPagina } = trpc.chat.mensagens.listar.useQuery({ conversaId })
   const { data: participantes } = trpc.chat.conversas.participantes.useQuery({ conversaId })
+  const { data: detalhe } = trpc.chat.conversas.detalhe.useQuery({ conversaId })
 
   // Avisa o ChatContext que essa conversa está com a tela aberta — ele usa
   // isso pra não mostrar o pop-up de "mensagem nova" de uma conversa que a
@@ -296,6 +305,37 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
 
   return (
     <div className="flex flex-col h-full min-h-0 relative">
+      {detalhe?.cliente && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 bg-dark-900/60 border-b border-dark-700 shrink-0 text-xs">
+          <div className="flex items-center gap-1.5 min-w-0 text-dark-300">
+            <Building2 size={13} className="text-dark-500 shrink-0" />
+            <span className="text-dark-100 font-medium truncate">{detalhe.cliente.razaoSocial}</span>
+            <span className="text-dark-500 shrink-0">· Cód. {detalhe.cliente.codigo}</span>
+            {detalhe.cliente.vendedorNome && <span className="text-dark-500 shrink-0">· {detalhe.cliente.vendedorNome}</span>}
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {detalhe.cliente.telefoneWhatsapp && (
+              <a
+                href={waLink(detalhe.cliente.telefoneWhatsapp)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-green-500 hover:text-green-400"
+                title={detalhe.cliente.telefoneWhatsapp}
+              >
+                <Phone size={12} />
+              </a>
+            )}
+            <Link
+              to={`${user?.role === 'admin' ? '/admin' : '/vendedor'}/clientes/${detalhe.cliente.id}`}
+              target="_blank"
+              className="text-gold-400 hover:text-gold-300 hover:underline whitespace-nowrap"
+            >
+              Ver ficha completa
+            </Link>
+          </div>
+        </div>
+      )}
+
       {!!participantes?.length && (
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-700 shrink-0">
           <div className="flex items-center -space-x-2">
