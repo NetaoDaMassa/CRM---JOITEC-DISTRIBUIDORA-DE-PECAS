@@ -75,7 +75,10 @@ function MinhaFoto() {
 // Picker de pessoa pra iniciar uma conversa direta — lista TODO MUNDO que
 // usa o CRM (grupo inteiro, cross-empresa, pedido do João 2026-10-02).
 function NovaConversaModal({ onClose, onCriada }: { onClose: () => void; onCriada: (conversaId: number) => void }) {
-  const abrirMut = trpc.chat.conversas.abrirDireta.useMutation({ onSuccess: (data) => onCriada(data.id) })
+  const abrirMut = trpc.chat.conversas.abrirDireta.useMutation({
+    onSuccess: (data) => onCriada(data.id),
+    onError: (e) => toast.error(e.message),
+  })
 
   return (
     <div className="absolute inset-0 z-20 bg-dark-800 flex flex-col">
@@ -85,7 +88,12 @@ function NovaConversaModal({ onClose, onCriada }: { onClose: () => void; onCriad
           <X size={16} />
         </button>
       </div>
-      <PessoaPicker onEscolher={(userId) => abrirMut.mutate({ outroUserId: userId })} />
+      <div className="relative flex-1 min-h-0">
+        <PessoaPicker onEscolher={(userId) => !abrirMut.isPending && abrirMut.mutate({ outroUserId: userId })} />
+        {abrirMut.isPending && (
+          <div className="absolute inset-0 bg-dark-800/70 flex items-center justify-center text-sm text-dark-300">Abrindo conversa...</div>
+        )}
+      </div>
     </div>
   )
 }

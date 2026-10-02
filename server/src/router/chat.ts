@@ -125,21 +125,30 @@ export const chatRouter = router({
     abrirDireta: protectedProcedure.input(z.object({ outroUserId: z.number() })).mutation(async ({ ctx, input }) => {
       if (input.outroUserId === ctx.user.id) throw new Error('Não dá pra abrir uma conversa consigo mesmo.')
 
+      // Achar a conversa 'direta' que já existe entre os dois, se tiver,
+      // numa única consulta — antes fazia 1 consulta POR conversa que o
+      // usuário já tinha (loop com await dentro), ficando mais lento à
+      // medida que "muitas conversas" se acumulavam (achado do João,
+      // 2026-10-02, testando com várias conversas já abertas).
       const minhas = await db.query.chatParticipantes.findMany({
         where: eq(chatParticipantes.userId, ctx.user.id),
         columns: { conversaId: true },
       })
       const conversaIds = minhas.map((m) => m.conversaId)
       if (conversaIds.length) {
-        const candidatas = await db.query.chatConversas.findMany({
-          where: and(eq(chatConversas.tipoOrigem, 'direta'), inArray(chatConversas.id, conversaIds)),
-        })
-        for (const c of candidatas) {
-          const doOutro = await db.query.chatParticipantes.findFirst({
-            where: and(eq(chatParticipantes.conversaId, c.id), eq(chatParticipantes.userId, input.outroUserId)),
-          })
-          if (doOutro) return { id: c.id }
-        }
+        const [existente] = await db
+          .select({ conversaId: chatParticipantes.conversaId })
+          .from(chatParticipantes)
+          .innerJoin(chatConversas, eq(chatConversas.id, chatParticipantes.conversaId))
+          .where(
+            and(
+              eq(chatParticipantes.userId, input.outroUserId),
+              eq(chatConversas.tipoOrigem, 'direta'),
+              inArray(chatParticipantes.conversaId, conversaIds)
+            )
+          )
+          .limit(1)
+        if (existente) return { id: existente.conversaId }
       }
 
       const outro = await db.query.users.findFirst({ where: eq(users.id, input.outroUserId), columns: { name: true } })
