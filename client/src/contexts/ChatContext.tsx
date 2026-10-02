@@ -18,6 +18,15 @@ interface ChatContextValue {
   // pessoa já está olhando.
   conversaAbertaId: number | null
   setConversaAbertaId: (id: number | null) => void
+  // Controle do popup flutuante (ver ChatPopup.tsx) — fica aberto/fechado
+  // pra qualquer tela do sistema, não é mais uma página própria. Clicar no
+  // aviso de mensagem nova (ou em "Conversar sobre isso" em qualquer lugar)
+  // chama `abrirConversaNoPopup` pra abrir o popup já na conversa certa.
+  popupAberto: boolean
+  setPopupAberto: (aberto: boolean) => void
+  conversaParaAbrir: number | null
+  abrirConversaNoPopup: (conversaId: number) => void
+  limparConversaParaAbrir: () => void
 }
 
 const ChatContext = createContext<ChatContextValue>({
@@ -26,6 +35,11 @@ const ChatContext = createContext<ChatContextValue>({
   naoLidasTotal: 0,
   conversaAbertaId: null,
   setConversaAbertaId: () => {},
+  popupAberto: false,
+  setPopupAberto: () => {},
+  conversaParaAbrir: null,
+  abrirConversaNoPopup: () => {},
+  limparConversaParaAbrir: () => {},
 })
 
 export function useChat() {
@@ -42,9 +56,16 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [socket, setSocket] = useState<Socket | null>(null)
   const [presencaOnline, setPresencaOnline] = useState<Map<number, boolean>>(new Map())
   const [conversaAbertaId, setConversaAbertaId] = useState<number | null>(null)
+  const [popupAberto, setPopupAberto] = useState(false)
+  const [conversaParaAbrir, setConversaParaAbrir] = useState<number | null>(null)
   const socketRef = useRef<Socket | null>(null)
   const conversaAbertaRef = useRef<number | null>(null)
   conversaAbertaRef.current = conversaAbertaId
+
+  function abrirConversaNoPopup(conversaId: number) {
+    setConversaParaAbrir(conversaId)
+    setPopupAberto(true)
+  }
 
   const { data: conversas } = trpc.chat.conversas.listar.useQuery(undefined, {
     enabled: !!token,
@@ -72,19 +93,19 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     // Pop-up de mensagem nova — só quando a pessoa NÃO está com aquela
     // conversa aberta na hora (senão ela já está vendo a mensagem chegar na
-    // tela, o aviso seria redundante). Clicar leva direto pra conversa.
-    // Pedido do João, 2026-10-02.
+    // tela, o aviso seria redundante). Clicar abre o popup do chat direto
+    // naquela conversa, de qualquer tela do sistema. Pedido do João,
+    // 2026-10-02.
     s.on(
       'chat:mensagemRecebida',
       (payload: { conversaId: number; autorNome: string; autorFotoUrl: string | null; preview: string }) => {
         if (payload.conversaId === conversaAbertaRef.current) return
-        const basePath = user.role === 'admin' ? '/admin' : '/vendedor'
         toast.custom(
           (t) => (
             <button
               onClick={() => {
                 toast.dismiss(t.id)
-                window.location.href = `${basePath}/chat?conversa=${payload.conversaId}`
+                abrirConversaNoPopup(payload.conversaId)
               }}
               className={`flex items-center gap-3 bg-dark-800 border border-dark-600 rounded-xl shadow-2xl shadow-black/50 px-4 py-3 text-left max-w-sm ${
                 t.visible ? 'animate-in fade-in' : 'opacity-0'
@@ -112,7 +133,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const naoLidasTotal = (conversas ?? []).reduce((soma, c) => soma + c.naoLidas, 0)
 
   return (
-    <ChatContext.Provider value={{ socket, presencaOnline, naoLidasTotal, conversaAbertaId, setConversaAbertaId }}>
+    <ChatContext.Provider
+      value={{
+        socket,
+        presencaOnline,
+        naoLidasTotal,
+        conversaAbertaId,
+        setConversaAbertaId,
+        popupAberto,
+        setPopupAberto,
+        conversaParaAbrir,
+        abrirConversaNoPopup,
+        limparConversaParaAbrir: () => setConversaParaAbrir(null),
+      }}
+    >
       {children}
     </ChatContext.Provider>
   )

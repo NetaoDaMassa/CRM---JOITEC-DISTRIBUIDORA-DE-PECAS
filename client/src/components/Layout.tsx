@@ -3,6 +3,7 @@ import { Outlet, useLocation } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
+import ChatPopup from './ChatPopup'
 import LembretesCompromisso from './LembretesCompromisso'
 
 export default function Layout() {
@@ -25,7 +26,10 @@ export default function Layout() {
           >
             <Menu size={20} />
           </button>
-          <NotificationBell />
+          <div className="flex items-center gap-1">
+            <ChatPopup />
+            <NotificationBell />
+          </div>
         </header>
         <Outlet />
       </main>
