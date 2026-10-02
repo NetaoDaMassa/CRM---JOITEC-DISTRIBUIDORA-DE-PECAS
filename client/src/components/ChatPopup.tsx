@@ -128,7 +128,7 @@ export default function ChatPopup() {
     <div className="relative">
       <button
         onClick={() => setPopupAberto(!popupAberto)}
-        className="relative p-2 rounded-lg text-dark-300 hover:text-dark-100 hover:bg-dark-800 transition-colors"
+        className="relative p-2 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white transition-colors shadow-sm"
         title="Chat Grupo Odin"
       >
         <MessageCircleMore size={18} />

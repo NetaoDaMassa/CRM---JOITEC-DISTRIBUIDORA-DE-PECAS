@@ -23,7 +23,7 @@ export default function ChatFloatingButton() {
     <button
       onClick={() => navigate(destino)}
       title="Abrir Chat Grupo Odin"
-      className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-gold-600 hover:bg-gold-500 text-dark-950 shadow-2xl shadow-black/50 flex items-center justify-center transition-colors"
+      className="fixed bottom-5 right-5 z-40 w-14 h-14 rounded-full bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-2xl shadow-black/50 flex items-center justify-center transition-colors"
     >
       <MessageCircleMore size={26} />
       {naoLidasTotal > 0 && (
