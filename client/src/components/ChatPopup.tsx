@@ -96,11 +96,11 @@ function NovaConversaView({ onClose, onCriada }: { onClose: () => void; onCriada
 // página própria no menu lateral, o chat abre na hora de qualquer tela
 // através do botão ao lado do sininho de notificações (ver Layout.tsx).
 export default function ChatPopup() {
-  const { naoLidasTotal, popupAberto, setPopupAberto, conversaParaAbrir, limparConversaParaAbrir } = useChat()
+  const { temAcesso, naoLidasTotal, popupAberto, setPopupAberto, conversaParaAbrir, limparConversaParaAbrir } = useChat()
   const [selecionada, setSelecionada] = useState<number | null>(null)
   const [novaConversaAberta, setNovaConversaAberta] = useState(false)
   const [buscaConversa, setBuscaConversa] = useState('')
-  const { data: conversas, isLoading } = trpc.chat.conversas.listar.useQuery(undefined, { enabled: popupAberto })
+  const { data: conversas, isLoading } = trpc.chat.conversas.listar.useQuery(undefined, { enabled: popupAberto && temAcesso })
 
   // Veio de um aviso de mensagem nova (ChatContext.abrirConversaNoPopup) —
   // já abre direto naquela conversa.
@@ -112,6 +112,8 @@ export default function ChatPopup() {
   }, [popupAberto, conversaParaAbrir, limparConversaParaAbrir])
 
   const conversaAtual = conversas?.find((c) => c.id === selecionada)
+
+  if (!temAcesso) return null
 
   const termoBusca = buscaConversa.trim().toLowerCase()
   const conversasFiltradas = !termoBusca

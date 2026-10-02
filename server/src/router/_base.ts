@@ -93,3 +93,16 @@ export async function temFeature(userId: number, feature: string): Promise<boole
   })
   return !!liberado
 }
+
+// Chat Grupo Odin — antes de ir pra produção o João quer escolher pessoa
+// por pessoa quem já pode usar (pedido 2026-10-02), então todo endpoint do
+// chat passa por aqui em vez de `protectedProcedure` puro. superAdmin
+// sempre passa; role 'gestor' também (o menu dele já é fixo, não depende
+// de Permissões — ver GESTOR_LINKS no Sidebar); admin/vendor comuns só com
+// 'chat' liberado em Permissões.
+export const chatProcedure = protectedProcedure.use(async ({ ctx, next }) => {
+  if (ctx.user.superAdmin || ctx.user.role === 'gestor') return next({ ctx })
+  const liberado = await temFeature(ctx.user.id, 'chat')
+  if (!liberado) throw new TRPCError({ code: 'FORBIDDEN', message: 'Chat ainda não foi liberado pra você. Fale com o administrador.' })
+  return next({ ctx })
+})

@@ -6,6 +6,12 @@ import { trpc } from '../lib/trpc'
 import Avatar from '../components/chat/Avatar'
 
 interface ChatContextValue {
+  // Se a pessoa logada já tem o Chat liberado em Permissões (ver
+  // chatProcedure no server) — superAdmin e role 'gestor' sempre têm.
+  // Usado pra esconder os botões (popup, flutuante, "Conversar sobre
+  // isso") de quem ainda não foi liberado. Pedido do João, 2026-10-02:
+  // escolher pessoa por pessoa antes de mandar pro ar.
+  temAcesso: boolean
   socket: Socket | null
   // userId -> está online agora. Começa vazio e vai sendo preenchido pelos
   // eventos de presença (ver chatSocket.ts no servidor) — a tela que lista
@@ -30,6 +36,7 @@ interface ChatContextValue {
 }
 
 const ChatContext = createContext<ChatContextValue>({
+  temAcesso: false,
   socket: null,
   presencaOnline: new Map(),
   naoLidasTotal: 0,
@@ -67,13 +74,20 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setPopupAberto(true)
   }
 
+  // Mesma condição de enabled do Sidebar pra 'minhasFeatures': superAdmin e
+  // gestor nunca dependem dessa tabela, então nem precisam chamar a query.
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
+  })
+  const temAcesso = !!user && (user.superAdmin || user.role === 'gestor' || !!minhasFeatures?.includes('chat'))
+
   const { data: conversas } = trpc.chat.conversas.listar.useQuery(undefined, {
-    enabled: !!token,
+    enabled: !!token && temAcesso,
     refetchInterval: 30_000,
   })
 
   useEffect(() => {
-    if (!token || !user) {
+    if (!token || !user || !temAcesso) {
       socketRef.current?.disconnect()
       socketRef.current = null
       setSocket(null)
@@ -128,13 +142,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       socketRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, user?.id])
+  }, [token, user?.id, temAcesso])
 
   const naoLidasTotal = (conversas ?? []).reduce((soma, c) => soma + c.naoLidas, 0)
 
   return (
     <ChatContext.Provider
       value={{
+        temAcesso,
         socket,
         presencaOnline,
         naoLidasTotal,

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { and, asc, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm'
-import { router, protectedProcedure } from './_base.js'
+import { router, chatProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito, empresas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
@@ -89,7 +89,7 @@ export const chatRouter = router({
   // Cross-empresa de propósito — "todo mundo, grupo inteiro" (pedido do
   // João, 2026-10-02): qualquer um pode começar uma conversa direta com
   // qualquer outro, não só gente da própria empresa.
-  usuarios: protectedProcedure.query(async ({ ctx }) => {
+  usuarios: chatProcedure.query(async ({ ctx }) => {
     return db
       .select({
         id: users.id,
@@ -110,7 +110,7 @@ export const chatRouter = router({
   // alimenta o botão "Conversar sobre isso", sempre idempotente: clicar de
   // novo no mesmo registro sempre volta pra mesma conversa, nunca duplica.
   conversas: router({
-    abrirPorOrigem: protectedProcedure
+    abrirPorOrigem: chatProcedure
       .input(z.object({ tipoOrigem: z.enum(TIPO_ORIGEM_VALUES), idOrigem: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const existente = await db.query.chatConversas.findFirst({
@@ -154,7 +154,7 @@ export const chatRouter = router({
     // Conversa direta (sem vínculo com registro nenhum) entre duas pessoas
     // — mesma lógica de idempotência: já existindo uma entre os dois, volta
     // pra ela em vez de criar outra.
-    abrirDireta: protectedProcedure.input(z.object({ outroUserId: z.number() })).mutation(async ({ ctx, input }) => {
+    abrirDireta: chatProcedure.input(z.object({ outroUserId: z.number() })).mutation(async ({ ctx, input }) => {
       if (input.outroUserId === ctx.user.id) throw new Error('Não dá pra abrir uma conversa consigo mesmo.')
 
       // Achar a conversa 'direta' que já existe entre os dois, se tiver,
@@ -200,7 +200,7 @@ export const chatRouter = router({
 
     // Adiciona mais alguém numa conversa já existente (igual entrar num
     // grupo de WhatsApp) — qualquer participante atual pode convidar.
-    adicionarParticipante: protectedProcedure
+    adicionarParticipante: chatProcedure
       .input(z.object({ conversaId: z.number(), userId: z.number() }))
       .mutation(async ({ ctx, input }) => {
         const souParticipante = await db.query.chatParticipantes.findFirst({
@@ -218,7 +218,7 @@ export const chatRouter = router({
     // confirmam tipoOrigem/idOrigem. Pedido do João, 2026-10-02: conversa
     // sobre cliente da carteira (ou aberta pelo Kanban) já vem com os
     // dados dele.
-    detalhe: protectedProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
+    detalhe: chatProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
       const souParticipante = await db.query.chatParticipantes.findFirst({
         where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
       })
@@ -252,7 +252,7 @@ export const chatRouter = router({
     // Quem participa de uma conversa — alimenta o cabeçalho da janela de
     // chat (avatares) e o botão "+" de adicionar mais gente a qualquer
     // momento (não só na criação).
-    participantes: protectedProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
+    participantes: chatProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
       const souParticipante = await db.query.chatParticipantes.findFirst({
         where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
       })
@@ -273,7 +273,7 @@ export const chatRouter = router({
 
     // Lista as conversas do usuário logado, mais recente primeiro, com
     // prévia da última mensagem + contagem de não lidas.
-    listar: protectedProcedure.query(async ({ ctx }) => {
+    listar: chatProcedure.query(async ({ ctx }) => {
       const minhas = await db.query.chatParticipantes.findMany({ where: eq(chatParticipantes.userId, ctx.user.id) })
       if (!minhas.length) return []
 
@@ -351,7 +351,7 @@ export const chatRouter = router({
     // carregada) — a tela pede mais 50 ao rolar pro topo da conversa, até
     // acabar. Sem isso, "histórico completo" só valeria pras últimas 50
     // mensagens. Pedido do João, 2026-10-02.
-    listar: protectedProcedure
+    listar: chatProcedure
       .input(z.object({ conversaId: z.number(), antesDe: z.string().optional() }))
       .query(async ({ ctx, input }) => {
         const souParticipante = await db.query.chatParticipantes.findFirst({
@@ -370,7 +370,7 @@ export const chatRouter = router({
         return { mensagens: msgs.reverse(), temMais: msgs.length === 50 }
       }),
 
-    enviar: protectedProcedure
+    enviar: chatProcedure
       .input(
         z.object({
           conversaId: z.number(),
@@ -459,7 +459,7 @@ export const chatRouter = router({
         return mensagem
       }),
 
-    marcarLida: protectedProcedure.input(z.object({ conversaId: z.number() })).mutation(async ({ ctx, input }) => {
+    marcarLida: chatProcedure.input(z.object({ conversaId: z.number() })).mutation(async ({ ctx, input }) => {
       const agora = agoraSqlite()
       await db
         .update(chatParticipantes)

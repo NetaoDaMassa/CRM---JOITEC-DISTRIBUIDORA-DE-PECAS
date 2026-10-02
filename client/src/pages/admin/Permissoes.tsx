@@ -24,9 +24,17 @@ const FEATURES = [
   { feature: 'painel_tv', label: 'Painel de TV' },
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
   { feature: 'funil_excluir_card', label: 'Excluir card do Kanban' },
+  // Chat Grupo Odin saiu do menu lateral (virou popup + botão flutuante),
+  // então não tem mais item em ADMIN_LINKS/VENDOR_LINKS — entra na mão,
+  // igual Painel Financeiro. Pedido do João, 2026-10-02: controlar pessoa
+  // por pessoa antes de mandar pra produção.
+  { feature: 'chat', label: 'Chat Grupo Odin' },
 ]
 
-const FEATURES_VENDEDOR = VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label }))
+const FEATURES_VENDEDOR = [
+  ...VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
+  { feature: 'chat', label: 'Chat Grupo Odin' },
+]
 
 const FEATURES_RELATORIOS = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },

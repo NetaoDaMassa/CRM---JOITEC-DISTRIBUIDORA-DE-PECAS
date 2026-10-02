@@ -2,6 +2,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { MessageCircleMore, X } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { useChat } from '../../contexts/ChatContext'
 import Modal from '../ui/Modal'
 import ChatJanela from './ChatJanela'
 import PessoaPicker from './PessoaPicker'
@@ -29,6 +30,7 @@ export default function ConversarSobreIssoButton({
   titulo?: string
   className?: string
 }) {
+  const { temAcesso } = useChat()
   const [conversaId, setConversaId] = useState<number | null>(null)
   const [escolhendoComQuem, setEscolhendoComQuem] = useState(false)
   const utils = trpc.useUtils()
@@ -48,6 +50,8 @@ export default function ConversarSobreIssoButton({
     },
     onError: (e) => toast.error(e.message),
   })
+
+  if (!temAcesso) return null
 
   return (
     <>

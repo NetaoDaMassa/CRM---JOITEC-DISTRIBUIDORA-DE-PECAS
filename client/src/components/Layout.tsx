@@ -4,6 +4,7 @@ import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
 import ChatPopup from './ChatPopup'
+import ChatFloatingButton from './ChatFloatingButton'
 import LembretesCompromisso from './LembretesCompromisso'
 
 export default function Layout() {
@@ -33,6 +34,7 @@ export default function Layout() {
         </header>
         <Outlet />
       </main>
+      <ChatFloatingButton />
       <LembretesCompromisso />
     </div>
   )

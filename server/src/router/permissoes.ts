@@ -151,6 +151,13 @@ export const FEATURES_ADMIN = [
   // lá controla quem PODE PEDIR (vendedor) — nunca colide, Sidebar já separa
   // por role antes de checar a feature. Pedido do João, 2026-10-01.
   'solicitacao_credito',
+  // Chat Grupo Odin — não é item de ADMIN_LINKS (saiu do menu, virou popup
+  // + botão flutuante), então não existe row correspondente no Sidebar;
+  // entra aqui na mão, igual 'painel_financeiro'. Controlado via
+  // chatProcedure (ver _base.ts). Mesma chave em FEATURES_VENDEDOR abaixo.
+  // Pedido do João, 2026-10-02: quer escolher pessoa por pessoa antes de
+  // mandar pra produção.
+  'chat',
 ] as const
 
 // "Arquivos/Mídia" (Marketing) NÃO tem chave aqui de propósito — é liberado
@@ -213,6 +220,8 @@ export const FEATURES_VENDEDOR = [
   // Consulta/Solicitação de Crédito — mesma chave de FEATURES_ADMIN acima
   // (lá controla quem responde, aqui quem pode abrir um pedido).
   'solicitacao_credito',
+  // Chat Grupo Odin — mesma chave de FEATURES_ADMIN acima.
+  'chat',
 ] as const
 
 // Abas de dentro de Relatórios — controle mais fino que o 'relatorios' acima

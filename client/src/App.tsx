@@ -62,6 +62,7 @@ import SolicitacaoCreditoVendor from './pages/vendor/SolicitacaoCredito'
 import CartaoCredito from './pages/vendor/CartaoCredito'
 import CartaoCreditoRelatorio from './pages/admin/CartaoCreditoRelatorio'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
+import Chat from './pages/Chat'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
@@ -216,6 +217,7 @@ export default function App() {
           <Route path="admin/backup" element={<AdminGuard><FeatureGuard feature="backup"><AdminBackup /></FeatureGuard></AdminGuard>} />
           <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/pos-venda" element={<AdminGuard><FeatureGuard feature="pos_venda"><FilaPosVenda /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/chat" element={<AdminGuard><FeatureGuard feature="chat"><Chat /></FeatureGuard></AdminGuard>} />
           <Route path="admin/permissoes" element={<AdminGuard><SuperAdminGuard><AdminPermissoes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/funcoes" element={<AdminGuard><SuperAdminGuard><AdminFuncoes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/vagas" element={<AdminGuard><FeatureGuard feature="vagas"><AdminVagas /></FeatureGuard></AdminGuard>} />
@@ -277,6 +279,7 @@ export default function App() {
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
           <Route path="vendedor/cartao-credito" element={<CartaoCredito />} />
           <Route path="vendedor/solicitacao-credito" element={<SolicitacaoCreditoVendor />} />
+          <Route path="vendedor/chat" element={<Chat />} />
           <Route path="vendedor/devolucoes" element={<Devolucoes />} />
           <Route path="vendedor/devolucoes-mecanica" element={<DevolucaoMecanica />} />
           <Route path="vendedor/devolucoes-demonstracao" element={<DevolucaoDemonstracao />} />
