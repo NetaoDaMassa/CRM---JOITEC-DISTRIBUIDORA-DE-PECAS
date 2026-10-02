@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito } from '../db/schema.js'
+import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito, empresas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { emitirNovaMensagem, emitirParaUsuario, emitirParaConversa } from '../lib/chatSocket.js'
 
@@ -62,12 +62,20 @@ export const chatRouter = router({
   // João, 2026-10-02): qualquer um pode começar uma conversa direta com
   // qualquer outro, não só gente da própria empresa.
   usuarios: protectedProcedure.query(async ({ ctx }) => {
-    const todos = await db.query.users.findMany({
-      where: and(eq(users.isActive, true), ne(users.id, ctx.user.id)),
-      columns: { id: true, name: true, empresaId: true, chatOnline: true, chatUltimaAtividadeEm: true, fotoUrl: true },
-      orderBy: (u, { asc }) => [asc(u.name)],
-    })
-    return todos
+    return db
+      .select({
+        id: users.id,
+        name: users.name,
+        empresaId: users.empresaId,
+        empresaNome: empresas.nome,
+        chatOnline: users.chatOnline,
+        chatUltimaAtividadeEm: users.chatUltimaAtividadeEm,
+        fotoUrl: users.fotoUrl,
+      })
+      .from(users)
+      .innerJoin(empresas, eq(empresas.id, users.empresaId))
+      .where(and(eq(users.isActive, true), ne(users.id, ctx.user.id)))
+      .orderBy(asc(users.name))
   }),
 
   // Acha (ou cria na hora) a conversa vinculada a um registro — é o que
