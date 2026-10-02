@@ -198,6 +198,50 @@ export const chatRouter = router({
       return { id: conversaId }
     }),
 
+    // "Mini grupo": conversa com título escolhido na hora e várias pessoas
+    // de uma vez (ao contrário de 'direta', que é sempre par a par) — não
+    // tem vínculo com nenhum registro do CRM. Pedido do João, 2026-10-03.
+    criarGrupo: chatProcedure
+      .input(z.object({ titulo: z.string().trim().min(1, 'Dá um título pro grupo'), participantesIds: z.array(z.number()).min(1, 'Escolhe pelo menos mais uma pessoa') }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.insert(chatConversas).values({
+          tipoOrigem: 'grupo',
+          tituloSnapshot: input.titulo,
+          criadoPor: ctx.user.id,
+        })
+        const conversaId = Number(result.lastInsertRowid)
+        await garantirParticipante(conversaId, ctx.user.id)
+        for (const userId of new Set(input.participantesIds)) {
+          if (userId === ctx.user.id) continue
+          await garantirParticipante(conversaId, userId)
+          emitirParaUsuario(userId, 'chat:conversaAtualizada', { conversaId })
+        }
+        return { id: conversaId }
+      }),
+
+    // Excluir um grupo — poder de admin (ver comentário na coluna
+    // `deletedAt` em schema.ts). Conversa 'direta' ou vinculada a registro
+    // não entra aqui: "não pode apagar, só admin mesmo" foi pedido
+    // especificamente pros mini grupos (pedido do João, 2026-10-03).
+    // Soft-delete (não perde o histórico) — some da lista de todo mundo.
+    excluir: chatProcedure.input(z.object({ conversaId: z.number() })).mutation(async ({ ctx, input }) => {
+      if (ctx.user.role !== 'admin' && !ctx.user.superAdmin) throw new Error('Só admin pode excluir um grupo.')
+      const souParticipante = await db.query.chatParticipantes.findFirst({
+        where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
+      })
+      if (!souParticipante) throw new Error('Você não participa dessa conversa.')
+      const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId) })
+      if (!conversa || conversa.tipoOrigem !== 'grupo') throw new Error('Só dá pra excluir um grupo.')
+
+      await db.update(chatConversas).set({ deletedAt: agoraSqlite() }).where(eq(chatConversas.id, input.conversaId))
+      const participantes = await db.query.chatParticipantes.findMany({ where: eq(chatParticipantes.conversaId, input.conversaId) })
+      for (const p of participantes) {
+        if (p.userId === ctx.user.id) continue
+        emitirParaUsuario(p.userId, 'chat:conversaExcluida', { conversaId: input.conversaId })
+      }
+      return { success: true }
+    }),
+
     // Adiciona mais alguém numa conversa já existente (igual entrar num
     // grupo de WhatsApp) — qualquer participante atual pode convidar.
     adicionarParticipante: chatProcedure
@@ -278,9 +322,12 @@ export const chatRouter = router({
       if (!minhas.length) return []
 
       const conversas = await db.query.chatConversas.findMany({
-        where: inArray(
-          chatConversas.id,
-          minhas.map((m) => m.conversaId)
+        where: and(
+          inArray(
+            chatConversas.id,
+            minhas.map((m) => m.conversaId)
+          ),
+          isNull(chatConversas.deletedAt)
         ),
         orderBy: (c, { desc }) => [desc(c.ultimaMensagemEm), desc(c.createdAt)],
       })
@@ -387,6 +434,8 @@ export const chatRouter = router({
           where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
         })
         if (!souParticipante) throw new Error('Você não participa dessa conversa.')
+        const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId), columns: { deletedAt: true } })
+        if (conversa?.deletedAt) throw new Error('Esse grupo foi excluído.')
         if (input.tipo === 'texto' && !input.texto?.trim()) throw new Error('Mensagem vazia.')
 
         const agora = agoraSqlite()

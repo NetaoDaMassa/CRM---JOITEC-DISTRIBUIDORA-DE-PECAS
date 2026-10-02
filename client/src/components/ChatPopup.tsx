@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { MessageCircleMore, Plus, X, Camera, Search, ArrowLeft } from 'lucide-react'
+import { MessageCircleMore, Plus, X, Camera, Search, ArrowLeft, Users } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { useChat } from '../contexts/ChatContext'
@@ -8,6 +8,7 @@ import { timeAgo } from '../lib/utils'
 import { Badge } from './ui/Badge'
 import ChatJanela from './chat/ChatJanela'
 import PessoaPicker from './chat/PessoaPicker'
+import NovoGrupoView from './chat/NovoGrupoView'
 import Avatar from './chat/Avatar'
 
 const TIPO_ORIGEM_LABEL: Record<string, string> = {
@@ -17,6 +18,7 @@ const TIPO_ORIGEM_LABEL: Record<string, string> = {
   visita: '🚗 Visita',
   consulta_credito: '💳 Consulta de crédito',
   direta: '',
+  grupo: '👥 Grupo',
 }
 
 async function uploadMinhaFoto(file: File): Promise<string> {
@@ -99,6 +101,8 @@ export default function ChatPopup() {
   const { temAcesso, naoLidasTotal, popupAberto, setPopupAberto, conversaParaAbrir, limparConversaParaAbrir } = useChat()
   const [selecionada, setSelecionada] = useState<number | null>(null)
   const [novaConversaAberta, setNovaConversaAberta] = useState(false)
+  const [novoGrupoAberto, setNovoGrupoAberto] = useState(false)
+  const [menuNovaAberto, setMenuNovaAberto] = useState(false)
   const [buscaConversa, setBuscaConversa] = useState('')
   const { data: conversas, isLoading } = trpc.chat.conversas.listar.useQuery(undefined, { enabled: popupAberto && temAcesso })
 
@@ -158,7 +162,7 @@ export default function ChatPopup() {
                   </button>
                 </div>
                 <div className="flex-1 min-h-0">
-                  <ChatJanela conversaId={conversaAtual.id} />
+                  <ChatJanela conversaId={conversaAtual.id} onExcluida={() => setSelecionada(null)} />
                 </div>
               </>
             ) : (
@@ -170,9 +174,36 @@ export default function ChatPopup() {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <MinhaFoto />
-                    <button onClick={() => setNovaConversaAberta(true)} className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300">
-                      <Plus size={14} /> Nova
-                    </button>
+                    <div className="relative">
+                      <button onClick={() => setMenuNovaAberto((v) => !v)} className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300">
+                        <Plus size={14} /> Nova
+                      </button>
+                      {menuNovaAberto && (
+                        <>
+                          <div className="fixed inset-0 z-30" onClick={() => setMenuNovaAberto(false)} />
+                          <div className="absolute right-0 mt-2 w-44 bg-dark-700 border border-dark-600 rounded-lg shadow-xl z-40 overflow-hidden">
+                            <button
+                              onClick={() => {
+                                setMenuNovaAberto(false)
+                                setNovaConversaAberta(true)
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs text-dark-100 hover:bg-dark-600 flex items-center gap-2"
+                            >
+                              <MessageCircleMore size={13} /> Conversa individual
+                            </button>
+                            <button
+                              onClick={() => {
+                                setMenuNovaAberto(false)
+                                setNovoGrupoAberto(true)
+                              }}
+                              className="w-full text-left px-3 py-2 text-xs text-dark-100 hover:bg-dark-600 flex items-center gap-2"
+                            >
+                              <Users size={13} /> Novo grupo
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                     <button onClick={() => setPopupAberto(false)} className="text-dark-400 hover:text-dark-100">
                       <X size={16} />
                     </button>
@@ -197,7 +228,7 @@ export default function ChatPopup() {
                       <p className="p-3 text-sm text-dark-500">Nenhuma conversa encontrada.</p>
                     )}
                     {conversasFiltradas?.map((c) => {
-                      const outro = c.outrosParticipantes[0]
+                      const outro = c.tipoOrigem === 'grupo' ? undefined : c.outrosParticipantes[0]
                       return (
                         <button
                           key={c.id}
@@ -233,6 +264,16 @@ export default function ChatPopup() {
                       onCriada={(id) => {
                         setSelecionada(id)
                         setNovaConversaAberta(false)
+                      }}
+                    />
+                  )}
+
+                  {novoGrupoAberto && (
+                    <NovoGrupoView
+                      onClose={() => setNovoGrupoAberto(false)}
+                      onCriado={(id) => {
+                        setSelecionada(id)
+                        setNovoGrupoAberto(false)
                       }}
                     />
                   )}

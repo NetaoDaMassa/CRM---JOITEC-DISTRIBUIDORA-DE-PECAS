@@ -3396,19 +3396,26 @@ export const chatConversas = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     tipoOrigem: text('tipo_origem', {
-      enum: ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito', 'direta'],
+      enum: ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito', 'direta', 'grupo'],
     }).notNull(),
-    // Null só quando tipoOrigem = 'direta' (conversa sem vínculo, só entre
-    // pessoas). Pra todo o resto é o id do registro de origem.
+    // Null quando tipoOrigem = 'direta' ou 'grupo' (conversas sem vínculo com
+    // registro, só entre pessoas). Pra todo o resto é o id do registro de
+    // origem.
     idOrigem: integer('id_origem'),
     // Rótulo opcional pra facilitar achar na lista (ex: nome do cliente/lead
     // no momento da criação) — snapshot, não é atualizado se o registro
     // mudar de nome depois; a tela sempre pode re-resolver o nome atual a
-    // partir de tipoOrigem+idOrigem quando precisar do dado fresco.
+    // partir de tipoOrigem+idOrigem quando precisar do dado fresco. Pra
+    // tipoOrigem = 'grupo' é o título que a pessoa digitou na hora de criar.
     tituloSnapshot: text('titulo_snapshot'),
     criadoPor: integer('criado_por').notNull().references(() => users.id, { onDelete: 'cascade' }),
     ultimaMensagemEm: text('ultima_mensagem_em'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Só usado em grupos ('grupo') — exclusão é poder de admin (ver
+    // chat.ts, conversas.excluir), soft-delete pra não perder histórico à
+    // toa. Conversa 'direta'/vinculada a registro não tem como excluir
+    // (pedido do João, 2026-10-03: "não pode apagar, só admin mesmo").
+    deletedAt: text('deleted_at'),
   },
   (t) => ({
     origemIdx: index('chat_conversas_origem_idx').on(t.tipoOrigem, t.idOrigem),

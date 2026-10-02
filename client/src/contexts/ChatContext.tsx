@@ -104,6 +104,15 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     s.on('chat:conversaAtualizada', () => {
       utils.chat.conversas.listar.invalidate()
     })
+    // Grupo excluído por um admin — some da lista de quem mais participava.
+    // Só invalida a lista: como a tela sempre deriva "conversa aberta" de
+    // `conversas.find(id)`, ela volta sozinha pra lista assim que o grupo
+    // some do resultado (ver ChatPopup.tsx/pages/Chat.tsx). Pedido do João,
+    // 2026-10-03.
+    s.on('chat:conversaExcluida', () => {
+      utils.chat.conversas.listar.invalidate()
+      toast('Um grupo que você participava foi excluído.', { icon: '🗑️' })
+    })
 
     // Pop-up de mensagem nova — só quando a pessoa NÃO está com aquela
     // conversa aberta na hora (senão ela já está vendo a mensagem chegar na

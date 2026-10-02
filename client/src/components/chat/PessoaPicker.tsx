@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search } from 'lucide-react'
+import { Search, Check } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Avatar from './Avatar'
 
@@ -8,7 +8,23 @@ import Avatar from './Avatar'
 // conversa" quanto pra "Com quem você quer falar sobre isso" (ver
 // ConversarSobreIssoButton). Agrupado por empresa (Joitec, Compretec...),
 // online primeiro dentro de cada grupo — pedido do João, 2026-10-02.
-export default function PessoaPicker({ onEscolher, excluirIds }: { onEscolher: (userId: number) => void; excluirIds?: number[] }) {
+//
+// `multiplo` liga o modo de seleção múltipla (pro "Novo grupo" — pedido do
+// João, 2026-10-03): em vez de disparar `onEscolher` e fechar na hora, cada
+// clique só chama `onEscolher` pra avisar o pai de um toggle (adicionar ou
+// tirar da lista) — quem decide o que fica marcado é o pai, via
+// `selecionados`. Sem `multiplo`, clicar escolhe e fecha, igual sempre foi.
+export default function PessoaPicker({
+  onEscolher,
+  excluirIds,
+  multiplo,
+  selecionados,
+}: {
+  onEscolher: (userId: number) => void
+  excluirIds?: number[]
+  multiplo?: boolean
+  selecionados?: number[]
+}) {
   const [busca, setBusca] = useState('')
   const { data: usuarios } = trpc.chat.usuarios.useQuery()
 
@@ -48,16 +64,24 @@ export default function PessoaPicker({ onEscolher, excluirIds }: { onEscolher: (
               {empresaNome}
             </p>
             <div className="divide-y divide-dark-700">
-              {grupos.get(empresaNome)!.map((u) => (
-                <button
-                  key={u.id}
-                  onClick={() => onEscolher(u.id)}
-                  className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-dark-700/50 transition-colors"
-                >
-                  <Avatar nome={u.name} fotoUrl={u.fotoUrl} online={u.chatOnline} size="sm" />
-                  <span className="text-sm text-dark-100">{u.name}</span>
-                </button>
-              ))}
+              {grupos.get(empresaNome)!.map((u) => {
+                const marcado = multiplo && selecionados?.includes(u.id)
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => onEscolher(u.id)}
+                    className="w-full text-left px-3 py-2.5 flex items-center gap-2.5 hover:bg-dark-700/50 transition-colors"
+                  >
+                    <Avatar nome={u.name} fotoUrl={u.fotoUrl} online={u.chatOnline} size="sm" />
+                    <span className="text-sm text-dark-100 flex-1">{u.name}</span>
+                    {multiplo && (
+                      <span className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${marcado ? 'bg-gold-600 border-gold-600' : 'border-dark-600'}`}>
+                        {marcado && <Check size={12} className="text-dark-950" />}
+                      </span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}

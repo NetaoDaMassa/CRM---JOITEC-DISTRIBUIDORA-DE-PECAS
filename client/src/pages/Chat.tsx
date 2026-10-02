@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { MessageCircleMore, Plus, X, Camera, Search } from 'lucide-react'
+import { MessageCircleMore, Plus, X, Camera, Search, Users } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { timeAgo } from '../lib/utils'
 import { Badge } from '../components/ui/Badge'
 import ChatJanela from '../components/chat/ChatJanela'
 import PessoaPicker from '../components/chat/PessoaPicker'
+import NovoGrupoView from '../components/chat/NovoGrupoView'
 import Avatar from '../components/chat/Avatar'
 
 const TIPO_ORIGEM_LABEL: Record<string, string> = {
@@ -17,6 +18,7 @@ const TIPO_ORIGEM_LABEL: Record<string, string> = {
   visita: '🚗 Visita',
   consulta_credito: '💳 Consulta de crédito',
   direta: '',
+  grupo: '👥 Grupo',
 }
 
 async function uploadMinhaFoto(file: File): Promise<string> {
@@ -103,6 +105,8 @@ export default function Chat() {
     return doLink ? Number(doLink) : null
   })
   const [novaConversaAberta, setNovaConversaAberta] = useState(false)
+  const [novoGrupoAberto, setNovoGrupoAberto] = useState(false)
+  const [menuNovaAberto, setMenuNovaAberto] = useState(false)
   const { data: conversas, isLoading } = trpc.chat.conversas.listar.useQuery()
 
   useEffect(() => {
@@ -141,12 +145,39 @@ export default function Chat() {
         <div className="w-80 shrink-0 bg-dark-800 border border-dark-600 rounded-2xl flex flex-col min-h-0 relative">
           <div className="flex items-center justify-between p-3 border-b border-dark-700 shrink-0">
             <p className="text-sm font-semibold text-dark-200">Conversas</p>
-            <button
-              onClick={() => setNovaConversaAberta(true)}
-              className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300"
-            >
-              <Plus size={14} /> Nova
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setMenuNovaAberto((v) => !v)}
+                className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300"
+              >
+                <Plus size={14} /> Nova
+              </button>
+              {menuNovaAberto && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setMenuNovaAberto(false)} />
+                  <div className="absolute right-0 mt-2 w-44 bg-dark-700 border border-dark-600 rounded-lg shadow-xl z-40 overflow-hidden">
+                    <button
+                      onClick={() => {
+                        setMenuNovaAberto(false)
+                        setNovaConversaAberta(true)
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-dark-100 hover:bg-dark-600 flex items-center gap-2"
+                    >
+                      <MessageCircleMore size={13} /> Conversa individual
+                    </button>
+                    <button
+                      onClick={() => {
+                        setMenuNovaAberto(false)
+                        setNovoGrupoAberto(true)
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs text-dark-100 hover:bg-dark-600 flex items-center gap-2"
+                    >
+                      <Users size={13} /> Novo grupo
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
           <div className="p-2 border-b border-dark-700 shrink-0">
             <div className="relative">
@@ -166,7 +197,7 @@ export default function Chat() {
               <p className="p-3 text-sm text-dark-500">Nenhuma conversa encontrada.</p>
             )}
             {conversasFiltradas?.map((c) => {
-              const outro = c.outrosParticipantes[0]
+              const outro = c.tipoOrigem === 'grupo' ? undefined : c.outrosParticipantes[0]
               return (
                 <button
                   key={c.id}
@@ -200,6 +231,16 @@ export default function Chat() {
               }}
             />
           )}
+
+          {novoGrupoAberto && (
+            <NovoGrupoView
+              onClose={() => setNovoGrupoAberto(false)}
+              onCriado={(id) => {
+                setSelecionada(id)
+                setNovoGrupoAberto(false)
+              }}
+            />
+          )}
         </div>
 
         <div className="flex-1 bg-dark-800 border border-dark-600 rounded-2xl min-h-0 flex flex-col">
@@ -212,7 +253,7 @@ export default function Chat() {
                 )}
               </div>
               <div className="flex-1 min-h-0">
-                <ChatJanela conversaId={conversaAtual.id} />
+                <ChatJanela conversaId={conversaAtual.id} onExcluida={() => setSelecionada(null)} />
               </div>
             </>
           ) : (

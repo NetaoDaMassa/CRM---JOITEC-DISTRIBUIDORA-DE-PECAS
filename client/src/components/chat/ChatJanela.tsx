@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Link } from 'react-router-dom'
-import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp, Check, CheckCheck, Building2, Phone } from 'lucide-react'
+import { Paperclip, Send, Mic, Square, Play, Pause, X, UserPlus, ChevronUp, Check, CheckCheck, Building2, Phone, Camera, Trash2 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { useChat } from '../../contexts/ChatContext'
@@ -104,7 +104,7 @@ function BolhaMensagem({ m, minha, lida }: { m: Mensagem; minha: boolean; lida: 
 // na sala `conversa:<id>` do socket enquanto estiver montado, pra receber
 // mensagem nova em tempo real sem precisar ficar recarregando. Pedido do
 // João, 2026-10-02 (projeto Chat Grupo Odin).
-export default function ChatJanela({ conversaId }: { conversaId: number }) {
+export default function ChatJanela({ conversaId, onExcluida }: { conversaId: number; onExcluida?: () => void }) {
   const { user } = useAuth()
   const { socket, setConversaAbertaId } = useChat()
   const utils = trpc.useUtils()
@@ -219,6 +219,20 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
     },
     onError: (e) => toast.error(e.message),
   })
+
+  const excluirMut = trpc.chat.conversas.excluir.useMutation({
+    onSuccess: () => {
+      utils.chat.conversas.listar.invalidate()
+      toast.success('Grupo excluído')
+      onExcluida?.()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+
+  function excluirGrupo() {
+    if (!confirm('Excluir esse grupo? Essa ação não pode ser desfeita.')) return
+    excluirMut.mutate({ conversaId })
+  }
 
   function enviarTexto() {
     const valor = texto.trim()
@@ -347,9 +361,20 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
                 </div>
               ))}
           </div>
-          <button type="button" onClick={() => setAdicionarAberto(true)} className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300 shrink-0">
-            <UserPlus size={13} /> Adicionar
-          </button>
+          <div className="flex items-center gap-3 shrink-0">
+            <button type="button" onClick={() => setAdicionarAberto(true)} className="flex items-center gap-1 text-xs text-gold-400 hover:text-gold-300">
+              <UserPlus size={13} /> Adicionar
+            </button>
+            {/* Excluir grupo é poder de admin — "não pode apagar, só admin
+                mesmo" (pedido do João, 2026-10-03). Só aparece pra tipo
+                'grupo': conversa direta ou vinculada a registro não tem
+                como excluir. */}
+            {detalhe?.tipoOrigem === 'grupo' && (user?.role === 'admin' || user?.superAdmin) && (
+              <button type="button" onClick={excluirGrupo} disabled={excluirMut.isPending} className="flex items-center gap-1 text-xs text-red-400 hover:text-red-300">
+                <Trash2 size={13} /> Excluir grupo
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -389,6 +414,15 @@ export default function ChatJanela({ conversaId }: { conversaId: number }) {
             <label className="text-dark-400 hover:text-gold-400 cursor-pointer shrink-0">
               <Paperclip size={18} />
               <input type="file" className="hidden" onChange={onSelecionarArquivo} disabled={enviandoArquivo} />
+            </label>
+            {/* `capture="environment"` abre a câmera do celular direto, sem
+                passar pela galeria — pedido do João, 2026-10-03: "muito
+                difícil ter a função da câmera na hora". No desktop
+                (sem câmera/captura nativa), o navegador cai pro seletor de
+                arquivo normal. */}
+            <label className="text-dark-400 hover:text-gold-400 cursor-pointer shrink-0">
+              <Camera size={18} />
+              <input type="file" accept="image/*" capture="environment" className="hidden" onChange={onSelecionarArquivo} disabled={enviandoArquivo} />
             </label>
             <input
               value={texto}

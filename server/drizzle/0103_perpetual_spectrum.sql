@@ -1,0 +1,1 @@
+ALTER TABLE `chat_conversas` ADD `deleted_at` text;
