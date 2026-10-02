@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3,
   KanbanSquare, List, LogOut, ArrowRightLeft, Trash2,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin, MessageCircleMore,
   ChevronDown, ChevronRight, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -47,12 +47,17 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // empresa). Usado tanto aqui (pula a checagem de `minhasFeatures`) quanto
 // em Permissoes.tsx (tira da lista de caixinhas — marcar/desmarcar não
 // faria diferença nenhuma pra esses itens).
-export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos'])
+export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'chat'])
 
 // `feature` é a chave usada em permissoesAdmin/FEATURES_ADMIN (server) —
 // controla quem vê cada item pra admins não-superAdmin.
 export const ADMIN_LINKS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, feature: 'dashboard' },
+  // Chat interno da equipe inteira (as 7 empresas) — sem permissão
+  // granular de propósito, todo mundo que usa o CRM tem acesso (ver
+  // FEATURES_SEMPRE_LIBERADAS acima, mesmo padrão de Arquivos/Mídia).
+  // Pedido do João, 2026-10-02.
+  { to: '/admin/chat', label: 'Chat', icon: MessageCircleMore, feature: 'chat' },
   { to: '/admin/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
   { to: '/admin/demandas', label: 'Demandas', icon: ClipboardList, feature: 'demandas' },
   { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
@@ -150,6 +155,7 @@ export const ADMIN_LINKS = [
 // acesso à mesma tela que o admin usa (rota própria, ver App.tsx).
 export const VENDOR_LINKS = [
   { to: '/vendedor', label: 'Meu Painel', icon: LayoutDashboard, end: true, feature: 'meu_painel' },
+  { to: '/vendedor/chat', label: 'Chat', icon: MessageCircleMore, feature: 'chat' },
   { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: ListChecks, feature: 'fila_hoje' },
   { to: '/vendedor/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
   { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },

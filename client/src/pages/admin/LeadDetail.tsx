@@ -22,6 +22,7 @@ import LeadContactAttemptForm from '../../components/LeadContactAttemptForm'
 import LeadNegotiationTagPicker from '../../components/LeadNegotiationTagPicker'
 import LeadProductLineTagPicker from '../../components/LeadProductLineTagPicker'
 import TransferirParaCarteiraModal from '../../components/TransferirParaCarteiraModal'
+import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
 import TransferirParaPropostasModal from '../../components/TransferirParaPropostasModal'
 import {
   LEAD_STATUS_VALUES,
@@ -317,6 +318,7 @@ export default function LeadDetail() {
               <MessageTemplateMenu phone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} leadId={lead.id} />
             )}
             <LeadContatoButtons telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} leadId={lead.id} size="md" />
+            <ConversarSobreIssoButton tipoOrigem="lead" idOrigem={lead.id} titulo={`Lead — ${lead.name}`} />
           </div>
         </div>
 

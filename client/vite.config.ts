@@ -16,6 +16,7 @@ export default defineConfig({
       '/trpc': 'http://localhost:3011',
       '/upload': 'http://localhost:3011',
       '/uploads': 'http://localhost:3011',
+      '/chat-socket': { target: 'http://localhost:3011', ws: true },
     },
   },
 })

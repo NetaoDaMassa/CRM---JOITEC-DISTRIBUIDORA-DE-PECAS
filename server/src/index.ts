@@ -1,4 +1,5 @@
 import express from 'express'
+import { createServer } from 'http'
 import cors from 'cors'
 import path from 'path'
 import fs from 'fs'
@@ -24,6 +25,7 @@ import { woocommerceRouter } from './routes/woocommerce.js'
 import { instagramRouter } from './routes/instagram.js'
 import { trocarCodigoEAcharConta, validarState } from './lib/instagramApi.js'
 import { encryptSecret } from './lib/crypto.js'
+import { iniciarChatSocket } from './lib/chatSocket.js'
 
 config()
 
@@ -355,6 +357,24 @@ app.post('/upload/solicitacao-credito-anexo', uploadSolicitacaoCredito.single('f
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// Anexos do Chat Grupo Odin — arquivo, foto, vídeo ou áudio (nota de voz
+// gravada no navegador). Mesmo padrão de solicitacao-credito-anexo (sem
+// fileFilter, aceita qualquer tipo).
+const storageChat = multer.diskStorage({
+  destination: UPLOADS_DIR,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname)
+    cb(null, `chat-${randomUUID()}${ext}`)
+  },
+})
+const uploadChat = multer({ storage: storageChat, limits: { fileSize: 50 * 1024 * 1024 } })
+app.post('/upload/chat-anexo', uploadChat.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
 // Anexos de Demandas (board estilo Trello) — mesmo padrão de ordem-anexo/
 // proposta-anexo, aceita qualquer tipo de arquivo (planilha, doc, pdf,
 // imagem etc.), diferente dos outros dois que são só imagem/PDF.
@@ -556,9 +576,13 @@ async function start() {
     process.exit(1)
   }
 
-  app.listen(PORT, () => {
+  const httpServer = createServer(app)
+  iniciarChatSocket(httpServer)
+
+  httpServer.listen(PORT, () => {
     console.log(`\n🚀 Servidor Joitec CRM rodando em http://localhost:${PORT}`)
     console.log(`📡 tRPC disponível em http://localhost:${PORT}/trpc`)
+    console.log(`💬 Chat Grupo Odin (socket) em /chat-socket`)
     startScheduler()
     iniciarListener().catch((err) => console.error('[goto] falha ao iniciar listener no boot:', err))
   })

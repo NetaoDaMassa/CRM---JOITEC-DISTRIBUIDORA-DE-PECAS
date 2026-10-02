@@ -20,7 +20,8 @@
     "react-dom": "^19.0.0",
     "react-hot-toast": "^2.4.1",
     "react-router-dom": "^7.0.2",
-    "recharts": "^3.9.1"
+    "recharts": "^3.9.1",
+    "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.0.0",

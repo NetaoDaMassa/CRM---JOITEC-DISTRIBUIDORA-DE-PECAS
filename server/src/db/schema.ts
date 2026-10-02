@@ -160,6 +160,13 @@ export const users = sqliteTable('users', {
   canalVenda: text('canal_venda', { enum: ['visitas', 'leads'] }).notNull().default('visitas'),
   // Só o último — o histórico dia a dia de acesso fica em logAcessoUsuario.
   lastLoginAt: text('last_login_at'),
+  // Presença do Chat Grupo Odin — atualizado pelo socket (chatSocket.ts) a
+  // cada conexão/desconexão, não por polling. `chatOnline` reflete se
+  // AINDA existe alguma aba/dispositivo conectado agora (uma pessoa pode
+  // ter mais de um socket — só fica offline quando o último cai);
+  // `chatUltimaAtividadeEm` é o "visto por último" pra quando está offline.
+  chatOnline: integer('chat_online', { mode: 'boolean' }).notNull().default(false),
+  chatUltimaAtividadeEm: text('chat_ultima_atividade_em'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
@@ -3371,4 +3378,99 @@ export const demonstracaoItensRelations = relations(demonstracaoItens, ({ one, m
 export const demonstracaoItemHistoricoRelations = relations(demonstracaoItemHistorico, ({ one }) => ({
   item: one(demonstracaoItens, { fields: [demonstracaoItemHistorico.itemId], references: [demonstracaoItens.id] }),
   user: one(users, { fields: [demonstracaoItemHistorico.userId], references: [users.id] }),
+}))
+
+// ── Chat Grupo Odin ──────────────────────────────────────────────────────────
+// Chat interno pra equipe inteira (as 7 empresas, sem permissão granular —
+// ver FEATURES_SEMPRE_LIBERADAS em Sidebar.tsx), separado 100% da automação
+// de WhatsApp (Baileys) — não chama nem depende dela em nenhum momento.
+// Toda conversa nasce vinculada a um registro do CRM (lead, cliente, pedido,
+// visita, consulta de crédito) OU é uma conversa direta sem vínculo — nunca
+// um "bate-papo geral" solto. `tipoOrigem`+`idOrigem` genéricos de propósito,
+// pra dar pra linkar outros tipos de registro no futuro sem mexer no schema
+// do chat. Pedido do João, 2026-10-02 (projeto "Chat Grupo Odin", construído
+// em branch separada — feature/chat-grupo-odin — testado num ambiente à
+// parte antes de ir pro ar).
+export const chatConversas = sqliteTable(
+  'chat_conversas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tipoOrigem: text('tipo_origem', {
+      enum: ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito', 'direta'],
+    }).notNull(),
+    // Null só quando tipoOrigem = 'direta' (conversa sem vínculo, só entre
+    // pessoas). Pra todo o resto é o id do registro de origem.
+    idOrigem: integer('id_origem'),
+    // Rótulo opcional pra facilitar achar na lista (ex: nome do cliente/lead
+    // no momento da criação) — snapshot, não é atualizado se o registro
+    // mudar de nome depois; a tela sempre pode re-resolver o nome atual a
+    // partir de tipoOrigem+idOrigem quando precisar do dado fresco.
+    tituloSnapshot: text('titulo_snapshot'),
+    criadoPor: integer('criado_por').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    ultimaMensagemEm: text('ultima_mensagem_em'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    origemIdx: index('chat_conversas_origem_idx').on(t.tipoOrigem, t.idOrigem),
+  })
+)
+
+// Quem participa de cada conversa — n:n entre conversa e usuário. Uma
+// conversa 'direta' sempre tem exatamente 2; uma vinculada a registro
+// começa com quem abriu + o responsável atual do registro (se tiver e for
+// diferente), e cresce por `chat.adicionarParticipante`.
+export const chatParticipantes = sqliteTable(
+  'chat_participantes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    conversaId: integer('conversa_id').notNull().references(() => chatConversas.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    entrouEm: text('entrou_em').notNull().default(sql`(datetime('now'))`),
+    // Null = nunca leu nada ainda. Comparado com a mensagem mais recente da
+    // conversa pra calcular "tem não lida" sem precisar contar mensagem por
+    // mensagem.
+    ultimaLeituraEm: text('ultima_leitura_em'),
+  },
+  (t) => ({
+    conversaUserUnique: unique().on(t.conversaId, t.userId),
+    userIdx: index('chat_participantes_user_idx').on(t.userId),
+  })
+)
+
+export const chatMensagens = sqliteTable(
+  'chat_mensagens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    conversaId: integer('conversa_id').notNull().references(() => chatConversas.id, { onDelete: 'cascade' }),
+    autorId: integer('autor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    tipo: text('tipo', { enum: ['texto', 'arquivo', 'imagem', 'video', 'audio'] }).notNull().default('texto'),
+    texto: text('texto'),
+    urlArquivo: text('url_arquivo'),
+    nomeArquivo: text('nome_arquivo'),
+    tipoArquivoMime: text('tipo_arquivo_mime'),
+    // Só preenchido pra tipo='audio' — duração da nota de voz, pro player
+    // mostrar sem precisar carregar o arquivo inteiro primeiro.
+    duracaoAudioSegundos: integer('duracao_audio_segundos'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => ({
+    conversaIdx: index('chat_mensagens_conversa_idx').on(t.conversaId),
+  })
+)
+
+export const chatConversasRelations = relations(chatConversas, ({ one, many }) => ({
+  criador: one(users, { fields: [chatConversas.criadoPor], references: [users.id] }),
+  participantes: many(chatParticipantes),
+  mensagens: many(chatMensagens),
+}))
+
+export const chatParticipantesRelations = relations(chatParticipantes, ({ one }) => ({
+  conversa: one(chatConversas, { fields: [chatParticipantes.conversaId], references: [chatConversas.id] }),
+  user: one(users, { fields: [chatParticipantes.userId], references: [users.id] }),
+}))
+
+export const chatMensagensRelations = relations(chatMensagens, ({ one }) => ({
+  conversa: one(chatConversas, { fields: [chatMensagens.conversaId], references: [chatConversas.id] }),
+  autor: one(users, { fields: [chatMensagens.autorId], references: [users.id] }),
 }))

@@ -15,6 +15,7 @@ import EtapaGeral from '../components/ordens/EtapaGeral'
 import EtapaAnexos from '../components/ordens/EtapaAnexos'
 import EtapaEmail from '../components/ordens/EtapaEmail'
 import HistoricoAccordion from '../components/ordens/HistoricoAccordion'
+import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 
 type TabKey = 'etapa' | 'geral' | 'historico' | 'anexos' | 'email'
 
@@ -91,8 +92,9 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
       <div className="w-full max-w-4xl bg-dark-800 border border-dark-600 rounded-2xl shadow-2xl shadow-black/50 my-4">
         <div className="flex items-start justify-between gap-3 px-6 pt-5">
           <div>
-            <h1 className="font-heading text-xl text-dark-50 font-bold">
+            <h1 className="font-heading text-xl text-dark-50 font-bold flex items-center gap-2 flex-wrap">
               Pedido #{ordem.id} <span className="text-dark-500 text-base font-normal">— {ordem.cliente?.razaoSocial ?? ORDER_TYPE_LABELS[orderType]}</span>
+              <ConversarSobreIssoButton tipoOrigem="pedido" idOrigem={ordem.id} titulo={`Pedido #${ordem.id}`} />
             </h1>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5 text-xs text-dark-400">
               {isAdmin && ordem.status === 'ativo' ? (

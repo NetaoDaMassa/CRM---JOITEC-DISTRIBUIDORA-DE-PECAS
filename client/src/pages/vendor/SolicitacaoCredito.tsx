@@ -11,6 +11,7 @@ import { Input, Textarea } from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import ClientePicker from '../../components/ClientePicker'
+import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
 
 function formatarMoeda(v: number | null | undefined): string {
   return v == null ? '—' : formatarMoedaBr(v)
@@ -182,6 +183,7 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
 
       {aberto && (
         <div className="mt-3 space-y-3 text-sm">
+          <ConversarSobreIssoButton tipoOrigem="consulta_credito" idOrigem={s.id} titulo={`Consulta de crédito — ${s.clienteNome}`} />
           {s.informacoesFiscais && (
             <div>
               <p className="text-xs text-dark-500 uppercase tracking-wide">Informações fiscais</p>

@@ -10,6 +10,7 @@ import ContatoButtons from '../components/ui/ContatoButtons'
 import TelefonesExtras from '../components/ui/TelefonesExtras'
 import EmailsExtras from '../components/ui/EmailsExtras'
 import HistoricoCliente from '../components/HistoricoCliente'
+import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 import { parseValorBr } from '../lib/valorBr'
 
 function formatarDataSimples(iso: string | null): string {
@@ -555,7 +556,7 @@ export default function ClienteDetail() {
         <p className="text-sm text-dark-400">
           {cliente.qtdContatos} registro(s) de contato · {cliente.qtdPedidos} pedido(s)
         </p>
-        <div className="mt-2">
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
           <ContatoButtons
             telefone={cliente.telefoneWhatsapp}
             telefonesExtras={cliente.telefonesExtras}
@@ -564,6 +565,7 @@ export default function ClienteDetail() {
             clienteId={cliente.id}
             size="md"
           />
+          <ConversarSobreIssoButton tipoOrigem="cliente" idOrigem={cliente.id} titulo={`Cliente — ${cliente.razaoSocial}`} />
         </div>
       </div>
 

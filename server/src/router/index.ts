@@ -26,6 +26,7 @@ import { designRouter } from './design.js'
 import { requisicaoPostoRouter } from './requisicaoPosto.js'
 import { liberacaoCreditoRouter } from './liberacaoCredito.js'
 import { solicitacaoCreditoRouter } from './solicitacaoCredito.js'
+import { chatRouter } from './chat.js'
 import { cartaoRouter } from './cartao.js'
 import { instagramRouter } from './instagram.js'
 import { financeiroRouter } from './financeiro.js'
@@ -99,6 +100,7 @@ export const appRouter = router({
   requisicaoPosto: requisicaoPostoRouter,
   liberacaoCredito: liberacaoCreditoRouter,
   solicitacaoCredito: solicitacaoCreditoRouter,
+  chat: chatRouter,
   cartao: cartaoRouter,
   instagram: instagramRouter,
   financeiro: financeiroRouter,

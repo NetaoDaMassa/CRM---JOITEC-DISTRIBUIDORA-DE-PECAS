@@ -12,6 +12,7 @@ import Select from '../../components/ui/Select'
 import Modal from '../../components/ui/Modal'
 import { Badge } from '../../components/ui/Badge'
 import { HistoricoClienteView } from '../../components/HistoricoCliente'
+import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
 
 function formatarMoeda(v: number | null | undefined): string {
   return v == null ? '—' : formatarMoedaBr(v)
@@ -114,7 +115,10 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
                 Cód. {data.clienteCodigo} · {data.empresaNome} · pedido de {data.vendedorNome} · {formatDateTime(data.createdAt)}
               </p>
             </div>
-            <Badge className={STATUS_COR[data.status]}>{STATUS_LABEL[data.status]}</Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              <ConversarSobreIssoButton tipoOrigem="consulta_credito" idOrigem={data.id} titulo={`Consulta de crédito — ${data.clienteNome}`} />
+              <Badge className={STATUS_COR[data.status]}>{STATUS_LABEL[data.status]}</Badge>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-dark-900/60 border border-dark-700 rounded-xl p-4 text-sm">

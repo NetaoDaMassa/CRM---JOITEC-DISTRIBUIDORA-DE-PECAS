@@ -10,6 +10,7 @@ import Modal from '../components/ui/Modal'
 import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
+import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, mesmo padrão
 // já usado em Pedidos/Propostas/Devolução/Qualidade.
@@ -486,6 +487,9 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                           </Badge>
                         </Link>
                       )}
+                      <span onClick={(e) => e.stopPropagation()}>
+                        <ConversarSobreIssoButton tipoOrigem="visita" idOrigem={v.id} titulo={`Visita — ${v.nomeEmpresa || v.clienteNome || ''}`} />
+                      </span>
                     </div>
 
                     {isAdmin && v.vendedor && <p className="text-xs text-dark-500 mt-0.5">{v.vendedor.name}</p>}
