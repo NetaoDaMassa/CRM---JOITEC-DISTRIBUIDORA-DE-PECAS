@@ -24,6 +24,8 @@ const STATUS_COR: Record<string, string> = {
   liberado: 'text-green-400 bg-green-900/20 border-green-700/40',
   negado: 'text-red-400 bg-red-900/20 border-red-700/40',
 }
+const TIPO_LABEL: Record<string, string> = { consulta: 'Consulta', limite: 'Limite de crédito' }
+const TIPO_CONSULTA_LABEL: Record<string, string> = { geral: 'Consulta geral', limpo: 'Só verificar se está limpo' }
 
 type Anexo = { urlArquivo: string; nomeArquivo: string; tipoArquivo?: string }
 
@@ -87,11 +89,13 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
     }
   }
 
+  const ehLimpo = data?.tipo === 'consulta' && data?.tipoConsulta === 'limpo'
+
   function responder() {
     if (!quemLiberou.trim()) return toast.error('Informe quem decidiu')
     if (!motivoResposta.trim()) return toast.error('Informe o motivo')
-    const valorNumero = decisao === 'liberado' ? parseValorBr(valorLiberado) : undefined
-    if (decisao === 'liberado' && !valorNumero) return toast.error('Informe o valor liberado')
+    const valorNumero = decisao === 'liberado' && !ehLimpo ? parseValorBr(valorLiberado) : undefined
+    if (decisao === 'liberado' && !ehLimpo && !valorNumero) return toast.error('Informe o valor liberado')
     responderMut.mutate({
       id,
       decisao,
@@ -112,7 +116,8 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
             <div>
               <p className="text-dark-100 font-medium">{data.clienteNome}</p>
               <p className="text-xs text-dark-500">
-                Cód. {data.clienteCodigo} · {data.empresaNome} · pedido de {data.vendedorNome} · {formatDateTime(data.createdAt)}
+                {data.tipo === 'consulta' && data.tipoConsulta ? TIPO_CONSULTA_LABEL[data.tipoConsulta] : TIPO_LABEL[data.tipo]} · Cód.{' '}
+                {data.clienteCodigo} · {data.empresaNome} · pedido de {data.vendedorNome} · {formatDateTime(data.createdAt)}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -163,14 +168,14 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
               <p className="text-sm font-semibold text-dark-200">Responder</p>
               <div className="flex gap-2">
                 <Button variant={decisao === 'liberado' ? 'primary' : 'secondary'} size="sm" onClick={() => setDecisao('liberado')}>
-                  Liberar
+                  {ehLimpo ? 'Está limpo' : 'Liberar'}
                 </Button>
                 <Button variant={decisao === 'negado' ? 'primary' : 'secondary'} size="sm" onClick={() => setDecisao('negado')}>
-                  Negar
+                  {ehLimpo ? 'Não está limpo' : 'Negar'}
                 </Button>
               </div>
 
-              {decisao === 'liberado' && (
+              {decisao === 'liberado' && !ehLimpo && (
                 <Input label="Valor liberado — limite de crédito do cliente *" value={valorLiberado} onChange={(e) => setValorLiberado(e.target.value)} placeholder="R$ 0,00" />
               )}
               <Input label="Quem decidiu *" placeholder="Ex: Rubia, Diretoria..." value={quemLiberou} onChange={(e) => setQuemLiberou(e.target.value)} />
@@ -214,13 +219,16 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
           ) : (
             <div className="space-y-2 border-t border-dark-700 pt-4 text-sm">
               <p className="text-sm font-semibold text-dark-200">Resposta registrada</p>
-              {data.status === 'liberado' && (
-                <div>
-                  <p className="text-green-400 font-medium">Liberado — {formatarMoeda(data.valorLiberado)}</p>
-                  <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
-                </div>
-              )}
-              {data.status === 'negado' && <p className="text-red-400 font-medium">Negado</p>}
+              {data.status === 'liberado' &&
+                (ehLimpo ? (
+                  <p className="text-green-400 font-medium">Cliente está limpo</p>
+                ) : (
+                  <div>
+                    <p className="text-green-400 font-medium">Liberado — {formatarMoeda(data.valorLiberado)}</p>
+                    <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
+                  </div>
+                ))}
+              {data.status === 'negado' && <p className="text-red-400 font-medium">{ehLimpo ? 'Cliente não está limpo' : 'Negado'}</p>}
               {data.quemLiberou && <p className="text-dark-300 text-xs">Decidido por: {data.quemLiberou}</p>}
               {data.motivoResposta && <p className="text-dark-200">{data.motivoResposta}</p>}
               {data.serasaObservacao && (
@@ -248,16 +256,24 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
   )
 }
 
-export default function SolicitacaoCredito() {
-  const [status, setStatus] = usePersistedState<'pendente' | 'liberado' | 'negado' | ''>('solicitacaoCredito:status', 'pendente')
-  const [dataDe, setDataDe] = usePersistedState('solicitacaoCredito:dataDe', '')
-  const [dataAte, setDataAte] = usePersistedState('solicitacaoCredito:dataAte', '')
-  const [vendedorId, setVendedorId] = usePersistedState('solicitacaoCredito:vendedorId', '')
-  const [busca, setBusca] = usePersistedState('solicitacaoCredito:busca', '')
+// `tipo` filtra a fila inteira — usado "nu" (sem prop, = 'consulta') na
+// rota própria /admin/solicitacao-credito, e `embutido` com tipo="limite"
+// dentro da aba "Limites" de Liberação de Crédito (ver LiberacaoCredito.tsx)
+// — mesma tela, duas filas separadas. `embutido` tira o wrapper/título
+// próprios (a página que embute já tem os dela). Chaves de
+// `usePersistedState` incluem o tipo pra filtro de uma fila não vazar pra
+// outra. Pedido do João, 2026-10-05.
+export default function SolicitacaoCredito({ tipo = 'consulta', embutido = false }: { tipo?: 'consulta' | 'limite'; embutido?: boolean } = {}) {
+  const [status, setStatus] = usePersistedState<'pendente' | 'liberado' | 'negado' | ''>(`solicitacaoCredito:${tipo}:status`, 'pendente')
+  const [dataDe, setDataDe] = usePersistedState(`solicitacaoCredito:${tipo}:dataDe`, '')
+  const [dataAte, setDataAte] = usePersistedState(`solicitacaoCredito:${tipo}:dataAte`, '')
+  const [vendedorId, setVendedorId] = usePersistedState(`solicitacaoCredito:${tipo}:vendedorId`, '')
+  const [busca, setBusca] = usePersistedState(`solicitacaoCredito:${tipo}:busca`, '')
   const [abertoId, setAbertoId] = useState<number | null>(null)
 
   const { data: vendedores } = trpc.solicitacaoCredito.vendedoresOpcoes.useQuery()
   const { data: linhas, isLoading } = trpc.solicitacaoCredito.listar.useQuery({
+    tipo,
     status: status || undefined,
     dataDe: dataDe || undefined,
     dataAte: dataAte || undefined,
@@ -266,14 +282,18 @@ export default function SolicitacaoCredito() {
   })
 
   return (
-    <div className="p-6 max-w-4xl space-y-4">
-      <div className="flex items-center gap-2">
-        <ShieldCheck size={20} className="text-gold-400" />
-        <div>
-          <h1 className="font-heading text-xl text-dark-50">Consulta/Solicitação de Crédito</h1>
-          <p className="text-sm text-dark-400">Pedidos de liberação de crédito feitos pelos vendedores.</p>
+    <div className={embutido ? 'space-y-4' : 'p-6 max-w-4xl space-y-4'}>
+      {!embutido && (
+        <div className="flex items-center gap-2">
+          <ShieldCheck size={20} className="text-gold-400" />
+          <div>
+            <h1 className="font-heading text-xl text-dark-50">{tipo === 'limite' ? 'Limites de Crédito' : 'Consulta/Solicitação de Crédito'}</h1>
+            <p className="text-sm text-dark-400">
+              {tipo === 'limite' ? 'Pedidos de limite de crédito feitos pelos vendedores.' : 'Pedidos de liberação de crédito feitos pelos vendedores.'}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex flex-wrap items-end gap-3 bg-dark-800 border border-dark-600 rounded-2xl p-4">
         <div className="w-56">
@@ -317,7 +337,8 @@ export default function SolicitacaoCredito() {
             <div>
               <p className="text-sm text-dark-100 font-medium">{l.clienteNome}</p>
               <p className="text-xs text-dark-500">
-                Cód. {l.clienteCodigo} · {l.empresaNome} · pedido de {l.vendedorNome} · {formatDateTime(l.createdAt)}
+                {l.tipo === 'consulta' && l.tipoConsulta ? TIPO_CONSULTA_LABEL[l.tipoConsulta] : TIPO_LABEL[l.tipo]} · Cód. {l.clienteCodigo} ·{' '}
+                {l.empresaNome} · pedido de {l.vendedorNome} · {formatDateTime(l.createdAt)}
                 {l.valorSolicitado != null && <> · {formatarMoeda(l.valorSolicitado)}</>}
               </p>
             </div>

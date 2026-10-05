@@ -26,6 +26,12 @@ export const solicitacaoCreditoRouter = router({
     .input(
       z.object({
         clienteId: z.number(),
+        tipo: z.enum(['consulta', 'limite']),
+        // Só faz sentido (e é obrigatório) quando tipo='consulta' —
+        // 'limite' não tem sub-tipo, é sempre "quanto de limite pra esse
+        // cliente". Checado abaixo, não dá pra exigir isso no próprio
+        // schema zod porque depende do valor de outro campo.
+        tipoConsulta: z.enum(['geral', 'limpo']).optional(),
         valorSolicitado: z.number().positive().optional(),
         informacoesFiscais: z.string().trim().optional(),
         observacoes: z.string().trim().optional(),
@@ -33,6 +39,10 @@ export const solicitacaoCreditoRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      if (input.tipo === 'consulta' && !input.tipoConsulta) {
+        throw new Error('Escolha se é consulta geral ou só verificar se está limpo.')
+      }
+
       const cliente = await db.query.clientes.findFirst({
         where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
       })
@@ -46,16 +56,24 @@ export const solicitacaoCreditoRouter = router({
       // Mesmo padrão de aprovacoes.solicitar — evita o vendedor abrir vários
       // pedidos em paralelo pro mesmo cliente (o financeiro teria que
       // decidir qual vale, e o segundo pedido ficaria com dados
-      // desatualizados assim que o primeiro for respondido).
+      // desatualizados assim que o primeiro for respondido). Escopado por
+      // `tipo` — pode ter uma "consulta" E uma "limite" pendentes ao mesmo
+      // tempo pro mesmo cliente, são filas separadas agora.
       const pendente = await db.query.solicitacoesCredito.findFirst({
-        where: and(eq(solicitacoesCredito.clienteId, input.clienteId), eq(solicitacoesCredito.status, 'pendente')),
+        where: and(
+          eq(solicitacoesCredito.clienteId, input.clienteId),
+          eq(solicitacoesCredito.status, 'pendente'),
+          eq(solicitacoesCredito.tipo, input.tipo)
+        ),
       })
-      if (pendente) throw new Error('Já existe uma solicitação de crédito pendente pra este cliente.')
+      if (pendente) throw new Error('Já existe uma solicitação desse tipo pendente pra este cliente.')
 
       const result = await db.insert(solicitacoesCredito).values({
         empresaId: cliente.empresaId,
         clienteId: cliente.id,
         vendedorSolicitanteId: ctx.user.id,
+        tipo: input.tipo,
+        tipoConsulta: input.tipo === 'consulta' ? input.tipoConsulta : undefined,
         valorSolicitado: input.valorSolicitado,
         informacoesFiscais: input.informacoesFiscais,
         observacoes: input.observacoes,
@@ -87,6 +105,8 @@ export const solicitacaoCreditoRouter = router({
         clienteId: solicitacoesCredito.clienteId,
         clienteNome: clientes.razaoSocial,
         clienteCodigo: clientes.codigo,
+        tipo: solicitacoesCredito.tipo,
+        tipoConsulta: solicitacoesCredito.tipoConsulta,
         status: solicitacoesCredito.status,
         valorSolicitado: solicitacoesCredito.valorSolicitado,
         informacoesFiscais: solicitacoesCredito.informacoesFiscais,
@@ -149,6 +169,10 @@ export const solicitacaoCreditoRouter = router({
       z
         .object({
           status: z.enum(['pendente', 'liberado', 'negado']).optional(),
+          // Sem isso = traz os dois tipos juntos (não usado hoje — as duas
+          // telas, Consulta/Solicitação de Crédito e a aba "Limites" de
+          // Liberação de Crédito, sempre passam um tipo fixo).
+          tipo: z.enum(['consulta', 'limite']).optional(),
           dataDe: z.string().optional(),
           dataAte: z.string().optional(),
           vendedorId: z.number().optional(),
@@ -159,6 +183,7 @@ export const solicitacaoCreditoRouter = router({
     .query(async ({ input }) => {
       const filtros = []
       if (input?.status) filtros.push(eq(solicitacoesCredito.status, input.status))
+      if (input?.tipo) filtros.push(eq(solicitacoesCredito.tipo, input.tipo))
       if (input?.dataDe) filtros.push(gte(solicitacoesCredito.createdAt, input.dataDe))
       if (input?.dataAte) filtros.push(lte(solicitacoesCredito.createdAt, `${input.dataAte} 23:59:59`))
       if (input?.vendedorId) filtros.push(eq(solicitacoesCredito.vendedorSolicitanteId, input.vendedorId))
@@ -177,6 +202,8 @@ export const solicitacaoCreditoRouter = router({
           empresaNome: empresas.nome,
           vendedorSolicitanteId: solicitacoesCredito.vendedorSolicitanteId,
           vendedorNome: users.name,
+          tipo: solicitacoesCredito.tipo,
+          tipoConsulta: solicitacoesCredito.tipoConsulta,
           status: solicitacoesCredito.status,
           valorSolicitado: solicitacoesCredito.valorSolicitado,
           createdAt: solicitacoesCredito.createdAt,
@@ -241,7 +268,11 @@ export const solicitacaoCreditoRouter = router({
       const solicitacao = await db.query.solicitacoesCredito.findFirst({ where: eq(solicitacoesCredito.id, input.id) })
       if (!solicitacao) throw new Error('Solicitação não encontrada')
       if (solicitacao.status !== 'pendente') throw new Error('Essa solicitação já foi respondida.')
-      if (input.decisao === 'liberado' && !input.valorLiberado) {
+      // tipo='consulta'+'limpo' é só "está limpo ou não", sem valor nenhum
+      // — pedido do João, 2026-10-05. Pros outros dois casos (consulta
+      // geral e limite), valor continua obrigatório pra liberar.
+      const exigeValor = !(solicitacao.tipo === 'consulta' && solicitacao.tipoConsulta === 'limpo')
+      if (input.decisao === 'liberado' && exigeValor && !input.valorLiberado) {
         throw new Error('Informe o valor liberado.')
       }
 
@@ -270,22 +301,25 @@ export const solicitacaoCreditoRouter = router({
         )
       }
 
-      // Pedido do João, 2026-10-01: toda resposta (liberado OU negado) também
-      // entra no histórico de Liberação de Crédito — ela vira o registro
-      // único de "o que já foi decidido" pra esse cliente, cross-empresa,
-      // sem precisar abrir as duas telas pra reconstruir o histórico.
-      const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) })
-      await db.insert(liberacoesCredito).values({
-        clienteId: solicitacao.clienteId,
-        empresaId: solicitacao.empresaId,
-        vendedorId: cliente?.vendedorAtualId ?? solicitacao.vendedorSolicitanteId,
-        quemLiberou: input.quemLiberou.trim(),
-        motivo: input.motivoResposta.trim(),
-        status: input.decisao,
-        valorLiberado: input.decisao === 'liberado' ? input.valorLiberado : undefined,
-        origemSolicitacaoId: input.id,
-        criadoPor: ctx.user.id,
-      })
+      // Pedido do João, 2026-10-01: toda resposta de CONSULTA (liberado OU
+      // negado) também entra no histórico de Liberação de Crédito > Lançamentos
+      // — registro único de "o que já foi decidido" pra esse cliente, cross-
+      // empresa. Mudou em 2026-10-05: 'limite' não entra mais aqui — fica só
+      // na própria fila (aba "Limites"), pra não misturar as duas listas.
+      if (solicitacao.tipo === 'consulta') {
+        const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) })
+        await db.insert(liberacoesCredito).values({
+          clienteId: solicitacao.clienteId,
+          empresaId: solicitacao.empresaId,
+          vendedorId: cliente?.vendedorAtualId ?? solicitacao.vendedorSolicitanteId,
+          quemLiberou: input.quemLiberou.trim(),
+          motivo: input.motivoResposta.trim(),
+          status: input.decisao,
+          valorLiberado: input.decisao === 'liberado' ? input.valorLiberado : undefined,
+          origemSolicitacaoId: input.id,
+          criadoPor: ctx.user.id,
+        })
+      }
 
       return { success: true }
     }),

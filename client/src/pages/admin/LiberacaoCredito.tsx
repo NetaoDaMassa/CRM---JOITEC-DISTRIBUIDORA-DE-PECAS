@@ -10,6 +10,7 @@ import { Badge } from '../../components/ui/Badge'
 import { formatDateTime } from '../../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import CadastroRapidoClienteModal from '../../components/CadastroRapidoClienteModal'
+import SolicitacaoCreditoLimites from './SolicitacaoCredito'
 
 const STATUS_LABEL: Record<string, string> = { liberado: 'Liberado', negado: 'Negado' }
 const STATUS_COR: Record<string, string> = {
@@ -419,18 +420,24 @@ function AbaRelatorio() {
   )
 }
 
+// Termo principal virou "Liberação / Limite de Crédito" — a tela passou a
+// cobrir as duas coisas (pedido do João, 2026-10-05): "Lançamentos" segue
+// sendo o registro de liberações já decididas (consultas, como sempre
+// foi); "Limites" é fila nova, à parte — pedidos de LIMITE de crédito
+// (tipo='limite' em solicitacoesCredito) não entram mais em Lançamentos,
+// só aparecem aqui (ver solicitacaoCredito.ts, responder).
 export default function LiberacaoCredito() {
-  const [tab, setTab] = useState<'lancamentos' | 'relatorio'>('lancamentos')
+  const [tab, setTab] = useState<'lancamentos' | 'limites' | 'relatorio'>('lancamentos')
 
   return (
     <div className="p-6 space-y-4 max-w-4xl">
       <div>
-        <h1 className="font-heading text-xl text-dark-50">Liberação de Crédito</h1>
-        <p className="text-sm text-dark-400 mt-1">Registro de liberações feitas pelo Financeiro — vale pras empresas do grupo todas juntas.</p>
+        <h1 className="font-heading text-xl text-dark-50">Liberação / Limite de Crédito</h1>
+        <p className="text-sm text-dark-400 mt-1">Registro de liberações e limites feitos pelo Financeiro — vale pras empresas do grupo todas juntas.</p>
       </div>
 
       <div className="flex gap-1 border-b border-dark-700">
-        {(['lancamentos', 'relatorio'] as const).map((t) => (
+        {(['lancamentos', 'limites', 'relatorio'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -438,12 +445,14 @@ export default function LiberacaoCredito() {
               tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'
             }`}
           >
-            {t === 'lancamentos' ? 'Lançamentos' : 'Relatório'}
+            {t === 'lancamentos' ? 'Lançamentos' : t === 'limites' ? 'Limites' : 'Relatório'}
           </button>
         ))}
       </div>
 
-      {tab === 'lancamentos' ? <AbaLancamentos /> : <AbaRelatorio />}
+      {tab === 'lancamentos' && <AbaLancamentos />}
+      {tab === 'limites' && <SolicitacaoCreditoLimites tipo="limite" embutido />}
+      {tab === 'relatorio' && <AbaRelatorio />}
     </div>
   )
 }

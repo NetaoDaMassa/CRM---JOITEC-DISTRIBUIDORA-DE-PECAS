@@ -3325,6 +3325,16 @@ export const solicitacoesCredito = sqliteTable(
     clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
     vendedorSolicitanteId: integer('vendedor_solicitante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     status: text('status', { enum: ['pendente', 'liberado', 'negado'] }).notNull().default('pendente'),
+    // 'consulta' cai na fila normal (Consulta/Solicitação de Crédito,
+    // vira linha em Liberação de Crédito > Lançamentos quando respondida);
+    // 'limite' cai na aba "Limites" de Liberação de Crédito — fila à parte,
+    // não gera linha em Lançamentos (ver responder() em
+    // solicitacaoCredito.ts). `tipoConsulta` só existe pra tipo='consulta':
+    // 'geral' é o fluxo de sempre (libera/nega com valor); 'limpo' é só
+    // confirmar se o cliente está limpo ou não, sem valor nenhum. Pedido do
+    // João, 2026-10-05.
+    tipo: text('tipo', { enum: ['consulta', 'limite'] }).notNull().default('consulta'),
+    tipoConsulta: text('tipo_consulta', { enum: ['geral', 'limpo'] }),
     // Preenchido pelo vendedor na hora de abrir.
     valorSolicitado: real('valor_solicitado'),
     informacoesFiscais: text('informacoes_fiscais'),

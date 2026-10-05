@@ -42,6 +42,8 @@ async function fazerUpload(file: File): Promise<Anexo> {
 // CartaoCredito.tsx. Pedido do João, 2026-10-01.
 function FormularioNovaSolicitacao() {
   const utils = trpc.useUtils()
+  const [tipo, setTipo] = useState<'consulta' | 'limite'>('consulta')
+  const [tipoConsulta, setTipoConsulta] = useState<'geral' | 'limpo'>('geral')
   const [cliente, setCliente] = useState<{ id: number; razaoSocial: string } | null>(null)
   const [valorSolicitado, setValorSolicitado] = useState('')
   const [informacoesFiscais, setInformacoesFiscais] = useState('')
@@ -83,6 +85,8 @@ function FormularioNovaSolicitacao() {
     if (valorSolicitado && !valorNumero) return toast.error('Valor solicitado inválido')
     criarMut.mutate({
       clienteId: cliente.id,
+      tipo,
+      tipoConsulta: tipo === 'consulta' ? tipoConsulta : undefined,
       valorSolicitado: valorNumero,
       informacoesFiscais: informacoesFiscais.trim() || undefined,
       observacoes: observacoes.trim() || undefined,
@@ -94,11 +98,44 @@ function FormularioNovaSolicitacao() {
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
       <p className="text-sm font-medium text-dark-100">Nova solicitação de crédito</p>
 
+      <div>
+        <p className="text-sm text-dark-200 font-medium mb-1.5">O que você precisa?</p>
+        <div className="flex gap-2">
+          <Button variant={tipo === 'consulta' ? 'primary' : 'secondary'} size="sm" onClick={() => setTipo('consulta')}>
+            Consulta
+          </Button>
+          <Button variant={tipo === 'limite' ? 'primary' : 'secondary'} size="sm" onClick={() => setTipo('limite')}>
+            Limite de crédito
+          </Button>
+        </div>
+      </div>
+
+      {tipo === 'consulta' && (
+        <div>
+          <p className="text-xs text-dark-400 mb-1.5">Tipo de consulta</p>
+          <div className="flex gap-2">
+            <Button variant={tipoConsulta === 'geral' ? 'primary' : 'secondary'} size="sm" onClick={() => setTipoConsulta('geral')}>
+              Consulta geral
+            </Button>
+            <Button variant={tipoConsulta === 'limpo' ? 'primary' : 'secondary'} size="sm" onClick={() => setTipoConsulta('limpo')}>
+              Só verificar se está limpo
+            </Button>
+          </div>
+        </div>
+      )}
+
       <ClientePicker label="Cliente (da sua carteira)" clienteId={cliente?.id ?? null} clienteNome={cliente?.razaoSocial ?? null} onSelect={setCliente} />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Input label="Valor desejado (opcional)" value={valorSolicitado} onChange={(e) => setValorSolicitado(e.target.value)} placeholder="R$ 0,00" />
-      </div>
+      {!(tipo === 'consulta' && tipoConsulta === 'limpo') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Input
+            label={tipo === 'limite' ? 'Valor de limite desejado (opcional)' : 'Valor desejado (opcional)'}
+            value={valorSolicitado}
+            onChange={(e) => setValorSolicitado(e.target.value)}
+            placeholder="R$ 0,00"
+          />
+        </div>
+      )}
 
       <Textarea
         label="Informações fiscais (opcional)"
@@ -140,11 +177,16 @@ function FormularioNovaSolicitacao() {
   )
 }
 
+const TIPO_LABEL: Record<string, string> = { consulta: 'Consulta', limite: 'Limite de crédito' }
+const TIPO_CONSULTA_LABEL: Record<string, string> = { geral: 'Consulta geral', limpo: 'Só verificar se está limpo' }
+
 type Solicitacao = {
   id: number
   clienteId: number
   clienteNome: string
   clienteCodigo: string
+  tipo: string
+  tipoConsulta: string | null
   status: string
   valorSolicitado: number | null
   informacoesFiscais: string | null
@@ -172,7 +214,8 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
         <div>
           <p className="text-sm text-dark-100 font-medium">{s.clienteNome}</p>
           <p className="text-xs text-dark-500">
-            Cód. {s.clienteCodigo} · {formatDateTime(s.createdAt)} {s.valorSolicitado != null && <>· pedido: {formatarMoeda(s.valorSolicitado)}</>}
+            {s.tipo === 'consulta' && s.tipoConsulta ? TIPO_CONSULTA_LABEL[s.tipoConsulta] : TIPO_LABEL[s.tipo]} · Cód. {s.clienteCodigo} ·{' '}
+            {formatDateTime(s.createdAt)} {s.valorSolicitado != null && <>· pedido: {formatarMoeda(s.valorSolicitado)}</>}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -209,13 +252,20 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
           {s.status !== 'pendente' && (
             <div className="bg-dark-900/60 rounded-lg p-3 space-y-2 border border-dark-700">
               <p className="text-xs text-dark-500 uppercase tracking-wide">Resposta do Financeiro</p>
-              {s.status === 'liberado' && (
-                <div>
-                  <p className="text-green-400 font-medium">Liberado — {formatarMoeda(s.valorLiberado)}</p>
-                  <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
-                </div>
+              {s.status === 'liberado' &&
+                (s.tipo === 'consulta' && s.tipoConsulta === 'limpo' ? (
+                  <p className="text-green-400 font-medium">Cliente está limpo</p>
+                ) : (
+                  <div>
+                    <p className="text-green-400 font-medium">Liberado — {formatarMoeda(s.valorLiberado)}</p>
+                    <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
+                  </div>
+                ))}
+              {s.status === 'negado' && (
+                <p className="text-red-400 font-medium">
+                  {s.tipo === 'consulta' && s.tipoConsulta === 'limpo' ? 'Cliente não está limpo' : 'Negado'}
+                </p>
               )}
-              {s.status === 'negado' && <p className="text-red-400 font-medium">Negado</p>}
               {s.quemLiberou && <p className="text-dark-300 text-xs">Decidido por: {s.quemLiberou}</p>}
               {s.motivoResposta && <p className="text-dark-200">{s.motivoResposta}</p>}
               {s.serasaObservacao && (
