@@ -7,20 +7,23 @@
 export const TIPO_ATENDIMENTO_VALUES = ['maquina_completa', 'peca_com_retorno', 'peca_sem_retorno', 'peca_tecnico'] as const
 export type TipoAtendimento = (typeof TIPO_ATENDIMENTO_VALUES)[number]
 
+// "NF de Saída", "Envio" e "Rastreamento" viraram 1 etapa só ("Saída") —
+// pedido do João, 2026-10-05: eram 3 colunas no Kanban pra uma coisa só na
+// prática. Os campos de cada uma continuam existindo à parte no banco
+// (nfSaidaNumero/envioTransportadora/rastreioObservacao etc.), só a TELA e
+// a etapa do processo que juntaram — ver EtapaCampos em GarantiasDetail.tsx.
 export const STAGE_SEQUENCE_COM_RETORNO = [
   'aberto',
   'nf_devolucao',
   'preparacao_novo_item',
-  'nf_saida',
-  'envio',
-  'rastreamento',
+  'saida',
   'retorno_item_danificado',
   'recebido_odin',
   'oficina',
   'encerrado',
 ] as const
 
-export const STAGE_SEQUENCE_SEM_RETORNO = ['aberto', 'preparacao_novo_item', 'nf_saida', 'envio', 'rastreamento', 'encerrado'] as const
+export const STAGE_SEQUENCE_SEM_RETORNO = ['aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_COM_RETORNO)[number] | (typeof STAGE_SEQUENCE_SEM_RETORNO)[number]
 
@@ -28,9 +31,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   aberto: 'Abertura',
   nf_devolucao: 'NF de Devolução',
   preparacao_novo_item: 'Preparação do Novo Item',
-  nf_saida: 'NF de Saída',
-  envio: 'Envio',
-  rastreamento: 'Rastreamento',
+  saida: 'Saída',
   retorno_item_danificado: 'Retorno do Item Danificado',
   recebido_odin: 'Recebimento na Odin',
   oficina: 'Oficina',

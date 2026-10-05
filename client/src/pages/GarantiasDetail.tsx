@@ -230,28 +230,33 @@ function EtapaCampos({ garantiaId, stage, garantia, readonly }: { garantiaId: nu
     )
   }
 
-  if (stage === 'nf_saida') {
+  if (stage === 'saida') {
     return (
-      <CamposComSalvar readonly={readonly} salvando={salvarMut.isPending} onSalvar={() => salvar(['nfSaidaNumero', 'nfSaidaData'])}>
-        <Input label="Número da NF de saída" value={val('nfSaidaNumero')} onChange={(e) => set('nfSaidaNumero', e.target.value)} disabled={readonly} />
-        <Input label="Data" type="date" value={val('nfSaidaData')} onChange={(e) => set('nfSaidaData', e.target.value)} disabled={readonly} />
-      </CamposComSalvar>
-    )
-  }
-
-  if (stage === 'envio') {
-    return (
-      <CamposComSalvar readonly={readonly} salvando={salvarMut.isPending} onSalvar={() => salvar(['envioTransportadora', 'envioCodigoRastreio'])}>
-        <Input label="Transportadora" value={val('envioTransportadora')} onChange={(e) => set('envioTransportadora', e.target.value)} disabled={readonly} />
-        <Input label="Código de rastreio" value={val('envioCodigoRastreio')} onChange={(e) => set('envioCodigoRastreio', e.target.value)} disabled={readonly} />
-      </CamposComSalvar>
-    )
-  }
-
-  if (stage === 'rastreamento') {
-    return (
-      <CamposComSalvar readonly={readonly} salvando={salvarMut.isPending} onSalvar={() => salvar(['rastreioObservacao'])}>
-        <Textarea label="Observação do rastreio" value={val('rastreioObservacao')} onChange={(e) => set('rastreioObservacao', e.target.value)} disabled={readonly} />
+      <CamposComSalvar
+        readonly={readonly}
+        salvando={salvarMut.isPending}
+        onSalvar={() => salvar(['nfSaidaNumero', 'nfSaidaData', 'envioTransportadora', 'envioCodigoRastreio', 'rastreioObservacao'])}
+      >
+        <div>
+          <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide mb-2">NF de saída</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Número da NF" value={val('nfSaidaNumero')} onChange={(e) => set('nfSaidaNumero', e.target.value)} disabled={readonly} />
+            <Input label="Data" type="date" value={val('nfSaidaData')} onChange={(e) => set('nfSaidaData', e.target.value)} disabled={readonly} />
+          </div>
+        </div>
+        <div>
+          <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide mb-2">Envio e rastreamento</p>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Transportadora" value={val('envioTransportadora')} onChange={(e) => set('envioTransportadora', e.target.value)} disabled={readonly} />
+            <Input label="Código de rastreio" value={val('envioCodigoRastreio')} onChange={(e) => set('envioCodigoRastreio', e.target.value)} disabled={readonly} />
+          </div>
+          <Textarea
+            label="Observação do rastreio"
+            value={val('rastreioObservacao')}
+            onChange={(e) => set('rastreioObservacao', e.target.value)}
+            disabled={readonly}
+          />
+        </div>
       </CamposComSalvar>
     )
   }

@@ -11,20 +11,23 @@ export const TIPO_ATENDIMENTO_LABELS: Record<TipoAtendimento, string> = {
   peca_tecnico: 'Substituição de peça enviada ao técnico autorizado',
 }
 
+// "NF de Saída", "Envio" e "Rastreamento" viraram 1 etapa só ("Saída") —
+// pedido do João, 2026-10-05: eram 3 colunas no Kanban pra uma coisa só na
+// prática. Os campos de cada uma continuam existindo à parte no banco, só
+// a TELA e a etapa do processo que juntaram — ver EtapaCampos em
+// GarantiasDetail.tsx.
 export const STAGE_SEQUENCE_COM_RETORNO = [
   'aberto',
   'nf_devolucao',
   'preparacao_novo_item',
-  'nf_saida',
-  'envio',
-  'rastreamento',
+  'saida',
   'retorno_item_danificado',
   'recebido_odin',
   'oficina',
   'encerrado',
 ] as const
 
-export const STAGE_SEQUENCE_SEM_RETORNO = ['aberto', 'preparacao_novo_item', 'nf_saida', 'envio', 'rastreamento', 'encerrado'] as const
+export const STAGE_SEQUENCE_SEM_RETORNO = ['aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_COM_RETORNO)[number] | (typeof STAGE_SEQUENCE_SEM_RETORNO)[number]
 
@@ -32,9 +35,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
   aberto: 'Abertura',
   nf_devolucao: 'NF de Devolução',
   preparacao_novo_item: 'Preparação do Novo Item',
-  nf_saida: 'NF de Saída',
-  envio: 'Envio',
-  rastreamento: 'Rastreamento',
+  saida: 'Saída',
   retorno_item_danificado: 'Retorno do Item Danificado',
   recebido_odin: 'Recebimento na Odin',
   oficina: 'Oficina',
@@ -45,9 +46,7 @@ export const STAGE_COLORS: Record<Stage, string> = {
   aberto: 'text-gray-400 bg-gray-700/30 border-gray-600/50',
   nf_devolucao: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
   preparacao_novo_item: 'text-orange-400 bg-orange-900/20 border-orange-700/40',
-  nf_saida: 'text-blue-400 bg-blue-900/20 border-blue-700/40',
-  envio: 'text-cyan-400 bg-cyan-900/20 border-cyan-700/40',
-  rastreamento: 'text-slate-400 bg-slate-700/30 border-slate-600/50',
+  saida: 'text-blue-400 bg-blue-900/20 border-blue-700/40',
   retorno_item_danificado: 'text-pink-400 bg-pink-900/20 border-pink-700/40',
   recebido_odin: 'text-purple-400 bg-purple-900/20 border-purple-700/40',
   oficina: 'text-teal-400 bg-teal-900/20 border-teal-700/40',
