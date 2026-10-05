@@ -16,6 +16,15 @@ type TabKey = 'etapa' | 'oficina' | 'anexos' | 'historico'
 export default function GarantiasDetail({ garantiaId, onClose }: { garantiaId: number; onClose: () => void }) {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
+  // 'garantias_oficina' é um poder À PARTE de 'garantias_odin' (que só
+  // controla ver a tela) — pensado pra alguém da Manutenção que é
+  // VENDEDOR (não admin) poder preencher só a aba Oficina. Sem isso aqui,
+  // essa pessoa via a aba mas tudo ficava travado (igual quem não tem a
+  // permissão nenhuma) — achado do João, 2026-10-05.
+  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: !!user && !user.superAdmin,
+  })
+  const podeEditarOficina = isAdmin || !!user?.superAdmin || !!minhasFeatures?.includes('garantias_oficina')
   const [tab, setTab] = useState<TabKey>('etapa')
   const [modalCancelar, setModalCancelar] = useState(false)
   const [motivoCancelamento, setMotivoCancelamento] = useState('')
@@ -116,7 +125,7 @@ export default function GarantiasDetail({ garantiaId, onClose }: { garantiaId: n
             ) : (
               <EtapaCampos garantiaId={garantiaId} stage={stageAtual} garantia={garantia} readonly={!isAdmin} />
             ))}
-          {tab === 'oficina' && <EtapaOficina garantiaId={garantiaId} readonly={!isAdmin} />}
+          {tab === 'oficina' && <EtapaOficina garantiaId={garantiaId} readonly={!podeEditarOficina} />}
           {tab === 'anexos' && <AnexosTab garantiaId={garantiaId} stageAtual={garantia.stage} />}
           {tab === 'historico' && <HistoricoTab garantiaId={garantiaId} />}
         </div>
