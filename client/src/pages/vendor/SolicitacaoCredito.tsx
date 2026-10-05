@@ -210,7 +210,10 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
             <div className="bg-dark-900/60 rounded-lg p-3 space-y-2 border border-dark-700">
               <p className="text-xs text-dark-500 uppercase tracking-wide">Resposta do Financeiro</p>
               {s.status === 'liberado' && (
-                <p className="text-green-400 font-medium">Liberado — {formatarMoeda(s.valorLiberado)}</p>
+                <div>
+                  <p className="text-green-400 font-medium">Liberado — {formatarMoeda(s.valorLiberado)}</p>
+                  <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
+                </div>
               )}
               {s.status === 'negado' && <p className="text-red-400 font-medium">Negado</p>}
               {s.quemLiberou && <p className="text-dark-300 text-xs">Decidido por: {s.quemLiberou}</p>}

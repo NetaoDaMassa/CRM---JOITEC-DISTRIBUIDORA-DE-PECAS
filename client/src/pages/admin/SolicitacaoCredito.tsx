@@ -171,7 +171,7 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
               </div>
 
               {decisao === 'liberado' && (
-                <Input label="Valor liberado *" value={valorLiberado} onChange={(e) => setValorLiberado(e.target.value)} placeholder="R$ 0,00" />
+                <Input label="Valor liberado — limite de crédito do cliente *" value={valorLiberado} onChange={(e) => setValorLiberado(e.target.value)} placeholder="R$ 0,00" />
               )}
               <Input label="Quem decidiu *" placeholder="Ex: Rubia, Diretoria..." value={quemLiberou} onChange={(e) => setQuemLiberou(e.target.value)} />
               <Textarea
@@ -214,7 +214,12 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
           ) : (
             <div className="space-y-2 border-t border-dark-700 pt-4 text-sm">
               <p className="text-sm font-semibold text-dark-200">Resposta registrada</p>
-              {data.status === 'liberado' && <p className="text-green-400 font-medium">Liberado — {formatarMoeda(data.valorLiberado)}</p>}
+              {data.status === 'liberado' && (
+                <div>
+                  <p className="text-green-400 font-medium">Liberado — {formatarMoeda(data.valorLiberado)}</p>
+                  <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
+                </div>
+              )}
               {data.status === 'negado' && <p className="text-red-400 font-medium">Negado</p>}
               {data.quemLiberou && <p className="text-dark-300 text-xs">Decidido por: {data.quemLiberou}</p>}
               {data.motivoResposta && <p className="text-dark-200">{data.motivoResposta}</p>}
