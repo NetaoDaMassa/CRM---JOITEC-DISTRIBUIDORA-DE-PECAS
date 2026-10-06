@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
-import { router, adminProcedure } from './_base.js'
+import { and, eq, inArray, isNull, like } from 'drizzle-orm'
+import { router, adminProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, users } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, users, logAuditoria } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
@@ -136,6 +136,38 @@ export const carteiraRouter = router({
       }
       return { quantidade: clientesDoVendedor.length }
     }),
+
+  // Conserto pontual, 2026-10-06: a Pamela transferiu a carteira inteira da
+  // Fernanda (1034 clientes) pra si mesma por engano. `redistribuirCompleta`
+  // não serve aqui porque moveria TODOS os clientes atuais da Pamela de
+  // volta (incluindo os 125 que já eram dela antes e não tem nada a ver) —
+  // esse aqui usa o próprio log de auditoria pra achar só os clientes que
+  // vieram daquela transferência específica (hoje, às 17:26-17:27) e
+  // devolve exatamente esses pra Fernanda. superAdmin-only, uso único —
+  // dá pra remover depois que for usado. Pedido do João.
+  reverterTransferenciaFernandaPamela: superAdminProcedure.mutation(async ({ ctx }) => {
+    const linhas = await db
+      .select({ registroId: logAuditoria.registroId })
+      .from(logAuditoria)
+      .where(
+        and(
+          eq(logAuditoria.acao, 'transferir_carteira'),
+          eq(logAuditoria.tabela, 'clientes'),
+          eq(logAuditoria.alteradoPor, 24),
+          eq(logAuditoria.valorNovo, '24'),
+          like(logAuditoria.alteradoEm, '2026-10-06%')
+        )
+      )
+    const ids = [...new Set(linhas.map((l) => l.registroId))]
+    let revertidos = 0
+    for (const clienteId of ids) {
+      const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { vendedorAtualId: true, deletedAt: true } })
+      if (!cliente || cliente.deletedAt || cliente.vendedorAtualId !== 24) continue
+      await transferirCliente(clienteId, 25, ctx.user.id)
+      revertidos++
+    }
+    return { total: ids.length, revertidos }
+  }),
 
   // Mesma ideia do redistribuirCompleta, mas o destino é o Banco de Clientes
   // em vez de outro vendedor — usado quando o vendedor sai da empresa ou fica

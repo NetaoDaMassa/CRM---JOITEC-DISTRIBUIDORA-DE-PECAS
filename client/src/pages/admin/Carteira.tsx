@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
@@ -27,8 +28,16 @@ const REGIOES = [
 ]
 
 export default function AdminCarteira() {
+  const { user } = useAuth()
   const { data: vendors } = trpc.users.vendors.useQuery()
   const utils = trpc.useUtils()
+  const reverterMut = trpc.carteira.reverterTransferenciaFernandaPamela.useMutation({
+    onSuccess: (data) => {
+      toast.success(`${data.revertidos} de ${data.total} clientes devolvidos pra Fernanda`)
+      utils.clientes.list.invalidate()
+    },
+    onError: (e) => toast.error(e.message),
+  })
 
   const [regiao, setRegiao] = useState('')
   const [vendedorRegiao, setVendedorRegiao] = useState('')
@@ -448,6 +457,27 @@ export default function AdminCarteira() {
           {destinoRedistribuicao === 'vendedor' ? 'Redistribuir' : 'Mover para o Banco'}
         </Button>
       </form>
+
+      {/* Botão temporário — conserta a transferência em massa que a Pamela
+          fez sem querer hoje (1034 clientes da Fernanda foram pra ela).
+          Remover depois de usado. Pedido do João, 2026-10-06. */}
+      {user?.superAdmin && (
+        <div className="bg-red-900/10 border border-red-700/40 rounded-2xl p-4 space-y-2">
+          <h2 className="text-sm font-semibold text-red-300">Conserto pontual: reverter transferência Fernanda → Pamela</h2>
+          <p className="text-xs text-dark-400">
+            Devolve pra Fernanda exatamente os 1.034 clientes que a Pamela transferiu pra si mesma hoje (17:26–17:27) — não mexe nos outros
+            clientes que já eram dela antes.
+          </p>
+          <Button
+            variant="danger"
+            size="sm"
+            loading={reverterMut.isPending}
+            onClick={() => confirm('Reverter a transferência de hoje (1.034 clientes de volta pra Fernanda)?') && reverterMut.mutate()}
+          >
+            Reverter transferência de hoje
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
