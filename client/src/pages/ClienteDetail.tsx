@@ -445,7 +445,10 @@ export default function ClienteDetail() {
   const [observacoes, setObservacoes] = useState('')
   const [ticketMedio, setTicketMedio] = useState('')
   const [origemMarketing, setOrigemMarketing] = useState(false)
+  const [revendaId, setRevendaId] = useState('')
   const [carregado, setCarregado] = useState(false)
+  // Revenda Responsável — só Odin Compressores. Pedido do João, 2026-10-06.
+  const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { enabled: ehOdinCompressores, retry: false })
 
   if (cliente && !carregado) {
     setRazaoSocial(cliente.razaoSocial)
@@ -467,6 +470,7 @@ export default function ClienteDetail() {
     setObservacoes(cliente.observacoes ?? '')
     setTicketMedio(cliente.ticketMedioHistorico?.toString() ?? '')
     setOrigemMarketing(cliente.origemMarketing)
+    setRevendaId(cliente.revendaId?.toString() ?? '')
     setCarregado(true)
   }
 
@@ -521,6 +525,7 @@ export default function ClienteDetail() {
     e.preventDefault()
     if (!cliente) return
     if (ticketMedio && Number.isNaN(parseValorBr(ticketMedio))) return toast.error('Ticket médio inválido — use só números, ex: 1.250,50.')
+    if (ehOdinCompressores && !revendaId) return toast.error('Selecione a revenda responsável.')
     updateMut.mutate({
       id: cliente.id,
       versao: cliente.versao,
@@ -543,6 +548,7 @@ export default function ClienteDetail() {
       observacoes: observacoes || undefined,
       ticketMedioHistorico: ticketMedio ? parseValorBr(ticketMedio) : undefined,
       origemMarketing,
+      revendaId: ehOdinCompressores ? (revendaId ? Number(revendaId) : null) : undefined,
     })
   }
 
@@ -609,6 +615,15 @@ export default function ClienteDetail() {
             { value: 'consumidor_final', label: 'Consumidor Final' },
           ]}
         />
+        {ehOdinCompressores && (
+          <Select
+            label="Revenda Responsável *"
+            value={revendaId}
+            onChange={(e) => setRevendaId(e.target.value)}
+            placeholder="Selecione..."
+            options={(revendas ?? []).map((r) => ({ value: r.id, label: r.nome }))}
+          />
+        )}
         <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
           <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
           Cliente de Marketing

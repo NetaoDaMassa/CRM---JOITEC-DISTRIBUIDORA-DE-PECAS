@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
@@ -7,11 +7,39 @@ import type { OrderType } from '../../lib/ordensShared'
 
 const NPS_COR = (n: number) => (n >= 9 ? 'border-green-500 bg-green-900/20 text-green-400' : n >= 7 ? 'border-yellow-500 bg-yellow-900/20 text-yellow-400' : 'border-red-500 bg-red-900/20 text-red-400')
 
-export default function EtapaPosVenda({ ordemId, isAdmin, readonly, orderType, clienteNome, clienteWhatsapp }: { ordemId: number; isAdmin: boolean; readonly: boolean; orderType: OrderType; clienteNome?: string | null; clienteWhatsapp?: string | null }) {
+export default function EtapaPosVenda({
+  ordemId,
+  isAdmin,
+  readonly,
+  orderType,
+  clienteNome,
+  clienteWhatsapp,
+  clienteRevendaId,
+}: {
+  ordemId: number
+  isAdmin: boolean
+  readonly: boolean
+  orderType: OrderType
+  clienteNome?: string | null
+  clienteWhatsapp?: string | null
+  clienteRevendaId?: number | null
+}) {
   const { data, isLoading } = trpc.ordens.pos.obterPosVenda.useQuery({ ordemId })
   const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { retry: false })
   if (isLoading) return <p className="text-dark-500 text-sm">Carregando...</p>
-  return <EtapaPosVendaForm ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} orderType={orderType} data={data ?? null} revendas={revendas ?? []} clienteNome={clienteNome} clienteWhatsapp={clienteWhatsapp} />
+  return (
+    <EtapaPosVendaForm
+      ordemId={ordemId}
+      isAdmin={isAdmin}
+      readonly={readonly}
+      orderType={orderType}
+      data={data ?? null}
+      revendas={revendas ?? []}
+      clienteNome={clienteNome}
+      clienteWhatsapp={clienteWhatsapp}
+      clienteRevendaId={clienteRevendaId}
+    />
+  )
 }
 
 function EtapaPosVendaForm({
@@ -22,6 +50,7 @@ function EtapaPosVendaForm({
   revendas,
   clienteNome,
   clienteWhatsapp,
+  clienteRevendaId,
 }: {
   ordemId: number
   isAdmin: boolean
@@ -40,6 +69,7 @@ function EtapaPosVendaForm({
   revendas: { id: number; nome: string; telefoneContato: string | null }[]
   clienteNome?: string | null
   clienteWhatsapp?: string | null
+  clienteRevendaId?: number | null
 }) {
   const utils = trpc.useUtils()
   const [feedback, setFeedback] = useState(data?.feedbackCliente ?? '')
@@ -52,6 +82,17 @@ function EtapaPosVendaForm({
   const [notaLembrete, setNotaLembrete] = useState(data?.notaLembrete ?? '')
   const podeEditar = !readonly
   const isPeca = orderType === 'peca'
+
+  // Revenda já vem do cadastro do cliente (Cliente > Revenda Responsável),
+  // sem precisar redigitar — só quando o campo ainda está vazio (não pisa
+  // em cima de algo que já foi preenchido/salvo nessa etapa). Pedido do
+  // João, 2026-10-06.
+  useEffect(() => {
+    if (nomeRevenda || data?.nomeRevenda || !clienteRevendaId) return
+    const nome = revendas.find((r) => r.id === clienteRevendaId)?.nome
+    if (nome) setNomeRevenda(nome)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revendas, clienteRevendaId])
 
   const salvarMut = trpc.ordens.pos.atualizarPosVenda.useMutation({
     onSuccess: () => { toast.success('Salvo'); utils.ordens.pos.obterPosVenda.invalidate({ ordemId }) },

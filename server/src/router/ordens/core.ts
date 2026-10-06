@@ -7,7 +7,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminProcedure, adminOrFeatureProcedure } from '../_base.js'
 import { db } from '../../db/client.js'
-import { ordens, ordemHistorico, empresas, clientes, users } from '../../db/schema.js'
+import { ordens, ordemHistorico, ordemDetalhes, empresas, clientes, users, revendas } from '../../db/schema.js'
 import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarAuditoria } from '../../lib/auditoria.js'
 import { avancarEtapaPedido, moverEtapaPedido, registrarHistoricoOrdem } from '../../lib/ordensGates.js'
@@ -130,6 +130,15 @@ export const ordensCoreRouter = router({
         enderecoEntregaEstado: cliente.estado,
       })
       const ordemId = Number(result.lastInsertRowid)
+
+      // Revenda do cliente já nasce preenchida no pedido — pedido do João,
+      // 2026-10-06, mesma lógica do endereço de entrega logo acima: evita
+      // redigitar o que já está cadastrado no cliente. Continua editável
+      // depois (ordens.financeiro.atualizarDetalhes).
+      if (cliente.revendaId) {
+        const revenda = await db.query.revendas.findFirst({ where: eq(revendas.id, cliente.revendaId), columns: { nome: true } })
+        if (revenda) await db.insert(ordemDetalhes).values({ ordemId, revenda: revenda.nome })
+      }
 
       await registrarHistoricoOrdem({ ordemId, userId: ctx.user.id, action: 'create', description: 'Pedido criado', stage: sequencia[0] })
       await registrarAuditoria({ tabela: 'ordens', registroId: ordemId, acao: 'criar', alteradoPor: ctx.user.id })

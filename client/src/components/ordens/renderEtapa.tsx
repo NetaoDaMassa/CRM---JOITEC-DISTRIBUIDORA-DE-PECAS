@@ -32,6 +32,7 @@ export type OrdemParaEtapa = {
     endereco?: string | null
     cidade?: string | null
     estado?: string | null
+    revendaId?: number | null
   } | null
   vendedor?: { whatsapp?: string | null } | null
   updatedAt?: string
@@ -93,7 +94,17 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
     case 'concluido':
       return <p className="text-sm text-dark-400 text-center py-6">✅ Venda concluída! Avance para registrar o Feedback/Finalizado.</p>
     case 'pos_venda':
-      return <EtapaPosVenda ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} orderType={orderType} clienteNome={clienteNome} clienteWhatsapp={clienteWhatsapp} />
+      return (
+        <EtapaPosVenda
+          ordemId={ordemId}
+          isAdmin={isAdmin}
+          readonly={readonly}
+          orderType={orderType}
+          clienteNome={clienteNome}
+          clienteWhatsapp={clienteWhatsapp}
+          clienteRevendaId={ordem.cliente?.revendaId}
+        />
+      )
     default:
       return null
   }

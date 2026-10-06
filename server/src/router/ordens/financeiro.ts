@@ -79,6 +79,26 @@ export const ordensFinanceiroRouter = router({
     return { ok: true }
   }),
 
+  // Dois marcadores à parte da liberação financeira em si — pedido do
+  // João, 2026-10-06: "Aprovado crédito" e "Solicitado crédito", pra
+  // sinalizar rápido o status do crédito desse pedido sem precisar ir
+  // atrás em outra tela.
+  solicitarCredito: adminProcedure.input(z.object({ ordemId: z.number() })).mutation(async ({ ctx, input }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
+    await upsertLiberacao(input.ordemId, { creditoSolicitado: true, creditoSolicitadoPor: ctx.user.id, creditoSolicitadoEm: agoraSqlite() })
+    await registrarHistoricoOrdem({ ordemId: input.ordemId, userId: ctx.user.id, action: 'update', description: 'Crédito solicitado', stage: ordem.stage })
+    return { ok: true }
+  }),
+
+  aprovarCredito: adminProcedure.input(z.object({ ordemId: z.number() })).mutation(async ({ ctx, input }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
+    await upsertLiberacao(input.ordemId, { creditoAprovado: true, creditoAprovadoPor: ctx.user.id, creditoAprovadoEm: agoraSqlite() })
+    await registrarHistoricoOrdem({ ordemId: input.ordemId, userId: ctx.user.id, action: 'approval', description: 'Crédito aprovado', stage: ordem.stage })
+    return { ok: true }
+  }),
+
   obterDetalhes: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
     await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)

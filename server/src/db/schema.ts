@@ -282,6 +282,13 @@ export const clientes = sqliteTable('clientes', {
   // o vendedor completa isso no cadastro, junto com CNPJ/IE.
   statusFiscal: text('status_fiscal', { enum: ['isento', 'normal', 'consumidor_final'] }),
   vendedorAtualId: integer('vendedor_atual_id').references(() => users.id, { onDelete: 'set null' }),
+  // Revenda responsável pelo cliente — só Odin Compressores, igual o
+  // cadastro do sistema legado ("Revenda Responsável *" no Novo Cliente).
+  // Diferente de `classificacaoComercial`: aquele classifica o CLIENTE em
+  // si (ele É uma revenda ou um consumidor final); este aqui é QUAL
+  // revenda vendeu/apresentou esse cliente (normalmente um consumidor
+  // final que comprou através de uma revenda). Pedido do João, 2026-10-06.
+  revendaId: integer('revenda_id').references(() => revendas.id, { onDelete: 'set null' }),
   // Rótulo de origem quando o cliente entra sem vendedor (importação em
   // massa cujo Vendedor era "Banco de Clientes X" / "-Nenhum vendedor-") —
   // fica visível na tela "Banco de Clientes" pro admin distribuir depois.
@@ -1968,6 +1975,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
 export const clientesRelations = relations(clientes, ({ one, many }) => ({
   vendedorAtual: one(users, { fields: [clientes.vendedorAtualId], references: [users.id] }),
   cadastradoPorUser: one(users, { fields: [clientes.cadastradoPor], references: [users.id] }),
+  revenda: one(revendas, { fields: [clientes.revendaId], references: [revendas.id] }),
   carteiraHistorico: many(carteiraHistorico),
   funis: many(funilMensal),
   itensPedido: many(itensPedido),
@@ -2239,6 +2247,15 @@ export const ordemLiberacaoFinanceira = sqliteTable('ordem_liberacao_financeira'
   aprovado: integer('aprovado', { mode: 'boolean' }).notNull().default(false),
   aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
   aprovadoEm: text('aprovado_em'),
+  // Status de crédito pro pedido — poderes à parte da liberação financeira
+  // em si (um pedido pode já ter crédito aprovado mas ainda estar esperando
+  // outra coisa pra liberar, por exemplo). Pedido do João, 2026-10-06.
+  creditoSolicitado: integer('credito_solicitado', { mode: 'boolean' }).notNull().default(false),
+  creditoSolicitadoPor: integer('credito_solicitado_por').references(() => users.id, { onDelete: 'set null' }),
+  creditoSolicitadoEm: text('credito_solicitado_em'),
+  creditoAprovado: integer('credito_aprovado', { mode: 'boolean' }).notNull().default(false),
+  creditoAprovadoPor: integer('credito_aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  creditoAprovadoEm: text('credito_aprovado_em'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })

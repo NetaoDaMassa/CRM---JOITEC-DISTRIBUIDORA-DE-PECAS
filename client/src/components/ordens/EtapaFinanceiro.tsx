@@ -92,7 +92,16 @@ function EtapaFinanceiroForm({
   ordemId: number
   isAdmin: boolean
   readonly: boolean
-  data: { aprovado: boolean; formaPagamento: string | null; condicaoPagamento: string | null; dataPagamentoPrevista: string | null; observacoes: string | null; obsTravadaEm?: string | null } | null
+  data: {
+    aprovado: boolean
+    formaPagamento: string | null
+    condicaoPagamento: string | null
+    dataPagamentoPrevista: string | null
+    observacoes: string | null
+    obsTravadaEm?: string | null
+    creditoSolicitado?: boolean
+    creditoAprovado?: boolean
+  } | null
 }) {
   const utils = trpc.useUtils()
   const [forma, setForma] = useState(data?.formaPagamento ?? '')
@@ -108,10 +117,16 @@ function EtapaFinanceiroForm({
   }
   const salvarMut = trpc.ordens.financeiro.atualizarLiberacao.useMutation({ onSuccess: () => { toast.success('Salvo'); invalidar() }, onError: (e) => toast.error(e.message) })
   const aprovarMut = trpc.ordens.financeiro.aprovarLiberacao.useMutation({ onSuccess: () => { toast.success('Aprovado'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const solicitarCreditoMut = trpc.ordens.financeiro.solicitarCredito.useMutation({ onSuccess: () => { toast.success('Crédito solicitado'); invalidar() }, onError: (e) => toast.error(e.message) })
+  const aprovarCreditoMut = trpc.ordens.financeiro.aprovarCredito.useMutation({ onSuccess: () => { toast.success('Crédito aprovado'); invalidar() }, onError: (e) => toast.error(e.message) })
 
   return (
     <div className="space-y-4">
-      {data?.aprovado && <Badge className="text-green-400 bg-green-900/20 border-green-700/40">Aprovado</Badge>}
+      <div className="flex flex-wrap gap-2">
+        {data?.aprovado && <Badge className="text-green-400 bg-green-900/20 border-green-700/40">Aprovado</Badge>}
+        {data?.creditoSolicitado && <Badge className="text-amber-400 bg-amber-900/20 border-amber-700/40">Crédito solicitado</Badge>}
+        {data?.creditoAprovado && <Badge className="text-green-400 bg-green-900/20 border-green-700/40">Crédito aprovado</Badge>}
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <Input label="Forma de pagamento" defaultValue={forma} onChange={(e) => setForma(e.target.value)} disabled={!podeEditar} />
         <Input label="Condição de pagamento" defaultValue={condicao} onChange={(e) => setCondicao(e.target.value)} disabled={!podeEditar} />
@@ -159,6 +174,16 @@ function EtapaFinanceiroForm({
           </Button>
           {!data?.aprovado && (
             <Button size="sm" loading={aprovarMut.isPending} onClick={() => aprovarMut.mutate({ ordemId })}>Aprovar liberação financeira</Button>
+          )}
+          {!data?.creditoSolicitado && (
+            <Button size="sm" variant="secondary" loading={solicitarCreditoMut.isPending} onClick={() => solicitarCreditoMut.mutate({ ordemId })}>
+              Solicitado crédito
+            </Button>
+          )}
+          {!data?.creditoAprovado && (
+            <Button size="sm" variant="secondary" loading={aprovarCreditoMut.isPending} onClick={() => aprovarCreditoMut.mutate({ ordemId })}>
+              Aprovado crédito
+            </Button>
           )}
         </div>
       )}

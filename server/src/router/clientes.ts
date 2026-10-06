@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, asc, count, desc, eq, inArray, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas } from '../db/schema.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
@@ -274,6 +274,10 @@ export const clientesRouter = router({
         statusFiscal: z.enum(['isento', 'normal', 'consumidor_final']).optional(),
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
+        // Odin Compressores só — a tela (ClienteNovo.tsx) exige escolher na
+        // hora de enviar quando a empresa ativa é Odin, igual o cadastro do
+        // sistema legado. Pedido do João, 2026-10-06.
+        revendaId: z.number().optional(),
         origemMarketing: z.boolean().optional(),
         // Cadastro-relâmpago feito de dentro de Negociações/Liberação de
         // Crédito — ver comentário em schema.ts (clientes.cadastroRapido).
@@ -323,6 +327,11 @@ export const clientesRouter = router({
         if (!vendedor || vendedor.empresaId !== ctx.empresaId) throw new Error('Vendedor inválido')
       }
 
+      if (input.revendaId) {
+        const revenda = await db.query.revendas.findFirst({ where: eq(revendas.id, input.revendaId) })
+        if (!revenda || revenda.empresaId !== ctx.empresaId) throw new Error('Revenda inválida')
+      }
+
       const result = await db.insert(clientes).values({
         empresaId: ctx.empresaId,
         razaoSocial: input.razaoSocial,
@@ -345,6 +354,7 @@ export const clientesRouter = router({
         ticketMedioHistorico: input.ticketMedioHistorico,
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
+        revendaId: input.revendaId,
         origemMarketing: input.origemMarketing ?? false,
         cadastroRapido: input.cadastroRapido ?? false,
       })
@@ -387,6 +397,7 @@ export const clientesRouter = router({
         observacoes: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
         origemMarketing: z.boolean().optional(),
+        revendaId: z.number().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -394,6 +405,10 @@ export const clientesRouter = router({
       const cliente = await db.query.clientes.findFirst({
         where: and(eq(clientes.id, id), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)),
       })
+      if (rest.revendaId) {
+        const revenda = await db.query.revendas.findFirst({ where: eq(revendas.id, rest.revendaId) })
+        if (!revenda || revenda.empresaId !== ctx.empresaId) throw new Error('Revenda inválida')
+      }
       if (!cliente) throw new Error('Cliente não encontrado')
       if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
 

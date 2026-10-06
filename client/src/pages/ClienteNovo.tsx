@@ -16,7 +16,7 @@ const REGIOES = [
 ]
 
 export default function ClienteNovo() {
-  const { user } = useAuth()
+  const { user, empresaAtivaId } = useAuth()
   const navigate = useNavigate()
   const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
   const utils = trpc.useUtils()
@@ -42,9 +42,16 @@ export default function ClienteNovo() {
   const [telefonesExtras, setTelefonesExtras] = useState<{ numero: string; rotulo: string }[]>([])
   const [email, setEmail] = useState('')
   const [vendedorAtualId, setVendedorAtualId] = useState('')
+  const [revendaId, setRevendaId] = useState('')
   const [origemMarketing, setOrigemMarketing] = useState(false)
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
+  // Revenda Responsável — só Odin Compressores, igual o cadastro do
+  // sistema legado. Pedido do João, 2026-10-06.
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const empresaAtiva = empresas?.find((e) => e.id === empresaAtivaId)
+  const ehOdinCompressores = empresaAtiva?.slug === 'odin-compressores'
+  const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { enabled: ehOdinCompressores, retry: false })
 
   const [buscandoCnpj, setBuscandoCnpj] = useState(false)
 
@@ -94,6 +101,7 @@ export default function ClienteNovo() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!regiao) return toast.error('Selecione a região.')
+    if (ehOdinCompressores && !revendaId) return toast.error('Selecione a revenda responsável.')
     createMut.mutate({
       razaoSocial,
       cnpj: tipoPessoa === 'juridica' ? cnpj : undefined,
@@ -111,6 +119,7 @@ export default function ClienteNovo() {
       telefoneWhatsapp: telefoneWhatsapp || undefined,
       email: email || undefined,
       vendedorAtualId: vendedorAtualId ? Number(vendedorAtualId) : undefined,
+      revendaId: revendaId ? Number(revendaId) : undefined,
       origemMarketing,
     })
   }
@@ -204,6 +213,15 @@ export default function ClienteNovo() {
             + Adicionar telefone
           </Button>
         </div>
+        {ehOdinCompressores && (
+          <Select
+            label="Revenda Responsável *"
+            value={revendaId}
+            onChange={(e) => setRevendaId(e.target.value)}
+            placeholder="Selecione..."
+            options={(revendas ?? []).map((r) => ({ value: r.id, label: r.nome }))}
+          />
+        )}
         {user?.role === 'admin' && (
           <Select
             label="Vendedor responsável (opcional)"
