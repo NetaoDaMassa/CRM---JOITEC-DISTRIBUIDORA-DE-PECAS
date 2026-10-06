@@ -85,6 +85,7 @@ import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
 import DevolucaoMecanica from './pages/DevolucaoMecanica'
 import DevolucaoDemonstracao from './pages/DevolucaoDemonstracao'
 import DevolucaoRelatorios from './pages/DevolucaoRelatorios'
+import DevolucaoEcommerce from './pages/DevolucaoEcommerce'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -248,6 +249,7 @@ export default function App() {
           <Route path="admin/devolucoes-mecanica" element={<AdminGuard><FeatureGuard feature="devolucoes_mecanica"><DevolucaoMecanica /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-demonstracao" element={<AdminGuard><FeatureGuard feature="devolucoes_demonstracao"><DevolucaoDemonstracao /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-relatorios" element={<AdminGuard><FeatureGuard feature="devolucoes"><DevolucaoRelatorios /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/devolucoes-ecommerce" element={<AdminGuard><FeatureGuard feature="devolucoes_ecommerce"><DevolucaoEcommerce /></FeatureGuard></AdminGuard>} />
           <Route path="admin/dashboard-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><DashboardOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/calendario-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><CalendarioOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ordens/:id?" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
@@ -286,6 +288,7 @@ export default function App() {
           <Route path="vendedor/devolucoes-mecanica" element={<DevolucaoMecanica />} />
           <Route path="vendedor/devolucoes-demonstracao" element={<DevolucaoDemonstracao />} />
           <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
+          <Route path="vendedor/devolucoes-ecommerce" element={<DevolucaoEcommerce />} />
           <Route path="vendedor/dashboard-odin" element={<DashboardOdin />} />
           <Route path="vendedor/calendario-odin" element={<CalendarioOdin />} />
           <Route path="vendedor/ordens/:id?" element={<OrdensKanban />} />

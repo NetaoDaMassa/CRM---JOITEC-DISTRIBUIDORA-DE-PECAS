@@ -85,6 +85,7 @@ type Card = {
   valorAFaturar: number | null
   qtdAFaturar: number | null
   valorEmNegociacao: number | null
+  devolucoesMes: { quantidade: number; comRecurso: number; semRecurso: number; valorVendas: number } | null
   inadimplencia: { valorTotal: number; quantidadeClientes: number; atualizadoEm: string | null }
 }
 
@@ -219,6 +220,25 @@ function EmpresaCard({ card, editavel, idealHoje }: { card: Card; editavel: bool
             <p className="text-[10px] text-dark-500">o que ainda podemos fechar</p>
           </div>
           <p className="text-base font-bold font-mono tabular-nums text-amber-400">{formatarMoeda(card.valorEmNegociacao)}</p>
+        </div>
+      )}
+      {card.devolucoesMes !== null && (
+        <div className="mt-3 pt-3 border-t border-dark-700">
+          <p className="text-[10px] text-rose-400 uppercase tracking-wide font-semibold mb-1.5">↩️ Devoluções no mês</p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div>
+              <p className="text-base font-bold font-mono tabular-nums text-dark-100">{card.devolucoesMes.quantidade}</p>
+              <p className="text-[9px] text-dark-500 uppercase">Total</p>
+            </div>
+            <div>
+              <p className="text-base font-bold font-mono tabular-nums text-red-400">{card.devolucoesMes.comRecurso}</p>
+              <p className="text-[9px] text-dark-500 uppercase">Com recurso</p>
+            </div>
+            <div>
+              <p className="text-base font-bold font-mono tabular-nums text-dark-300">{card.devolucoesMes.semRecurso}</p>
+              <p className="text-[9px] text-dark-500 uppercase">Sem recurso</p>
+            </div>
+          </div>
         </div>
       )}
 

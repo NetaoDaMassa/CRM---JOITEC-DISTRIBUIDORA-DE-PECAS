@@ -2175,6 +2175,53 @@ export const devolucaoDemonstracaoItensRelations = relations(devolucaoDemonstrac
   }),
 }))
 
+// ── Devolução E-commerce (Compretec E-commerce, marketplaces ML/Shopee/
+// TikTok) — registro simples (sem workflow de etapas, diferente do resto de
+// Devolução) pedido do João, 2026-10-06: hoje é controlado numa planilha
+// (coluna por coluna: plataforma, pedido, NF entrada/devolução, valor de
+// venda, motivo, recurso, custo da devolução, erro de expedição, valor de
+// recurso). `marketplace` e `loja` vêm separados porque na planilha a coluna
+// "PLATAFORMA" mistura as duas coisas (ex: "ML HIDROPLAC" = marketplace
+// Mercado Livre + conta/loja Hidroplac). `statusRecurso` cobre os estados
+// que a planilha já usa (sem recurso por padrão; aguardando/aprovado/
+// negado/reembolsado só quando teve recurso) — "com recurso" pro relatório
+// do Painel Financeiro é simplesmente `statusRecurso != 'sem_recurso'`.
+export const devolucaoEcommerce = sqliteTable(
+  'devolucao_ecommerce',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    data: text('data').notNull(), // YYYY-MM-DD — data da devolução (não da digitação)
+    marketplace: text('marketplace', { enum: ['mercado_livre', 'shopee', 'tiktok', 'outro'] }).notNull(),
+    loja: text('loja').notNull(),
+    pedido: text('pedido').notNull(),
+    nfEntrada: text('nf_entrada'),
+    nfDevolucao: text('nf_devolucao'),
+    valorVenda: real('valor_venda').notNull().default(0),
+    motivo: text('motivo').notNull(),
+    statusRecurso: text('status_recurso', {
+      enum: ['sem_recurso', 'aguardando', 'aprovado', 'negado', 'reembolsado'],
+    })
+      .notNull()
+      .default('sem_recurso'),
+    valorRecurso: real('valor_recurso'),
+    custoDevolucao: real('custo_devolucao'),
+    erroExpedicao: integer('erro_expedicao', { mode: 'boolean' }).notNull().default(false),
+    observacoes: text('observacoes'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaDataIdx: index('devolucao_ecommerce_empresa_data_idx').on(t.empresaId, t.data),
+  })
+)
+
+export const devolucaoEcommerceRelations = relations(devolucaoEcommerce, ({ one }) => ({
+  empresa: one(empresas, { fields: [devolucaoEcommerce.empresaId], references: [empresas.id] }),
+  criadoPorUser: one(users, { fields: [devolucaoEcommerce.criadoPor], references: [users.id] }),
+}))
+
 // ── Ordens (pós-venda Odin Compressores, portado do odincrm.duckdns.org) ──
 // Kanban de acompanhamento do pedido depois de vendido: liberação
 // financeira, frete, preparação, faturamento, conferência, coleta, rastreio,

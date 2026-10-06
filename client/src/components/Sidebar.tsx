@@ -35,6 +35,7 @@ const SO_ODIN_COMPRESSORES = 'odin-compressores'
 // só) só existe pra Compretec Loja Física — é a única empresa com etapa
 // "Faturamento" no funil.
 const SO_COMPRETEC_LOJA_FISICA = 'compretec-loja-fisica'
+const SO_COMPRETEC_ECOMMERCE = 'compretec-ecommerce'
 // Mesma lista de SLUGS_COM_ANALYTICS_MARKETING em server/src/router/integracoes.ts
 // — só essas 3 empresas têm o tracker do CRM de marketing instalado no site.
 const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores']
@@ -103,6 +104,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/admin/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
   { to: '/admin/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, feature: 'devolucoes' },
+  { to: '/admin/devolucoes-ecommerce', label: 'Devolução E-commerce', icon: RotateCcw, somenteEmpresa: SO_COMPRETEC_ECOMMERCE, feature: 'devolucoes_ecommerce' },
   // RH — vagas/candidatos/mensagens, portado do CRM-GRUPO-ODIN.
   { to: '/admin/vagas', label: 'Vagas', icon: Briefcase, feature: 'vagas' },
   { to: '/admin/candidatos', label: 'Candidatos', icon: Contact, feature: 'candidatos' },
@@ -193,6 +195,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageSearch, feature: 'devolucoes_demonstracao' },
   { to: '/vendedor/devolucoes-relatorios', label: 'Relatórios (Devolução)', icon: BarChart3, feature: 'devolucoes' },
+  { to: '/vendedor/devolucoes-ecommerce', label: 'Devolução E-commerce', icon: RotateCcw, somenteEmpresa: SO_COMPRETEC_ECOMMERCE, feature: 'devolucoes_ecommerce' },
   { to: '/vendedor/leads', label: 'Leads', icon: UserPlus, feature: 'leads' },
   { to: '/vendedor/leads/kanban', label: 'Kanban de Leads', icon: KanbanSquare, feature: 'leads' },
   { to: '/vendedor/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },

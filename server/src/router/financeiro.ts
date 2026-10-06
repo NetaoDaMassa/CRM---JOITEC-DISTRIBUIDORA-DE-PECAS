@@ -7,6 +7,7 @@ import { getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes
 import { agoraSqlite, diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesReferenciaAtual } from '../lib/dataBr.js'
 import { buscarVendasAtonComCache } from '../lib/atonErp.js'
 import { buscarOrdensFaturadas, STAGES_FATURAMENTO_OU_DEPOIS } from '../lib/faturamentoOdin.js'
+import { calcularRelatorioDevolucaoEcommerce } from './devolucaoEcommerce.js'
 
 // Cards do Painel Financeiro. Cada card soma 1+ empresaId — a maioria é uma
 // empresa só, mas Odin Compressores e Comprefer aparecem como um único card
@@ -243,6 +244,21 @@ export const financeiroRouter = router({
         // sem prorratear pelos dias úteis já passados.
         const inad = inadPorCard.get(card.cardKey)
 
+        // Devoluções do mês — só o card da Compretec E-commerce (único lugar
+        // que tem o módulo de Devolução E-commerce, ver devolucaoEcommerce.ts).
+        // Pedido do João, 2026-10-06: total/com recurso/sem recurso no Painel
+        // Financeiro, igual o resto do card já soma vendas do mês.
+        let devolucoesMes: { quantidade: number; comRecurso: number; semRecurso: number; valorVendas: number } | null = null
+        if (card.cardKey === 'compretec-ecommerce') {
+          const relatorio = await calcularRelatorioDevolucaoEcommerce(card.empresaIds[0], mesAtual, hoje)
+          devolucoesMes = {
+            quantidade: relatorio.total,
+            comRecurso: relatorio.comRecurso,
+            semRecurso: relatorio.semRecurso,
+            valorVendas: relatorio.valorVendasTotal,
+          }
+        }
+
         return {
           cardKey: card.cardKey,
           nome: card.nome,
@@ -259,6 +275,7 @@ export const financeiroRouter = router({
           valorAFaturar,
           qtdAFaturar,
           valorEmNegociacao,
+          devolucoesMes,
           inadimplencia: {
             valorTotal: inad?.valorTotal ?? 0,
             quantidadeClientes: inad?.quantidadeClientes ?? 0,

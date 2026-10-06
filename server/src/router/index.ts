@@ -50,6 +50,7 @@ import { leadsRegioesRouter } from './leadsRegioes.js'
 import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
+import { devolucaoEcommerceRouter } from './devolucaoEcommerce.js'
 import { ordensRouter } from './ordens/index.js'
 import { garantiasRouter } from './garantias.js'
 import { propostasRouter } from './propostas.js'
@@ -124,6 +125,7 @@ export const appRouter = router({
   sidebarGrupos: sidebarGruposRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
+  devolucaoEcommerce: devolucaoEcommerceRouter,
   ordens: ordensRouter,
   garantias: garantiasRouter,
   propostas: propostasRouter,

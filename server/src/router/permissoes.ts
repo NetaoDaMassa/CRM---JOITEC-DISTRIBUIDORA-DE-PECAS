@@ -88,6 +88,11 @@ export const FEATURES_ADMIN = [
   'devolucoes',
   'devolucoes_mecanica',
   'devolucoes_demonstracao',
+  // Devolução E-commerce (Compretec E-commerce) — log de devoluções de
+  // marketplace (ML/Shopee/TikTok), mundo separado do resto de Devolução
+  // acima (sem chamado/workflow). Pedido do João, 2026-10-06. Também existe
+  // em FEATURES_VENDEDOR.
+  'devolucoes_ecommerce',
   'devolucoes_ver_comissao',
   'devolucoes_excluir_chamado',
   'devolucoes_finalizar_fora_ordem',
@@ -205,6 +210,8 @@ export const FEATURES_VENDEDOR = [
   'devolucoes',
   'devolucoes_mecanica',
   'devolucoes_demonstracao',
+  // Devolução E-commerce — mesma chave de FEATURES_ADMIN acima.
+  'devolucoes_ecommerce',
   'devolucoes_ver_comissao',
   'devolucoes_excluir_chamado',
   'devolucoes_finalizar_fora_ordem',
