@@ -16,7 +16,10 @@ export const TIPO_ATENDIMENTO_LABELS: Record<TipoAtendimento, string> = {
 // prática. Os campos de cada uma continuam existindo à parte no banco, só
 // a TELA e a etapa do processo que juntaram — ver EtapaCampos em
 // GarantiasDetail.tsx.
+// "Análise" é a etapa de triagem, ANTES de tudo — pedido do João,
+// 2026-10-06. Ver comentário equivalente em server/garantiasStages.ts.
 export const STAGE_SEQUENCE_COM_RETORNO = [
+  'analise',
   'aberto',
   'nf_devolucao',
   'preparacao_novo_item',
@@ -27,11 +30,12 @@ export const STAGE_SEQUENCE_COM_RETORNO = [
   'encerrado',
 ] as const
 
-export const STAGE_SEQUENCE_SEM_RETORNO = ['aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
+export const STAGE_SEQUENCE_SEM_RETORNO = ['analise', 'aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_COM_RETORNO)[number] | (typeof STAGE_SEQUENCE_SEM_RETORNO)[number]
 
 export const STAGE_LABELS: Record<Stage, string> = {
+  analise: 'Análise',
   aberto: 'Abertura',
   nf_devolucao: 'NF de Devolução',
   preparacao_novo_item: 'Preparação do Novo Item',
@@ -43,6 +47,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
 }
 
 export const STAGE_COLORS: Record<Stage, string> = {
+  analise: 'text-indigo-400 bg-indigo-900/20 border-indigo-700/40',
   aberto: 'text-gray-400 bg-gray-700/30 border-gray-600/50',
   nf_devolucao: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
   preparacao_novo_item: 'text-orange-400 bg-orange-900/20 border-orange-700/40',
@@ -53,7 +58,7 @@ export const STAGE_COLORS: Record<Stage, string> = {
   encerrado: 'text-green-400 bg-green-900/20 border-green-700/40',
 }
 
-export function getStageSequence(comRetorno: boolean): readonly Stage[] {
+export function getStageSequence(comRetorno: boolean | null): readonly Stage[] {
   return comRetorno ? STAGE_SEQUENCE_COM_RETORNO : STAGE_SEQUENCE_SEM_RETORNO
 }
 

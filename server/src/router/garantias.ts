@@ -7,7 +7,7 @@
 // gates obrigatórios por etapa nesta primeira versão, pra testar o fluxo
 // antes de travar regra).
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import fs from 'fs'
 import path from 'path'
@@ -17,7 +17,7 @@ import { garantias, garantiaAnexos, garantiaOficina, garantiaHistorico, empresas
 import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { avancarEtapaGarantia, moverEtapaGarantia, registrarHistoricoGarantia } from '../lib/garantiasGates.js'
-import { TIPO_ATENDIMENTO_VALUES, getStageSequence, comRetornoPadrao, destinoEnvioPadrao, type TipoAtendimento } from '../lib/garantiasStages.js'
+import { TIPO_ATENDIMENTO_VALUES, comRetornoPadrao, destinoEnvioPadrao, type TipoAtendimento } from '../lib/garantiasStages.js'
 
 // Módulo disponível só pra Odin Compressores — mesmo padrão de SLUG_ORDENS.
 export const SLUG_GARANTIAS = 'odin-compressores'
@@ -39,6 +39,8 @@ async function obterGarantia(id: number, empresaId: number) {
 // (a maioria tem só 1-2 campos), em vez de uma mutation por etapa.
 const CamposEtapaSchema = z.object({
   descricaoDefeito: z.string().optional(),
+  reclamacaoCliente: z.string().optional(),
+  diagnostico: z.string().optional(),
   modeloMaquina: z.string().optional(),
   numeroSerie: z.string().optional(),
   tecnicoNome: z.string().optional(),
@@ -58,10 +60,17 @@ const CamposEtapaSchema = z.object({
 })
 
 export const garantiasCoreRouter = router({
-  listarKanban: adminOrFeatureProcedure('garantias_odin').input(z.object({ comRetorno: z.boolean() })).query(async ({ ctx, input }) => {
+  // `comRetorno: null` = fila de Análise (processos que ainda não foram
+  // classificados) — distinta das filas "Com retorno"/"Sem retorno", que só
+  // existem depois que alguém decide abrir o processo de garantia de
+  // verdade (ver abrirProcesso abaixo). Pedido do João, 2026-10-06.
+  listarKanban: adminOrFeatureProcedure('garantias_odin').input(z.object({ comRetorno: z.boolean().nullable() })).query(async ({ ctx, input }) => {
     await assertEmpresaGarantias(ctx.empresaId)
     return db.query.garantias.findMany({
-      where: and(eq(garantias.empresaId, ctx.empresaId), eq(garantias.comRetorno, input.comRetorno)),
+      where:
+        input.comRetorno === null
+          ? and(eq(garantias.empresaId, ctx.empresaId), isNull(garantias.comRetorno))
+          : and(eq(garantias.empresaId, ctx.empresaId), eq(garantias.comRetorno, input.comRetorno)),
       with: {
         cliente: { columns: { id: true, razaoSocial: true, codigo: true, telefoneWhatsapp: true } },
         pedido: { columns: { id: true } },
@@ -94,18 +103,18 @@ export const garantiasCoreRouter = router({
     }
   }),
 
+  // Abertura leve — só cliente/produto/observações, cai direto na Análise.
+  // Tipo de atendimento (e tudo que depende dele) só é decidido depois, na
+  // hora de "Abrir processo de garantia" (abrirProcesso abaixo). Pedido do
+  // João, 2026-10-06: tirou "Nº do Pedido" e trocou "Descrição do Defeito"
+  // por "Observações".
   criar: adminOrFeatureProcedure('garantias_odin')
     .input(
       z.object({
-        pedidoId: z.number().optional(),
         clienteId: z.number(),
-        tipoAtendimento: z.enum(TIPO_ATENDIMENTO_VALUES),
-        comRetorno: z.boolean().optional(), // obrigatório só pra 'peca_tecnico'
-        descricaoDefeito: z.string().min(1),
         modeloMaquina: z.string().optional(),
         numeroSerie: z.string().optional(),
-        tecnicoNome: z.string().optional(),
-        tecnicoWhatsapp: z.string().optional(),
+        observacoes: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -113,10 +122,43 @@ export const garantiasCoreRouter = router({
       const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId)) })
       if (!cliente) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente não encontrado nessa empresa' })
 
-      if (input.pedidoId) {
-        const pedido = await db.query.ordens.findFirst({ where: and(eq(ordens.id, input.pedidoId), eq(ordens.empresaId, ctx.empresaId)) })
-        if (!pedido) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Pedido não encontrado nessa empresa' })
-      }
+      const result = await db.insert(garantias).values({
+        empresaId: ctx.empresaId,
+        clienteId: input.clienteId,
+        criadoPor: ctx.user.id,
+        modeloMaquina: input.modeloMaquina,
+        numeroSerie: input.numeroSerie,
+        descricaoDefeito: input.observacoes,
+        stage: 'analise',
+      })
+      const garantiaId = Number(result.lastInsertRowid)
+
+      await registrarHistoricoGarantia({ garantiaId, userId: ctx.user.id, action: 'create', description: 'Reclamação registrada pra análise', stage: 'analise' })
+      await registrarAuditoria({ tabela: 'garantias', registroId: garantiaId, acao: 'criar', alteradoPor: ctx.user.id })
+
+      return { id: garantiaId }
+    }),
+
+  // Saída nº1 da Análise: decide que precisa mesmo de um processo de
+  // garantia — só agora escolhe tipo de atendimento (e com isso,
+  // comRetorno/destinoEnvio) e avança pra 'aberto'. Pedido do João,
+  // 2026-10-06.
+  abrirProcesso: adminProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        versao: z.number(),
+        tipoAtendimento: z.enum(TIPO_ATENDIMENTO_VALUES),
+        comRetorno: z.boolean().optional(), // obrigatório só pra 'peca_tecnico'
+        tecnicoNome: z.string().optional(),
+        tecnicoWhatsapp: z.string().optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaGarantias(ctx.empresaId)
+      const garantia = await obterGarantia(input.id, ctx.empresaId)
+      if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
+      if (garantia.stage !== 'analise') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo já saiu da Análise' })
 
       const padrao = comRetornoPadrao(input.tipoAtendimento as TipoAtendimento)
       const comRetorno = padrao ?? input.comRetorno
@@ -127,28 +169,56 @@ export const garantiasCoreRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe o nome do técnico autorizado' })
       }
 
-      const sequencia = getStageSequence(comRetorno)
-      const result = await db.insert(garantias).values({
-        empresaId: ctx.empresaId,
-        pedidoId: input.pedidoId,
-        clienteId: input.clienteId,
-        criadoPor: ctx.user.id,
-        tipoAtendimento: input.tipoAtendimento,
-        comRetorno,
-        destinoEnvio,
-        descricaoDefeito: input.descricaoDefeito,
-        modeloMaquina: input.modeloMaquina,
-        numeroSerie: input.numeroSerie,
-        tecnicoNome: input.tecnicoNome,
-        tecnicoWhatsapp: input.tecnicoWhatsapp,
-        stage: sequencia[0],
-      })
-      const garantiaId = Number(result.lastInsertRowid)
+      const upd = await db
+        .update(garantias)
+        .set({
+          tipoAtendimento: input.tipoAtendimento,
+          comRetorno,
+          destinoEnvio,
+          tecnicoNome: input.tecnicoNome,
+          tecnicoWhatsapp: input.tecnicoWhatsapp,
+          stage: 'aberto',
+          versao: garantia.versao + 1,
+          updatedAt: agoraSqlite(),
+        })
+        .where(and(eq(garantias.id, input.id), eq(garantias.versao, input.versao)))
+      if (upd.rowsAffected === 0) throw new TRPCError({ code: 'CONFLICT', message: 'Processo foi alterado por outra pessoa — recarregue a página' })
 
-      await registrarHistoricoGarantia({ garantiaId, userId: ctx.user.id, action: 'create', description: 'Processo de garantia aberto', stage: sequencia[0] })
-      await registrarAuditoria({ tabela: 'garantias', registroId: garantiaId, acao: 'criar', alteradoPor: ctx.user.id })
+      await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'stage_change', description: 'Processo de garantia aberto a partir da Análise', stage: 'aberto' })
+      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'analise', valorNovo: 'aberto', alteradoPor: ctx.user.id })
 
-      return { id: garantiaId }
+      return { ok: true }
+    }),
+
+  // Saída nº2 da Análise: reclamação resolvida sem precisar de garantia —
+  // registra a solução e pula direto pra 'encerrado'. Pedido do João,
+  // 2026-10-06.
+  resolverSemGarantia: adminProcedure
+    .input(z.object({ id: z.number(), versao: z.number(), reclamacaoCliente: z.string().optional(), solucaoSemGarantia: z.string().min(1, 'Descreva a solução/tratativa') }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaGarantias(ctx.empresaId)
+      const garantia = await obterGarantia(input.id, ctx.empresaId)
+      if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
+      if (garantia.stage !== 'analise') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo já saiu da Análise' })
+
+      const upd = await db
+        .update(garantias)
+        .set({
+          reclamacaoCliente: input.reclamacaoCliente,
+          solucaoSemGarantia: input.solucaoSemGarantia,
+          resolvidoSemGarantiaPor: ctx.user.id,
+          resolvidoSemGarantiaEm: agoraSqlite(),
+          stage: 'encerrado',
+          versao: garantia.versao + 1,
+          updatedAt: agoraSqlite(),
+        })
+        .where(and(eq(garantias.id, input.id), eq(garantias.versao, input.versao)))
+      if (upd.rowsAffected === 0) throw new TRPCError({ code: 'CONFLICT', message: 'Processo foi alterado por outra pessoa — recarregue a página' })
+
+      await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'stage_change', description: 'Reclamação solucionada sem necessidade de garantia', stage: 'encerrado' })
+      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'analise', valorNovo: 'encerrado', alteradoPor: ctx.user.id })
+
+      return { ok: true }
     }),
 
   obterPorId: adminOrFeatureProcedure('garantias_odin').input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {

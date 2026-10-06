@@ -46,6 +46,13 @@ export async function avancarEtapaGarantia(params: { garantiaId: number; empresa
   const garantia = await db.query.garantias.findFirst({ where: and(eq(garantias.id, garantiaId), eq(garantias.empresaId, empresaId)) })
   if (!garantia) throw new TRPCError({ code: 'NOT_FOUND', message: 'Processo de garantia não encontrado' })
   if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
+  // Sair de 'analise' só pelas ações dedicadas (abrirProcesso/
+  // resolverSemGarantia) — são elas que decidem tipoAtendimento/comRetorno
+  // antes de avançar. Avançar "genérico" daqui deixaria o processo com
+  // esses campos nulos pro resto do fluxo. Pedido do João, 2026-10-06.
+  if (garantia.stage === 'analise') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use "Abrir processo de garantia" ou "Finalizar sem necessidade de garantia" pra sair da Análise.' })
+  }
 
   const proximo = getNextStage(garantia.stage, garantia.comRetorno)
   if (!proximo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo já está na última etapa' })
@@ -88,6 +95,9 @@ export async function moverEtapaGarantia(params: { garantiaId: number; empresaId
   const garantia = await db.query.garantias.findFirst({ where: and(eq(garantias.id, garantiaId), eq(garantias.empresaId, empresaId)) })
   if (!garantia) throw new TRPCError({ code: 'NOT_FOUND', message: 'Processo de garantia não encontrado' })
   if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
+  if (garantia.stage === 'analise' && novaEtapa !== 'analise') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use "Abrir processo de garantia" ou "Finalizar sem necessidade de garantia" pra sair da Análise.' })
+  }
 
   const sequencia = getStageSequence(garantia.comRetorno)
   if (!sequencia.includes(novaEtapa as Stage)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Etapa inválida pra esse tipo de processo' })

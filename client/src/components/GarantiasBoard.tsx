@@ -8,17 +8,19 @@ type GarantiaCard = {
   id: number
   stage: string
   status: string
-  comRetorno: boolean
-  tipoAtendimento: string
+  comRetorno: boolean | null
+  tipoAtendimento: string | null
   createdAt: string
   updatedAt: string
   cliente: { id: number; razaoSocial: string; codigo: string | null } | null
   pedido: { id: number } | null
 }
 
-export default function GarantiasBoard({ garantias, comRetorno, basePath }: { garantias: GarantiaCard[]; comRetorno: boolean; basePath: string }) {
+// `comRetorno: null` = fila de Análise — só 1 coluna ("Análise"), ainda sem
+// tipo de atendimento definido. Pedido do João, 2026-10-06.
+export default function GarantiasBoard({ garantias, comRetorno, basePath }: { garantias: GarantiaCard[]; comRetorno: boolean | null; basePath: string }) {
   const navigate = useNavigate()
-  const colunas = getStageSequence(comRetorno)
+  const colunas = comRetorno === null ? (['analise'] as const) : getStageSequence(comRetorno)
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">
@@ -47,7 +49,7 @@ export default function GarantiasBoard({ garantias, comRetorno, basePath }: { ga
                       <span className="truncate min-w-0 flex-1">{g.cliente.razaoSocial}</span>
                     </div>
                   )}
-                  <p className="text-[11px] text-dark-500 mb-2 line-clamp-1">{TIPO_ATENDIMENTO_LABELS[g.tipoAtendimento as TipoAtendimento]}</p>
+                  {g.tipoAtendimento && <p className="text-[11px] text-dark-500 mb-2 line-clamp-1">{TIPO_ATENDIMENTO_LABELS[g.tipoAtendimento as TipoAtendimento]}</p>}
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <Badge className={STAGE_COLORS[stage as Stage]}>{timeAgo(g.updatedAt)}</Badge>
                     {g.pedido && <Badge className="text-dark-300 bg-dark-700 border-dark-600">Pedido #{g.pedido.id}</Badge>}

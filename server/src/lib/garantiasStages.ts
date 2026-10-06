@@ -12,7 +12,16 @@ export type TipoAtendimento = (typeof TIPO_ATENDIMENTO_VALUES)[number]
 // prática. Os campos de cada uma continuam existindo à parte no banco
 // (nfSaidaNumero/envioTransportadora/rastreioObservacao etc.), só a TELA e
 // a etapa do processo que juntaram — ver EtapaCampos em GarantiasDetail.tsx.
+// "Análise" é a etapa de triagem, ANTES de tudo — nasce aí todo processo
+// novo (leve: só cliente/produto/observações), sem escolher tipo de
+// atendimento ainda. Só sai dali de dois jeitos: "Abrir processo de
+// garantia" (escolhe tipo de atendimento, decide comRetorno, avança pra
+// 'aberto') ou "Finalizar sem necessidade de garantia" (pula direto pra
+// 'encerrado'). Por isso tipoAtendimento/comRetorno nascem nulos (ver
+// schema.ts) — só a ação de abrir processo de verdade os preenche. Pedido
+// do João, 2026-10-06.
 export const STAGE_SEQUENCE_COM_RETORNO = [
+  'analise',
   'aberto',
   'nf_devolucao',
   'preparacao_novo_item',
@@ -23,11 +32,12 @@ export const STAGE_SEQUENCE_COM_RETORNO = [
   'encerrado',
 ] as const
 
-export const STAGE_SEQUENCE_SEM_RETORNO = ['aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
+export const STAGE_SEQUENCE_SEM_RETORNO = ['analise', 'aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_COM_RETORNO)[number] | (typeof STAGE_SEQUENCE_SEM_RETORNO)[number]
 
 export const STAGE_LABELS: Record<Stage, string> = {
+  analise: 'Análise',
   aberto: 'Abertura',
   nf_devolucao: 'NF de Devolução',
   preparacao_novo_item: 'Preparação do Novo Item',
@@ -52,15 +62,18 @@ export function destinoEnvioPadrao(tipo: TipoAtendimento): 'cliente' | 'tecnico'
   return tipo === 'peca_tecnico' ? 'tecnico' : 'cliente'
 }
 
-export function getStageSequence(comRetorno: boolean): readonly Stage[] {
+// `comRetorno` ainda null (processo em 'analise', antes de decidir) — as
+// duas sequências começam igual ('analise' → 'aberto'), então tanto faz
+// qual retorna; só importa de verdade depois que comRetorno é definido.
+export function getStageSequence(comRetorno: boolean | null): readonly Stage[] {
   return comRetorno ? STAGE_SEQUENCE_COM_RETORNO : STAGE_SEQUENCE_SEM_RETORNO
 }
 
-export function isStageValido(stage: string, comRetorno: boolean): stage is Stage {
+export function isStageValido(stage: string, comRetorno: boolean | null): stage is Stage {
   return (getStageSequence(comRetorno) as readonly string[]).includes(stage)
 }
 
-export function getNextStage(stage: string, comRetorno: boolean): Stage | null {
+export function getNextStage(stage: string, comRetorno: boolean | null): Stage | null {
   const seq = getStageSequence(comRetorno)
   const idx = seq.indexOf(stage as Stage)
   if (idx === -1 || idx === seq.length - 1) return null

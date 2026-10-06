@@ -2571,22 +2571,42 @@ export const garantias = sqliteTable(
     pedidoId: integer('pedido_id').references(() => ordens.id, { onDelete: 'set null' }),
     clienteId: integer('cliente_id').notNull().references(() => clientes.id),
     criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    // Nulos enquanto o processo está em 'analise' — só são decididos na
+    // hora de "Abrir processo de garantia" (sair da Análise de vez, ver
+    // garantiasCoreRouter.abrirProcesso). Pedido do João, 2026-10-06: a
+    // abertura nasce leve (só cliente/produto/observações), sem perguntar
+    // tipo de atendimento de cara.
     tipoAtendimento: text('tipo_atendimento', {
       enum: ['maquina_completa', 'peca_com_retorno', 'peca_sem_retorno', 'peca_tecnico'],
-    }).notNull(),
+    }),
     // Deriva do tipo (máquina/peça-com-retorno = sempre true, peça-sem-
     // retorno = sempre false), exceto "peça ao técnico", onde quem abre
     // escolhe na hora (pode seguir os dois jeitos, conforme a peça avaliada
     // tiver ou não conserto — ver descrição do processo do João).
-    comRetorno: integer('com_retorno', { mode: 'boolean' }).notNull(),
-    destinoEnvio: text('destino_envio', { enum: ['cliente', 'tecnico'] }).notNull(),
-    descricaoDefeito: text('descricao_defeito').notNull(),
+    comRetorno: integer('com_retorno', { mode: 'boolean' }),
+    destinoEnvio: text('destino_envio', { enum: ['cliente', 'tecnico'] }),
+    // Campo livre preenchido na abertura (pedido do João, 2026-10-06:
+    // "Observações" no lugar do antigo "Descrição do Defeito" — menos
+    // obrigatório, mais aberto). Nome da coluna ficou do jeito antigo por
+    // simplicidade de migração, só mudou o rótulo/obrigatoriedade.
+    descricaoDefeito: text('descricao_defeito'),
+    // Reclamação do cliente — preenchida na etapa de Análise (diferente de
+    // `descricaoDefeito`/Observações, que é da abertura). Pedido do João,
+    // 2026-10-06.
+    reclamacaoCliente: text('reclamacao_cliente'),
+    diagnostico: text('diagnostico'),
+    // Preenchidos só quando a reclamação é resolvida SEM precisar abrir
+    // garantia (ver garantiasCoreRouter.resolverSemGarantia) — o processo
+    // pula direto pra 'encerrado' nesse caso.
+    solucaoSemGarantia: text('solucao_sem_garantia'),
+    resolvidoSemGarantiaPor: integer('resolvido_sem_garantia_por').references(() => users.id, { onDelete: 'set null' }),
+    resolvidoSemGarantiaEm: text('resolvido_sem_garantia_em'),
     modeloMaquina: text('modelo_maquina'),
     numeroSerie: text('numero_serie'),
     // Só preenchido quando destinoEnvio = 'tecnico'.
     tecnicoNome: text('tecnico_nome'),
     tecnicoWhatsapp: text('tecnico_whatsapp'),
-    stage: text('stage').notNull().default('aberto'),
+    stage: text('stage').notNull().default('analise'),
     status: text('status', { enum: ['ativo', 'encerrado', 'cancelado'] }).notNull().default('ativo'),
     cancelMotivo: text('cancel_motivo'),
 
