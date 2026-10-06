@@ -2601,6 +2601,15 @@ export const garantias = sqliteTable(
     solucaoSemGarantia: text('solucao_sem_garantia'),
     resolvidoSemGarantiaPor: integer('resolvido_sem_garantia_por').references(() => users.id, { onDelete: 'set null' }),
     resolvidoSemGarantiaEm: text('resolvido_sem_garantia_em'),
+    // Etapa 'aprovacao_diretor' — gate entre Análise e Abrir/Finalizar.
+    // 'aprovado' libera abrir o processo de garantia ou finalizar sem
+    // garantia (ver abrirProcesso/resolverSemGarantia); 'nova_abordagem'
+    // manda o processo de volta pra 'analise' com as observações do
+    // diretor pra equipe reavaliar. Pedido do João, 2026-10-06.
+    diretorDecisao: text('diretor_decisao', { enum: ['aprovado', 'nova_abordagem'] }),
+    diretorObservacoes: text('diretor_observacoes'),
+    diretorDecididoPor: integer('diretor_decidido_por').references(() => users.id, { onDelete: 'set null' }),
+    diretorDecididoEm: text('diretor_decidido_em'),
     modeloMaquina: text('modelo_maquina'),
     numeroSerie: text('numero_serie'),
     // Só preenchido quando destinoEnvio = 'tecnico'.

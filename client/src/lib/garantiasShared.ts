@@ -20,6 +20,7 @@ export const TIPO_ATENDIMENTO_LABELS: Record<TipoAtendimento, string> = {
 // 2026-10-06. Ver comentário equivalente em server/garantiasStages.ts.
 export const STAGE_SEQUENCE_COM_RETORNO = [
   'analise',
+  'aprovacao_diretor',
   'aberto',
   'nf_devolucao',
   'preparacao_novo_item',
@@ -30,12 +31,13 @@ export const STAGE_SEQUENCE_COM_RETORNO = [
   'encerrado',
 ] as const
 
-export const STAGE_SEQUENCE_SEM_RETORNO = ['analise', 'aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
+export const STAGE_SEQUENCE_SEM_RETORNO = ['analise', 'aprovacao_diretor', 'aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_COM_RETORNO)[number] | (typeof STAGE_SEQUENCE_SEM_RETORNO)[number]
 
 export const STAGE_LABELS: Record<Stage, string> = {
   analise: 'Análise',
+  aprovacao_diretor: 'Aprovação do Diretor Técnico',
   aberto: 'Abertura',
   nf_devolucao: 'NF de Devolução',
   preparacao_novo_item: 'Preparação do Novo Item',
@@ -48,6 +50,7 @@ export const STAGE_LABELS: Record<Stage, string> = {
 
 export const STAGE_COLORS: Record<Stage, string> = {
   analise: 'text-indigo-400 bg-indigo-900/20 border-indigo-700/40',
+  aprovacao_diretor: 'text-fuchsia-400 bg-fuchsia-900/20 border-fuchsia-700/40',
   aberto: 'text-gray-400 bg-gray-700/30 border-gray-600/50',
   nf_devolucao: 'text-yellow-400 bg-yellow-900/20 border-yellow-700/40',
   preparacao_novo_item: 'text-orange-400 bg-orange-900/20 border-orange-700/40',

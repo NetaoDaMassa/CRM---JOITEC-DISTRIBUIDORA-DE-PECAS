@@ -139,10 +139,10 @@ export const garantiasCoreRouter = router({
       return { id: garantiaId }
     }),
 
-  // Saída nº1 da Análise: decide que precisa mesmo de um processo de
-  // garantia — só agora escolhe tipo de atendimento (e com isso,
-  // comRetorno/destinoEnvio) e avança pra 'aberto'. Pedido do João,
-  // 2026-10-06.
+  // Saída nº1 da Aprovação do Diretor Técnico (só depois de aprovada):
+  // decide que precisa mesmo de um processo de garantia — só agora escolhe
+  // tipo de atendimento (e com isso, comRetorno/destinoEnvio) e avança pra
+  // 'aberto'. Pedido do João, 2026-10-06.
   abrirProcesso: adminProcedure
     .input(
       z.object({
@@ -158,7 +158,9 @@ export const garantiasCoreRouter = router({
       await assertEmpresaGarantias(ctx.empresaId)
       const garantia = await obterGarantia(input.id, ctx.empresaId)
       if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
-      if (garantia.stage !== 'analise') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo já saiu da Análise' })
+      if (garantia.stage !== 'aprovacao_diretor' || garantia.diretorDecisao !== 'aprovado') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo ainda não foi aprovado pelo Diretor Técnico' })
+      }
 
       const padrao = comRetornoPadrao(input.tipoAtendimento as TipoAtendimento)
       const comRetorno = padrao ?? input.comRetorno
@@ -184,22 +186,24 @@ export const garantiasCoreRouter = router({
         .where(and(eq(garantias.id, input.id), eq(garantias.versao, input.versao)))
       if (upd.rowsAffected === 0) throw new TRPCError({ code: 'CONFLICT', message: 'Processo foi alterado por outra pessoa — recarregue a página' })
 
-      await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'stage_change', description: 'Processo de garantia aberto a partir da Análise', stage: 'aberto' })
-      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'analise', valorNovo: 'aberto', alteradoPor: ctx.user.id })
+      await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'stage_change', description: 'Processo de garantia aberto após aprovação do Diretor Técnico', stage: 'aberto' })
+      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'aprovacao_diretor', valorNovo: 'aberto', alteradoPor: ctx.user.id })
 
       return { ok: true }
     }),
 
-  // Saída nº2 da Análise: reclamação resolvida sem precisar de garantia —
-  // registra a solução e pula direto pra 'encerrado'. Pedido do João,
-  // 2026-10-06.
+  // Saída nº2 da Aprovação do Diretor Técnico (só depois de aprovada):
+  // reclamação resolvida sem precisar de garantia — registra a solução e
+  // pula direto pra 'encerrado'. Pedido do João, 2026-10-06.
   resolverSemGarantia: adminProcedure
     .input(z.object({ id: z.number(), versao: z.number(), reclamacaoCliente: z.string().optional(), solucaoSemGarantia: z.string().min(1, 'Descreva a solução/tratativa') }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaGarantias(ctx.empresaId)
       const garantia = await obterGarantia(input.id, ctx.empresaId)
       if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
-      if (garantia.stage !== 'analise') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo já saiu da Análise' })
+      if (garantia.stage !== 'aprovacao_diretor' || garantia.diretorDecisao !== 'aprovado') {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo ainda não foi aprovado pelo Diretor Técnico' })
+      }
 
       const upd = await db
         .update(garantias)
@@ -216,8 +220,67 @@ export const garantiasCoreRouter = router({
       if (upd.rowsAffected === 0) throw new TRPCError({ code: 'CONFLICT', message: 'Processo foi alterado por outra pessoa — recarregue a página' })
 
       await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'stage_change', description: 'Reclamação solucionada sem necessidade de garantia', stage: 'encerrado' })
-      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'analise', valorNovo: 'encerrado', alteradoPor: ctx.user.id })
+      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'aprovacao_diretor', valorNovo: 'encerrado', alteradoPor: ctx.user.id })
 
+      return { ok: true }
+    }),
+
+  // Diretor Técnico aprova a Análise Técnica — libera abrir processo de
+  // garantia ou finalizar sem garantia (ver abrirProcesso/
+  // resolverSemGarantia acima). Fica registrado quem aprovou e com que
+  // observações. Pedido do João, 2026-10-06.
+  aprovarAnaliseTecnica: adminProcedure
+    .input(z.object({ id: z.number(), versao: z.number(), observacoes: z.string().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaGarantias(ctx.empresaId)
+      const garantia = await obterGarantia(input.id, ctx.empresaId)
+      if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
+      if (garantia.stage !== 'aprovacao_diretor') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo não está na Aprovação do Diretor Técnico' })
+
+      const upd = await db
+        .update(garantias)
+        .set({
+          diretorDecisao: 'aprovado',
+          diretorObservacoes: input.observacoes,
+          diretorDecididoPor: ctx.user.id,
+          diretorDecididoEm: agoraSqlite(),
+          versao: garantia.versao + 1,
+          updatedAt: agoraSqlite(),
+        })
+        .where(and(eq(garantias.id, input.id), eq(garantias.versao, input.versao)))
+      if (upd.rowsAffected === 0) throw new TRPCError({ code: 'CONFLICT', message: 'Processo foi alterado por outra pessoa — recarregue a página' })
+
+      await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'approval', description: 'Análise Técnica aprovada pelo Diretor Técnico', stage: 'aprovacao_diretor' })
+      return { ok: true }
+    }),
+
+  // Diretor Técnico pede uma abordagem diferente — volta o processo pra
+  // 'analise' com as observações dele, pra equipe reavaliar. Pedido do
+  // João, 2026-10-06.
+  sugerirNovaAbordagem: adminProcedure
+    .input(z.object({ id: z.number(), versao: z.number(), observacoes: z.string().min(1, 'Descreva a nova abordagem') }))
+    .mutation(async ({ ctx, input }) => {
+      await assertEmpresaGarantias(ctx.empresaId)
+      const garantia = await obterGarantia(input.id, ctx.empresaId)
+      if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
+      if (garantia.stage !== 'aprovacao_diretor') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse processo não está na Aprovação do Diretor Técnico' })
+
+      const upd = await db
+        .update(garantias)
+        .set({
+          diretorDecisao: 'nova_abordagem',
+          diretorObservacoes: input.observacoes,
+          diretorDecididoPor: ctx.user.id,
+          diretorDecididoEm: agoraSqlite(),
+          stage: 'analise',
+          versao: garantia.versao + 1,
+          updatedAt: agoraSqlite(),
+        })
+        .where(and(eq(garantias.id, input.id), eq(garantias.versao, input.versao)))
+      if (upd.rowsAffected === 0) throw new TRPCError({ code: 'CONFLICT', message: 'Processo foi alterado por outra pessoa — recarregue a página' })
+
+      await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'stage_change', description: 'Diretor Técnico sugeriu nova abordagem — voltou pra Análise', stage: 'analise' })
+      await registrarAuditoria({ tabela: 'garantias', registroId: input.id, acao: 'mudar_etapa', campo: 'stage', valorAnterior: 'aprovacao_diretor', valorNovo: 'analise', alteradoPor: ctx.user.id })
       return { ok: true }
     }),
 

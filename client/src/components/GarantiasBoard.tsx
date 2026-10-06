@@ -20,7 +20,7 @@ type GarantiaCard = {
 // tipo de atendimento definido. Pedido do João, 2026-10-06.
 export default function GarantiasBoard({ garantias, comRetorno, basePath }: { garantias: GarantiaCard[]; comRetorno: boolean | null; basePath: string }) {
   const navigate = useNavigate()
-  const colunas = comRetorno === null ? (['analise'] as const) : getStageSequence(comRetorno)
+  const colunas = comRetorno === null ? (['analise', 'aprovacao_diretor'] as const) : getStageSequence(comRetorno)
 
   return (
     <div className="flex gap-4 overflow-x-auto pb-4">

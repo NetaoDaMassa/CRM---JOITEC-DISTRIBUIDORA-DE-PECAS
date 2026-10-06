@@ -97,11 +97,13 @@ export default function GarantiasDetail({ garantiaId, onClose }: { garantiaId: n
           </button>
         </div>
 
-        {/* Sair de 'analise' só pelas 2 ações dedicadas (dentro de
-            EtapaAnalise) — Avançar/Mover genéricos ficam escondidos nessa
-            etapa pra não deixar tipoAtendimento/comRetorno sem definir.
-            Pedido do João, 2026-10-06. */}
-        {isAdmin && garantia.status === 'ativo' && stageAtual !== 'analise' && (
+        {/* Sair de 'aprovacao_diretor' só pelas ações dedicadas (dentro de
+            EtapaAprovacaoDiretor) — Avançar/Mover genéricos ficam
+            escondidos nessa etapa pra não deixar tipoAtendimento/comRetorno
+            sem definir. Sair de 'analise' é seguro pelo Avançar genérico
+            (só vai pra Aprovação do Diretor Técnico, sem depender de nada
+            disso). Pedido do João, 2026-10-06. */}
+        {isAdmin && garantia.status === 'ativo' && stageAtual !== 'aprovacao_diretor' && (
           <div className="flex items-center gap-2 flex-wrap px-6 mt-4">
             {proximaEtapa && (
               <Button size="sm" loading={avancarMut.isPending} onClick={() => avancarMut.mutate({ id: garantiaId })}>
@@ -120,7 +122,7 @@ export default function GarantiasDetail({ garantiaId, onClose }: { garantiaId: n
             </Button>
           </div>
         )}
-        {isAdmin && garantia.status === 'ativo' && stageAtual === 'analise' && (
+        {isAdmin && garantia.status === 'ativo' && stageAtual === 'aprovacao_diretor' && (
           <div className="flex items-center gap-2 flex-wrap px-6 mt-4">
             <Button size="sm" variant="danger" onClick={() => setModalCancelar(true)}>
               <Ban size={14} className="mr-1" /> Cancelar
@@ -148,6 +150,8 @@ export default function GarantiasDetail({ garantiaId, onClose }: { garantiaId: n
               <p className="text-sm text-dark-400 text-center py-6">❌ Processo cancelado. Motivo: {garantia.cancelMotivo}</p>
             ) : stageAtual === 'analise' ? (
               <EtapaAnalise garantiaId={garantiaId} garantia={garantia} readonly={!isAdmin} />
+            ) : stageAtual === 'aprovacao_diretor' ? (
+              <EtapaAprovacaoDiretor garantiaId={garantiaId} garantia={garantia} readonly={!isAdmin} />
             ) : (
               <EtapaCampos garantiaId={garantiaId} stage={stageAtual} garantia={garantia} readonly={!isAdmin} />
             ))}
@@ -174,6 +178,8 @@ type GarantiaData = {
   descricaoDefeito: string | null
   reclamacaoCliente: string | null
   diagnostico: string | null
+  diretorDecisao: string | null
+  diretorObservacoes: string | null
   modeloMaquina: string | null
   numeroSerie: string | null
   tecnicoNome: string | null
@@ -194,23 +200,16 @@ type GarantiaData = {
 }
 
 // Etapa de triagem — ANTES de tudo. Reclamação/Produto/Diagnóstico pra
-// decidir o que fazer, e as 2 saídas possíveis: abrir processo de garantia
-// de verdade (escolhe tipo de atendimento só agora) ou finalizar sem
-// precisar de garantia (pula direto pra Encerrado). Pedido do João,
-// 2026-10-06.
+// decidir o que fazer; a única saída daqui é mandar pra "Aprovação do
+// Diretor Técnico" (avançar genérico — não depende de tipo de atendimento
+// nenhum, isso só é decidido mais adiante). Se o Diretor pedir nova
+// abordagem, o processo volta pra cá com a observação dele visível.
+// Pedido do João, 2026-10-06.
 function EtapaAnalise({ garantiaId, garantia, readonly }: { garantiaId: number; garantia: GarantiaData; readonly: boolean }) {
   const utils = trpc.useUtils()
   const [reclamacao, setReclamacao] = useState(garantia.reclamacaoCliente ?? '')
   const [produto, setProduto] = useState(garantia.modeloMaquina ?? '')
   const [diagnostico, setDiagnostico] = useState(garantia.diagnostico ?? '')
-  const [modoAbrir, setModoAbrir] = useState(false)
-  const [modoResolver, setModoResolver] = useState(false)
-  const [tipoAtendimento, setTipoAtendimento] = useState<TipoAtendimento>('maquina_completa')
-  const [comRetornoNovo, setComRetornoNovo] = useState(true)
-  const [tecnicoNome, setTecnicoNome] = useState('')
-  const [tecnicoWhatsapp, setTecnicoWhatsapp] = useState('')
-  const [solucao, setSolucao] = useState('')
-  const ehTecnico = tipoAtendimento === 'peca_tecnico'
 
   function invalidar() {
     utils.garantias.core.obterPorId.invalidate({ id: garantiaId })
@@ -220,6 +219,70 @@ function EtapaAnalise({ garantiaId, garantia, readonly }: { garantiaId: number; 
 
   const salvarMut = trpc.garantias.core.atualizarCampos.useMutation({
     onSuccess: () => { toast.success('Salvo'); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+
+  return (
+    <div className="space-y-5">
+      {garantia.diretorDecisao === 'nova_abordagem' && garantia.diretorObservacoes && (
+        <div className="bg-fuchsia-900/20 border border-fuchsia-700/40 rounded-xl p-3 text-sm">
+          <p className="text-xs font-semibold text-fuchsia-400 uppercase tracking-wide mb-1">Diretor Técnico sugeriu nova abordagem</p>
+          <p className="text-dark-200">{garantia.diretorObservacoes}</p>
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide">Análise da reclamação</p>
+        <Textarea label="Reclamação do cliente" value={reclamacao} onChange={(e) => setReclamacao(e.target.value)} disabled={readonly} />
+        <Input label="Produto" value={produto} onChange={(e) => setProduto(e.target.value)} disabled={readonly} />
+        <Textarea label="Diagnóstico" value={diagnostico} onChange={(e) => setDiagnostico(e.target.value)} disabled={readonly} />
+        {!readonly && (
+          <Button
+            size="sm"
+            variant="secondary"
+            loading={salvarMut.isPending}
+            onClick={() => salvarMut.mutate({ id: garantiaId, reclamacaoCliente: reclamacao, modeloMaquina: produto, diagnostico })}
+          >
+            Salvar análise
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// Diretor Técnico avalia o diagnóstico feito na Análise: aprova (libera as
+// 2 saídas de verdade — abrir processo de garantia ou finalizar sem
+// garantia) ou sugere nova abordagem (volta pra Análise com a observação
+// dele). Pedido do João, 2026-10-06.
+function EtapaAprovacaoDiretor({ garantiaId, garantia, readonly }: { garantiaId: number; garantia: GarantiaData; readonly: boolean }) {
+  const utils = trpc.useUtils()
+  const [modoAprovar, setModoAprovar] = useState(false)
+  const [modoNovaAbordagem, setModoNovaAbordagem] = useState(false)
+  const [observacoesAprovar, setObservacoesAprovar] = useState('')
+  const [observacoesNovaAbordagem, setObservacoesNovaAbordagem] = useState('')
+  const [modoAbrir, setModoAbrir] = useState(false)
+  const [modoResolver, setModoResolver] = useState(false)
+  const [tipoAtendimento, setTipoAtendimento] = useState<TipoAtendimento>('maquina_completa')
+  const [comRetornoNovo, setComRetornoNovo] = useState(true)
+  const [tecnicoNome, setTecnicoNome] = useState('')
+  const [tecnicoWhatsapp, setTecnicoWhatsapp] = useState('')
+  const [solucao, setSolucao] = useState('')
+  const ehTecnico = tipoAtendimento === 'peca_tecnico'
+  const aprovado = garantia.diretorDecisao === 'aprovado'
+
+  function invalidar() {
+    utils.garantias.core.obterPorId.invalidate({ id: garantiaId })
+    utils.garantias.core.historico.invalidate({ id: garantiaId })
+    utils.garantias.core.listarKanban.invalidate()
+  }
+
+  const aprovarAnaliseMut = trpc.garantias.core.aprovarAnaliseTecnica.useMutation({
+    onSuccess: () => { toast.success('Análise Técnica aprovada'); invalidar() },
+    onError: (e) => toast.error(e.message),
+  })
+  const sugerirMut = trpc.garantias.core.sugerirNovaAbordagem.useMutation({
+    onSuccess: () => { toast.success('Enviado de volta pra Análise'); invalidar() },
     onError: (e) => toast.error(e.message),
   })
   const abrirMut = trpc.garantias.core.abrirProcesso.useMutation({
@@ -245,81 +308,120 @@ function EtapaAnalise({ garantiaId, garantia, readonly }: { garantiaId: number; 
 
   function confirmarResolucao() {
     if (!solucao.trim()) return toast.error('Descreva a solução/tratativa')
-    resolverMut.mutate({ id: garantiaId, versao: garantia.versao, reclamacaoCliente: reclamacao || undefined, solucaoSemGarantia: solucao })
+    resolverMut.mutate({ id: garantiaId, versao: garantia.versao, solucaoSemGarantia: solucao })
   }
 
   return (
     <div className="space-y-5">
-      <div className="space-y-3">
-        <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide">Análise da reclamação</p>
-        <Textarea label="Reclamação do cliente" value={reclamacao} onChange={(e) => setReclamacao(e.target.value)} disabled={readonly} />
-        <Input label="Produto" value={produto} onChange={(e) => setProduto(e.target.value)} disabled={readonly} />
-        <Textarea label="Diagnóstico" value={diagnostico} onChange={(e) => setDiagnostico(e.target.value)} disabled={readonly} />
-        {!readonly && (
-          <Button
-            size="sm"
-            variant="secondary"
-            loading={salvarMut.isPending}
-            onClick={() => salvarMut.mutate({ id: garantiaId, reclamacaoCliente: reclamacao, modeloMaquina: produto, diagnostico })}
-          >
-            Salvar análise
-          </Button>
+      <div className="bg-dark-900/60 border border-dark-700 rounded-xl p-3 text-sm space-y-2">
+        <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide">Análise Técnica realizada</p>
+        {garantia.reclamacaoCliente && (
+          <p><span className="text-dark-500">Reclamação do cliente:</span> <span className="text-dark-200">{garantia.reclamacaoCliente}</span></p>
         )}
+        {garantia.modeloMaquina && <p><span className="text-dark-500">Produto:</span> <span className="text-dark-200">{garantia.modeloMaquina}</span></p>}
+        {garantia.diagnostico && <p><span className="text-dark-500">Diagnóstico:</span> <span className="text-dark-200">{garantia.diagnostico}</span></p>}
       </div>
 
-      {!readonly && !modoAbrir && !modoResolver && (
-        <div className="flex gap-2 flex-wrap pt-4 border-t border-dark-700">
-          <Button size="sm" onClick={() => setModoAbrir(true)}>Abrir processo de garantia</Button>
-          <Button size="sm" variant="secondary" onClick={() => setModoResolver(true)}>
-            Finalizar sem necessidade de garantia
-          </Button>
-        </div>
-      )}
-
-      {modoAbrir && (
-        <div className="space-y-3 pt-4 border-t border-dark-700">
-          <p className="text-sm font-semibold text-dark-200">Abrir processo de garantia</p>
-          <Select
-            label="Tipo de atendimento"
-            value={tipoAtendimento}
-            onChange={(e) => setTipoAtendimento(e.target.value as TipoAtendimento)}
-            options={TIPO_ATENDIMENTO_VALUES.map((v) => ({ value: v, label: TIPO_ATENDIMENTO_LABELS[v] }))}
-          />
-          {ehTecnico && (
-            <>
-              <label className="flex items-center gap-2 text-sm text-dark-200">
-                <input type="checkbox" checked={comRetornoNovo} onChange={(e) => setComRetornoNovo(e.target.checked)} /> Tem retorno do item danificado à Odin
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <Input label="Nome do técnico autorizado" value={tecnicoNome} onChange={(e) => setTecnicoNome(e.target.value)} />
-                <Input label="WhatsApp do técnico" value={tecnicoWhatsapp} onChange={(e) => setTecnicoWhatsapp(e.target.value)} />
-              </div>
-            </>
+      {!aprovado ? (
+        <>
+          {!readonly && !modoAprovar && !modoNovaAbordagem && (
+            <div className="flex gap-2 flex-wrap">
+              <Button size="sm" onClick={() => setModoAprovar(true)}>Aprovar Análise Técnica</Button>
+              <Button size="sm" variant="secondary" onClick={() => setModoNovaAbordagem(true)}>Sugerir nova abordagem</Button>
+            </div>
           )}
-          <div className="flex gap-2">
-            <Button size="sm" loading={abrirMut.isPending} onClick={confirmarAbertura}>
-              Confirmar abertura
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setModoAbrir(false)}>
-              Cancelar
-            </Button>
-          </div>
-        </div>
-      )}
 
-      {modoResolver && (
-        <div className="space-y-3 pt-4 border-t border-dark-700">
-          <p className="text-sm font-semibold text-dark-200">Finalizar sem necessidade de garantia</p>
-          <Textarea label="Solução/Tratativa realizada *" value={solucao} onChange={(e) => setSolucao(e.target.value)} />
-          <div className="flex gap-2">
-            <Button size="sm" loading={resolverMut.isPending} onClick={confirmarResolucao}>
-              Confirmar finalização
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setModoResolver(false)}>
-              Cancelar
-            </Button>
+          {modoAprovar && (
+            <div className="space-y-3 pt-4 border-t border-dark-700">
+              <p className="text-sm font-semibold text-dark-200">Aprovar Análise Técnica</p>
+              <Textarea label="Observações (opcional)" value={observacoesAprovar} onChange={(e) => setObservacoesAprovar(e.target.value)} />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  loading={aprovarAnaliseMut.isPending}
+                  onClick={() => aprovarAnaliseMut.mutate({ id: garantiaId, versao: garantia.versao, observacoes: observacoesAprovar || undefined })}
+                >
+                  Confirmar aprovação
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setModoAprovar(false)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+
+          {modoNovaAbordagem && (
+            <div className="space-y-3 pt-4 border-t border-dark-700">
+              <p className="text-sm font-semibold text-dark-200">Sugerir nova abordagem</p>
+              <Textarea label="Observações *" placeholder="Nova orientação/análise/tratativa a ser realizada..." value={observacoesNovaAbordagem} onChange={(e) => setObservacoesNovaAbordagem(e.target.value)} />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  loading={sugerirMut.isPending}
+                  onClick={() => {
+                    if (!observacoesNovaAbordagem.trim()) return toast.error('Descreva a nova abordagem')
+                    sugerirMut.mutate({ id: garantiaId, versao: garantia.versao, observacoes: observacoesNovaAbordagem })
+                  }}
+                >
+                  Confirmar
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => setModoNovaAbordagem(false)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="bg-green-900/20 border border-green-700/40 rounded-xl p-3 text-sm">
+            <p className="text-green-400 font-medium">✅ Análise Técnica aprovada pelo Diretor Técnico</p>
+            {garantia.diretorObservacoes && <p className="text-dark-200 mt-1">{garantia.diretorObservacoes}</p>}
           </div>
-        </div>
+
+          {!readonly && !modoAbrir && !modoResolver && (
+            <div className="flex gap-2 flex-wrap">
+              <Button size="sm" onClick={() => setModoAbrir(true)}>Abrir processo de garantia</Button>
+              <Button size="sm" variant="secondary" onClick={() => setModoResolver(true)}>
+                Finalizar sem necessidade de garantia
+              </Button>
+            </div>
+          )}
+
+          {modoAbrir && (
+            <div className="space-y-3 pt-4 border-t border-dark-700">
+              <p className="text-sm font-semibold text-dark-200">Abrir processo de garantia</p>
+              <Select
+                label="Tipo de atendimento"
+                value={tipoAtendimento}
+                onChange={(e) => setTipoAtendimento(e.target.value as TipoAtendimento)}
+                options={TIPO_ATENDIMENTO_VALUES.map((v) => ({ value: v, label: TIPO_ATENDIMENTO_LABELS[v] }))}
+              />
+              {ehTecnico && (
+                <>
+                  <label className="flex items-center gap-2 text-sm text-dark-200">
+                    <input type="checkbox" checked={comRetornoNovo} onChange={(e) => setComRetornoNovo(e.target.checked)} /> Tem retorno do item danificado à Odin
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Input label="Nome do técnico autorizado" value={tecnicoNome} onChange={(e) => setTecnicoNome(e.target.value)} />
+                    <Input label="WhatsApp do técnico" value={tecnicoWhatsapp} onChange={(e) => setTecnicoWhatsapp(e.target.value)} />
+                  </div>
+                </>
+              )}
+              <div className="flex gap-2">
+                <Button size="sm" loading={abrirMut.isPending} onClick={confirmarAbertura}>Confirmar abertura</Button>
+                <Button size="sm" variant="secondary" onClick={() => setModoAbrir(false)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+
+          {modoResolver && (
+            <div className="space-y-3 pt-4 border-t border-dark-700">
+              <p className="text-sm font-semibold text-dark-200">Finalizar sem necessidade de garantia</p>
+              <Textarea label="Solução/Tratativa realizada *" value={solucao} onChange={(e) => setSolucao(e.target.value)} />
+              <div className="flex gap-2">
+                <Button size="sm" loading={resolverMut.isPending} onClick={confirmarResolucao}>Confirmar finalização</Button>
+                <Button size="sm" variant="secondary" onClick={() => setModoResolver(false)}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   )

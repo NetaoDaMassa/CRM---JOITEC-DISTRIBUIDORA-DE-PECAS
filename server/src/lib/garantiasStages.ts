@@ -20,8 +20,14 @@ export type TipoAtendimento = (typeof TIPO_ATENDIMENTO_VALUES)[number]
 // 'encerrado'). Por isso tipoAtendimento/comRetorno nascem nulos (ver
 // schema.ts) — só a ação de abrir processo de verdade os preenche. Pedido
 // do João, 2026-10-06.
+// "Aprovação do Diretor Técnico" entra logo depois de 'analise' — o
+// Diretor avalia o diagnóstico feito lá e ou aprova (libera abrir
+// processo de garantia / finalizar sem garantia) ou pede nova abordagem
+// (volta pro 'analise' com as observações dele). Pedido do João,
+// 2026-10-06.
 export const STAGE_SEQUENCE_COM_RETORNO = [
   'analise',
+  'aprovacao_diretor',
   'aberto',
   'nf_devolucao',
   'preparacao_novo_item',
@@ -32,12 +38,13 @@ export const STAGE_SEQUENCE_COM_RETORNO = [
   'encerrado',
 ] as const
 
-export const STAGE_SEQUENCE_SEM_RETORNO = ['analise', 'aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
+export const STAGE_SEQUENCE_SEM_RETORNO = ['analise', 'aprovacao_diretor', 'aberto', 'preparacao_novo_item', 'saida', 'encerrado'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_COM_RETORNO)[number] | (typeof STAGE_SEQUENCE_SEM_RETORNO)[number]
 
 export const STAGE_LABELS: Record<Stage, string> = {
   analise: 'Análise',
+  aprovacao_diretor: 'Aprovação do Diretor Técnico',
   aberto: 'Abertura',
   nf_devolucao: 'NF de Devolução',
   preparacao_novo_item: 'Preparação do Novo Item',

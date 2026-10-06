@@ -46,12 +46,15 @@ export async function avancarEtapaGarantia(params: { garantiaId: number; empresa
   const garantia = await db.query.garantias.findFirst({ where: and(eq(garantias.id, garantiaId), eq(garantias.empresaId, empresaId)) })
   if (!garantia) throw new TRPCError({ code: 'NOT_FOUND', message: 'Processo de garantia não encontrado' })
   if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
-  // Sair de 'analise' só pelas ações dedicadas (abrirProcesso/
-  // resolverSemGarantia) — são elas que decidem tipoAtendimento/comRetorno
-  // antes de avançar. Avançar "genérico" daqui deixaria o processo com
-  // esses campos nulos pro resto do fluxo. Pedido do João, 2026-10-06.
-  if (garantia.stage === 'analise') {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use "Abrir processo de garantia" ou "Finalizar sem necessidade de garantia" pra sair da Análise.' })
+  // Sair de 'aprovacao_diretor' só pelas ações dedicadas (abrirProcesso/
+  // resolverSemGarantia, que exigem diretorDecisao='aprovado') ou pela
+  // decisão do diretor (sugerirNovaAbordagem, que volta pra 'analise') —
+  // são elas que decidem tipoAtendimento/comRetorno antes de avançar.
+  // Avançar "genérico" daqui deixaria esses campos nulos pro resto do
+  // fluxo. Sair de 'analise' pra 'aprovacao_diretor' é seguro e genérico
+  // (não depende de nada disso). Pedido do João, 2026-10-06.
+  if (garantia.stage === 'aprovacao_diretor') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use as ações da Aprovação do Diretor Técnico pra sair dessa etapa.' })
   }
 
   const proximo = getNextStage(garantia.stage, garantia.comRetorno)
@@ -95,8 +98,8 @@ export async function moverEtapaGarantia(params: { garantiaId: number; empresaId
   const garantia = await db.query.garantias.findFirst({ where: and(eq(garantias.id, garantiaId), eq(garantias.empresaId, empresaId)) })
   if (!garantia) throw new TRPCError({ code: 'NOT_FOUND', message: 'Processo de garantia não encontrado' })
   if (garantia.status !== 'ativo') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo não está ativo' })
-  if (garantia.stage === 'analise' && novaEtapa !== 'analise') {
-    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use "Abrir processo de garantia" ou "Finalizar sem necessidade de garantia" pra sair da Análise.' })
+  if (garantia.stage === 'aprovacao_diretor' && novaEtapa !== 'aprovacao_diretor') {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Use as ações da Aprovação do Diretor Técnico pra sair dessa etapa.' })
   }
 
   const sequencia = getStageSequence(garantia.comRetorno)
