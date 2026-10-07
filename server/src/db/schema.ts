@@ -145,6 +145,14 @@ export const users = sqliteTable('users', {
   whatsapp: text('whatsapp'),
   temaPreferido: text('tema_preferido', { enum: ['claro', 'escuro'] }).notNull().default('claro'),
   senhaTrocarNoLogin: integer('senha_trocar_no_login', { mode: 'boolean' }).notNull().default(false),
+  // "Esqueci minha senha" self-service — cadastrada pela própria pessoa na
+  // hora de trocar a senha (obrigatória ou não), sem depender de e-mail ou
+  // WhatsApp (que não é confiável pra isso). Pergunta fica em texto puro
+  // (precisa mostrar na tela); resposta vai hasheada, igual senha. Pedido
+  // do João, 2026-10-07: vai virando padrão conforme ele for resetando
+  // senha de cada um manualmente.
+  recuperacaoPergunta: text('recuperacao_pergunta'),
+  recuperacaoRespostaHash: text('recuperacao_resposta_hash'),
   tentativasLoginFalhas: integer('tentativas_login_falhas').notNull().default(0),
   bloqueadoAte: text('bloqueado_ate'),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),

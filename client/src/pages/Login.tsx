@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
@@ -123,6 +123,9 @@ export default function Login() {
                   {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
+              <Link to="/esqueci-senha" className="text-xs text-gold-400 hover:text-gold-300 self-end mt-1">
+                Esqueci minha senha
+              </Link>
             </div>
 
             <Button type="submit" size="lg" className="w-full mt-2" loading={loginMut.isPending}>

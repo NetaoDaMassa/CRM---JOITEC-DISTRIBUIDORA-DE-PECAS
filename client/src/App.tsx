@@ -5,6 +5,7 @@ import Layout from './components/Layout'
 import { FEATURES_SEMPRE_LIBERADAS } from './components/Sidebar'
 import Login from './pages/Login'
 import TrocarSenha from './pages/TrocarSenha'
+import EsqueciSenha from './pages/EsqueciSenha'
 import Clientes from './pages/Clientes'
 import ClienteNovo from './pages/ClienteNovo'
 import ClienteDetail from './pages/ClienteDetail'
@@ -145,6 +146,7 @@ export default function App() {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trocar-senha" element={<TrocarSenha />} />
+        <Route path="/esqueci-senha" element={<EsqueciSenha />} />
         {/* Formulário/rastreio público de Devolução — sem login, é o link
             compartilhado com o cliente de fora. */}
         <Route path="/devolucao/solicitacao" element={<DevolucaoSolicitar />} />
