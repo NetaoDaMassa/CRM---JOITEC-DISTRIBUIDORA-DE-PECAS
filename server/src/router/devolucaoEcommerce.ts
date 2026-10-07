@@ -42,6 +42,7 @@ export const devolucaoEcommerceRouter = router({
         dataInicio: z.string().optional(),
         dataFim: z.string().optional(),
         marketplace: z.enum(['mercado_livre', 'shopee', 'tiktok', 'outro']).optional(),
+        loja: z.string().optional(),
         statusRecurso: z.enum(['sem_recurso', 'aguardando', 'aprovado', 'negado', 'reembolsado']).optional(),
         busca: z.string().optional(),
       })
@@ -51,6 +52,7 @@ export const devolucaoEcommerceRouter = router({
       const condicoes = [eq(devolucaoEcommerce.empresaId, ctx.empresaId)]
       if (input.dataInicio && input.dataFim) condicoes.push(between(devolucaoEcommerce.data, input.dataInicio, input.dataFim))
       if (input.marketplace) condicoes.push(eq(devolucaoEcommerce.marketplace, input.marketplace))
+      if (input.loja) condicoes.push(eq(devolucaoEcommerce.loja, input.loja))
       if (input.statusRecurso) condicoes.push(eq(devolucaoEcommerce.statusRecurso, input.statusRecurso))
       if (input.busca?.trim()) {
         const termo = `%${input.busca.trim()}%`
@@ -61,6 +63,18 @@ export const devolucaoEcommerceRouter = router({
         orderBy: (d, { desc }) => [desc(d.data), desc(d.id)],
       })
     }),
+
+  // Lojas/contas distintas já cadastradas (Hidroplac/Comprefer/JT/...) —
+  // alimenta o filtro "Loja/conta" sem precisar de uma lista fixa (nascem
+  // livres, digitadas no form de abertura).
+  listarLojas: adminOrFeatureProcedure('devolucoes_ecommerce').query(async ({ ctx }) => {
+    await assertEmpresaDevolucaoEcommerce(ctx.empresaId)
+    const rows = await db
+      .selectDistinct({ loja: devolucaoEcommerce.loja })
+      .from(devolucaoEcommerce)
+      .where(eq(devolucaoEcommerce.empresaId, ctx.empresaId))
+    return rows.map((r) => r.loja).sort()
+  }),
 
   criar: adminOrFeatureProcedure('devolucoes_ecommerce')
     .input(CamposSchema)

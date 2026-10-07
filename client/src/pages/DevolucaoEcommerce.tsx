@@ -195,15 +195,18 @@ export default function DevolucaoEcommerce() {
   const [dataInicio, setDataInicio] = usePersistedState('devolucaoEcommerce:dataInicio', primeiroDiaMesString())
   const [dataFim, setDataFim] = usePersistedState('devolucaoEcommerce:dataFim', hojeBrString())
   const [marketplace, setMarketplace] = usePersistedState<Marketplace | ''>('devolucaoEcommerce:marketplace', '')
+  const [loja, setLoja] = usePersistedState('devolucaoEcommerce:loja', '')
   const [statusRecurso, setStatusRecurso] = usePersistedState<StatusRecurso | ''>('devolucaoEcommerce:statusRecurso', '')
   const [busca, setBusca] = useState('')
   const [modalAberto, setModalAberto] = useState<'novo' | Devolucao | null>(null)
 
   const utils = trpc.useUtils()
+  const { data: lojas } = trpc.devolucaoEcommerce.listarLojas.useQuery()
   const { data: lista, isLoading } = trpc.devolucaoEcommerce.listar.useQuery({
     dataInicio,
     dataFim,
     marketplace: marketplace || undefined,
+    loja: loja || undefined,
     statusRecurso: statusRecurso || undefined,
     busca: busca || undefined,
   })
@@ -296,6 +299,14 @@ export default function DevolucaoEcommerce() {
           onChange={(e) => setMarketplace(e.target.value as Marketplace | '')}
           placeholder="Todos"
           options={MARKETPLACE_VALUES.map((v) => ({ value: v, label: MARKETPLACE_LABELS[v] }))}
+          className="w-auto"
+        />
+        <Select
+          label="Loja/conta"
+          value={loja}
+          onChange={(e) => setLoja(e.target.value)}
+          placeholder="Todas"
+          options={(lojas ?? []).map((l) => ({ value: l, label: l }))}
           className="w-auto"
         />
         <Select
