@@ -113,6 +113,11 @@ export async function sincronizarDesignAprovadoNoNotion(solicitacao: Solicitacao
     STATUS: { status: { name: 'Não iniciada' } },
     Data: { date: { start: paraDataIso(solicitacao.decididoEm) } },
   }
+  // Selo "recém-chegado" — pedido do João, 2026-10-08: card ficava perdido
+  // no fim do quadro sem jeito de saber que era novo. Checkbox marcada ao
+  // criar, desmarcada pelo poller (sincronizarStatusNotion) assim que a
+  // marketing tira do "Não iniciada" — ver limparNovoNoNotion abaixo.
+  properties['🆕 Novo'] = { checkbox: true }
   const empresaStatus = empresaStatusNotion(solicitacao.empresaSlug)
   if (empresaStatus) properties['EMPRESA'] = { status: { name: empresaStatus } }
   if (comColunasExtras) {
@@ -174,5 +179,28 @@ export async function buscarStatusNotion(pageId: string, tipo: string): Promise<
   } catch (err) {
     console.error('[notion] falha ao consultar status:', err)
     return null
+  }
+}
+
+// Desmarca o selo "🆕 Novo" assim que a marketing tira o card de "Não
+// iniciada" — chamado pelo poller (sincronizarStatusNotion), não precisa
+// retorno nem travar nada se falhar (mesmo espírito do resto do arquivo).
+export async function limparNovoNoNotion(pageId: string, tipo: string): Promise<void> {
+  const creds = credenciaisPara(tipo)
+  if (!creds) return
+
+  try {
+    await fetch(`https://api.notion.com/v1/pages/${pageId}`, {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${creds.token}`,
+        'Notion-Version': NOTION_VERSION,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ properties: { '🆕 Novo': { checkbox: false } } }),
+      signal: AbortSignal.timeout(8000),
+    })
+  } catch (err) {
+    console.error('[notion] falha ao limpar selo "novo":', err)
   }
 }

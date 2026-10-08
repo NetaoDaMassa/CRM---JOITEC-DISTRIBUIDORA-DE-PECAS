@@ -7,7 +7,7 @@
 import { and, eq, isNotNull, ne, or, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { solicitacoesDesign } from '../db/schema.js'
-import { buscarStatusNotion } from './notion.js'
+import { buscarStatusNotion, limparNovoNoNotion } from './notion.js'
 import { agoraSqlite } from './dataBr.js'
 
 export async function sincronizarStatusNotion(): Promise<{ atualizados: number }> {
@@ -29,6 +29,12 @@ export async function sincronizarStatusNotion(): Promise<{ atualizados: number }
     if (!s.notionPageId) continue
     const statusAtual = await buscarStatusNotion(s.notionPageId, s.tipo)
     if (statusAtual && statusAtual !== s.notionStatus) {
+      // Primeira vez que sai de "Não iniciada" (ou do estado inicial, antes
+      // do 1º poll) — tira o selo "🆕 Novo" do card lá no Notion, já que a
+      // marketing começou a mexer nele.
+      if ((s.notionStatus === null || s.notionStatus === 'Não iniciada') && statusAtual !== 'Não iniciada') {
+        await limparNovoNoNotion(s.notionPageId, s.tipo)
+      }
       await db
         .update(solicitacoesDesign)
         .set({ notionStatus: statusAtual, notionStatusAtualizadoEm: agoraSqlite() })
