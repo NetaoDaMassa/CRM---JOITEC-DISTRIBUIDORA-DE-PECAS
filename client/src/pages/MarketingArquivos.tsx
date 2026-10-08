@@ -84,6 +84,40 @@ function IconeArquivo({ tipo }: { tipo: string | null | undefined }) {
   return <FileIcon size={22} className="text-dark-400" />
 }
 
+// Miniatura de verdade pra imagem (pedido do João, 2026-10-08: com vários
+// arquivos de nome parecido tipo "VENTOINHA 15HP.png"/"EIXO 15HP.png", o
+// ícone genérico não ajudava a diferenciar sem abrir um por um) — vídeo/PDF/
+// outros continuam só com o ícone, que já basta pra eles. Clicável, abre a
+// mesma prévia do botão "olho".
+function MiniaturaArquivo({
+  tipo,
+  nomeArmazenado,
+  nomeOriginal,
+  onClick,
+}: {
+  tipo: string | null | undefined
+  nomeArmazenado: string | null
+  nomeOriginal: string
+  onClick: () => void
+}) {
+  if (tipo?.startsWith('image/') && nomeArmazenado) {
+    return (
+      <button
+        onClick={onClick}
+        className="w-11 h-11 rounded-lg overflow-hidden shrink-0 border border-dark-600 hover:border-gold-500 transition-colors"
+        title={`Ver ${nomeOriginal}`}
+      >
+        <img src={`/uploads/${nomeArmazenado}`} alt={nomeOriginal} className="w-full h-full object-cover" loading="lazy" />
+      </button>
+    )
+  }
+  return (
+    <div className="w-11 h-11 rounded-lg bg-dark-900/60 border border-dark-700 flex items-center justify-center shrink-0">
+      <IconeArquivo tipo={tipo} />
+    </div>
+  )
+}
+
 async function uploadArquivoMarketing(file: File): Promise<{ path: string; nome: string; tipo: string; tamanho: number }> {
   const token = localStorage.getItem('odin_token')
   const form = new FormData()
@@ -532,7 +566,12 @@ export default function MarketingArquivos() {
           {arquivos?.map((arquivo) => (
             <div key={arquivo.id} className="bg-dark-800 border border-dark-600 rounded-xl p-4 flex flex-col gap-2">
               <div className="flex items-center gap-3">
-                <IconeArquivo tipo={arquivo.tipoArquivo} />
+                <MiniaturaArquivo
+                  tipo={arquivo.tipoArquivo}
+                  nomeArmazenado={arquivo.nomeArmazenado}
+                  nomeOriginal={arquivo.nomeOriginal}
+                  onClick={() => setVisualizando({ id: arquivo.id, nomeOriginal: arquivo.nomeOriginal, tipoArquivo: arquivo.tipoArquivo })}
+                />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-dark-100 font-medium truncate" title={arquivo.nomeOriginal}>{arquivo.nomeOriginal}</p>
                   <p className="text-xs text-dark-500">{formatarTamanho(arquivo.tamanhoBytes)}</p>
