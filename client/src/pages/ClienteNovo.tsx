@@ -6,6 +6,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
+import CampoOrigemMarketing, { type OrigemMarketingTipo } from '../components/CampoOrigemMarketing'
 
 const REGIOES = [
   { value: 'norte', label: 'Norte' },
@@ -43,7 +44,9 @@ export default function ClienteNovo() {
   const [email, setEmail] = useState('')
   const [vendedorAtualId, setVendedorAtualId] = useState('')
   const [revendaId, setRevendaId] = useState('')
+  const [classificacaoComercial, setClassificacaoComercial] = useState('')
   const [origemMarketing, setOrigemMarketing] = useState(false)
+  const [origemMarketingTipo, setOrigemMarketingTipo] = useState<OrigemMarketingTipo>('padrao')
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
   // Revenda Responsável — só Odin Compressores, igual o cadastro do
@@ -120,7 +123,9 @@ export default function ClienteNovo() {
       email: email || undefined,
       vendedorAtualId: vendedorAtualId ? Number(vendedorAtualId) : undefined,
       revendaId: revendaId ? Number(revendaId) : undefined,
+      classificacaoComercial: ehOdinCompressores && classificacaoComercial ? (classificacaoComercial as 'revenda' | 'consumidor_final') : undefined,
       origemMarketing,
+      origemMarketingTipo: origemMarketing ? origemMarketingTipo : undefined,
     })
   }
 
@@ -222,6 +227,18 @@ export default function ClienteNovo() {
             options={(revendas ?? []).map((r) => ({ value: r.id, label: r.nome }))}
           />
         )}
+        {ehOdinCompressores && (
+          <Select
+            label="Consumidor Final ou Revenda"
+            value={classificacaoComercial}
+            onChange={(e) => setClassificacaoComercial(e.target.value)}
+            placeholder="Selecione..."
+            options={[
+              { value: 'revenda', label: 'Revenda' },
+              { value: 'consumidor_final', label: 'Consumidor Final' },
+            ]}
+          />
+        )}
         {user?.role === 'admin' && (
           <Select
             label="Vendedor responsável (opcional)"
@@ -231,10 +248,12 @@ export default function ClienteNovo() {
             options={(vendors ?? []).map((v) => ({ value: v.id, label: v.name }))}
           />
         )}
-        <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
-          <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
-          Cliente de Marketing
-        </label>
+        <CampoOrigemMarketing
+          checked={origemMarketing}
+          onCheckedChange={setOrigemMarketing}
+          tipo={origemMarketingTipo}
+          onTipoChange={setOrigemMarketingTipo}
+        />
         <Button type="submit" loading={createMut.isPending} className="w-full">
           Cadastrar
         </Button>

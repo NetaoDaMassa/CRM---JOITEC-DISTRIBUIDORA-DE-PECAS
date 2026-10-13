@@ -142,6 +142,7 @@ export const clientesRouter = router({
         q: z.string().optional(),
         pagina: z.number().min(1).default(1),
         vendedorId: z.number().optional(),
+        classificacaoComercial: z.enum(['revenda', 'consumidor_final']).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -171,6 +172,7 @@ export const clientesRouter = router({
       z.object({
         q: z.string().optional(),
         vendedorId: z.number().optional(),
+        classificacaoComercial: z.enum(['revenda', 'consumidor_final']).optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -192,6 +194,7 @@ export const clientesRouter = router({
         email: c.email,
         nomeContato: c.nomeContato,
         vendedor: c.vendedorAtual?.name ?? '',
+        classificacaoComercial: c.classificacaoComercial ?? '',
       }))
     }),
 
@@ -278,7 +281,13 @@ export const clientesRouter = router({
         // hora de enviar quando a empresa ativa é Odin, igual o cadastro do
         // sistema legado. Pedido do João, 2026-10-06.
         revendaId: z.number().optional(),
+        // Consumidor Final (usa a máquina) ou Revenda (compra pra repassar)
+        // — só Odin Compressores de verdade usa isso. Já existia, mas só a
+        // Prospecção Odin preenchia; agora também dá pra marcar direto no
+        // cadastro/completar cadastro normal. Pedido do João, 2026-10-13.
+        classificacaoComercial: z.enum(['revenda', 'consumidor_final']).optional(),
         origemMarketing: z.boolean().optional(),
+        origemMarketingTipo: z.enum(['padrao', 'site']).optional(),
         // Cadastro-relâmpago feito de dentro de Negociações/Liberação de
         // Crédito — ver comentário em schema.ts (clientes.cadastroRapido).
         cadastroRapido: z.boolean().optional(),
@@ -355,7 +364,9 @@ export const clientesRouter = router({
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
         revendaId: input.revendaId,
+        classificacaoComercial: input.classificacaoComercial,
         origemMarketing: input.origemMarketing ?? false,
+        origemMarketingTipo: input.origemMarketing ? (input.origemMarketingTipo ?? 'padrao') : undefined,
         cadastroRapido: input.cadastroRapido ?? false,
       })
       const clienteId = Number(result.lastInsertRowid)
@@ -397,7 +408,9 @@ export const clientesRouter = router({
         observacoes: z.string().optional(),
         ticketMedioHistorico: z.number().optional(),
         origemMarketing: z.boolean().optional(),
+        origemMarketingTipo: z.enum(['padrao', 'site']).nullable().optional(),
         revendaId: z.number().nullable().optional(),
+        classificacaoComercial: z.enum(['revenda', 'consumidor_final']).nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -698,7 +711,7 @@ export const clientesRouter = router({
 
 function listFiltros(
   ctx: { empresaId: number; user: { role: string; id: number } },
-  input: { q?: string; vendedorId?: number }
+  input: { q?: string; vendedorId?: number; classificacaoComercial?: 'revenda' | 'consumidor_final' }
 ) {
   // Prospects (cadastrados via aba de Prospecção, ainda sem funil aberto)
   // ficam fora da lista normal de clientes até serem enviados pra carteira.
@@ -709,6 +722,11 @@ function listFiltros(
   } else {
     filtros.push(eq(clientes.vendedorAtualId, ctx.user.id))
   }
+
+  // Consumidor Final/Revenda — só Odin Compressores de verdade preenche
+  // isso, mas o filtro funciona pra qualquer empresa sem problema (fica
+  // vazio se ninguém tiver marcado). Pedido do João, 2026-10-13.
+  if (input.classificacaoComercial) filtros.push(eq(clientes.classificacaoComercial, input.classificacaoComercial))
 
   const termo = input.q?.trim()
   if (termo) {

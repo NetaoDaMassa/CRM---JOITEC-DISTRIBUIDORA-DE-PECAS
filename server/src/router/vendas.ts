@@ -42,6 +42,7 @@ export const vendasRouter = router({
         // pra essas vendas de balcão entrarem no filtro "Vendas — Clientes
         // de Marketing" dos Relatórios sem precisar editar o cliente depois.
         origemMarketing: z.boolean().optional(),
+        origemMarketingTipo: z.enum(['padrao', 'site']).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -74,6 +75,7 @@ export const vendasRouter = router({
         vendedorAtualId: vendedorAlvoId,
         dataUltimaCompra: agoraSqlite(),
         origemMarketing: input.origemMarketing ?? false,
+        origemMarketingTipo: input.origemMarketing ? (input.origemMarketingTipo ?? 'padrao') : undefined,
       })
       const clienteId = Number(clienteResult.lastInsertRowid)
 

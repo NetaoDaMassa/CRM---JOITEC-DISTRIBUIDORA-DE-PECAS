@@ -14,10 +14,12 @@ import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
 import ContatoButtons, { WhatsappButton } from './ui/ContatoButtons'
+import { Badge } from './ui/Badge'
 import EmailButton from './ui/EmailButton'
 import TelefonesExtras from './ui/TelefonesExtras'
 import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
+import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
@@ -78,6 +80,13 @@ const ORIGEM_LABEL: Record<string, string> = {
   manual: 'Manual',
   whatsapp_automatico: 'Automático',
   ligacao_automatica: 'Automático',
+}
+
+// Consumidor Final / Revenda — só Odin Compressores usa. Pedido do João, 2026-10-13.
+const CLASSIFICACAO_LABEL: Record<string, string> = { revenda: 'Revenda', consumidor_final: 'Consumidor Final' }
+const CLASSIFICACAO_COR: Record<string, string> = {
+  revenda: 'text-purple-300 bg-purple-900/20 border-purple-700/40',
+  consumidor_final: 'text-cyan-300 bg-cyan-900/20 border-cyan-700/40',
 }
 
 function formatarMoeda(v: number | null): string {
@@ -201,6 +210,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
   const [pdfArquivo, setPdfArquivo] = useState<File | null>(null)
   const [enviandoPdf, setEnviandoPdf] = useState(false)
   const [origemMarketing, setOrigemMarketing] = useState(false)
+  const [origemMarketingTipo, setOrigemMarketingTipo] = useState<OrigemMarketingTipo>('padrao')
   // Só admin escolhe — vendedor sempre registra em nome de si mesmo (backend
   // resolve por ctx.user.id quando isso fica undefined). Começa com o que
   // veio do seletor da página (admin/Kanban.tsx), mas dá pra trocar aqui
@@ -225,6 +235,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
       setDataPedido(new Date().toISOString().slice(0, 10))
       setPdfArquivo(null)
       setOrigemMarketing(false)
+      setOrigemMarketingTipo('padrao')
       onClose()
     },
     onError(err) {
@@ -267,6 +278,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
         pdfPedidoPath,
         vendedorId: user?.role === 'admin' ? vendedorIdSelecionado : undefined,
         origemMarketing,
+        origemMarketingTipo: origemMarketing ? origemMarketingTipo : undefined,
       })
     } catch (err: any) {
       toast.error(err.message ?? 'Falha ao enviar o PDF.')
@@ -309,15 +321,13 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
         <Input label="Nº do cupom fiscal (opcional)" value={cupomFiscal} onChange={(e) => setCupomFiscal(e.target.value)} />
         <Input label="Nº da nota fiscal (opcional)" value={notaFiscal} onChange={(e) => setNotaFiscal(e.target.value)} />
         <AnexoPdfInput label="PDF do pedido" nomeArquivo={pdfArquivo?.name} onSelecionar={setPdfArquivo} />
-        <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
-          <input
-            type="checkbox"
-            checked={origemMarketing}
-            onChange={(e) => setOrigemMarketing(e.target.checked)}
-            className="accent-gold-500"
-          />
-          Cliente de Marketing
-        </label>
+        <CampoOrigemMarketing
+          checked={origemMarketing}
+          onCheckedChange={setOrigemMarketing}
+          tipo={origemMarketingTipo}
+          onTipoChange={setOrigemMarketingTipo}
+          name="origemMarketingTipo-vendaRapida"
+        />
         <Button className="w-full" loading={mut.isPending || enviandoPdf} onClick={registrar}>
           Registrar venda
         </Button>
@@ -362,7 +372,10 @@ export default function FunilBoard({
   // exceto Faturamento/Consumidor Final, conforme as flags acima).
   apenasEtapas?: string[]
 }) {
-  const { user } = useAuth()
+  const { user, empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
+  const [classificacaoFiltro, setClassificacaoFiltro] = useState<'' | 'revenda' | 'consumidor_final'>('')
   const etapasVisiveis = apenasEtapas
     ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
     : ETAPAS.filter((e) => (e.value === 'faturamento' ? mostrarFaturamento : true))
@@ -418,10 +431,14 @@ export default function FunilBoard({
       })
     : cardsFiltrados
 
+  const cardsClassificados = classificacaoFiltro
+    ? cardsNoPeriodo.filter((c) => c.classificacaoComercial === classificacaoFiltro)
+    : cardsNoPeriodo
+
   // Ordenação dentro de cada coluna — "padrão" mantém a ordem que já vem do
   // backend (mais antigo sem contato primeiro, ver buscarFunilDoVendedor).
   // As demais opções reordenam só a visualização, não mudam nada no banco.
-  const cardsOrdenados = [...cardsNoPeriodo].sort((a, b) => {
+  const cardsOrdenados = [...cardsClassificados].sort((a, b) => {
     switch (ordenacao) {
       case 'nome':
         return a.razaoSocial.localeCompare(b.razaoSocial, 'pt-BR')
@@ -545,6 +562,20 @@ export default function FunilBoard({
         </div>
         <Input label="Entrou na etapa de" type="date" value={dataInicioFiltro} onChange={(e) => setDataInicioFiltro(e.target.value)} />
         <Input label="até" type="date" value={dataFimFiltro} onChange={(e) => setDataFimFiltro(e.target.value)} />
+        {ehOdinCompressores && (
+          <div className="w-48">
+            <Select
+              label="Consumidor Final / Revenda"
+              value={classificacaoFiltro}
+              onChange={(e) => setClassificacaoFiltro(e.target.value as '' | 'revenda' | 'consumidor_final')}
+              placeholder="Todas"
+              options={[
+                { value: 'revenda', label: 'Revenda' },
+                { value: 'consumidor_final', label: 'Consumidor Final' },
+              ]}
+            />
+          </div>
+        )}
         {(dataInicioFiltro || dataFimFiltro) && (
           <button
             onClick={() => {
@@ -604,6 +635,11 @@ export default function FunilBoard({
                             <p className="text-xs text-gold-400 font-medium">{card.orcamentoLabel}</p>
                           )}
                         </div>
+                        {card.classificacaoComercial && (
+                          <Badge className={`text-[10px] shrink-0 ${CLASSIFICACAO_COR[card.classificacaoComercial]}`}>
+                            {CLASSIFICACAO_LABEL[card.classificacaoComercial]}
+                          </Badge>
+                        )}
                       </div>
                       {card.proximoCompromisso && (() => {
                         const cp = formatarProximoCompromisso(card.proximoCompromisso.dataHora)
@@ -2033,6 +2069,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
   const [statusFiscal, setStatusFiscal] = useState(card.statusFiscal ?? '')
   const [observacoes, setObservacoes] = useState(card.observacoes ?? '')
   const [origemMarketing, setOrigemMarketing] = useState(card.origemMarketing)
+  const [origemMarketingTipo, setOrigemMarketingTipo] = useState<OrigemMarketingTipo>((card.origemMarketingTipo as OrigemMarketingTipo | null) ?? 'padrao')
 
   const atualizarMut = trpc.clientes.update.useMutation({
     onSuccess() {
@@ -2163,6 +2200,7 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           statusFiscal: (statusFiscal || undefined) as 'isento' | 'normal' | 'consumidor_final' | undefined,
           observacoes: observacoes || undefined,
           origemMarketing,
+          origemMarketingTipo: origemMarketing ? origemMarketingTipo : undefined,
         })
       }}
       className="space-y-2"
@@ -2190,10 +2228,13 @@ function ClienteInfoEditavel({ card }: { card: Card }) {
           ]}
         />
       </div>
-      <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
-        <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
-        Cliente de Marketing
-      </label>
+      <CampoOrigemMarketing
+        checked={origemMarketing}
+        onCheckedChange={setOrigemMarketing}
+        tipo={origemMarketingTipo}
+        onTipoChange={setOrigemMarketingTipo}
+        name="origemMarketingTipo-completarCadastro"
+      />
       <Textarea
         label="Anotações sobre o cliente"
         rows={2}

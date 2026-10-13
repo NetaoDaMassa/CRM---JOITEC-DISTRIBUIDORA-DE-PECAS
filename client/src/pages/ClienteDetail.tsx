@@ -5,7 +5,9 @@ import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { Input, Textarea } from '../components/ui/Input'
 import Button from '../components/ui/Button'
+import CampoOrigemMarketing, { type OrigemMarketingTipo } from '../components/CampoOrigemMarketing'
 import Select from '../components/ui/Select'
+import { Badge } from '../components/ui/Badge'
 import ContatoButtons from '../components/ui/ContatoButtons'
 import TelefonesExtras from '../components/ui/TelefonesExtras'
 import EmailsExtras from '../components/ui/EmailsExtras'
@@ -137,6 +139,13 @@ function ItemManutencaoStatus({ maquinaId, item }: { maquinaId: number; item: It
 }
 
 const OUTRO_MODELO = '__outro__'
+
+// Consumidor Final / Revenda — só Odin Compressores usa. Pedido do João, 2026-10-13.
+const CLASSIFICACAO_LABEL: Record<string, string> = { revenda: 'Revenda', consumidor_final: 'Consumidor Final' }
+const CLASSIFICACAO_COR: Record<string, string> = {
+  revenda: 'text-purple-300 bg-purple-900/20 border-purple-700/40',
+  consumidor_final: 'text-cyan-300 bg-cyan-900/20 border-cyan-700/40',
+}
 
 function MaquinasCliente({ clienteId }: { clienteId: number }) {
   const utils = trpc.useUtils()
@@ -445,7 +454,9 @@ export default function ClienteDetail() {
   const [observacoes, setObservacoes] = useState('')
   const [ticketMedio, setTicketMedio] = useState('')
   const [origemMarketing, setOrigemMarketing] = useState(false)
+  const [origemMarketingTipo, setOrigemMarketingTipo] = useState<OrigemMarketingTipo>('padrao')
   const [revendaId, setRevendaId] = useState('')
+  const [classificacaoComercial, setClassificacaoComercial] = useState('')
   const [carregado, setCarregado] = useState(false)
   // Revenda Responsável — só Odin Compressores. Pedido do João, 2026-10-06.
   const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { enabled: ehOdinCompressores, retry: false })
@@ -470,7 +481,9 @@ export default function ClienteDetail() {
     setObservacoes(cliente.observacoes ?? '')
     setTicketMedio(cliente.ticketMedioHistorico?.toString() ?? '')
     setOrigemMarketing(cliente.origemMarketing)
+    setOrigemMarketingTipo((cliente.origemMarketingTipo as OrigemMarketingTipo | null) ?? 'padrao')
     setRevendaId(cliente.revendaId?.toString() ?? '')
+    setClassificacaoComercial(cliente.classificacaoComercial ?? '')
     setCarregado(true)
   }
 
@@ -548,7 +561,11 @@ export default function ClienteDetail() {
       observacoes: observacoes || undefined,
       ticketMedioHistorico: ticketMedio ? parseValorBr(ticketMedio) : undefined,
       origemMarketing,
+      origemMarketingTipo: origemMarketing ? origemMarketingTipo : undefined,
       revendaId: ehOdinCompressores ? (revendaId ? Number(revendaId) : null) : undefined,
+      classificacaoComercial: ehOdinCompressores
+        ? ((classificacaoComercial || null) as 'revenda' | 'consumidor_final' | null)
+        : undefined,
     })
   }
 
@@ -558,7 +575,14 @@ export default function ClienteDetail() {
   return (
     <div className="p-6 max-w-xl space-y-4">
       <div>
-        <h1 className="font-heading text-xl text-dark-50">{cliente.razaoSocial}</h1>
+        <h1 className="font-heading text-xl text-dark-50 flex items-center gap-2">
+          {cliente.razaoSocial}
+          {cliente.classificacaoComercial && (
+            <Badge className={`text-[11px] ${CLASSIFICACAO_COR[cliente.classificacaoComercial]}`}>
+              {CLASSIFICACAO_LABEL[cliente.classificacaoComercial]}
+            </Badge>
+          )}
+        </h1>
         <p className="text-sm text-dark-400">
           {cliente.qtdContatos} registro(s) de contato · {cliente.qtdPedidos} pedido(s)
         </p>
@@ -624,10 +648,24 @@ export default function ClienteDetail() {
             options={(revendas ?? []).map((r) => ({ value: r.id, label: r.nome }))}
           />
         )}
-        <label className="flex items-center gap-2 text-sm text-dark-200 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
-          <input type="checkbox" checked={origemMarketing} onChange={(e) => setOrigemMarketing(e.target.checked)} className="accent-gold-500" />
-          Cliente de Marketing
-        </label>
+        {ehOdinCompressores && (
+          <Select
+            label="Consumidor Final ou Revenda"
+            value={classificacaoComercial}
+            onChange={(e) => setClassificacaoComercial(e.target.value)}
+            placeholder="Selecione..."
+            options={[
+              { value: 'revenda', label: 'Revenda' },
+              { value: 'consumidor_final', label: 'Consumidor Final' },
+            ]}
+          />
+        )}
+        <CampoOrigemMarketing
+          checked={origemMarketing}
+          onCheckedChange={setOrigemMarketing}
+          tipo={origemMarketingTipo}
+          onTipoChange={setOrigemMarketingTipo}
+        />
         <Textarea
           label="Anotações sobre o cliente"
           rows={3}

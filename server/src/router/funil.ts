@@ -65,7 +65,9 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
           cidade: true,
           versao: true,
           origemMarketing: true,
+          origemMarketingTipo: true,
           cadastroRapido: true,
+          classificacaoComercial: true,
         },
         with: {
           telefonesExtras: { orderBy: (t, { asc }) => [asc(t.id)] },
@@ -231,7 +233,9 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     cidade: f.cliente.cidade,
     clienteVersao: f.cliente.versao,
     origemMarketing: f.cliente.origemMarketing,
+    origemMarketingTipo: f.cliente.origemMarketingTipo,
     cadastroRapido: f.cliente.cadastroRapido,
+    classificacaoComercial: f.cliente.classificacaoComercial,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
     proximoCompromisso: (() => {
       const c = proximoCompromissoPorCliente.get(f.cliente.id)

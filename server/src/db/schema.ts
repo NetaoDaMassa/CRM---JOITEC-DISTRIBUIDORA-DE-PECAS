@@ -326,6 +326,11 @@ export const clientes = sqliteTable('clientes', {
   // Marcado manualmente no "Completar cadastro", pra dar pra medir depois o
   // retorno de vendas dos clientes de Marketing separado do resto.
   origemMarketing: integer('origem_marketing', { mode: 'boolean' }).notNull().default(false),
+  // Só preenchido quando origemMarketing é true — "padrao" é o que já
+  // existia (qualquer ação de Marketing: ads, campanha etc.), "site" é o
+  // canal novo (cliente veio do site próprio da empresa). Pedido do João,
+  // 2026-10-13, pra separar esse canal nos relatórios de Marketing.
+  origemMarketingTipo: text('origem_marketing_tipo', { enum: ['padrao', 'site'] }),
   // Classificação comercial — Revenda (compra pra repassar/revender) ou
   // Consumidor Final (usa a máquina). Hoje só a Prospecção Odin preenche
   // (server/src/router/prospeccaoOdin.ts); é obrigatório na hora de enviar
