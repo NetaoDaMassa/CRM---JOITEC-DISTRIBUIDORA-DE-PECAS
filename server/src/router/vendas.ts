@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq } from 'drizzle-orm'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, itensPedido, vendas, carteiraHistorico, empresas, users, caixaMovimentacoes } from '../db/schema.js'
+import { funilMensal, clientes, itensPedido, vendas, empresas, users, caixaMovimentacoes } from '../db/schema.js'
 import { agoraSqlite, mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
@@ -76,17 +76,25 @@ export const vendasRouter = router({
         dataUltimaCompra: agoraSqlite(),
         origemMarketing: input.origemMarketing ?? false,
         origemMarketingTipo: input.origemMarketing ? (input.origemMarketingTipo ?? 'padrao') : undefined,
+        // Venda de balcão não é carteira de verdade — sem isso, o cliente
+        // virava "Novo" de novo todo mês pro sempre (reset mensal) e inflava
+        // a cobertura de contatos/alertas de "sem contato" do vendedor com
+        // compradores avulsos que nunca mais vão ser contatados. Mesmo
+        // mecanismo que já isolava os prospects da Prospecção Odin. Pedido
+        // do João, 2026-10-13.
+        emProspeccao: true,
       })
       const clienteId = Number(clienteResult.lastInsertRowid)
-
-      await db.insert(carteiraHistorico).values({ clienteId, vendedorId: vendedorAlvoId })
 
       const mesReferencia = mesReferenciaAtual()
       const funilResult = await db.insert(funilMensal).values({
         clienteId,
         vendedorId: vendedorAlvoId,
         mesReferencia,
-        etapa: 'fechado',
+        // 'consumidor_final_loja' é etapa terminal (ver resetMensal.ts) — o
+        // card fica parado aqui como registro, sem ressuscitar como "Novo"
+        // no mês seguinte.
+        etapa: 'consumidor_final_loja',
         dataEntradaEtapa: agoraSqlite(),
       })
       const funilMensalId = Number(funilResult.lastInsertRowid)
