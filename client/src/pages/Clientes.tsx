@@ -8,6 +8,7 @@ import { usePersistedState } from '../lib/usePersistedState'
 import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
+import { Badge } from '../components/ui/Badge'
 import ContatoButtons from '../components/ui/ContatoButtons'
 import { paraCsv, baixarCsv } from '../lib/csv'
 
@@ -19,18 +20,31 @@ const REGIAO_LABELS: Record<string, string> = {
   sul: 'Sul',
 }
 
+// Consumidor Final / Revenda — só Odin Compressores usa, mesmo padrão de
+// Revenda Responsável (ver ClienteNovo.tsx). Pedido do João, 2026-10-13.
+const CLASSIFICACAO_LABEL: Record<string, string> = { revenda: 'Revenda', consumidor_final: 'Consumidor Final' }
+const CLASSIFICACAO_COR: Record<string, string> = {
+  revenda: 'text-purple-300 bg-purple-900/20 border-purple-700/40',
+  consumidor_final: 'text-cyan-300 bg-cyan-900/20 border-cyan-700/40',
+}
+
 export default function Clientes() {
-  const { user } = useAuth()
+  const { user, empresaAtivaId } = useAuth()
   const [q, setQ] = usePersistedState('clientes:q', '')
   const [pagina, setPagina] = useState(1)
   const [vendedorId, setVendedorId] = usePersistedState('clientes:vendedorId', '')
+  const [classificacaoComercial, setClassificacaoComercial] = usePersistedState<'' | 'revenda' | 'consumidor_final'>('clientes:classificacao', '')
   const [exportando, setExportando] = useState(false)
+
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
 
   const { data: vendors } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
   const { data, isLoading } = trpc.clientes.list.useQuery({
     q: q || undefined,
     pagina,
     vendedorId: vendedorId ? Number(vendedorId) : undefined,
+    classificacaoComercial: classificacaoComercial || undefined,
   })
   const utils = trpc.useUtils()
 
@@ -42,6 +56,7 @@ export default function Clientes() {
       const linhas = await utils.clientes.exportar.fetch({
         q: q || undefined,
         vendedorId: vendedorId ? Number(vendedorId) : undefined,
+        classificacaoComercial: classificacaoComercial || undefined,
       })
       if (!linhas.length) return toast.error('Nenhum cliente pra exportar com esse filtro.')
       baixarCsv(
@@ -59,6 +74,7 @@ export default function Clientes() {
             { chave: 'email', rotulo: 'E-mail' },
             { chave: 'nomeContato', rotulo: 'Contato' },
             { chave: 'vendedor', rotulo: 'Vendedor' },
+            ...(ehOdinCompressores ? [{ chave: 'classificacaoComercial', rotulo: 'Classificação' }] : []),
           ],
           linhas
         )
@@ -106,6 +122,20 @@ export default function Clientes() {
             options={(vendors ?? []).map((v) => ({ value: v.id, label: v.name }))}
           />
         )}
+        {ehOdinCompressores && (
+          <Select
+            value={classificacaoComercial}
+            onChange={(e) => {
+              setClassificacaoComercial(e.target.value as '' | 'revenda' | 'consumidor_final')
+              setPagina(1)
+            }}
+            placeholder="Todas as classificações"
+            options={[
+              { value: 'revenda', label: 'Revenda' },
+              { value: 'consumidor_final', label: 'Consumidor Final' },
+            ]}
+          />
+        )}
       </div>
 
       <p className="text-sm text-dark-400">{data?.total ?? 0} cliente(s) encontrado(s)</p>
@@ -116,7 +146,12 @@ export default function Clientes() {
         {data?.items.map((c) => (
           <Link key={c.id} to={`${basePath}/clientes/${c.id}`} className="flex items-center justify-between px-4 py-3 text-sm hover:bg-dark-700/30 transition-colors">
             <div>
-              <p className="font-medium text-dark-100">{c.razaoSocial}</p>
+              <p className="font-medium text-dark-100 flex items-center gap-2">
+                {c.razaoSocial}
+                {c.classificacaoComercial && (
+                  <Badge className={`text-[10px] ${CLASSIFICACAO_COR[c.classificacaoComercial]}`}>{CLASSIFICACAO_LABEL[c.classificacaoComercial]}</Badge>
+                )}
+              </p>
               <p className="text-dark-400 text-xs">
                 {c.cnpj ?? `Cód. ${c.codigo} (sem CNPJ)`} · {c.regiao ? REGIAO_LABELS[c.regiao] : 'sem região'}
                 {c.cidade ? ` · ${c.cidade}/${c.estado}` : ''}
