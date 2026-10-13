@@ -74,7 +74,7 @@ export default function Clientes() {
             { chave: 'email', rotulo: 'E-mail' },
             { chave: 'nomeContato', rotulo: 'Contato' },
             { chave: 'vendedor', rotulo: 'Vendedor' },
-            ...(ehOdinCompressores ? [{ chave: 'classificacaoComercial', rotulo: 'Classificação' }] : []),
+            ...(ehOdinCompressores ? [{ chave: 'classificacaoComercial' as const, rotulo: 'Classificação' }] : []),
           ],
           linhas
         )
