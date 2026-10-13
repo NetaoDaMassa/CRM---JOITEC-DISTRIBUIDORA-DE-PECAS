@@ -302,7 +302,31 @@ export const leadsRouter = router({
         }
       }
 
-      const data = page1.map((l) => ({ ...l, reassignedFrom: reassignMap.get(l.id) ?? null }))
+      // Prévia de mensagem/anexo no card do Kanban — pedido do João,
+      // 2026-10-13: mostrar de cara o que o lead mandou (texto/foto/áudio)
+      // pra induzir o vendedor a abrir o card. `observations` já vem no
+      // lead inteiro (sem restrição de columns acima); só falta o resumo
+      // dos anexos, buscado numa query só pra toda a página (não 1 por
+      // lead). O card decide sozinho o que mostrar: mensagem > foto > áudio.
+      const attachmentRows = pageIds.length
+        ? await db.query.leadAttachments.findMany({
+            where: inArray(leadAttachments.leadId, pageIds),
+            orderBy: (a, { asc }) => [asc(a.createdAt)],
+            columns: { id: true, leadId: true, filename: true, mimeType: true, originalName: true },
+          })
+        : []
+      const attachmentsByLead = new Map<number, typeof attachmentRows>()
+      for (const a of attachmentRows) {
+        const lista = attachmentsByLead.get(a.leadId) ?? []
+        lista.push(a)
+        attachmentsByLead.set(a.leadId, lista)
+      }
+
+      const data = page1.map((l) => ({
+        ...l,
+        reassignedFrom: reassignMap.get(l.id) ?? null,
+        attachments: attachmentsByLead.get(l.id) ?? [],
+      }))
 
       return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) }
     }),

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Building2, Calendar, ChevronRight, AlertCircle, Repeat2, Phone, Hand } from 'lucide-react'
+import { Building2, Calendar, ChevronRight, AlertCircle, Repeat2, Phone, Hand, MessageSquare, Image as ImageIcon, Mic, Play } from 'lucide-react'
 import { formatElapsed, timeAgo } from '../lib/utils'
 import { useAuth } from '../contexts/AuthContext'
 import { trpc } from '../lib/trpc'
@@ -43,6 +43,70 @@ type LeadCard = {
   fromSite?: boolean
   convertidoParaPropostaId?: number | null
   reassignedFrom?: { name: string; type: 'rodizio' | 'transferencia'; at: string; stage: string | null } | null
+  observations?: string | null
+  attachments?: { id: number; filename: string; mimeType: string; originalName: string }[]
+}
+
+// Prévia de mensagem/foto/áudio no card — pedido do João, 2026-10-13, pra
+// induzir o vendedor a abrir o card e ver o que o lead mandou, em vez do
+// card ficar "mudo" até alguém clicar. Prioridade: mensagem (texto) > foto
+// > áudio — PDF e outros tipos de anexo não entram aqui (não ajudam numa
+// prévia rápida), continuam só visíveis dentro do card.
+function LeadCardPreview({ lead }: { lead: LeadCard }) {
+  const mensagem = lead.observations?.trim()
+  const fotos = (lead.attachments ?? []).filter((a) => a.mimeType.startsWith('image/'))
+  const audios = (lead.attachments ?? []).filter((a) => a.mimeType.startsWith('audio/'))
+
+  if (!mensagem && fotos.length === 0 && audios.length === 0) return null
+
+  return (
+    <div className="mb-2 rounded-lg border border-dark-700 bg-dark-900/50 overflow-hidden">
+      {mensagem ? (
+        <>
+          <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wide text-green-400 px-2.5 pt-1.5">
+            <MessageSquare size={10} /> mensagem
+          </div>
+          <p className="text-[11px] text-dark-300 italic px-2.5 pb-2 pt-0.5 leading-snug line-clamp-3">
+            &ldquo;{mensagem.length > 140 ? `${mensagem.slice(0, 140)}…` : mensagem}&rdquo;
+          </p>
+        </>
+      ) : fotos.length > 0 ? (
+        <>
+          <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wide text-green-400 px-2.5 pt-1.5">
+            <ImageIcon size={10} /> {fotos.length === 1 ? '1 foto' : `${fotos.length} fotos`}
+          </div>
+          <div className="flex gap-1.5 px-2.5 pb-2 pt-1">
+            {fotos.slice(0, 2).map((f) => (
+              <img
+                key={f.id}
+                src={`/uploads/${f.filename}`}
+                alt={f.originalName}
+                className="w-10 h-10 rounded object-cover border border-dark-700"
+                loading="lazy"
+              />
+            ))}
+            {fotos.length > 2 && (
+              <div className="w-10 h-10 rounded border border-dark-700 bg-dark-800 flex items-center justify-center text-[10px] font-semibold text-dark-400">
+                +{fotos.length - 2}
+              </div>
+            )}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-wide text-green-400 px-2.5 pt-1.5">
+            <Mic size={10} /> {audios.length === 1 ? 'áudio' : `${audios.length} áudios`}
+          </div>
+          <div className="flex items-center gap-2 px-2.5 pb-2 pt-1.5">
+            <span className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+              <Play size={8} className="text-dark-950 fill-dark-950 ml-0.5" />
+            </span>
+            <span className="text-[10px] text-dark-400 truncate">{audios[0].originalName}</span>
+          </div>
+        </>
+      )}
+    </div>
+  )
 }
 
 export default function LeadKanbanBoard({
@@ -139,6 +203,8 @@ export default function LeadKanbanBoard({
                       </div>
 
                       <div className="text-[11px] text-dark-500 mb-2">recebido há {formatElapsed(lead.createdAt)}</div>
+
+                      <LeadCardPreview lead={lead} />
 
                       {lead.reassignedFrom && (
                         <div className="flex items-center gap-1.5 text-[11px] text-cyan-400 mb-2">
