@@ -1,0 +1,1 @@
+ALTER TABLE `clientes` ADD `importado_recentemente` integer DEFAULT false NOT NULL;

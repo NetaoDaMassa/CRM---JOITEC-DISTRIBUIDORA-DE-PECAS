@@ -430,6 +430,9 @@ export const clientesRouter = router({
       // clientes.create) — tira o selo "🆕 Cadastro rápido" do Kanban, já
       // que alguém completou o cadastro.
       if (cliente.cadastroRapido) updates.cadastroRapido = false
+      // Mesma ideia — tira o selo "🆕 Adicionado recentemente" (importação
+      // em massa) assim que alguém mexe no cadastro.
+      if (cliente.importadoRecentemente) updates.importadoRecentemente = false
       if (cnpj) {
         if (!cnpjValido(cnpj)) throw new Error('CNPJ inválido')
         const cnpjLimpo = limparCnpj(cnpj)

@@ -360,6 +360,13 @@ export const clientes = sqliteTable('clientes', {
   // assim que alguém salva uma edição no cliente (clientes.update). Pedido
   // do João, 2026-10-01.
   cadastroRapido: integer('cadastro_rapido', { mode: 'boolean' }).notNull().default(false),
+  // Selo "🆕 Adicionado recentemente" — mesma ideia/mecânica do
+  // cadastroRapido acima (zera sozinho assim que alguém edita o cliente),
+  // mas pra outro motivo: identificar cliente que entrou por importação em
+  // massa de planilha (ver scripts de importação), não cadastro-relâmpago
+  // manual. Campo separado de propósito, pra não misturar os dois
+  // significados num badge só. Pedido do João, 2026-10-13.
+  importadoRecentemente: integer('importado_recentemente', { mode: 'boolean' }).notNull().default(false),
 }, (t) => ({
   empresaCnpj: unique().on(t.empresaId, t.cnpj),
   empresaCodigo: unique().on(t.empresaId, t.codigo),

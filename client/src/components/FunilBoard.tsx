@@ -665,6 +665,11 @@ export default function FunilBoard({
                           🆕 Cadastro rápido — completar dados
                         </p>
                       )}
+                      {card.importadoRecentemente && (
+                        <p className="text-xs text-cyan-400 mb-1" title="Cliente adicionado por importação de planilha">
+                          🆕 Adicionado recentemente
+                        </p>
+                      )}
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
                       )}
