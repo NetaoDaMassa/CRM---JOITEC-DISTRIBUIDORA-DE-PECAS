@@ -26,49 +26,6 @@ function iniciais(nome: string): string {
   return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
 }
 
-const EMPRESA_IMPORT_LABEL: Record<string, string> = {
-  'odin-tubos': 'Odin Tubos',
-  'odin-compressores': 'Odin Compressores',
-  joitec: 'Joitec',
-}
-
-const STATUS_IMPORT_LABEL: Record<string, string> = {
-  em_producao: 'Em produção',
-  embarcado: 'Embarcado',
-  a_caminho: 'A caminho',
-  chegou: 'Chegou',
-}
-
-const STATUS_IMPORT_COR: Record<string, string> = {
-  em_producao: 'text-dark-300 bg-dark-700',
-  embarcado: 'text-gold-400 bg-gold-900/20',
-  a_caminho: 'text-blue-400 bg-blue-900/20',
-  chegou: 'text-green-400 bg-green-900/20',
-}
-
-type InvoiceImportacao = {
-  id: number
-  empresa: 'odin-tubos' | 'odin-compressores' | 'joitec'
-  numeroInvoice: string
-  status: 'em_producao' | 'embarcado' | 'a_caminho' | 'chegou'
-  dataEmbarque: string | null
-  dataChegada: string | null
-  invoicePaga: boolean
-  valorDolar: number | null
-  numeroContainer: string | null
-  navio: string | null
-}
-
-function formatarDataImport(d: string | null): string {
-  if (!d) return '—'
-  return new Date(`${d}T00:00:00`).toLocaleDateString('pt-BR')
-}
-
-function formatarDolarImport(v: number | null): string {
-  if (v === null || v === undefined) return '—'
-  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD' })
-}
-
 type Card = {
   cardKey: string
   nome: string
@@ -343,52 +300,6 @@ function SlideResumoFinanceiro({ data }: { data: ResumoData | undefined }) {
   )
 }
 
-function CardImportacao({ inv }: { inv: InvoiceImportacao }) {
-  return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <p className="text-sm font-semibold text-dark-100">{EMPRESA_IMPORT_LABEL[inv.empresa]}</p>
-        <span className={`text-xs font-bold px-3 py-1 rounded-full whitespace-nowrap ${STATUS_IMPORT_COR[inv.status]}`}>
-          {STATUS_IMPORT_LABEL[inv.status]}
-        </span>
-      </div>
-      <p className="text-2xl font-bold text-dark-50 font-mono tabular-nums">{inv.numeroInvoice}</p>
-      {inv.numeroContainer && <p className="text-xs text-dark-500 mt-0.5">Container {inv.numeroContainer}</p>}
-
-      <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-dark-700">
-        <div>
-          <p className="text-sm font-semibold text-dark-100 font-mono tabular-nums">{formatarDataImport(inv.dataEmbarque)}</p>
-          <p className="text-[10px] text-dark-500 uppercase tracking-wide">Embarque</p>
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-dark-100 font-mono tabular-nums">{formatarDataImport(inv.dataChegada)}</p>
-          <p className="text-[10px] text-dark-500 uppercase tracking-wide">Chegada</p>
-        </div>
-      </div>
-
-      <div className="mt-4 pt-4 border-t border-dark-700 flex items-center justify-between">
-        <p className="text-[10px] text-dark-500 uppercase tracking-wide font-semibold">Valor (USD)</p>
-        <p className={`text-lg font-bold font-mono tabular-nums ${inv.invoicePaga ? 'text-green-400' : 'text-dark-500'}`}>
-          {inv.invoicePaga ? formatarDolarImport(inv.valorDolar) : '—'}
-        </p>
-      </div>
-    </div>
-  )
-}
-
-function SlideImportacoes({ invoices }: { invoices: InvoiceImportacao[] | undefined }) {
-  if (!invoices) return <p className="text-dark-500">Carregando...</p>
-  if (!invoices.length) return <p className="text-dark-500">Nenhuma importação em andamento no momento.</p>
-
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-      {invoices.map((inv) => (
-        <CardImportacao key={inv.id} inv={inv} />
-      ))}
-    </div>
-  )
-}
-
 type DemandaPainel = {
   id: number
   titulo: string
@@ -437,7 +348,8 @@ function SlideDemandasFinanceiras({ demandas }: { demandas: DemandaPainel[] | un
 // juntam num card só). Pensado pra ficar numa sala fechada (não no chão de
 // vendas, que já esconde faturamento de propósito no /painel-tv normal —
 // ver comentário em PainelTV.tsx). 2ª página (carrossel, igual o
-// /painel-tv normal): status das importações/containers em andamento.
+// /painel-tv normal): demandas financeiras pendentes. "Importações" saiu
+// do carrossel — pedido do João, 2026-10-14.
 export default function PainelFinanceiro() {
   const [relogio, setRelogio] = useState(new Date())
   useEffect(() => {
@@ -446,10 +358,6 @@ export default function PainelFinanceiro() {
   }, [])
 
   const { data } = trpc.financeiro.painelResumo.useQuery(undefined, {
-    refetchInterval: 30000,
-    refetchIntervalInBackground: true,
-  })
-  const { data: invoices } = trpc.compras.painelImportacoes.useQuery(undefined, {
     refetchInterval: 30000,
     refetchIntervalInBackground: true,
   })
@@ -466,7 +374,6 @@ export default function PainelFinanceiro() {
   // fechava sozinho menos de 1s depois de abrir).
   const slides = [
     { titulo: 'Financeiro', render: () => <SlideResumoFinanceiro data={data} /> },
-    { titulo: 'Importações', render: () => <SlideImportacoes invoices={invoices} /> },
     { titulo: 'Demandas', render: () => <SlideDemandasFinanceiras demandas={demandasFinanceiras} /> },
   ]
   const [slideAtual, setSlideAtual] = useState(0)
@@ -497,7 +404,7 @@ export default function PainelFinanceiro() {
         <div>
           <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">Grupo Odin · Painel Financeiro</p>
           <h1 className="font-heading text-2xl text-dark-50 font-bold mt-0.5">
-            {slideAtual === 0 ? 'Visão consolidada das empresas' : slideAtual === 1 ? 'Importações em andamento' : 'Demandas financeiras pendentes'}
+            {slideAtual === 0 ? 'Visão consolidada das empresas' : 'Demandas financeiras pendentes'}
           </h1>
         </div>
         <div className="flex items-center gap-4">
