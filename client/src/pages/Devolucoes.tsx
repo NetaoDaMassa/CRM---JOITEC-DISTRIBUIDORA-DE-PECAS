@@ -14,6 +14,7 @@ import { formatDateTime, timeAgo } from '../lib/utils'
 const STATUS_LABEL: Record<string, string> = {
   novo: 'Novo',
   analise: 'Análise',
+  sem_retorno_cliente: 'Sem retorno do cliente',
   em_andamento: 'Em andamento',
   nota_fiscal_devolucao: 'Nota fiscal devolução',
   chegada_materiais: 'Chegada materiais',
@@ -22,12 +23,13 @@ const STATUS_LABEL: Record<string, string> = {
   finalizado: 'Finalizado',
 }
 
-// Todas as empresas veem as 8 colunas — "preparação e envio"/"rastreio
+// Todas as empresas veem as 9 colunas — "preparação e envio"/"rastreio
 // transportadora" nasceram do fluxo da Odin Compressores, mas qualquer
 // chamado pode passar por elas (não é uma restrição de negócio real).
 const STATUS_COLUNAS = [
   'novo',
   'analise',
+  'sem_retorno_cliente',
   'em_andamento',
   'nota_fiscal_devolucao',
   'chegada_materiais',
@@ -85,7 +87,7 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
   const [vendedorId, setVendedorId] = useState('')
   const [ocorrencias, setOcorrencias] = useState<string[]>([])
   const [materiais, setMateriais] = useState([
-    { codigoItem: '', descricaoItem: '', quantidade: 1, codigoItemCorreto: '', descricaoItemCorreto: '' },
+    { codigoItem: '', descricaoItem: '', quantidade: 1, codigoItemCorreto: '', descricaoItemCorreto: '', quantidadeCorreta: '' },
   ])
   // Fotos/vídeos/documentos anexados já na abertura do chamado — antes só
   // dava pra anexar depois, no chamado já criado (pedido do João,
@@ -157,7 +159,9 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
         dataInicioTratamento: dataInicioTratamento || undefined,
         vendedorId: souAdmin && vendedorId ? Number(vendedorId) : undefined,
         ocorrencias: ocorrencias.map((tipo) => ({ tipo: tipo as any })),
-        materiais: materiais.filter((m) => m.descricaoItem.trim()),
+        materiais: materiais
+          .filter((m) => m.descricaoItem.trim())
+          .map((m) => ({ ...m, quantidadeCorreta: m.quantidadeCorreta !== '' ? Number(m.quantidadeCorreta) : undefined })),
       })
       if (arquivosPendentes.length) {
         setEnviandoArquivos(true)
@@ -297,7 +301,7 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
                   <Input placeholder="O que foi enviado" value={m.descricaoItem} onChange={(e) => atualizarMaterial(i, 'descricaoItem', e.target.value)} />
                   <Input type="number" min={1} value={m.quantidade} onChange={(e) => atualizarMaterial(i, 'quantidade', Number(e.target.value))} />
                 </div>
-                <div className="grid grid-cols-[100px_1fr] gap-2">
+                <div className="grid grid-cols-[100px_1fr_70px] gap-2">
                   <Input
                     placeholder="Código correto"
                     value={m.codigoItemCorreto}
@@ -308,6 +312,13 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
                     value={m.descricaoItemCorreto}
                     onChange={(e) => atualizarMaterial(i, 'descricaoItemCorreto', e.target.value)}
                   />
+                  <Input
+                    type="number"
+                    min={1}
+                    placeholder="Qtd. certa"
+                    value={m.quantidadeCorreta}
+                    onChange={(e) => atualizarMaterial(i, 'quantidadeCorreta', e.target.value)}
+                  />
                 </div>
               </div>
             ))}
@@ -316,7 +327,10 @@ function NovoChamadoModal({ onClose, souAdmin }: { onClose: () => void; souAdmin
             type="button"
             className="text-xs text-gold-400 underline mt-2"
             onClick={() =>
-              setMateriais((prev) => [...prev, { codigoItem: '', descricaoItem: '', quantidade: 1, codigoItemCorreto: '', descricaoItemCorreto: '' }])
+              setMateriais((prev) => [
+                ...prev,
+                { codigoItem: '', descricaoItem: '', quantidade: 1, codigoItemCorreto: '', descricaoItemCorreto: '', quantidadeCorreta: '' },
+              ])
             }
           >
             + Adicionar material
@@ -729,9 +743,23 @@ function EditarMaterialForm({
   onSalvar,
   onCancelar,
 }: {
-  material: { codigoItem: string | null; descricaoItem: string; quantidade: number; codigoItemCorreto: string | null; descricaoItemCorreto: string | null }
+  material: {
+    codigoItem: string | null
+    descricaoItem: string
+    quantidade: number
+    codigoItemCorreto: string | null
+    descricaoItemCorreto: string | null
+    quantidadeCorreta: number | null
+  }
   loading: boolean
-  onSalvar: (dados: { codigoItem?: string; descricaoItem: string; quantidade: number; codigoItemCorreto?: string; descricaoItemCorreto?: string }) => void
+  onSalvar: (dados: {
+    codigoItem?: string
+    descricaoItem: string
+    quantidade: number
+    codigoItemCorreto?: string
+    descricaoItemCorreto?: string
+    quantidadeCorreta?: number
+  }) => void
   onCancelar: () => void
 }) {
   const [codigoItem, setCodigoItem] = useState(material.codigoItem ?? '')
@@ -739,6 +767,7 @@ function EditarMaterialForm({
   const [quantidade, setQuantidade] = useState(material.quantidade)
   const [codigoItemCorreto, setCodigoItemCorreto] = useState(material.codigoItemCorreto ?? '')
   const [descricaoItemCorreto, setDescricaoItemCorreto] = useState(material.descricaoItemCorreto ?? '')
+  const [quantidadeCorreta, setQuantidadeCorreta] = useState(material.quantidadeCorreta?.toString() ?? '')
 
   return (
     <div className="bg-dark-900/40 border border-dark-700 rounded-xl p-3 space-y-2">
@@ -747,9 +776,10 @@ function EditarMaterialForm({
         <Input placeholder="O que foi enviado" value={descricaoItem} onChange={(e) => setDescricaoItem(e.target.value)} />
         <Input type="number" min={1} value={quantidade} onChange={(e) => setQuantidade(Number(e.target.value))} />
       </div>
-      <div className="grid grid-cols-[90px_1fr] gap-2">
+      <div className="grid grid-cols-[90px_1fr_60px] gap-2">
         <Input placeholder="Código correto" value={codigoItemCorreto} onChange={(e) => setCodigoItemCorreto(e.target.value)} />
         <Input placeholder="Qual seria o material correto" value={descricaoItemCorreto} onChange={(e) => setDescricaoItemCorreto(e.target.value)} />
+        <Input type="number" min={1} placeholder="Qtd. certa" value={quantidadeCorreta} onChange={(e) => setQuantidadeCorreta(e.target.value)} />
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="secondary" size="sm" onClick={onCancelar}>
@@ -765,6 +795,7 @@ function EditarMaterialForm({
               quantidade,
               codigoItemCorreto: codigoItemCorreto || undefined,
               descricaoItemCorreto: descricaoItemCorreto || undefined,
+              quantidadeCorreta: quantidadeCorreta !== '' ? Number(quantidadeCorreta) : undefined,
             })
           }
         >
@@ -1082,6 +1113,7 @@ function DetalheChamadoModal({
                         <p className="text-xs text-amber-400">
                           Correto seria: {m.codigoItemCorreto ? `${m.codigoItemCorreto} — ` : ''}
                           {m.descricaoItemCorreto || '—'}
+                          {m.quantidadeCorreta != null ? ` × ${m.quantidadeCorreta}` : ''}
                         </p>
                       )}
                     </div>

@@ -30,6 +30,7 @@ import { buscarCnpj } from '../lib/brasilApi.js'
 const STATUS_VALUES = [
   'novo',
   'analise',
+  'sem_retorno_cliente',
   'em_andamento',
   'nota_fiscal_devolucao',
   'chegada_materiais',
@@ -335,6 +336,7 @@ export const devolucoesRouter = router({
               quantidade: z.number().default(1),
               codigoItemCorreto: z.string().optional(),
               descricaoItemCorreto: z.string().optional(),
+              quantidadeCorreta: z.number().optional(),
             })
           )
           .optional(),
@@ -377,6 +379,7 @@ export const devolucoesRouter = router({
           quantidade: m.quantidade,
           codigoItemCorreto: m.codigoItemCorreto,
           descricaoItemCorreto: m.descricaoItemCorreto,
+          quantidadeCorreta: m.quantidadeCorreta,
         })
       }
       await db.insert(devolucaoHistoricoStatus).values({ chamadoId, statusAnterior: null, statusNovo: 'novo', alteradoPorUserId: ctx.user.id })
@@ -673,6 +676,7 @@ export const devolucoesRouter = router({
         quantidade: z.number().default(1),
         codigoItemCorreto: z.string().optional(),
         descricaoItemCorreto: z.string().optional(),
+        quantidadeCorreta: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -688,6 +692,7 @@ export const devolucoesRouter = router({
           quantidade: input.quantidade,
           codigoItemCorreto: input.codigoItemCorreto,
           descricaoItemCorreto: input.descricaoItemCorreto,
+          quantidadeCorreta: input.quantidadeCorreta,
         })
         .where(eq(devolucaoMateriais.id, input.id))
       return { ok: true }

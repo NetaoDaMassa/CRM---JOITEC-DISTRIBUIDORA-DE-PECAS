@@ -1743,6 +1743,11 @@ export const devolucaoChamados = sqliteTable('devolucao_chamados', {
     enum: [
       'novo',
       'analise',
+      // Chamado em que já foi feita a análise, mas o cliente parou de
+      // responder — fica parado aqui até voltar a dar retorno (não é
+      // terminal, o admin arrasta de volta pra "Em andamento" se o
+      // cliente reaparecer). Pedido do João, 2026-10-14.
+      'sem_retorno_cliente',
       'em_andamento',
       'nota_fiscal_devolucao',
       'chegada_materiais',
@@ -1830,6 +1835,9 @@ export const devolucaoMateriais = sqliteTable('devolucao_materiais', {
   // material certo, preenchidos na abertura ou depois durante a análise.
   codigoItemCorreto: text('codigo_item_correto'),
   descricaoItemCorreto: text('descricao_item_correto'),
+  // Quantidade do material CERTO (pode ser diferente da `quantidade`
+  // enviada errada ali em cima) — pedido do João, 2026-10-14.
+  quantidadeCorreta: real('quantidade_correta'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 

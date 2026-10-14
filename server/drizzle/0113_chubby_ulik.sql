@@ -1,0 +1,1 @@
+ALTER TABLE `devolucao_materiais` ADD `quantidade_correta` real;
