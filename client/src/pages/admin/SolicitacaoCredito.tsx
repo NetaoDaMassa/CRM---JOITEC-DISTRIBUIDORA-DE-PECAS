@@ -59,6 +59,10 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
   const [serasaObservacao, setSerasaObservacao] = useState('')
   const [anexos, setAnexos] = useState<Anexo[]>([])
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
+  // Depois de já ter uma resposta, o formulário de nova análise fica
+  // escondido atrás desse botão — não precisa aparecer aberto pra quem só
+  // quer ver a decisão já tomada. Pedido do João, 2026-10-14.
+  const [novaAnaliseAberta, setNovaAnaliseAberta] = useState(false)
 
   const responderMut = trpc.solicitacaoCredito.responder.useMutation({
     onSuccess() {
@@ -70,6 +74,12 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
       // tela aberta numa aba já ver sem precisar recarregar.
       utils.liberacaoCredito.listar.invalidate()
       utils.liberacaoCredito.relatorio.invalidate()
+      setNovaAnaliseAberta(false)
+      setQuemLiberou('')
+      setMotivoResposta('')
+      setSerasaObservacao('')
+      setValorLiberado('')
+      setAnexos([])
     },
     onError: (e) => toast.error(e.message),
   })
@@ -163,9 +173,68 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
             <HistoricoClienteView data={historico} isLoading={carregandoHistorico} />
           </div>
 
-          {data.status === 'pendente' ? (
+          {!!data.respostas.length && (
             <div className="space-y-3 border-t border-dark-700 pt-4">
-              <p className="text-sm font-semibold text-dark-200">Responder</p>
+              <p className="text-sm font-semibold text-dark-200">
+                {data.respostas.length > 1 ? 'Histórico de análises' : 'Resposta registrada'}
+              </p>
+              {data.respostas.map((r, i) => {
+                const ehLiberado = r.status === 'liberado'
+                return (
+                  <div key={r.id} className="space-y-1 text-sm bg-dark-900/40 border border-dark-700 rounded-lg p-3">
+                    {data.respostas.length > 1 && (
+                      <p className="text-xs text-dark-500 uppercase tracking-wide font-semibold">{i + 1}ª análise</p>
+                    )}
+                    {ehLiberado &&
+                      (ehLimpo ? (
+                        <p className="text-green-400 font-medium">Cliente está limpo</p>
+                      ) : (
+                        <div>
+                          <p className="text-green-400 font-medium">Liberado — {formatarMoeda(r.valorLiberado)}</p>
+                          <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
+                        </div>
+                      ))}
+                    {!ehLiberado && <p className="text-red-400 font-medium">{ehLimpo ? 'Cliente não está limpo' : 'Negado'}</p>}
+                    {r.quemLiberou && <p className="text-dark-300 text-xs">Decidido por: {r.quemLiberou}</p>}
+                    {r.motivoResposta && <p className="text-dark-200">{r.motivoResposta}</p>}
+                    {r.serasaObservacao && (
+                      <p className="text-dark-300 text-xs">
+                        <span className="text-dark-500">Serasa:</span> {r.serasaObservacao}
+                      </p>
+                    )}
+                    {r.decididoEm && <p className="text-xs text-dark-500">{formatDateTime(r.decididoEm)}</p>}
+                  </div>
+                )
+              })}
+              {!!data.anexos.filter((a) => a.origem === 'financeiro').length && (
+                <div className="flex flex-wrap gap-2">
+                  {data.anexos
+                    .filter((a) => a.origem === 'financeiro')
+                    .map((a) => (
+                      <a key={a.id} href={a.urlArquivo} target="_blank" rel="noreferrer" className="text-xs text-gold-400 hover:underline flex items-center gap-1">
+                        <Paperclip size={10} /> {a.nomeArquivo}
+                      </a>
+                    ))}
+                </div>
+              )}
+              {!novaAnaliseAberta && (
+                <button
+                  type="button"
+                  className="text-xs text-gold-400 underline"
+                  onClick={() => {
+                    setDecisao(data.status === 'negado' ? 'liberado' : 'negado')
+                    setNovaAnaliseAberta(true)
+                  }}
+                >
+                  + Fazer nova análise (réplica)
+                </button>
+              )}
+            </div>
+          )}
+
+          {(data.status === 'pendente' || novaAnaliseAberta) && (
+            <div className="space-y-3 border-t border-dark-700 pt-4">
+              <p className="text-sm font-semibold text-dark-200">{data.respostas.length ? 'Nova análise' : 'Responder'}</p>
               <div className="flex gap-2">
                 <Button variant={decisao === 'liberado' ? 'primary' : 'secondary'} size="sm" onClick={() => setDecisao('liberado')}>
                   {ehLimpo ? 'Está limpo' : 'Liberar'}
@@ -212,42 +281,16 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
                 </div>
               </div>
 
-              <Button className="w-full" loading={responderMut.isPending} onClick={responder}>
-                Registrar resposta
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2 border-t border-dark-700 pt-4 text-sm">
-              <p className="text-sm font-semibold text-dark-200">Resposta registrada</p>
-              {data.status === 'liberado' &&
-                (ehLimpo ? (
-                  <p className="text-green-400 font-medium">Cliente está limpo</p>
-                ) : (
-                  <div>
-                    <p className="text-green-400 font-medium">Liberado — {formatarMoeda(data.valorLiberado)}</p>
-                    <p className="text-[11px] text-dark-500">Valor de limite de crédito do cliente</p>
-                  </div>
-                ))}
-              {data.status === 'negado' && <p className="text-red-400 font-medium">{ehLimpo ? 'Cliente não está limpo' : 'Negado'}</p>}
-              {data.quemLiberou && <p className="text-dark-300 text-xs">Decidido por: {data.quemLiberou}</p>}
-              {data.motivoResposta && <p className="text-dark-200">{data.motivoResposta}</p>}
-              {data.serasaObservacao && (
-                <p className="text-dark-300 text-xs">
-                  <span className="text-dark-500">Serasa:</span> {data.serasaObservacao}
-                </p>
-              )}
-              {!!data.anexos.filter((a) => a.origem === 'financeiro').length && (
-                <div className="flex flex-wrap gap-2">
-                  {data.anexos
-                    .filter((a) => a.origem === 'financeiro')
-                    .map((a) => (
-                      <a key={a.id} href={a.urlArquivo} target="_blank" rel="noreferrer" className="text-xs text-gold-400 hover:underline flex items-center gap-1">
-                        <Paperclip size={10} /> {a.nomeArquivo}
-                      </a>
-                    ))}
-                </div>
-              )}
-              {data.decididoEm && <p className="text-xs text-dark-500">{formatDateTime(data.decididoEm)}</p>}
+              <div className="flex gap-2">
+                {novaAnaliseAberta && (
+                  <Button variant="secondary" onClick={() => setNovaAnaliseAberta(false)}>
+                    Cancelar
+                  </Button>
+                )}
+                <Button className="flex-1" loading={responderMut.isPending} onClick={responder}>
+                  {data.respostas.length ? 'Registrar nova análise' : 'Registrar resposta'}
+                </Button>
+              </div>
             </div>
           )}
         </div>

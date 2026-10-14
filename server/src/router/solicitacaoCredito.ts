@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { solicitacoesCredito, solicitacaoCreditoAnexos, liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
+import { solicitacoesCredito, solicitacaoCreditoAnexos, solicitacaoCreditoRespostas, liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { buildHistoricoCliente } from './clientes.js'
 
@@ -223,15 +223,25 @@ export const solicitacaoCreditoRouter = router({
     const solicitacao = await db.query.solicitacoesCredito.findFirst({ where: eq(solicitacoesCredito.id, input.id) })
     if (!solicitacao) throw new Error('Solicitação não encontrada')
 
-    const [cliente, vendedor, anexos] = await Promise.all([
+    const [cliente, vendedor, anexos, respostas] = await Promise.all([
       db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) }),
       db.query.users.findFirst({ where: eq(users.id, solicitacao.vendedorSolicitanteId), columns: { id: true, name: true, whatsapp: true } }),
       db.query.solicitacaoCreditoAnexos.findMany({
         where: eq(solicitacaoCreditoAnexos.solicitacaoId, solicitacao.id),
         orderBy: (a, { asc }) => [asc(a.createdAt)],
       }),
+      db.query.solicitacaoCreditoRespostas.findMany({
+        where: eq(solicitacaoCreditoRespostas.solicitacaoId, solicitacao.id),
+        orderBy: (r, { asc }) => [asc(r.createdAt)],
+      }),
     ])
     const empresa = cliente ? await db.query.empresas.findFirst({ where: eq(empresas.id, cliente.empresaId) }) : null
+
+    const decisorIds = [...new Set(respostas.map((r) => r.decididoPor).filter((id): id is number => id !== null))]
+    const decisores = decisorIds.length
+      ? await db.query.users.findMany({ where: inArray(users.id, decisorIds), columns: { id: true, name: true } })
+      : []
+    const decisorPorId = new Map(decisores.map((d) => [d.id, d.name]))
 
     return {
       ...solicitacao,
@@ -241,6 +251,7 @@ export const solicitacaoCreditoRouter = router({
       vendedorNome: vendedor?.name ?? '—',
       vendedorWhatsapp: vendedor?.whatsapp ?? null,
       anexos,
+      respostas: respostas.map((r) => ({ ...r, decisorNome: r.decididoPor ? decisorPorId.get(r.decididoPor) ?? null : null })),
     }
   }),
 
@@ -267,7 +278,6 @@ export const solicitacaoCreditoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const solicitacao = await db.query.solicitacoesCredito.findFirst({ where: eq(solicitacoesCredito.id, input.id) })
       if (!solicitacao) throw new Error('Solicitação não encontrada')
-      if (solicitacao.status !== 'pendente') throw new Error('Essa solicitação já foi respondida.')
       // tipo='consulta'+'limpo' é só "está limpo ou não", sem valor nenhum
       // — pedido do João, 2026-10-05. Pros outros dois casos (consulta
       // geral e limite), valor continua obrigatório pra liberar.
@@ -276,18 +286,33 @@ export const solicitacaoCreditoRouter = router({
         throw new Error('Informe o valor liberado.')
       }
 
+      const decididoEm = agoraSqlite()
       const updates: Record<string, unknown> = {
         status: input.decisao,
         quemLiberou: input.quemLiberou.trim(),
         motivoResposta: input.motivoResposta.trim(),
         decididoPor: ctx.user.id,
-        decididoEm: agoraSqlite(),
+        decididoEm,
         updatedAt: agoraSqlite(),
       }
       if (input.decisao === 'liberado') updates.valorLiberado = input.valorLiberado
       if (input.serasaObservacao) updates.serasaObservacao = input.serasaObservacao
 
       await db.update(solicitacoesCredito).set(updates).where(eq(solicitacoesCredito.id, input.id))
+
+      // Guarda essa resposta no histórico — dá pra responder de novo depois
+      // (reavaliação: ex. cliente quitou o boleto que motivou a negativa),
+      // sem perder o registro da decisão anterior. Pedido do João, 2026-10-14.
+      await db.insert(solicitacaoCreditoRespostas).values({
+        solicitacaoId: input.id,
+        status: input.decisao,
+        valorLiberado: input.decisao === 'liberado' ? input.valorLiberado : undefined,
+        quemLiberou: input.quemLiberou.trim(),
+        motivoResposta: input.motivoResposta.trim(),
+        serasaObservacao: input.serasaObservacao,
+        decididoPor: ctx.user.id,
+        decididoEm,
+      })
 
       if (input.anexos?.length) {
         await db.insert(solicitacaoCreditoAnexos).values(

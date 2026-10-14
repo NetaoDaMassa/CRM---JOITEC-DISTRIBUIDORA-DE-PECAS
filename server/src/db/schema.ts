@@ -3485,6 +3485,7 @@ export const solicitacoesCreditoRelations = relations(solicitacoesCredito, ({ on
   vendedorSolicitante: one(users, { fields: [solicitacoesCredito.vendedorSolicitanteId], references: [users.id] }),
   decisor: one(users, { fields: [solicitacoesCredito.decididoPor], references: [users.id] }),
   anexos: many(solicitacaoCreditoAnexos),
+  respostas: many(solicitacaoCreditoRespostas),
 }))
 
 // Anexos da solicitação — vários por pedido, de qualquer tipo (print, PDF,
@@ -3503,6 +3504,32 @@ export const solicitacaoCreditoAnexos = sqliteTable('solicitacao_credito_anexos'
 
 export const solicitacaoCreditoAnexosRelations = relations(solicitacaoCreditoAnexos, ({ one }) => ({
   solicitacao: one(solicitacoesCredito, { fields: [solicitacaoCreditoAnexos.solicitacaoId], references: [solicitacoesCredito.id] }),
+}))
+
+// Histórico de TODAS as respostas de uma solicitação — antes só dava pra
+// responder uma vez (status saía de 'pendente' e travava pra sempre). Agora
+// o Financeiro pode reabrir e dar uma segunda análise (ex: cliente quitou o
+// boleto que motivou a negativa) sem perder o registro da primeira decisão.
+// A linha principal (`solicitacoesCredito.status`/`motivoResposta`/etc)
+// sempre reflete a resposta MAIS RECENTE — quem já lê direto da linha
+// (fila do financeiro, meusPedidos, Liberação de Crédito > Lançamentos)
+// continua funcionando sem mudança. Pedido do João, 2026-10-14.
+export const solicitacaoCreditoRespostas = sqliteTable('solicitacao_credito_respostas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  solicitacaoId: integer('solicitacao_id').notNull().references(() => solicitacoesCredito.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['liberado', 'negado'] }).notNull(),
+  valorLiberado: real('valor_liberado'),
+  quemLiberou: text('quem_liberou').notNull(),
+  motivoResposta: text('motivo_resposta').notNull(),
+  serasaObservacao: text('serasa_observacao'),
+  decididoPor: integer('decidido_por').references(() => users.id, { onDelete: 'set null' }),
+  decididoEm: text('decidido_em').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const solicitacaoCreditoRespostasRelations = relations(solicitacaoCreditoRespostas, ({ one }) => ({
+  solicitacao: one(solicitacoesCredito, { fields: [solicitacaoCreditoRespostas.solicitacaoId], references: [solicitacoesCredito.id] }),
+  decisor: one(users, { fields: [solicitacaoCreditoRespostas.decididoPor], references: [users.id] }),
 }))
 
 // ── Instagram (captação de leads via Direct) ────────────────────────────────
