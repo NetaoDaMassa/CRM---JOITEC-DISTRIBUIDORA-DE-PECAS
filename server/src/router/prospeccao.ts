@@ -108,8 +108,18 @@ export const prospeccaoRouter = router({
     if (!cliente) throw new Error('Prospect não encontrado')
     if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
     if (!cliente.emProspeccao) throw new Error('Só é possível descartar prospects que ainda não foram enviados pra carteira.')
+    // `emProspeccao` sozinho não é confiável — uma ferramenta de carteira
+    // (ex: redistribuição em massa) pode atribuir vendedor a um prospect sem
+    // mexer nessa flag, deixando ele com histórico de carteira mas ainda
+    // marcado "em prospecção". Sem essa checagem, "Descartar" apagava um
+    // cliente que já tinha dono de verdade (achado do João, 2026-10-14).
+    const jaTeveCarteira = await db.query.carteiraHistorico.findFirst({ where: eq(carteiraHistorico.clienteId, input.id) })
+    if (jaTeveCarteira) {
+      throw new Error('Esse cliente já teve carteira atribuída — não é mais um prospect puro, fale com o admin antes de descartar.')
+    }
 
     await db.update(clientes).set({ deletedAt: agoraSqlite() }).where(eq(clientes.id, input.id))
+    await registrarAuditoria({ tabela: 'clientes', registroId: input.id, acao: 'excluir', campo: 'em_prospeccao', valorAnterior: 'true', alteradoPor: ctx.user.id })
     return { success: true }
   }),
 

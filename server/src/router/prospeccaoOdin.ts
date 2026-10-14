@@ -21,6 +21,7 @@ import { db } from '../db/client.js'
 import { clientes, carteiraHistorico, funilMensal, users, prospeccaoRegistros, empresas } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
+import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 
 const SLUG_ODIN = 'odin-compressores'
 
@@ -57,6 +58,15 @@ function traduzErroUnico(e: unknown): never {
     throw new TRPCError({ code: 'CONFLICT', message: 'Já existe um cliente com esse código nesta empresa.' })
   }
   throw e
+}
+
+// Mesma validação/limpeza de `clientes.create` — sem isso o CNPJ ficava
+// salvo cru (com pontuação), inconsistente com o resto do cadastro e
+// deixando o índice único empresa+CNPJ incapaz de reconhecer "é o mesmo
+// CNPJ" quando digitado de novo sem pontuação. Pedido do João, 2026-10-14.
+function limparCnpjProspect(cnpj: string): string {
+  if (!cnpjValido(cnpj)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CNPJ inválido' })
+  return limparCnpj(cnpj)
 }
 
 const camposCliente = z.object({
@@ -182,7 +192,7 @@ export const prospeccaoOdinRouter = router({
         const result = await db.insert(clientes).values({
           empresaId: ctx.empresaId,
           razaoSocial: input.razaoSocial,
-          cnpj: input.cnpj || null,
+          cnpj: input.cnpj ? limparCnpjProspect(input.cnpj) : null,
           codigo: input.codigo || `P${Date.now()}`,
           regiao,
           estado: input.estado || null,
@@ -217,7 +227,7 @@ export const prospeccaoOdinRouter = router({
       if (campos.razaoSocial) patch.razaoSocial = campos.razaoSocial
       if (campos.codigo) patch.codigo = campos.codigo
       if (campos.regiao) patch.regiao = campos.regiao // NOT NULL — não zera
-      if (campos.cnpj !== undefined) patch.cnpj = campos.cnpj || null
+      if (campos.cnpj !== undefined) patch.cnpj = campos.cnpj ? limparCnpjProspect(campos.cnpj) : null
       if (campos.nomeContato !== undefined) patch.nomeContato = campos.nomeContato || null
       if (campos.telefoneWhatsapp !== undefined) patch.telefoneWhatsapp = campos.telefoneWhatsapp || null
       if (campos.email !== undefined) patch.email = campos.email || null
