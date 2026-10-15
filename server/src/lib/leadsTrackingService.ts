@@ -8,6 +8,8 @@ interface FindOrCreateLeadFromTrackingInput {
   name?: string
   phone: string
   email?: string
+  company?: string
+  observations?: string
   source: string
   utmCampaign?: string
 }
@@ -48,7 +50,7 @@ export function parseTelefone(phoneRaw: string): { ddd: number; phone: string } 
 export async function findOrCreateLeadFromTracking(
   input: FindOrCreateLeadFromTrackingInput
 ): Promise<number | null> {
-  const { empresaId, email, name, source, utmCampaign } = input
+  const { empresaId, email, name, company, observations, source, utmCampaign } = input
 
   const parsed = parseTelefone(input.phone)
   if (!parsed) return null
@@ -69,6 +71,8 @@ export async function findOrCreateLeadFromTracking(
     phone,
     ddd,
     email: email || null,
+    company: company?.trim() || null,
+    observations: observations?.trim() || null,
     source,
     vendorId,
     regionId,

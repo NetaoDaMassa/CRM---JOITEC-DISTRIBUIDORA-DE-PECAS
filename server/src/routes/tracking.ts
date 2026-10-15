@@ -12,10 +12,15 @@ import { findOrCreateLeadFromTracking } from '../lib/leadsTrackingService.js'
 // (NEXT_PUBLIC_CRM_TRACKING_URL) — ver plano da migração fase 2.
 export const trackingRouter = express.Router()
 
-const EVENT_TYPES = ['page_view', 'click', 'form_submit', 'ebook_download', 'blog_signup'] as const
+// 'meta_ads_lead' — leads do Meta Ads (Instant Forms) que caem numa
+// planilha Google via integração nativa do Meta, e de lá um Apps Script
+// manda pra cá (sem telefone/nome direto da Meta API, só o que já está na
+// planilha). Mesmo contrato dos outros eventos — vira o `source` do lead,
+// pra distinguir dos demais nos relatórios. Pedido do João, 2026-10-15.
+const EVENT_TYPES = ['page_view', 'click', 'form_submit', 'ebook_download', 'blog_signup', 'meta_ads_lead'] as const
 type EventType = (typeof EVENT_TYPES)[number]
 
-const IDENTIFYING_EVENTS: EventType[] = ['form_submit', 'ebook_download', 'blog_signup']
+const IDENTIFYING_EVENTS: EventType[] = ['form_submit', 'ebook_download', 'blog_signup', 'meta_ads_lead']
 
 trackingRouter.post('/events', async (req, res) => {
   const {
@@ -84,6 +89,11 @@ trackingRouter.post('/events', async (req, res) => {
     const phone = typeof metadata.phone === 'string' ? metadata.phone : undefined
     const email = typeof metadata.email === 'string' ? metadata.email : undefined
     const name = typeof metadata.name === 'string' ? metadata.name : undefined
+    // company/message só vêm preenchidos hoje pelo Apps Script do Meta Ads
+    // (ver instruções dadas ao João, 2026-10-15) — o tracker.js do site não
+    // manda esses campos, então ficam undefined pros eventos normais.
+    const company = typeof metadata.company === 'string' ? metadata.company : undefined
+    const message = typeof metadata.message === 'string' ? metadata.message : undefined
 
     if (IDENTIFYING_EVENTS.includes(eventType) && phone) {
       const matchedLeadId = await findOrCreateLeadFromTracking({
@@ -91,6 +101,8 @@ trackingRouter.post('/events', async (req, res) => {
         name,
         phone,
         email,
+        company,
+        observations: message,
         source: eventType,
         utmCampaign: existingVisitor?.utmCampaign ?? utmCampaign ?? undefined,
       })

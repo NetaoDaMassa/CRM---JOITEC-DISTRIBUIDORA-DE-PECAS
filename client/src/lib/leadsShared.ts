@@ -66,6 +66,7 @@ const LEAD_SOURCE_LABELS: Record<string, string> = {
   ecommerce_cadastro: 'Cadastro na loja online',
   ecommerce_carrinho_abandonado: 'Carrinho abandonado (loja online)',
   ecommerce_venda: 'Venda na loja online',
+  meta_ads_lead: 'Meta Ads (formulário de lead)',
 }
 export function labelOrigemLead(source: string | null | undefined): string {
   if (!source) return '—'
