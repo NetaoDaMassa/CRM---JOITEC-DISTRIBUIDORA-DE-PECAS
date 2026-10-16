@@ -21,7 +21,7 @@ import { calcularRelatorioDevolucaoEcommerce } from './devolucaoEcommerce.js'
 // API da Aton em vez de somar `vendas`/`funil_mensal` local.
 const CARDS_PAINEL: { cardKey: string; nome: string; slugLogo: string; empresaIds: number[]; origemExterna?: 'aton'; somaOrdensOdin?: boolean }[] = [
   { cardKey: 'joitec-distribuidora', nome: 'Joitec Distribuidora de Peças', slugLogo: 'joitec', empresaIds: [1] },
-  { cardKey: 'joitec-automacao', nome: 'Joitec Automação', slugLogo: 'joitec-automacao', empresaIds: [3] },
+  { cardKey: 'joitec-automacao', nome: 'Odin Automação', slugLogo: 'joitec-automacao', empresaIds: [3] },
   { cardKey: 'odin-tubos', nome: 'Odin Tubos e Conexões', slugLogo: 'odin-tubos', empresaIds: [2] },
   { cardKey: 'odin-compressores-comprefer', nome: 'Odin Compressores / Comprefer', slugLogo: 'odin-compressores', empresaIds: [4, 5], somaOrdensOdin: true },
   { cardKey: 'compretec-ecommerce', nome: 'Compretec E-commerce', slugLogo: 'compretec', empresaIds: [6], origemExterna: 'aton' },
