@@ -329,6 +329,83 @@ function IntegracaoOdinCrm() {
   )
 }
 
+// Manda de volta pro Meta Ads o sinal de "esse lead virou cliente
+// qualificado/venda de verdade" (Conversions API) — só pra leads que vieram
+// de lá (ver meta_ads_lead em tracking.ts). Dispara sozinho quando um desses
+// leads vira Negociação (evento "Lead") ou Ganho (evento "Purchase", com o
+// valor final do pedido) — ver changeStatus em leads.ts. Um Pixel ID + token
+// por empresa, igual o resto das integrações aqui. Pedido do João, 2026-10-16.
+function IntegracaoMetaAds() {
+  const utils = trpc.useUtils()
+  const { data: empresas, isLoading } = trpc.metaConversoes.status.useQuery()
+  const [pixelPorEmpresa, setPixelPorEmpresa] = useState<Record<number, string>>({})
+  const [tokenPorEmpresa, setTokenPorEmpresa] = useState<Record<number, string>>({})
+
+  const salvarMut = trpc.metaConversoes.salvarCredenciais.useMutation({
+    onSuccess(_data, variables) {
+      toast.success('Credenciais salvas')
+      setPixelPorEmpresa((prev) => ({ ...prev, [variables.empresaId]: '' }))
+      setTokenPorEmpresa((prev) => ({ ...prev, [variables.empresaId]: '' }))
+      utils.metaConversoes.status.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  if (isLoading) return null
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-5">
+      <div>
+        <h2 className="text-sm font-semibold text-dark-100">Integração Meta Ads (Conversions API)</h2>
+        <p className="text-xs text-dark-400 mt-1">
+          Quando um lead que veio do Meta Ads vira "Negociação" ou "Ganho", o CRM avisa o Meta — isso ajuda o
+          algoritmo dos anúncios a trazer mais gente parecida com quem realmente vira cliente, não só quem preenche o
+          formulário. Pixel ID e token de acesso ficam em Gerenciador de Negócios → Fontes de dados → Pixels → aba
+          Configurações → Conversions API.
+        </p>
+      </div>
+      {empresas?.map((e) => (
+        <div key={e.empresaId} className="space-y-2 pb-4 border-b border-dark-700 last:border-0 last:pb-0">
+          <p className="text-xs font-semibold text-dark-200">
+            {e.empresaNome} {e.configurado && <span className="text-green-400">✓ configurado</span>}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              label="Pixel ID"
+              placeholder={e.configurado ? 'Configurado — preencha pra trocar' : 'ex: 123456789012345'}
+              value={pixelPorEmpresa[e.empresaId] ?? ''}
+              onChange={(ev) => setPixelPorEmpresa((prev) => ({ ...prev, [e.empresaId]: ev.target.value }))}
+            />
+            <Input
+              label="Token de acesso"
+              type="password"
+              placeholder={e.configurado ? 'Configurado — preencha pra trocar' : 'Cole o token de acesso'}
+              value={tokenPorEmpresa[e.empresaId] ?? ''}
+              onChange={(ev) => setTokenPorEmpresa((prev) => ({ ...prev, [e.empresaId]: ev.target.value }))}
+            />
+          </div>
+          <Button
+            size="sm"
+            loading={salvarMut.isPending}
+            disabled={!pixelPorEmpresa[e.empresaId]?.trim() || !tokenPorEmpresa[e.empresaId]?.trim()}
+            onClick={() =>
+              salvarMut.mutate({
+                empresaId: e.empresaId,
+                pixelId: pixelPorEmpresa[e.empresaId],
+                accessToken: tokenPorEmpresa[e.empresaId],
+              })
+            }
+          >
+            Salvar
+          </Button>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function AdminConfiguracoes() {
   const { data, isLoading } = trpc.configuracoes.get.useQuery()
   const utils = trpc.useUtils()
@@ -359,7 +436,9 @@ export default function AdminConfiguracoes() {
   const formTemAlgoVisivel = TITULOS_SECOES_FORM.some(bate)
   const titulosForaForm = [
     'Integração GoTo Connect',
-    ...(user?.superAdmin ? ['Integração Aton ERP (Compretec)', 'Integração CRM Odin Compressores'] : []),
+    ...(user?.superAdmin
+      ? ['Integração Aton ERP (Compretec)', 'Integração CRM Odin Compressores', 'Integração Meta Ads (Conversions API)']
+      : []),
     ...(ehOdinCompressores ? ['Itens de manutenção por horas'] : []),
   ]
   const nadaEncontrado = !!buscaNorm && !formTemAlgoVisivel && !titulosForaForm.some(bate)
@@ -613,6 +692,7 @@ export default function AdminConfiguracoes() {
 
       {user?.superAdmin && bate('Integração Aton ERP (Compretec)') && <IntegracaoAton />}
       {user?.superAdmin && bate('Integração CRM Odin Compressores') && <IntegracaoOdinCrm />}
+      {user?.superAdmin && bate('Integração Meta Ads (Conversions API)') && <IntegracaoMetaAds />}
 
       {ehOdinCompressores && bate('Itens de manutenção por horas') && <ItensManutencao />}
     </div>

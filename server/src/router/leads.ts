@@ -24,6 +24,7 @@ import {
 import { getVendorByDDD, getRegionIdByDDD, assignNextVendor } from '../lib/leadsRoundRobin.js'
 import { validateNextContactLimit, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
+import { enviarEventoMeta } from '../lib/metaConversionsApi.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
@@ -710,6 +711,36 @@ export const leadsRouter = router({
           title: 'Lead desqualificado precisa de revisão',
           message: `O lead "${existing.name}" foi desqualificado e caiu pra você revisar o motivo.`,
         })
+      }
+
+      // Fecha o loop com o Meta Ads: lead que veio de lá e virou
+      // qualificado/venda de verdade manda esse sinal de volta, pro
+      // algoritmo aprender a trazer mais gente parecida (em vez de só
+      // otimizar pra "preencheu o formulário"). Só pra leads de origem
+      // meta_ads_lead — não dispara erro nem trava a troca de etapa se a
+      // integração não estiver configurada ou falhar. Pedido do João,
+      // 2026-10-16.
+      if (existing.source === 'meta_ads_lead') {
+        if (input.status === 'em_negociacao') {
+          void enviarEventoMeta({
+            empresaId: existing.empresaId,
+            eventName: 'Lead',
+            phone: existing.phone,
+            ddd: existing.ddd,
+            email: existing.email,
+            eventId: `lead-${existing.id}-qualificado`,
+          })
+        } else if (input.status === 'ganho') {
+          void enviarEventoMeta({
+            empresaId: existing.empresaId,
+            eventName: 'Purchase',
+            phone: existing.phone,
+            ddd: existing.ddd,
+            email: existing.email,
+            value: input.finalOrderValue,
+            eventId: `lead-${existing.id}-ganho`,
+          })
+        }
       }
 
       return { success: true }

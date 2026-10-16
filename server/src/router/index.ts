@@ -35,6 +35,7 @@ import { emailsRouter } from './emails.js'
 import { activityRouter } from './activity.js'
 import { caixaRouter } from './caixa.js'
 import { comprasRouter } from './compras.js'
+import { metaConversoesRouter } from './metaConversoes.js'
 import { permissoesRouter } from './permissoes.js'
 import { funcaoTemplatesRouter } from './funcaoTemplates.js'
 import { vagasRouter } from './vagas.js'
@@ -111,6 +112,7 @@ export const appRouter = router({
   activity: activityRouter,
   caixa: caixaRouter,
   compras: comprasRouter,
+  metaConversoes: metaConversoesRouter,
   permissoes: permissoesRouter,
   funcaoTemplates: funcaoTemplatesRouter,
   vagas: vagasRouter,
