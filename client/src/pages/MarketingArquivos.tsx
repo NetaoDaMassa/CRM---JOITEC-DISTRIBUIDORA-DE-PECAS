@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
-  Folder, FolderPlus, FolderUp, Upload, Download, Trash2, ChevronRight, Home,
+  Folder, FolderPlus, FolderUp, FolderInput, Upload, Download, Trash2, ChevronRight, Home,
   FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock, MessageCircle,
 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
+import Select from '../components/ui/Select'
 import { formatDateTime } from '../lib/utils'
 import { buildNotificarAnexoWaLink } from '../lib/marketingWhatsapp'
 
@@ -275,6 +276,8 @@ export default function MarketingArquivos() {
   const [enviando, setEnviando] = useState(false)
   const [verDownloadsDe, setVerDownloadsDe] = useState<{ id: number; nome: string } | null>(null)
   const [renomeando, setRenomeando] = useState<{ tipo: 'pasta' | 'arquivo'; id: number; nome: string } | null>(null)
+  const [movendo, setMovendo] = useState<{ tipo: 'pasta' | 'arquivo'; id: number; nome: string } | null>(null)
+  const [pastaDestinoEscolhida, setPastaDestinoEscolhida] = useState('')
   const [gerenciandoAcesso, setGerenciandoAcesso] = useState<{ id: number; nome: string } | null>(null)
   const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
   const [visualizando, setVisualizando] = useState<{ id: number; nomeOriginal: string; tipoArquivo: string | null } | null>(null)
@@ -294,6 +297,7 @@ export default function MarketingArquivos() {
   const { data: pastas, isLoading: carregandoPastas, error: erroPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
   const { data: arquivos, isLoading: carregandoArquivos } = trpc.marketing.listarArquivos.useQuery(argPasta)
   const { data: trilha } = trpc.marketing.caminhoPasta.useQuery({ pastaId: pastaAtualId! }, { enabled: pastaAtualId != null })
+  const { data: todasPastas } = trpc.marketing.listarTodasPastas.useQuery(undefined, { enabled: isAdmin && !!movendo })
   const { data: todosUsuarios } = trpc.users.list.useQuery()
   const nomePastaAtual = pastaAtualId == null ? 'Raiz' : (trilha?.[trilha.length - 1]?.nome ?? '')
   // Só admin com WhatsApp cadastrado (em Usuários) pode receber o aviso —
@@ -358,6 +362,26 @@ export default function MarketingArquivos() {
   const excluirPastaMut = trpc.marketing.excluirPasta.useMutation({
     onSuccess() {
       toast.success('Pasta excluída')
+      invalidarLista()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  function fecharMover() {
+    setMovendo(null)
+    setPastaDestinoEscolhida('')
+  }
+  const moverPastaMut = trpc.marketing.moverPasta.useMutation({
+    onSuccess() {
+      toast.success('Pasta movida')
+      fecharMover()
+      invalidarLista()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  const moverArquivoMut = trpc.marketing.moverArquivo.useMutation({
+    onSuccess() {
+      toast.success('Arquivo movido')
+      fecharMover()
       invalidarLista()
     },
     onError: (e) => toast.error(e.message),
@@ -550,6 +574,9 @@ export default function MarketingArquivos() {
                   <button onClick={() => setRenomeando({ tipo: 'pasta', id: pasta.id, nome: pasta.nome })} className="text-dark-400 hover:text-gold-400">
                     <Pencil size={14} />
                   </button>
+                  <button onClick={() => setMovendo({ tipo: 'pasta', id: pasta.id, nome: pasta.nome })} className="text-dark-400 hover:text-gold-400" title="Mover pasta">
+                    <FolderInput size={14} />
+                  </button>
                   <button
                     onClick={() => {
                       if (confirm(`Excluir a pasta "${pasta.nome}"? Isso apaga também tudo que estiver dentro dela.`)) excluirPastaMut.mutate({ id: pasta.id })
@@ -613,6 +640,15 @@ export default function MarketingArquivos() {
                       title="Renomear arquivo"
                     >
                       <Pencil size={13} />
+                    </button>
+                  )}
+                  {isAdmin && (
+                    <button
+                      onClick={() => setMovendo({ tipo: 'arquivo', id: arquivo.id, nome: arquivo.nomeOriginal })}
+                      className="text-dark-400 hover:text-gold-400"
+                      title="Mover arquivo"
+                    >
+                      <FolderInput size={13} />
                     </button>
                   )}
                   {isAdmin && (
@@ -695,6 +731,36 @@ export default function MarketingArquivos() {
                 }
               >
                 Salvar
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal open={!!movendo} onClose={fecharMover} title={movendo?.tipo === 'arquivo' ? `Mover "${movendo?.nome ?? ''}"` : `Mover pasta "${movendo?.nome ?? ''}"`} size="sm">
+        {movendo && (
+          <div className="space-y-4">
+            <Select
+              label="Pasta de destino"
+              value={pastaDestinoEscolhida}
+              onChange={(e) => setPastaDestinoEscolhida(e.target.value)}
+              placeholder="Raiz (fora de qualquer pasta)"
+              options={(todasPastas ?? [])
+                .filter((p) => !(movendo.tipo === 'pasta' && p.id === movendo.id))
+                .map((p) => ({ value: String(p.id), label: p.caminho }))}
+            />
+            <div className="flex gap-3">
+              <Button variant="secondary" className="flex-1" onClick={fecharMover}>Cancelar</Button>
+              <Button
+                className="flex-1"
+                loading={moverPastaMut.isPending || moverArquivoMut.isPending}
+                onClick={() => {
+                  const pastaDestinoId = pastaDestinoEscolhida ? Number(pastaDestinoEscolhida) : undefined
+                  if (movendo.tipo === 'arquivo') moverArquivoMut.mutate({ id: movendo.id, pastaDestinoId })
+                  else moverPastaMut.mutate({ id: movendo.id, pastaDestinoId })
+                }}
+              >
+                Mover
               </Button>
             </div>
           </div>

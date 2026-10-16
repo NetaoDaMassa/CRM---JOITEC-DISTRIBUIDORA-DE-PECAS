@@ -170,6 +170,47 @@ export const marketingRouter = router({
     return { ok: true }
   }),
 
+  // Move a pasta pra dentro de outra (ou pra raiz, pastaDestinoId ausente) —
+  // pedido do João, 2026-10-16: reorganizar a árvore sem precisar recriar
+  // nada. Bloqueia mover uma pasta pra dentro dela mesma ou de uma
+  // subpasta dela (criaria um laço sem fim na árvore) — acha todas as
+  // descendentes com o mesmo "sobe a árvore" de excluirPasta logo abaixo.
+  moverPasta: adminProcedure
+    .input(z.object({ id: z.number(), pastaDestinoId: z.number().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.id)
+      if (input.pastaDestinoId) await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaDestinoId)
+
+      if (input.pastaDestinoId === input.id) throw new Error('Não dá pra mover uma pasta pra dentro dela mesma')
+
+      if (input.pastaDestinoId) {
+        const todasDaEmpresa = await db.query.marketingPastas.findMany({
+          where: eq(marketingPastas.empresaId, ctx.empresaId),
+          columns: { id: true, pastaPaiId: true },
+        })
+        const descendentes = new Set<number>([input.id])
+        let cresceu = true
+        while (cresceu) {
+          cresceu = false
+          for (const p of todasDaEmpresa) {
+            if (p.pastaPaiId !== null && descendentes.has(p.pastaPaiId) && !descendentes.has(p.id)) {
+              descendentes.add(p.id)
+              cresceu = true
+            }
+          }
+        }
+        if (descendentes.has(input.pastaDestinoId)) {
+          throw new Error('Não dá pra mover uma pasta pra dentro de uma subpasta dela mesma')
+        }
+      }
+
+      await db
+        .update(marketingPastas)
+        .set({ pastaPaiId: input.pastaDestinoId ?? null })
+        .where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
+      return { ok: true }
+    }),
+
   // Exclui a pasta, subpastas e arquivos dentro (cascade no banco) — aviso
   // "isso vai apagar N arquivos" fica por conta do front antes de confirmar.
   excluirPasta: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
@@ -313,6 +354,19 @@ export const marketingRouter = router({
       await db
         .update(marketingArquivos)
         .set({ somenteVisualizacao: input.somenteVisualizacao })
+        .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
+      return { ok: true }
+    }),
+
+  // Move o arquivo pra outra pasta (ou pra raiz, pastaDestinoId ausente).
+  // Pedido do João, 2026-10-16.
+  moverArquivo: adminProcedure
+    .input(z.object({ id: z.number(), pastaDestinoId: z.number().optional() }))
+    .mutation(async ({ ctx, input }) => {
+      if (input.pastaDestinoId) await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaDestinoId)
+      await db
+        .update(marketingArquivos)
+        .set({ pastaId: input.pastaDestinoId ?? null })
         .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
       return { ok: true }
     }),
