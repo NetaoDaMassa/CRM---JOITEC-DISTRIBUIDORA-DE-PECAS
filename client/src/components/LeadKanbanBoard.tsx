@@ -41,6 +41,7 @@ type LeadCard = {
   finalConsumerReason: string | null
   vendor?: { name: string } | null
   fromSite?: boolean
+  source?: string | null
   convertidoParaPropostaId?: number | null
   reassignedFrom?: { name: string; type: 'rodizio' | 'transferencia'; at: string; stage: string | null } | null
   observations?: string | null
@@ -227,9 +228,13 @@ export default function LeadKanbanBoard({
                         </Badge>
                       )}
 
-                      {lead.fromSite && (
+                      {(lead.fromSite || lead.source === 'meta_ads_lead') && (
                         <div className="mb-2">
-                          <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                          {lead.source === 'meta_ads_lead' ? (
+                            <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40">📱 Meta Ads</Badge>
+                          ) : (
+                            <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                          )}
                         </div>
                       )}
 

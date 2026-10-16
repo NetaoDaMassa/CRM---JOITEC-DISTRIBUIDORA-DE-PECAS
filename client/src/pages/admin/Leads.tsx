@@ -292,10 +292,16 @@ export default function Leads() {
                         <p className="text-xs text-dark-500">
                           {leadTelefoneFormatado(lead.ddd, lead.phone)} {lead.company ? `· ${lead.company}` : ''}
                         </p>
-                        {lead.fromSite && (
+                        {lead.source === 'meta_ads_lead' ? (
                           <div className="mt-1">
-                            <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                            <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40">📱 Meta Ads</Badge>
                           </div>
+                        ) : (
+                          lead.fromSite && (
+                            <div className="mt-1">
+                              <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+                            </div>
+                          )
                         )}
                         {lead.fromEmailMarketing && (
                           <div className="mt-1">

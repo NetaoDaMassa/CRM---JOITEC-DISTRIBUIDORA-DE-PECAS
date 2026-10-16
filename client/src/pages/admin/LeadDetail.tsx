@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Paperclip, Trash2, ArrowLeft, ShieldAlert, Phone, Mail, Building2, MapPin, Calendar, Clock,
-  MessageSquare, Repeat2, Bell, Eye, MousePointerClick, FileText, Download, ChevronDown, Hash, AlertCircle, Pencil,
+  MessageSquare, Repeat2, Bell, Eye, MousePointerClick, FileText, Download, ChevronDown, Hash, AlertCircle, Pencil, Smartphone,
 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
@@ -62,6 +62,7 @@ const TRACKING_EVENT_LABELS: Record<string, string> = {
   form_submit: 'Preencheu um formulário',
   ebook_download: 'Baixou um material',
   blog_signup: 'Assinou o blog',
+  meta_ads_lead: 'Preencheu formulário no Meta Ads (Instagram/Facebook)',
 }
 const TRACKING_EVENT_ICONS: Record<string, typeof Eye> = {
   page_view: Eye,
@@ -69,6 +70,7 @@ const TRACKING_EVENT_ICONS: Record<string, typeof Eye> = {
   form_submit: FileText,
   ebook_download: Download,
   blog_signup: Bell,
+  meta_ads_lead: Smartphone,
 }
 
 const NOTE_TYPE_ICONS: Record<string, { icon: typeof MessageSquare; classes: string }> = {
@@ -310,7 +312,11 @@ export default function LeadDetail() {
               {urgency?.atrasado && (
                 <Badge className="text-red-400 bg-red-900/20 border-red-700/40">Atrasado {timeAgo(lead.nextContactAt!)}</Badge>
               )}
-              {tracking && tracking.length > 0 && <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>}
+              {lead.source === 'meta_ads_lead' ? (
+                <Badge className="text-purple-400 bg-purple-900/20 border-purple-700/40">📱 Meta Ads</Badge>
+              ) : (
+                tracking && tracking.length > 0 && <Badge className="text-cyan-400 bg-cyan-900/20 border-cyan-700/40">🌐 Veio do site</Badge>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">

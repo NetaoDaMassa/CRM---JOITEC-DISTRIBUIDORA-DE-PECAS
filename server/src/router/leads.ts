@@ -209,7 +209,11 @@ export const leadsRouter = router({
       // precisa do join acima porque `source` sozinho não é confiável lá).
       const allLeads = rawLeads.map((l) => ({
         ...l,
-        fromSite: siteLeadIds.has(l.id),
+        // 'meta_ads_lead' também cria um leadTrackingVisitors (visitante
+        // sintético da planilha, não alguém navegando no site) — sem essa
+        // exclusão, lead vindo de Instant Form do Meta Ads aparecia com a
+        // etiqueta errada "Veio do site". Pedido do João, 2026-10-16.
+        fromSite: siteLeadIds.has(l.id) && l.source !== 'meta_ads_lead',
         fromEmailMarketing: l.source?.startsWith('brevo_') ?? false,
       }))
 
