@@ -53,6 +53,11 @@ function mesAtualStr(): string {
 
 const STATUS_COLORS_HEX = ['#f59e0b', '#22c55e', '#ef4444']
 
+// Bloco "N pedido(s) com alerta" (pedido parado em Coleta/Preparação etc.)
+// desligado a pedido do João, 2026-10-19 — não está sendo usado; voltar
+// pra `true` quando quiserem de novo (o cálculo no server continua igual).
+const MOSTRAR_ALERTAS_PEDIDOS = false
+
 // Qual card do topo está aberto no modal — cada um reaproveita a lista já
 // trazida pelo resumo (pedidos/propostas/visitas/máquinas), só filtrando/
 // exibindo colunas diferentes por card.
@@ -279,7 +284,7 @@ export default function DashboardOdin() {
 
       <EquipesOdin dataDe={dataDe || undefined} dataAte={dataAte || undefined} isAdmin={isAdmin} />
 
-      {data.alertas.length > 0 && (
+      {MOSTRAR_ALERTAS_PEDIDOS && data.alertas.length > 0 && (
         <div className="bg-dark-800 border-l-4 border-red-500 rounded-2xl p-4">
           <div className="flex items-center gap-2 mb-2">
             <AlertTriangle size={16} className="text-red-500 shrink-0" />
