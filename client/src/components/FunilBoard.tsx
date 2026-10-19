@@ -349,6 +349,9 @@ export default function FunilBoard({
   apenasEtapas,
   coberturaMes,
   coberturaVendedorId,
+  coberturaTodos,
+  limitePorColuna,
+  nomeVendedor,
 }: {
   cards: Card[]
   // Mês (YYYY-MM-01) pra mostrar o widget "Cobertura de contatos". Sem isso,
@@ -356,6 +359,13 @@ export default function FunilBoard({
   coberturaMes?: string
   // Só o admin passa (qual vendedor). Vendedor não passa — o backend usa ele mesmo.
   coberturaVendedorId?: number
+  // Admin em "Todos os vendedores" — cobertura da empresa inteira.
+  coberturaTodos?: boolean
+  // Board com todos os vendedores pode passar de 3 mil cards (Joitec/Tubos)
+  // — mostra só os N primeiros de cada coluna + botão "Mostrar mais".
+  limitePorColuna?: number
+  // Nome do dono do card, mostrado no card quando o board mistura vendedores.
+  nomeVendedor?: (vendedorId: number) => string | undefined
   permitirVendaRapida?: boolean
   // Só o admin usa isso: qual vendedor recebe o crédito da venda rápida
   // registrada por ele (o vendor/Kanban.tsx não passa — lá é sempre o
@@ -388,6 +398,7 @@ export default function FunilBoard({
   // no WhatsApp registrando um contato pendente), o modal aberto reflete o
   // dado novo em vez de continuar mostrando o snapshot de quando abriu.
   const [cardAbertoId, setCardAbertoId] = useState<number | null>(null)
+  const [extrasPorColuna, setExtrasPorColuna] = useState<Record<string, number>>({})
   const cardAberto = cards.find((c) => c.funilMensalId === cardAbertoId) ?? null
   const [busca, setBusca] = useState('')
   const [ordenacao, setOrdenacao] = useState('padrao')
@@ -495,7 +506,7 @@ export default function FunilBoard({
   // reclamando que o número "não bate" na hora (na real a conta bate com o
   // que está registrado, só não atualizava sem dar F5).
   const { data: cobertura } = trpc.funil.coberturaContatos.useQuery(
-    { vendedorId: coberturaVendedorId, mesReferencia: coberturaMes },
+    { vendedorId: coberturaVendedorId, todos: coberturaTodos, mesReferencia: coberturaMes },
     { enabled: !!coberturaMes, refetchInterval: 10_000 },
   )
   const percentualContatados = cobertura?.percentual ?? 0
@@ -603,6 +614,8 @@ export default function FunilBoard({
       <div ref={boardRef} onScroll={sincronizarDoBoard} className="flex gap-4 overflow-x-auto pb-4">
         {etapasVisiveis.map((etapa) => {
           const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value)
+          const limiteColuna = limitePorColuna ? (extrasPorColuna[etapa.value] ?? 0) + limitePorColuna : Infinity
+          const cardsVisiveis = colCards.length > limiteColuna ? colCards.slice(0, limiteColuna) : colCards
           return (
             <div key={etapa.value} className="shrink-0 w-72">
               <div className="flex items-center gap-2 mb-3">
@@ -615,7 +628,7 @@ export default function FunilBoard({
                 </Button>
               )}
               <div className="space-y-2">
-                {colCards.map((card) => {
+                {cardsVisiveis.map((card) => {
                   const ultimoContato = card.contatos[0]
                   const pendente = !!ultimoContato && !ultimoContato.resultado
                   const sugestao = sugestaoProximoPasso(card)
@@ -631,6 +644,9 @@ export default function FunilBoard({
                         </div>
                         <div className="pt-1">
                           <p className="text-sm font-medium text-dark-100 leading-tight">{nomeComPedido(card)}</p>
+                          {nomeVendedor && nomeVendedor(card.vendedorId) && (
+                            <p className="text-[11px] text-dark-500 leading-tight">👤 {nomeVendedor(card.vendedorId)}</p>
+                          )}
                           {card.orcamentoLabel && (
                             <p className="text-xs text-gold-400 font-medium">{card.orcamentoLabel}</p>
                           )}
@@ -737,6 +753,15 @@ export default function FunilBoard({
                     </div>
                   )
                 })}
+                {colCards.length > cardsVisiveis.length && (
+                  <button
+                    type="button"
+                    onClick={() => setExtrasPorColuna((prev) => ({ ...prev, [etapa.value]: (prev[etapa.value] ?? 0) + (limitePorColuna ?? 0) }))}
+                    className="w-full rounded-xl border border-dashed border-dark-600 py-2 text-xs text-dark-400 hover:text-gold-400 hover:border-gold-600/50 transition-colors"
+                  >
+                    Mostrar mais ({colCards.length - cardsVisiveis.length} restantes)
+                  </button>
+                )}
                 {colCards.length === 0 && (
                   <div className="h-20 border-2 border-dashed border-dark-700 rounded-xl flex items-center justify-center text-dark-600 text-xs">
                     Vazio

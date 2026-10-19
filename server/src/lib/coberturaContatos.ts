@@ -167,6 +167,40 @@ export async function coberturaContatosVendedor(
   }
 }
 
+// Cobertura da empresa toda (Kanban do admin em "Todos os vendedores" —
+// pedido do João, 2026-10-19: abrir já mostrando o total). Soma a cobertura
+// de cada vendedor que tem carteira na empresa — a regra de agrupamento por
+// CNPJ vinculado é por vendedor, então somar as partes é o mesmo critério
+// que cada vendedor já vê no Kanban dele.
+export async function coberturaContatosEmpresa(empresaId: number, mesReferencia: string = mesReferenciaAtual()): Promise<Cobertura> {
+  const donos = await db
+    .selectDistinct({ vendedorId: clientes.vendedorAtualId })
+    .from(clientes)
+    .where(and(eq(clientes.empresaId, empresaId), eq(clientes.emProspeccao, false), isNull(clientes.deletedAt)))
+  const partes = await Promise.all(
+    donos.filter((d): d is { vendedorId: number } => d.vendedorId != null).map((d) => coberturaContatosVendedor(empresaId, d.vendedorId, mesReferencia)),
+  )
+  const total = partes.reduce((a, p) => a + p.total, 0)
+  const contatados = partes.reduce((a, p) => a + p.contatados, 0)
+  const diasUteisMes = diasUteisNoMes(mesReferencia)
+  const diasUteisAteHoje = Math.min(diasUteisMes, diasUteisDecorridos(mesReferencia))
+  const mediaEsperadaPorDia = diasUteisMes > 0 ? total / diasUteisMes : 0
+  const metaAcumuladaAteHoje = Math.round(mediaEsperadaPorDia * diasUteisAteHoje)
+  return {
+    total,
+    contatados,
+    semContato: total - contatados,
+    percentual: total ? Math.round((contatados / total) * 100) : 0,
+    mediaEsperadaPorDia,
+    diasUteisMes,
+    diasUteisAteHoje,
+    metaAcumuladaAteHoje,
+    naMedia: contatados >= metaAcumuladaAteHoje,
+    faltamParaMeta: Math.max(0, metaAcumuladaAteHoje - contatados),
+    percentualIdealHoje: diasUteisMes > 0 ? Math.round((diasUteisAteHoje / diasUteisMes) * 100) : 0,
+  }
+}
+
 // Pro alerta "cliente sem contato": pra cada cliente que tem card no mês,
 // devolve { ultimo, raiz } — a data do ÚLTIMO contato do GRUPO (cliente +
 // vinculados do mesmo vendedor) naquele mês (ou null se o grupo não teve

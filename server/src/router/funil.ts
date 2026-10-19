@@ -6,7 +6,7 @@ import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitaco
 import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
-import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
+import { coberturaContatosVendedor, coberturaContatosEmpresa } from '../lib/coberturaContatos.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { SLUG_VENDA_RAPIDA } from './vendas.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
@@ -157,7 +157,10 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     const funilA = funilPorClienteId.get(v.clienteId)
     const funilB = funilPorClienteId.get(v.clienteVinculadoId)
 
-    if (funilA && funilB) {
+    // Só funde quando os dois cards são do MESMO vendedor — no Kanban do
+    // admin em "Todos os vendedores" o board mistura donos diferentes, e
+    // fundir ali esconderia o card de um deles.
+    if (funilA && funilB && funilA.vendedorId === funilB.vendedorId) {
       // Os dois têm card aqui — funde no card de quem vinculou primeiro
       // (`clienteId` é sempre o cliente de onde o vendedor clicou "vincular",
       // `clienteVinculadoId` é o que ele buscou e escolheu) — não no mais
@@ -337,18 +340,24 @@ export const funilRouter = router({
   // ele acompanha tudo que cada vendedor está fazendo, não só os números
   // agregados dos relatórios/painel de TV. Pode editar/excluir os contatos
   // de qualquer vendedor (mesma regra que já vale em `contatos.editar`).
+  // Sem vendedorId = "Todos os vendedores": cards de todos os clientes da
+  // empresa ativa num board só (pedido do João, 2026-10-19 — admin abre o
+  // Kanban já vendo o total, não o 1º vendedor da lista).
   funilPorVendedor: adminProcedure
-    .input(z.object({ vendedorId: z.number(), mesReferencia: z.string().optional() }))
+    .input(z.object({ vendedorId: z.number().optional(), mesReferencia: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      return buscarFunilDoVendedor(input.vendedorId, ctx.user.id, true, input.mesReferencia)
+      if (input.vendedorId) return buscarFunilDoVendedor(input.vendedorId, ctx.user.id, true, input.mesReferencia)
+      const daEmpresa = db.select({ id: clientes.id }).from(clientes).where(eq(clientes.empresaId, ctx.empresaId))
+      return buscarFunilComFiltro(inArray(funilMensal.clienteId, daEmpresa), ctx.user.id, true, input.mesReferencia)
     }),
 
   // Cobertura de contato do mês (widget do Kanban). Denominador = carteira
   // inteira do vendedor; conta qualquer tipo de contato; CNPJ vinculado do
   // mesmo vendedor propaga. Vendedor vê a própria; admin passa vendedorId.
   coberturaContatos: protectedProcedure
-    .input(z.object({ vendedorId: z.number().optional(), mesReferencia: z.string().optional() }).optional())
+    .input(z.object({ vendedorId: z.number().optional(), todos: z.boolean().optional(), mesReferencia: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
+      if (ctx.user.role === 'admin' && input?.todos) return coberturaContatosEmpresa(ctx.empresaId, input.mesReferencia ?? mesReferenciaAtual())
       const alvo = ctx.user.role === 'admin' && input?.vendedorId ? input.vendedorId : ctx.user.id
       return coberturaContatosVendedor(ctx.empresaId, alvo, input?.mesReferencia ?? mesReferenciaAtual())
     }),
