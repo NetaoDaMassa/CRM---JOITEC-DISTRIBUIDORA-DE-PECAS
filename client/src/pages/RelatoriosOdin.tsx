@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { BarChart3, Download, RefreshCw, Search, Package, Clock, CheckCircle2, XCircle, CalendarRange, Info } from 'lucide-react'
+import { BarChart3, Download, RefreshCw, Search, Package, Clock, CheckCircle2, XCircle, CalendarRange, Info, ChevronLeft, ChevronRight, ChevronDown, MapPin, PenLine, FileText, Handshake } from 'lucide-react'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
@@ -11,6 +11,7 @@ import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 import Modal from '../components/ui/Modal'
+import AvatarMeta from '../components/ui/AvatarMeta'
 import { STAGE_LABELS, STAGE_COLORS, type Stage } from '../lib/ordensShared'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
@@ -46,8 +47,9 @@ type RouterOutputs = inferRouterOutputs<AppRouter>
 type MarketingData = RouterOutputs['relatoriosOdin']['marketing']
 type Filtro = { dataDe?: string; dataAte?: string; vendedorId?: number }
 
-type TabKey = 'pedidos' | 'propostas' | 'pipeline' | 'posVenda' | 'faturamento' | 'maquinas' | 'marketing'
+type TabKey = 'semanal' | 'pedidos' | 'propostas' | 'pipeline' | 'posVenda' | 'faturamento' | 'maquinas' | 'marketing'
 const TAB_LABELS: Record<TabKey, string> = {
+  semanal: 'Semanal por Vendedor',
   pedidos: 'Pedidos em Processo',
   marketing: 'Marketing & Propostas',
   posVenda: 'Pós-Venda',
@@ -56,7 +58,7 @@ const TAB_LABELS: Record<TabKey, string> = {
   propostas: 'Propostas',
   faturamento: 'Faturamento',
 }
-const TAB_ORDEM: TabKey[] = ['pedidos', 'marketing', 'posVenda', 'maquinas', 'pipeline', 'propostas', 'faturamento']
+const TAB_ORDEM: TabKey[] = ['semanal', 'pedidos', 'marketing', 'posVenda', 'maquinas', 'pipeline', 'propostas', 'faturamento']
 
 // Cartão de indicador — ícone num quadrado colorido + valor + rótulo,
 // mesmo padrão do KpiCard de Relatorios.tsx no odincrm original.
@@ -214,6 +216,7 @@ export default function RelatoriosOdin() {
         </div>
       )}
 
+      {tab === 'semanal' && <RelatorioSemanalVendedores />}
       {tab === 'pedidos' && <RelatorioPedidosProcesso filtro={filtro} />}
       {tab === 'propostas' && <RelatorioPropostas filtro={filtro} />}
       {tab === 'pipeline' && <RelatorioPipeline filtro={filtro} />}
@@ -701,5 +704,292 @@ function RelatorioMarketing({ filtro }: { filtro: Filtro }) {
         </div>
       )}
     </div>
+  )
+}
+
+// ── Semanal por Vendedor ────────────────────────────────────────────────
+// Relatório individual da semana (segunda a domingo) — pedido do João
+// 2026-10-19. Regras no server (relatoriosOdin.semanalVendedores).
+
+type SemanalData = RouterOutputs['relatoriosOdin']['semanalVendedores']
+type SemanalVendedor = SemanalData['vendedores'][number]
+
+function segundaDaSemana(d: Date): string {
+  const local = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  local.setDate(local.getDate() - ((local.getDay() + 6) % 7))
+  return `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`
+}
+
+function somarDias(ymd: string, dias: number): string {
+  const [a, m, d] = ymd.split('-').map(Number)
+  return segundaDaSemana(new Date(a, m - 1, d + dias))
+}
+
+function ddmm(ymd: string): string {
+  const [, m, d] = ymd.slice(0, 10).split('-')
+  return `${d}/${m}`
+}
+
+function formatarDuracao(min: number | null): string {
+  if (min == null) return '—'
+  if (min < 60) return `${min}min`
+  const h = Math.floor(min / 60)
+  const r = min % 60
+  return r ? `${h}h${String(r).padStart(2, '0')}` : `${h}h`
+}
+
+// `dataVisita` já é horário de Brasília ("2026-10-19T14:30") — só formata.
+function formatarDataVisita(dv: string): string {
+  const [data, hora] = dv.replace(' ', 'T').split('T')
+  return `${ddmm(data)}${hora ? ` ${hora.slice(0, 5)}` : ''}`
+}
+
+const RESULTADO_VISITA: Record<string, string> = {
+  gerar_proposta: 'Gerou proposta',
+  follow_up: 'Follow-up',
+  sem_interesse: 'Sem interesse',
+  nao_encontrado: 'Não encontrado',
+}
+
+function baixarCsvSemanal(data: SemanalData) {
+  const linhas = [
+    'Vendedor;Equipe;Visitas;Com GPS;Manual;Tempo medio (min);Visitas com tempo;Sem check-out;Propostas;Fechamentos;Valor fechado',
+    ...data.vendedores.map((v) =>
+      [
+        v.nome,
+        v.canalVenda === 'leads' ? 'Leads' : 'Campo',
+        v.visitasTotal,
+        v.visitasGps,
+        v.visitasManual,
+        v.tempoMedioMin ?? '',
+        v.visitasComTempo,
+        v.visitasSemCheckout,
+        v.qtdPropostas,
+        v.qtdFechamentos,
+        v.valorFechado.toFixed(2).replace('.', ','),
+      ].join(';')
+    ),
+    [
+      'TOTAL',
+      '',
+      data.totais.visitas,
+      data.totais.visitasGps,
+      data.totais.visitasManual,
+      data.totais.tempoMedioMin ?? '',
+      '',
+      data.totais.visitasSemCheckout,
+      data.totais.propostas,
+      data.totais.fechamentos,
+      data.totais.valorFechado.toFixed(2).replace('.', ','),
+    ].join(';'),
+  ]
+  baixarCsv(`relatorio_semanal_vendedores_${data.inicio}_a_${data.fim}.csv`, linhas)
+}
+
+function RelatorioSemanalVendedores() {
+  const [semana, setSemana] = useState(() => segundaDaSemana(new Date()))
+  const [aberto, setAberto] = useState<number | null>(null)
+  const { data, isLoading } = trpc.relatoriosOdin.semanalVendedores.useQuery({ semana })
+  const semanaAtual = segundaDaSemana(new Date())
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setSemana(somarDias(semana, -7))}
+            className="rounded-lg border border-dark-600 p-2 text-dark-300 hover:bg-dark-800"
+            title="Semana anterior"
+          >
+            <ChevronLeft size={16} />
+          </button>
+          <div className="text-center min-w-[190px]">
+            <p className="text-sm font-semibold text-dark-50">
+              {data ? `${ddmm(data.inicio)} a ${ddmm(data.fim)}` : '…'} {semana === semanaAtual && <span className="text-gold-400">(esta semana)</span>}
+            </p>
+            <p className="text-[11px] text-dark-500">segunda a domingo</p>
+          </div>
+          <button
+            onClick={() => setSemana(somarDias(semana, 7))}
+            disabled={semana >= semanaAtual}
+            className="rounded-lg border border-dark-600 p-2 text-dark-300 hover:bg-dark-800 disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Próxima semana"
+          >
+            <ChevronRight size={16} />
+          </button>
+          <input
+            type="date"
+            value={semana}
+            onChange={(e) => e.target.value && setSemana(segundaDaSemana(new Date(e.target.value + 'T12:00:00')))}
+            title="Escolher qualquer dia da semana"
+            className="bg-dark-900 border border-dark-600 rounded-lg px-3 py-1.5 text-sm text-dark-100 focus:outline-none focus:border-gold-600"
+          />
+        </div>
+        {data && <BotaoCsv onClick={() => baixarCsvSemanal(data)} />}
+      </div>
+
+      {(isLoading || !data) && <p className="text-dark-400 text-sm">Carregando...</p>}
+
+      {data && (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+            <KpiCard label="Visitas" value={data.totais.visitas} color="bg-indigo-900/40 text-indigo-300" icon={<MapPin size={18} />} />
+            <KpiCard label="Com GPS" value={data.totais.visitasGps} sub="check-in com localização" color="bg-green-900/40 text-green-300" icon={<MapPin size={18} />} />
+            <KpiCard label="Manuais" value={data.totais.visitasManual} sub="sem localização" color="bg-amber-900/40 text-amber-300" icon={<PenLine size={18} />} />
+            <KpiCard
+              label="Tempo médio de visita"
+              value={formatarDuracao(data.totais.tempoMedioMin)}
+              sub={data.totais.visitasSemCheckout ? `${data.totais.visitasSemCheckout} sem check-out` : undefined}
+              info="Do check-in ao check-out. Visita sem check-out (ou acima de 12h, check-out esquecido) fica fora da média."
+              color="bg-blue-900/40 text-blue-300"
+              icon={<Clock size={18} />}
+            />
+            <KpiCard label="Propostas feitas" value={data.totais.propostas} color="bg-sky-900/40 text-sky-300" icon={<FileText size={18} />} />
+            <KpiCard
+              label="Fechamentos"
+              value={data.totais.fechamentos}
+              sub={money(data.totais.valorFechado)}
+              info="Pedido criado na semana e não cancelado (proposta que virou pedido = venda fechada)."
+              color="bg-emerald-900/40 text-emerald-300"
+              icon={<Handshake size={18} />}
+            />
+          </div>
+
+          <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-x-auto">
+            <table className="w-full text-sm min-w-[860px]">
+              <thead>
+                <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
+                  <th className="text-left font-semibold px-4 py-3">Vendedor</th>
+                  <th className="text-right font-semibold px-3 py-3">Visitas</th>
+                  <th className="text-right font-semibold px-3 py-3">Com GPS</th>
+                  <th className="text-right font-semibold px-3 py-3">Manual</th>
+                  <th className="text-right font-semibold px-3 py-3">Tempo médio</th>
+                  <th className="text-right font-semibold px-3 py-3">Propostas</th>
+                  <th className="text-right font-semibold px-3 py-3">Fechamentos</th>
+                  <th className="text-right font-semibold px-4 py-3">Valor fechado</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-dark-700/60">
+                {data.vendedores.map((v) => (
+                  <LinhaSemanal key={v.vendedorId} v={v} aberto={aberto === v.vendedorId} onToggle={() => setAberto(aberto === v.vendedorId ? null : v.vendedorId)} />
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t-2 border-dark-600 font-semibold text-dark-100">
+                  <td className="px-4 py-3">Total</td>
+                  <td className="text-right px-3 font-mono tabular-nums">{data.totais.visitas}</td>
+                  <td className="text-right px-3 font-mono tabular-nums text-green-400">{data.totais.visitasGps}</td>
+                  <td className="text-right px-3 font-mono tabular-nums text-amber-400">{data.totais.visitasManual}</td>
+                  <td className="text-right px-3 font-mono tabular-nums">
+                    {formatarDuracao(data.totais.tempoMedioMin)}
+                    {data.totais.visitasSemCheckout > 0 && <span className="block text-[10px] font-sans font-normal text-red-400">{data.totais.visitasSemCheckout} sem check-out</span>}
+                  </td>
+                  <td className="text-right px-3 font-mono tabular-nums">{data.totais.propostas}</td>
+                  <td className="text-right px-3 font-mono tabular-nums">{data.totais.fechamentos}</td>
+                  <td className="text-right px-4 font-mono tabular-nums">{money(data.totais.valorFechado)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          <p className="text-xs text-dark-500">Clique num vendedor pra ver as visitas, propostas e fechamentos dele na semana. Tempo de visita só é calculado quando o vendedor faz check-in e check-out no app.</p>
+        </>
+      )}
+    </div>
+  )
+}
+
+function LinhaSemanal({ v, aberto, onToggle }: { v: SemanalVendedor; aberto: boolean; onToggle: () => void }) {
+  const zerado = !v.visitasTotal && !v.qtdPropostas && !v.qtdFechamentos
+  return (
+    <>
+      <tr onClick={onToggle} className={`cursor-pointer hover:bg-dark-700/30 ${zerado ? 'opacity-60' : ''}`}>
+        <td className="px-4 py-2.5">
+          <div className="flex items-center gap-3">
+            <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} size="sm" />
+            <div>
+              <p className="font-medium text-dark-100">{v.nome}</p>
+              <p className="text-[11px] text-dark-500">{v.canalVenda === 'leads' ? 'Equipe de leads' : 'Equipe de campo'}</p>
+            </div>
+          </div>
+        </td>
+        <td className="text-right px-3 font-mono tabular-nums text-dark-50 font-semibold">{v.visitasTotal}</td>
+        <td className="text-right px-3 font-mono tabular-nums text-green-400">{v.visitasGps}</td>
+        <td className="text-right px-3 font-mono tabular-nums text-amber-400">{v.visitasManual}</td>
+        <td className="text-right px-3 font-mono tabular-nums text-dark-200" title={`${v.visitasComTempo} visita(s) com check-in e check-out`}>
+          {formatarDuracao(v.tempoMedioMin)}
+          {v.visitasSemCheckout > 0 && <span className="block text-[10px] font-sans text-red-400">{v.visitasSemCheckout} sem check-out</span>}
+        </td>
+        <td className="text-right px-3 font-mono tabular-nums text-dark-50 font-semibold">{v.qtdPropostas}</td>
+        <td className="text-right px-3 font-mono tabular-nums text-emerald-400 font-semibold">{v.qtdFechamentos}</td>
+        <td className="text-right px-4 font-mono tabular-nums text-dark-100">{money(v.valorFechado)}</td>
+        <td className="pr-3 text-dark-500">
+          <ChevronDown size={16} className={`transition-transform ${aberto ? 'rotate-180' : ''}`} />
+        </td>
+      </tr>
+      {aberto && (
+        <tr className="bg-dark-900/50">
+          <td colSpan={9} className="px-4 py-4">
+            <div className="grid md:grid-cols-3 gap-4">
+              <div>
+                <h4 className="text-xs font-semibold text-dark-300 uppercase tracking-wide mb-2">Visitas ({v.visitasTotal})</h4>
+                {!v.visitas.length && <p className="text-xs text-dark-500">Nenhuma visita na semana.</p>}
+                <ul className="space-y-1.5">
+                  {v.visitas.map((x) => (
+                    <li key={x.id} className="text-xs flex items-start gap-2">
+                      <span className="font-mono text-dark-500 shrink-0">{formatarDataVisita(x.dataVisita)}</span>
+                      <span className="flex-1 text-dark-200">{x.cliente}</span>
+                      <span className={`shrink-0 ${x.comGps ? 'text-green-400' : 'text-amber-400'}`}>{x.comGps ? '📍 GPS' : '✍️ Manual'}</span>
+                      <span className="shrink-0 font-mono text-dark-400 w-16 text-right">{x.semCheckout ? <span className="text-red-400 font-sans">sem saída</span> : formatarDuracao(x.duracaoMin)}</span>
+                    </li>
+                  ))}
+                </ul>
+                {v.visitas.some((x) => x.resultado) && (
+                  <p className="text-[11px] text-dark-500 mt-2">
+                    {Object.entries(
+                      v.visitas.reduce<Record<string, number>>((acc, x) => {
+                        if (x.resultado) acc[x.resultado] = (acc[x.resultado] ?? 0) + 1
+                        return acc
+                      }, {})
+                    )
+                      .map(([r, n]) => `${RESULTADO_VISITA[r] ?? r}: ${n}`)
+                      .join(' · ')}
+                  </p>
+                )}
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-dark-300 uppercase tracking-wide mb-2">Propostas ({v.qtdPropostas})</h4>
+                {!v.propostas.length && <p className="text-xs text-dark-500">Nenhuma proposta na semana.</p>}
+                <ul className="space-y-1.5">
+                  {v.propostas.map((p) => (
+                    <li key={p.id} className="text-xs flex items-start gap-2">
+                      <Link to={`/admin/propostas/${p.id}`} className="flex-1 text-dark-200 hover:text-gold-400">
+                        {p.cliente}
+                      </Link>
+                      <span className="shrink-0 text-dark-400">{PROPOSTA_STAGE_LABELS[p.stage as PropostaStage] ?? p.stage}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="text-xs font-semibold text-dark-300 uppercase tracking-wide mb-2">Fechamentos ({v.qtdFechamentos})</h4>
+                {!v.fechamentos.length && <p className="text-xs text-dark-500">Nenhum fechamento na semana.</p>}
+                <ul className="space-y-1.5">
+                  {v.fechamentos.map((f) => (
+                    <li key={f.id} className="text-xs flex items-start gap-2">
+                      <span className="flex-1 text-dark-200">
+                        #{f.id} · {f.cliente}
+                      </span>
+                      <span className="shrink-0 font-mono text-emerald-400">{money(f.valor)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }

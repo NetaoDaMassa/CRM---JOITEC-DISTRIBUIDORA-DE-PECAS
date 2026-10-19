@@ -8,11 +8,11 @@
 // simplificada aqui pra contagem por etapa — o essencial pra gestão do
 // dia a dia sem a complexidade de recalcular série temporal.
 import { z } from 'zod'
-import { eq, and, gte, lte, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, lt, ne, inArray } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, propostas, propostaArquivos, ordens, ordemPosVenda, ordemDetalhes, ordemFaturamento, estoqueMaquinas, visitas } from '../db/schema.js'
+import { empresas, users, propostas, propostaArquivos, ordens, ordemPosVenda, ordemDetalhes, ordemFaturamento, estoqueMaquinas, visitas } from '../db/schema.js'
 import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
 
 const SLUG_RELATORIOS = 'odin-compressores'
@@ -359,6 +359,152 @@ export const relatoriosOdinRouter = router({
       },
       funil,
       mensal,
+    }
+  }),
+
+  // Relatório individual da semana (segunda a domingo) por vendedor — pedido
+  // do João 2026-10-19: visitas (com GPS × manual), tempo médio de visita,
+  // propostas feitas e fechamentos. Regras:
+  //   - Visita "com GPS" = check-in gravou localização (latCheckin); o resto
+  //     é "manual" (registrada sem GPS — sinal fraco, ou lançada depois).
+  //   - Semana pela `dataVisita` (já é horário de Brasília, ver memória
+  //     visitas-campo-odin). Propostas/pedidos têm createdAt em UTC → a
+  //     janela é deslocada +3h pra bater com a semana de Brasília.
+  //   - Tempo de visita = check-in → check-out. Acima de 12h é check-out
+  //     esquecido (fechou no dia seguinte) e fica fora da média.
+  //   - Fechamento = pedido (ordens) não cancelado criado na semana — mesma
+  //     regra do Dashboard/Painel TV Odin (João 2026-09-04: proposta virou
+  //     pedido = venda fechada do vendedor), não a data de faturamento.
+  semanalVendedores: adminProcedure.input(z.object({ semana: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })).query(async ({ ctx, input }) => {
+    await assertEmpresa(ctx.empresaId)
+
+    // Normaliza pra segunda-feira da semana informada (qualquer dia serve).
+    const base = new Date(`${input.semana}T12:00:00Z`)
+    const diaSemana = (base.getUTCDay() + 6) % 7 // 0 = segunda
+    const segunda = new Date(base.getTime() - diaSemana * 86_400_000)
+    const proximaSegunda = new Date(segunda.getTime() + 7 * 86_400_000)
+    const ymd = (d: Date) => d.toISOString().slice(0, 10)
+    const inicio = ymd(segunda)
+    const fimExclusivo = ymd(proximaSegunda)
+    const domingo = ymd(new Date(proximaSegunda.getTime() - 86_400_000))
+    const inicioUtc = `${inicio} 03:00:00`
+    const fimUtc = `${fimExclusivo} 03:00:00`
+
+    const [vendedoresAtivos, visitasSemana, propostasSemana, pedidosSemana] = await Promise.all([
+      db.query.users.findMany({
+        where: and(eq(users.empresaId, ctx.empresaId), eq(users.role, 'vendor'), eq(users.isActive, true)),
+        columns: { id: true, name: true, fotoUrl: true, canalVenda: true },
+      }),
+      db.query.visitas.findMany({
+        where: and(eq(visitas.empresaId, ctx.empresaId), gte(visitas.dataVisita, inicio), lt(visitas.dataVisita, fimExclusivo)),
+        columns: { id: true, vendedorId: true, dataVisita: true, checkinEm: true, checkoutEm: true, latCheckin: true, clienteNome: true, nomeEmpresa: true, resultado: true },
+        with: { vendedor: { columns: { id: true, name: true, fotoUrl: true, canalVenda: true } } },
+      }),
+      db.query.propostas.findMany({
+        where: and(eq(propostas.empresaId, ctx.empresaId), gte(propostas.createdAt, inicioUtc), lt(propostas.createdAt, fimUtc)),
+        columns: { id: true, vendedorId: true, clienteNome: true, stage: true, createdAt: true },
+        with: { vendedor: { columns: { id: true, name: true, fotoUrl: true, canalVenda: true } } },
+      }),
+      db.query.ordens.findMany({
+        where: and(eq(ordens.empresaId, ctx.empresaId), ne(ordens.status, 'cancelado'), gte(ordens.createdAt, inicioUtc), lt(ordens.createdAt, fimUtc)),
+        columns: { id: true, vendedorId: true, createdAt: true, stage: true, orderType: true },
+        with: {
+          vendedor: { columns: { id: true, name: true, fotoUrl: true, canalVenda: true } },
+          cliente: { columns: { razaoSocial: true } },
+          detalhes: { columns: { valorPedido: true } },
+        },
+      }),
+    ])
+
+    type Linha = {
+      vendedorId: number
+      nome: string
+      fotoUrl: string | null
+      canalVenda: string
+      visitas: { id: number; dataVisita: string; cliente: string; comGps: boolean; semCheckout: boolean; duracaoMin: number | null; resultado: string | null }[]
+      propostas: { id: number; cliente: string; stage: string; createdAt: string }[]
+      fechamentos: { id: number; cliente: string; valor: number; stage: string; createdAt: string }[]
+    }
+    const porVendedor = new Map<number, Linha>()
+    function linha(v: { id: number; name: string; fotoUrl: string | null; canalVenda: string }): Linha {
+      let l = porVendedor.get(v.id)
+      if (!l) {
+        l = { vendedorId: v.id, nome: v.name, fotoUrl: v.fotoUrl, canalVenda: v.canalVenda, visitas: [], propostas: [], fechamentos: [] }
+        porVendedor.set(v.id, l)
+      }
+      return l
+    }
+    // Todo vendedor ativo aparece (mesmo zerado — zerado também é informação);
+    // inativo/admin só entra se teve movimento na semana.
+    for (const v of vendedoresAtivos) linha(v)
+
+    const MAX_MIN_VISITA = 12 * 60
+    for (const v of visitasSemana) {
+      if (!v.vendedor) continue
+      let duracaoMin: number | null = null
+      if (v.checkinEm && v.checkoutEm) {
+        const min = (new Date(v.checkoutEm.replace(' ', 'T') + 'Z').getTime() - new Date(v.checkinEm.replace(' ', 'T') + 'Z').getTime()) / 60000
+        if (min > 0 && min <= MAX_MIN_VISITA) duracaoMin = Math.round(min)
+      }
+      linha(v.vendedor).visitas.push({
+        id: v.id,
+        semCheckout: !!v.checkinEm && !v.checkoutEm,
+        dataVisita: v.dataVisita,
+        cliente: (v.clienteNome || v.nomeEmpresa || '—').trim(),
+        comGps: v.latCheckin != null,
+        duracaoMin,
+        resultado: v.resultado,
+      })
+    }
+    for (const p of propostasSemana) {
+      if (!p.vendedor) continue
+      linha(p.vendedor).propostas.push({ id: p.id, cliente: p.clienteNome, stage: p.stage, createdAt: p.createdAt })
+    }
+    for (const o of pedidosSemana) {
+      if (!o.vendedor) continue
+      linha(o.vendedor).fechamentos.push({
+        id: o.id,
+        cliente: o.cliente?.razaoSocial ?? '—',
+        valor: o.detalhes?.valorPedido ?? 0,
+        stage: o.stage,
+        createdAt: o.createdAt,
+      })
+    }
+
+    const vendedores = [...porVendedor.values()]
+      .map((l) => {
+        const comDuracao = l.visitas.filter((v) => v.duracaoMin != null)
+        const visitasGps = l.visitas.filter((v) => v.comGps).length
+        return {
+          ...l,
+          visitasTotal: l.visitas.length,
+          visitasGps,
+          visitasManual: l.visitas.length - visitasGps,
+          tempoMedioMin: comDuracao.length ? Math.round(comDuracao.reduce((a, v) => a + (v.duracaoMin ?? 0), 0) / comDuracao.length) : null,
+          visitasComTempo: comDuracao.length,
+          visitasSemCheckout: l.visitas.filter((v) => v.semCheckout).length,
+          qtdPropostas: l.propostas.length,
+          qtdFechamentos: l.fechamentos.length,
+          valorFechado: l.fechamentos.reduce((a, f) => a + f.valor, 0),
+        }
+      })
+      .sort((a, b) => b.qtdFechamentos - a.qtdFechamentos || b.valorFechado - a.valorFechado || b.visitasTotal - a.visitasTotal || a.nome.localeCompare(b.nome))
+
+    const todasComTempo = vendedores.flatMap((v) => v.visitas.filter((x) => x.duracaoMin != null))
+    return {
+      inicio,
+      fim: domingo,
+      vendedores,
+      totais: {
+        visitas: vendedores.reduce((a, v) => a + v.visitasTotal, 0),
+        visitasGps: vendedores.reduce((a, v) => a + v.visitasGps, 0),
+        visitasManual: vendedores.reduce((a, v) => a + v.visitasManual, 0),
+        visitasSemCheckout: vendedores.reduce((a, v) => a + v.visitasSemCheckout, 0),
+        tempoMedioMin: todasComTempo.length ? Math.round(todasComTempo.reduce((a, v) => a + (v.duracaoMin ?? 0), 0) / todasComTempo.length) : null,
+        propostas: vendedores.reduce((a, v) => a + v.qtdPropostas, 0),
+        fechamentos: vendedores.reduce((a, v) => a + v.qtdFechamentos, 0),
+        valorFechado: vendedores.reduce((a, v) => a + v.valorFechado, 0),
+      },
     }
   }),
 })
