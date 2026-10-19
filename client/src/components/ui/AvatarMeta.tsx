@@ -14,10 +14,12 @@ interface AvatarMetaProps {
   /** Bateu a meta do dia — halo verde pulsante + confete ao redor da foto. */
   festa?: boolean
   size?: 'sm' | 'md' | 'lg'
+  /** Tamanho livre em CSS (ex.: '5vh') — painéis de TV que escalam com a tela. Sobrepõe `size`. */
+  tamanho?: string
 }
 
-export default function AvatarMeta({ nome, fotoUrl, destaque, festa, size = 'md' }: AvatarMetaProps) {
-  const dimensao = size === 'sm' ? 'w-9 h-9 text-sm' : size === 'lg' ? 'w-14 h-14 text-xl' : 'w-12 h-12 text-lg'
+export default function AvatarMeta({ nome, fotoUrl, destaque, festa, size = 'md', tamanho }: AvatarMetaProps) {
+  const dimensao = tamanho ? '' : size === 'sm' ? 'w-9 h-9 text-sm' : size === 'lg' ? 'w-14 h-14 text-xl' : 'w-12 h-12 text-lg'
 
   return (
     <div className="relative shrink-0">
@@ -25,6 +27,7 @@ export default function AvatarMeta({ nome, fotoUrl, destaque, festa, size = 'md'
         className={`${dimensao} rounded-full flex items-center justify-center font-bold overflow-hidden transition-shadow ${
           destaque ? 'ring-4 ring-gold-400 bg-gold-700/40 text-gold-300' : 'bg-dark-700 text-dark-300'
         } ${festa ? 'festa-ring' : ''}`}
+        style={tamanho ? { width: tamanho, height: tamanho, fontSize: `calc(${tamanho} * 0.42)` } : undefined}
       >
         {fotoUrl ? <img src={fotoUrl} alt={nome} className="w-full h-full object-cover" /> : nome.charAt(0).toUpperCase()}
       </div>

@@ -1,695 +1,594 @@
 import { memo, useEffect, useState } from 'react'
 import { Settings } from 'lucide-react'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts'
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { formatElapsed, formatarPercentual } from '../lib/utils'
 import AvatarMeta from '../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../lib/useCelebrarMeta'
-import { useAutoScroll } from '../lib/useAutoScroll'
 import CelebracaoPopup from '../components/ui/CelebracaoPopup'
 import PainelConfigModal from '../components/PainelConfigModal'
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type PainelData = RouterOutputs['painel']['resumo']
+type LeadsNovoData = RouterOutputs['leads']['aguardandoPorVendedor']
 
+// Formato telão (75", 16:9) — cada slide ocupa 100% da altura sem rolagem
+// (antes o conteúdo passava da dobra e dependia do useAutoScroll), e tudo é
+// em vh pra escalar com a resolução da TV (Full HD ou 4K), igual ao
+// PainelTvMarketing. Gráfico de barras + tabela repetiam o mesmo número em
+// dois lugares — agora é uma linha só por vendedor, com a barra embutida.
+//
 // Cores validadas (script do skill de dataviz) contra a superfície escura real
 // dos cards (#111e2d): azul neutro pra magnitude (vendas), âmbar pra
 // contatos/ligações e verde "good" só quando bate a meta (cor de status,
-// nunca usada como identidade de série). Âmbar vs verde tem ΔE 0.7 pra
-// daltonismo vermelho-verde (praticamente idêntico) — não dá pra resolver
-// trocando o matiz (qualquer cor quente vs verde falha do mesmo jeito). Um
-// label customizado direto na barra pra marcar "bateu a meta" quebrava a
-// renderização inteira do gráfico no recharts 3 (bug de upstream, não algo
-// pra contornar aqui) — a codificação secundária fica por conta da tabela
-// logo abaixo de cada gráfico, que já mostra número e emoji (🎯/🎉), nunca só
-// a cor sozinha.
+// nunca usada como identidade de série). Âmbar vs verde é praticamente
+// idêntico pra daltonismo vermelho-verde — por isso status nunca vai só na
+// cor: sempre tem número e emoji (🎯/🎉) junto.
 const COR_VENDAS = '#3987e5'
 const COR_CONTATOS = '#c2691a'
 const COR_META_BATIDA = '#0ca30c'
+const COR_RUIM = '#dc4444'
 
 const SEGUNDOS_POR_SLIDE = 30
+// Orçamentos em aberto pode ter dezenas de linhas — na TV não tem rolagem,
+// então mostra os primeiros e resume o resto numa linha "+N".
+const MAX_LINHAS_ORCAMENTOS = 12
 
 function formatarMoeda(v: number): string {
   return formatarMoedaBr(v, { casas: 0 })
 }
 
-function TooltipGrafico({
-  active,
-  payload,
-  formatarValor,
+// O recharts usa px fixo — essa escala (1 = tela de 1080px de altura)
+// acompanha a resolução da TV.
+function useEscala(): number {
+  const [escala, setEscala] = useState(() => window.innerHeight / 1080)
+  useEffect(() => {
+    const atualizar = () => setEscala(window.innerHeight / 1080)
+    window.addEventListener('resize', atualizar)
+    return () => window.removeEventListener('resize', atualizar)
+  }, [])
+  return escala
+}
+
+function Card({
+  titulo,
+  extra,
+  children,
+  className = '',
+  cor,
 }: {
-  active?: boolean
-  payload?: { payload: { nome: string; valor: number } }[]
-  formatarValor: (v: number) => string
+  titulo?: string
+  extra?: React.ReactNode
+  children: React.ReactNode
+  className?: string
+  cor?: string
 }) {
-  if (!active || !payload?.length) return null
-  const { nome, valor } = payload[0].payload
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
-      <p className="text-dark-100 font-medium">{nome}</p>
-      <p className="text-dark-400">{formatarValor(valor)}</p>
+    <div
+      className={`bg-dark-800 border border-dark-600 rounded-[1.4vh] p-[2.2vh] flex flex-col min-h-0 overflow-hidden ${className}`}
+      style={cor ? { borderLeft: `0.5vh solid ${cor}` } : undefined}
+    >
+      {(titulo || extra) && (
+        <div className="flex items-center justify-between gap-[1.6vh] mb-[1.6vh] shrink-0">
+          {titulo && <h2 className="text-[2.4vh] font-semibold text-gold-400 uppercase tracking-wide leading-none">{titulo}</h2>}
+          {extra}
+        </div>
+      )}
+      {children}
     </div>
   )
 }
 
-function TooltipHistorico({
-  active,
-  payload,
-  label,
-}: {
-  active?: boolean
-  payload?: { name: string; value: number; color: string }[]
-  label?: string
-}) {
-  if (!active || !payload?.length) return null
+function Selo({ children, tom }: { children: React.ReactNode; tom: 'verde' | 'vermelho' | 'ambar' | 'ouro' | 'neutro' }) {
+  const cls = {
+    verde: 'text-green-400 bg-green-900/25',
+    vermelho: 'text-red-400 bg-red-900/25',
+    ambar: 'text-amber-400 bg-amber-900/25',
+    ouro: 'text-gold-400 bg-gold-900/25',
+    neutro: 'text-dark-300 bg-dark-700',
+  }[tom]
+  return <span className={`text-[1.9vh] font-bold px-[1.4vh] py-[0.6vh] rounded-full whitespace-nowrap ${cls}`}>{children}</span>
+}
+
+function Kpi({ titulo, valor, sub, cor }: { titulo: string; valor: React.ReactNode; sub?: React.ReactNode; cor: string }) {
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
-      <p className="text-dark-100 font-medium mb-1">{label}</p>
-      {payload.map((p) => (
-        <p key={p.name} style={{ color: p.color }}>
-          {p.name}: {p.value}
-        </p>
+    <div
+      className="bg-dark-800 border border-dark-600 rounded-[1.4vh] px-[2.2vh] py-[1.8vh] flex flex-col justify-between min-h-0"
+      style={{ borderTop: `0.5vh solid ${cor}` }}
+    >
+      <p className="text-[1.9vh] text-dark-300 uppercase tracking-wide font-semibold">{titulo}</p>
+      <p className="text-[8vh] leading-none font-bold font-mono tabular-nums text-dark-50 mt-[0.8vh]">{valor}</p>
+      {sub && <p className="text-[1.7vh] text-dark-400 mt-[0.8vh]">{sub}</p>}
+    </div>
+  )
+}
+
+// Linhas que dividem a altura disponível por igual — com poucos vendedores
+// não ficam gigantes (mínimo de `minLinhas` espaços), com muitos a fonte
+// encolhe junto pra não estourar a altura da tela.
+function Linhas<T>({
+  itens,
+  minLinhas = 8,
+  chave,
+  render,
+}: {
+  itens: T[]
+  minLinhas?: number
+  chave: (item: T, i: number) => string | number
+  render: (item: T, i: number, fonteVh: number) => React.ReactNode
+}) {
+  const slots = Math.max(itens.length, minLinhas)
+  const fonteVh = Math.min(2.6, 30 / slots)
+  return (
+    <div className="flex-1 min-h-0 grid gap-[0.6vh]" style={{ gridTemplateRows: `repeat(${slots}, minmax(0, 1fr))` }}>
+      {itens.map((item, i) => (
+        <div key={chave(item, i)} className="min-h-0 flex items-center gap-[1.4vh] border-b border-dark-700/50" style={{ fontSize: `${fonteVh}vh` }}>
+          {render(item, i, fonteVh)}
+        </div>
       ))}
     </div>
   )
 }
 
-// Faturamento total da empresa não pode aparecer no painel de TV (fica visível
-// pra qualquer um que passar perto) — por isso esse tile só recebe `quantidade`
-// nos usos atuais (vendas hoje/mês agregadas), sem valor/ticketMedio.
-function StatTile({ titulo, quantidade, valor, ticketMedio }: { titulo: string; quantidade: number; valor?: number; ticketMedio?: number }) {
-  const mostrarFinanceiro = valor != null
+function Posicao({ i, medalhas = true }: { i: number; medalhas?: boolean }) {
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6">
-      <p className="text-xs text-dark-400 uppercase tracking-wide font-semibold">{titulo}</p>
-      <p
-        className={`font-bold text-dark-50 mt-1 font-mono tabular-nums break-words ${
-          mostrarFinanceiro && String(formatarMoeda(valor as number)).length > 13 ? 'text-2xl' : 'text-4xl'
-        }`}
-      >
-        {mostrarFinanceiro ? formatarMoeda(valor as number) : quantidade}
-      </p>
-      {mostrarFinanceiro ? (
-        <div className="flex items-center gap-5 mt-3 pt-3 border-t border-dark-700/60">
-          <div>
-            <p className="text-[10px] text-dark-500 uppercase tracking-wide">Qtde</p>
-            <p className="text-sm font-semibold text-dark-200 font-mono">{quantidade}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-dark-500 uppercase tracking-wide">Ticket médio</p>
-            <p className="text-sm font-semibold text-dark-200 font-mono">{formatarMoeda(ticketMedio as number)}</p>
-          </div>
-        </div>
-      ) : (
-        <p className="text-[10px] text-dark-500 uppercase tracking-wide mt-3 pt-3 border-t border-dark-700/60">vendas fechadas</p>
-      )}
+    <span className="w-[2.6em] shrink-0 text-dark-400 font-mono text-center">
+      {medalhas && i === 0 ? '🥇' : medalhas && i === 1 ? '🥈' : medalhas && i === 2 ? '🥉' : `${i + 1}º`}
+    </span>
+  )
+}
+
+// Barra horizontal embutida na linha — `percentual` já vem 0..100 (cortado
+// em 100 pra quem passou da meta não estourar a coluna).
+function BarraLinha({ percentual, cor, rotulo }: { percentual: number; cor: string; rotulo: string }) {
+  return (
+    <div className="flex-1 min-w-0 flex items-center gap-[1.2vh]">
+      <div className="flex-1 h-[0.75em] bg-dark-700/70 rounded-full overflow-hidden">
+        <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, percentual))}%`, background: cor }} />
+      </div>
+      <span className="w-[4.6em] text-right font-mono tabular-nums font-bold text-dark-50">{rotulo}</span>
     </div>
   )
 }
 
-function LabelUltimoPonto({
-  x,
-  y,
-  index,
-  value,
-  ultimoIndice,
-  formatarValor,
-  cor,
-}: {
-  x?: number
-  y?: number
-  index?: number
-  value?: number
-  ultimoIndice: number
-  formatarValor: (v: number) => string
-  cor: string
-}) {
-  if (index !== ultimoIndice || x == null || y == null || value == null) return null
+function NomeVendedor({ nome, fonteVh }: { nome: string; fonteVh: number }) {
   return (
-    <text x={x} y={y - 12} textAnchor="middle" fill={cor} fontSize={13} fontWeight={700}>
-      {formatarValor(value)}
-    </text>
+    <span className="truncate font-medium text-dark-100" style={{ width: `${fonteVh * 13}vh` }}>
+      {nome}
+    </span>
   )
 }
 
-// Mesma ideia do LabelUltimoPonto, mas pra barra horizontal: o valor aparece
-// escrito logo depois da ponta da barra. Usar `<LabelList>` direto no `<Bar>`
-// quebra a renderização inteira do gráfico no recharts 3 (bug de upstream,
-// ver comentário acima) — por isso o valor é desenhado via função customizada
-// no próprio `label` do `<Bar>`, do mesmo jeito que já funciona nos LineChart.
-function LabelFimDaBarra({
-  x,
-  y,
-  width,
-  height,
-  value,
-  formatarValor,
-}: {
-  x?: number
-  y?: number
-  width?: number
-  height?: number
-  value?: number
-  formatarValor: (v: number) => string
-}) {
-  if (x == null || y == null || width == null || height == null || value == null) return null
-  return (
-    <text x={x + width + 6} y={y + height / 2} dy={4} fill="#c3c2b7" fontSize={11}>
-      {formatarValor(value)}
-    </text>
-  )
-}
-
-// Memoizados: o relógio no topo do painel atualiza o estado a cada 1s, e sem
-// memo isso re-renderiza (e recria os arrays de dados dos gráficos) toda hora
-// — o recharts trata isso como dado novo e reinicia a animação de entrada das
-// barras a cada tick, fazendo elas piscarem entre renderizadas e vazias.
+// Faturamento total da empresa / R$ por vendedor não podem aparecer no painel
+// de TV (fica visível pra qualquer um que passar perto — pedido do João,
+// 2026-09-11) — só % da meta, quantidade e ticket médio.
 const SlideVisaoGeral = memo(function SlideVisaoGeral({ data }: { data: PainelData }) {
   const meta = data.metaEmpresa
-  return (
-    <div className="space-y-6">
-      {meta && (
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <h2 className="text-lg font-semibold text-gold-400">🏢 Meta geral da empresa (mês)</h2>
-            <div className="flex items-center gap-2">
-              <span
-                className={`text-xs font-bold px-3 py-1 rounded-full ${
-                  meta.bateuMetaDia ? 'text-green-400 bg-green-900/30' : 'text-red-400 bg-red-900/20'
-                }`}
-              >
-                Ritmo do dia {formatarPercentual(meta.percentualMetaDia)}% {meta.bateuMetaDia ? '✅' : '❌'}
-              </span>
-              <span
-                className={`text-xs font-bold px-3 py-1 rounded-full ${
-                  meta.bateuMetaFaturamento ? 'text-gold-400 bg-gold-900/20' : 'text-dark-400 bg-dark-700'
-                }`}
-              >
-                Mês {formatarPercentual(meta.percentualMetaFaturamento)}% {meta.bateuMetaFaturamento ? '✅' : ''}
-              </span>
-            </div>
-          </div>
-          <p className="text-4xl font-bold text-dark-50 font-mono tabular-nums">
-            {formatarPercentual(meta.percentualMetaFaturamento)}% <span className="text-lg text-dark-400 font-normal">da meta do mês</span>
-          </p>
-          <div className="h-3 bg-dark-900 rounded-full mt-4 overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${Math.min(100, meta.percentualMetaFaturamento)}%`,
-                background: meta.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS,
-              }}
-            />
-          </div>
-        </div>
-      )}
+  // A API devolve `vendedores` ordenado por R$ (pro Dashboard do admin) —
+  // reordena por % porque cada um tem uma meta diferente.
+  const porPercentual = [...data.vendedores].sort((a, b) => b.percentualMetaFaturamento - a.percentualMetaFaturamento)
+  const noRitmo = data.vendedores.filter((v) => v.bateuMetaDia).length
 
-      <div className="grid grid-cols-2 gap-4">
-        <StatTile titulo="Vendas hoje" quantidade={data.vendasHoje.quantidade} />
-        <StatTile titulo="Vendas no mês" quantidade={data.vendasMes.quantidade} />
+  return (
+    <div className="grid grid-cols-12 gap-[2vh] h-full">
+      <div className="col-span-4 flex flex-col gap-[2vh] min-h-0">
+        {meta && (
+          <Card titulo="🏢 Meta do mês" cor={meta.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS} className="flex-[1.4]">
+            <div className="flex-1 flex flex-col justify-center">
+              <p className="text-[13vh] leading-none font-bold font-mono tabular-nums text-dark-50">
+                {formatarPercentual(meta.percentualMetaFaturamento)}%
+              </p>
+              <p className="text-[2.2vh] text-dark-400 mt-[1vh]">da meta da empresa {meta.bateuMetaFaturamento ? '🎉' : ''}</p>
+              <div className="h-[2.2vh] bg-dark-900 rounded-full mt-[2.4vh] overflow-hidden">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{
+                    width: `${Math.min(100, meta.percentualMetaFaturamento)}%`,
+                    background: meta.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS,
+                  }}
+                />
+              </div>
+              <div className="mt-[2.4vh] flex flex-wrap gap-[1vh]">
+                <Selo tom={meta.bateuMetaDia ? 'verde' : 'vermelho'}>
+                  Ritmo do dia {formatarPercentual(meta.percentualMetaDia)}% {meta.bateuMetaDia ? '✅' : '❌'}
+                </Selo>
+              </div>
+            </div>
+          </Card>
+        )}
+        <div className="grid grid-cols-2 gap-[2vh] flex-1 min-h-0">
+          <Kpi titulo="Vendas hoje" valor={data.vendasHoje.quantidade} sub="fechadas" cor={COR_VENDAS} />
+          <Kpi titulo="Vendas no mês" valor={data.vendasMes.quantidade} sub="fechadas" cor={COR_VENDAS} />
+        </div>
       </div>
 
-      {(() => {
-        // Painel de TV fica visível pra qualquer um que passar perto — o
-        // valor em R$ de cada vendedor não pode aparecer aqui (pedido do
-        // João, 2026-09-11), só o % da meta batida. Mesma lógica já usada
-        // no tile "Meta geral da empresa" acima. Reordena localmente por %
-        // (a API devolve `vendedores` ordenado por R$, pro Dashboard do
-        // admin, que continua mostrando os valores reais) — sem isso o "1º"
-        // do ranking podia mostrar % menor que o "2º", já que cada um tem
-        // uma meta diferente.
-        const porPercentual = [...data.vendedores].sort((a, b) => b.percentualMetaFaturamento - a.percentualMetaFaturamento)
-        return (
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-gold-400">🏆 Ranking de vendas (mês) · % da meta</h2>
-              <span className="text-xs font-semibold text-green-400 bg-green-900/20 px-3 py-1 rounded-full">
-                🎯 {data.vendedores.filter((v) => v.bateuMetaDia).length} de {data.vendedores.length} no ritmo da meta hoje
-              </span>
-            </div>
-            {!!porPercentual.length && (
-              <ResponsiveContainer width="100%" height={porPercentual.length * 30 + 10}>
-                <BarChart
-                  data={porPercentual.map((v) => ({ nome: v.nome, valor: v.percentualMetaFaturamento, destaque: v.bateuMetaFaturamento }))}
-                  layout="vertical"
-                  margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
-                  barCategoryGap={6}
-                >
-                  <XAxis type="number" hide domain={[0, 'dataMax']} />
-                  <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-                  <Tooltip content={<TooltipGrafico formatarValor={(v) => `${formatarPercentual(v)}%`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-                  <Bar
-                    dataKey="valor"
-                    radius={[0, 4, 4, 0]}
-                    maxBarSize={20}
-                    isAnimationActive={false}
-                    label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${formatarPercentual(v)}%`} />}
-                  >
-                    {porPercentual.map((v) => (
-                      <Cell key={v.id} fill={v.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm mt-4">
-                <thead>
-                  <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-                    <th className="text-left font-semibold py-2">Vendedor</th>
-                    <th className="text-right font-semibold py-2">Qtde</th>
-                    <th className="text-right font-semibold py-2">Ticket médio</th>
-                    <th className="text-right font-semibold py-2">% da meta</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-dark-700/60">
-                  {porPercentual.map((v, i) => (
-                    <tr key={v.id}>
-                      <td className="py-2.5">
-                        <div className="flex items-center gap-3">
-                          <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-                          <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} size="sm" />
-                          <span className="font-medium text-dark-100">{v.nome}</span>
-                          {v.sequenciaDiasVendendo >= 2 && (
-                            <span
-                              className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full"
-                              title="Dias seguidos vendendo"
-                            >
-                              🔥{v.sequenciaDiasVendendo}
-                            </span>
-                          )}
-                          {v.bateuMetaDia && <span className="text-xs" title="No ritmo da meta do dia">🎯</span>}
-                          {v.bateuMetaFaturamento && <span className="text-xs">🎉</span>}
-                        </div>
-                      </td>
-                      <td className="text-right font-mono tabular-nums text-dark-300">{v.qtdVendasMes}</td>
-                      <td className="text-right font-mono tabular-nums text-dark-300">{formatarMoeda(v.ticketMedioMes)}</td>
-                      <td className={`text-right font-mono tabular-nums ${v.bateuMetaFaturamento ? 'text-gold-400 font-semibold' : 'text-dark-100'}`}>
-                        {formatarPercentual(v.percentualMetaFaturamento)}%
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-dark-600 font-semibold">
-                    <td className="py-2.5 text-dark-100">Total</td>
-                    <td className="text-right font-mono tabular-nums text-dark-300">{porPercentual.reduce((acc, v) => acc + v.qtdVendasMes, 0)}</td>
-                    <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-                    <td className="text-right font-mono tabular-nums text-dark-300">—</td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        )
-      })()}
+      <Card
+        titulo="🏆 Ranking do mês · % da meta"
+        cor={COR_VENDAS}
+        className="col-span-8"
+        extra={
+          <Selo tom="verde">
+            🎯 {noRitmo} de {data.vendedores.length} no ritmo hoje
+          </Selo>
+        }
+      >
+        <div className="flex items-center gap-[1.4vh] text-[1.6vh] text-dark-400 uppercase tracking-wide pb-[0.8vh] border-b border-dark-600 shrink-0">
+          <span className="flex-1">Vendedor</span>
+          <span className="w-[9vh] text-right">Qtde</span>
+          <span className="w-[16vh] text-right">Ticket médio</span>
+          <span className="w-[34%] text-right">% da meta</span>
+        </div>
+        <Linhas
+          itens={porPercentual}
+          chave={(v) => v.id}
+          render={(v, i, fonteVh) => (
+            <>
+              <Posicao i={i} />
+              <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaFaturamento} festa={v.bateuMetaDia} tamanho={`${fonteVh * 1.9}vh`} />
+              <div className="flex-1 min-w-0 flex items-center gap-[0.8vh]">
+                <NomeVendedor nome={v.nome} fonteVh={fonteVh} />
+                {v.sequenciaDiasVendendo >= 2 && (
+                  <span className="text-[0.75em] font-bold text-amber-400 bg-amber-900/25 px-[0.5em] py-[0.1em] rounded-full shrink-0">
+                    🔥{v.sequenciaDiasVendendo}
+                  </span>
+                )}
+                {v.bateuMetaDia && <span title="No ritmo da meta do dia">🎯</span>}
+                {v.bateuMetaFaturamento && <span>🎉</span>}
+              </div>
+              <span className="w-[9vh] text-right font-mono tabular-nums text-dark-300">{v.qtdVendasMes}</span>
+              <span className="w-[16vh] text-right font-mono tabular-nums text-dark-300">{formatarMoeda(v.ticketMedioMes)}</span>
+              <div className="w-[34%] flex">
+                <BarraLinha
+                  percentual={v.percentualMetaFaturamento}
+                  cor={v.bateuMetaFaturamento ? COR_META_BATIDA : COR_VENDAS}
+                  rotulo={`${formatarPercentual(v.percentualMetaFaturamento)}%`}
+                />
+              </div>
+            </>
+          )}
+        />
+      </Card>
     </div>
   )
 })
 
-// Ranking mensal reseta devagar (quem começou mal o mês fica sem chance de
-// virar o jogo até o mês virar) — o ranking da semana dá uma disputa nova a
-// cada poucos dias, sem esperar o mês inteiro.
+// Ranking mensal reseta devagar — o da semana dá uma disputa nova a cada
+// poucos dias. Sem meta semanal cadastrada (só mensal) e sem poder mostrar R$,
+// compara relativo ao líder: "X% do líder da semana" (preserva a ordem por R$).
 const SlideRankingSemanal = memo(function SlideRankingSemanal({ data }: { data: PainelData }) {
   const semanal = data.rankingSemanal
-  const liderValor = semanal[0]?.valorFechadoSemana ?? 0
+  const lider = semanal[0]
+  const liderValor = lider?.valorFechadoSemana ?? 0
   const maiorEvolucao = data.rankingEvolucao[0]
-  // Painel de TV não pode mostrar R$ de vendedor (pedido do João,
-  // 2026-09-11) — sem meta semanal cadastrada no sistema (só existe meta
-  // mensal), o jeito de continuar comparando sem expor valor é relativo a
-  // quem está na frente: "X% do líder da semana". A ordem não muda —
-  // dividir todo mundo pelo mesmo líder preserva o ranking por R$ de antes.
   const percentualDoLider = (v: number) => (liderValor > 0 ? (v / liderValor) * 100 : 0)
-  // Evolução também vira %: sem semana passada pra comparar (valor era 0),
-  // não dá pra calcular crescimento — nesse caso só destaca o nome, sem número.
+  // Sem semana passada pra comparar (valor 0) não dá pra calcular crescimento.
   const evolucaoPercentual =
     maiorEvolucao && maiorEvolucao.valorFechadoSemanaPassada > 0
       ? ((maiorEvolucao.valorFechadoSemana - maiorEvolucao.valorFechadoSemanaPassada) / maiorEvolucao.valorFechadoSemanaPassada) * 100
       : null
 
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gold-400">📅 Ranking da semana (segunda a hoje)</h2>
-        {maiorEvolucao && maiorEvolucao.evolucaoSemana > 0 && (
-          <span className="text-xs font-semibold text-green-400 bg-green-900/20 px-3 py-1 rounded-full">
-            📈 Quem mais evoluiu: {maiorEvolucao.nome}
-            {evolucaoPercentual != null ? ` (+${formatarPercentual(evolucaoPercentual)}% vs semana passada)` : ''}
-          </span>
-        )}
-      </div>
-      {!!semanal.length && (
-        <ResponsiveContainer width="100%" height={semanal.length * 30 + 10}>
-          <BarChart
-            data={semanal.map((v) => ({ nome: v.nome, valor: percentualDoLider(v.valorFechadoSemana) }))}
-            layout="vertical"
-            margin={{ top: 0, right: 80, bottom: 0, left: 0 }}
-            barCategoryGap={6}
-          >
-            <XAxis type="number" hide domain={[0, 'dataMax']} />
-            <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={(v) => `${formatarPercentual(v)}% do líder`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar
-              dataKey="valor"
-              radius={[0, 4, 4, 0]}
-              maxBarSize={20}
-              isAnimationActive={false}
-              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${formatarPercentual(v)}%`} />}
-            >
-              {semanal.map((v) => (
-                <Cell key={v.id} fill={liderValor > 0 && v.valorFechadoSemana === liderValor ? COR_META_BATIDA : COR_VENDAS} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-      <div className="space-y-3 mt-4">
-        {semanal.map((v, i) => (
-          <div key={v.id} className="flex items-center gap-3">
-            <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-            <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={i === 0 && v.valorFechadoSemana > 0} festa={v.bateuMetaDia} size="sm" />
-            <span className="flex-1 font-medium text-dark-100">{v.nome}</span>
-            {v.sequenciaDiasVendendo >= 2 && (
-              <span className="text-[11px] font-bold text-amber-400 bg-amber-900/20 px-1.5 py-0.5 rounded-full">
-                🔥{v.sequenciaDiasVendendo}
-              </span>
-            )}
-            <span className="text-sm font-mono tabular-nums text-dark-100 w-24 text-right">{formatarPercentual(percentualDoLider(v.valorFechadoSemana))}%</span>
-          </div>
-        ))}
+    <div className="grid grid-cols-12 gap-[2vh] h-full">
+      <Card titulo="📅 Ranking da semana · segunda a hoje" cor={COR_VENDAS} className="col-span-8">
+        {!semanal.length && <p className="text-[2.2vh] text-dark-500">Ninguém vendeu ainda essa semana.</p>}
+        <Linhas
+          itens={semanal}
+          chave={(v) => v.id}
+          render={(v, i, fonteVh) => (
+            <>
+              <Posicao i={i} />
+              <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={i === 0 && v.valorFechadoSemana > 0} festa={v.bateuMetaDia} tamanho={`${fonteVh * 1.9}vh`} />
+              <div className="flex items-center gap-[0.8vh] shrink-0">
+                <NomeVendedor nome={v.nome} fonteVh={fonteVh} />
+                {v.sequenciaDiasVendendo >= 2 && (
+                  <span className="text-[0.75em] font-bold text-amber-400 bg-amber-900/25 px-[0.5em] py-[0.1em] rounded-full">🔥{v.sequenciaDiasVendendo}</span>
+                )}
+              </div>
+              <BarraLinha
+                percentual={percentualDoLider(v.valorFechadoSemana)}
+                cor={liderValor > 0 && v.valorFechadoSemana === liderValor ? COR_META_BATIDA : COR_VENDAS}
+                rotulo={`${formatarPercentual(percentualDoLider(v.valorFechadoSemana))}%`}
+              />
+            </>
+          )}
+        />
+        <p className="text-[1.6vh] text-dark-500 mt-[1vh] shrink-0">% em relação ao líder da semana</p>
+      </Card>
+
+      <div className="col-span-4 flex flex-col gap-[2vh] min-h-0">
+        <Card titulo="👑 Líder da semana" cor={COR_META_BATIDA} className="flex-1">
+          {lider && liderValor > 0 ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-[2vh]">
+              <AvatarMeta nome={lider.nome} fotoUrl={lider.fotoUrl} destaque festa={lider.bateuMetaDia} tamanho="16vh" />
+              <p className="text-[4.4vh] font-bold text-dark-50 text-center leading-tight">{lider.nome}</p>
+            </div>
+          ) : (
+            <p className="text-[2.2vh] text-dark-500">Ainda sem vendas na semana.</p>
+          )}
+        </Card>
+        <Card titulo="📈 Quem mais evoluiu" cor={COR_VENDAS} className="flex-1">
+          {maiorEvolucao && maiorEvolucao.evolucaoSemana > 0 ? (
+            <div className="flex-1 flex items-center gap-[2.4vh]">
+              <AvatarMeta nome={maiorEvolucao.nome} fotoUrl={maiorEvolucao.fotoUrl} tamanho="11vh" />
+              <div className="min-w-0">
+                <p className="text-[3.6vh] font-bold text-dark-50 leading-tight truncate">{maiorEvolucao.nome}</p>
+                {evolucaoPercentual != null && (
+                  <p className="text-[5vh] font-bold font-mono tabular-nums text-green-400 leading-none mt-[1vh]">
+                    +{formatarPercentual(evolucaoPercentual)}%
+                  </p>
+                )}
+                <p className="text-[1.7vh] text-dark-400 mt-[0.8vh]">vs semana passada</p>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[2.2vh] text-dark-500">Sem evolução pra destacar ainda.</p>
+          )}
+        </Card>
       </div>
     </div>
   )
 })
 
 const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }) {
+  const lista = data.rankingLigacoes
+  const tentativasHoje = lista.reduce((a, v) => a + v.ligacoesHoje, 0)
+  const efetivasHoje = lista.reduce((a, v) => a + v.ligacoesEfetivasHoje, 0)
+  const ligacoesMes = lista.reduce((a, v) => a + v.ligacoesMes, 0)
+  const batendo = lista.filter((v) => v.bateuMetaLigacoes).length
+
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_CONTATOS}` }}>
-      <h2 className="text-lg font-semibold text-gold-400 mb-4">📞 Ranking de ligações (mês) · ritmo da meta</h2>
-      {!!data.rankingLigacoes.length && (
-        <ResponsiveContainer width="100%" height={data.rankingLigacoes.length * 32 + 10}>
-          <BarChart
-            data={data.rankingLigacoes.map((v) => ({ nome: v.nome, valor: v.ligacoesMes, destaque: v.bateuMetaLigacoes }))}
-            layout="vertical"
-            margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
-            barCategoryGap={6}
-          >
-            <XAxis type="number" hide domain={[0, 'dataMax']} />
-            <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={(v) => `${v} ligação(ões) no mês`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar
-              dataKey="valor"
-              radius={[0, 4, 4, 0]}
-              maxBarSize={22}
-              isAnimationActive={false}
-              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}`} />}
-            >
-              {data.rankingLigacoes.map((v) => (
-                <Cell key={v.id} fill={v.bateuMetaLigacoes ? COR_META_BATIDA : COR_CONTATOS} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm mt-4">
-          <thead>
-            <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-              <th className="text-left font-semibold py-2">Vendedor</th>
-              <th className="text-right font-semibold py-2">Tentativas hoje</th>
-              <th className="text-right font-semibold py-2">Efetivas hoje</th>
-              <th className="text-right font-semibold py-2">% efetiva</th>
-              <th className="text-right font-semibold py-2">Ligações (mês)</th>
-              <th className="text-right font-semibold py-2">Meta (mês)</th>
-              <th className="text-right font-semibold py-2">% da meta</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-dark-700/60">
-            {data.rankingLigacoes.map((v, i) => (
-              <tr key={v.id}>
-                <td className="py-2.5">
-                  <div className="flex items-center gap-3">
-                    <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-                    <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoes} size="sm" />
-                    <span className="font-medium text-dark-100">{v.nome}</span>
-                    {v.bateuMetaLigacoes && <span className="text-xs">🎉</span>}
-                  </div>
-                </td>
-                <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesHoje}</td>
-                <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
-                <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
-                <td className="text-right font-mono tabular-nums text-dark-400">{v.ligacoesMes}</td>
-                <td className="text-right font-mono tabular-nums text-dark-400">{v.metaLigacoesAcumulada}</td>
-                <td
-                  className={`text-right font-mono tabular-nums ${
-                    v.bateuMetaLigacoes ? 'text-green-400 font-semibold' : 'text-dark-300'
-                  }`}
-                >
-                  {formatarPercentual(v.percentualMetaLigacoes)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="flex flex-col gap-[2vh] h-full">
+      <div className="grid grid-cols-4 gap-[2vh] shrink-0 h-[15vh]">
+        <Kpi titulo="Tentativas hoje" valor={tentativasHoje} cor={COR_CONTATOS} sub="todas as ligações do dia" />
+        <Kpi
+          titulo="Efetivas hoje"
+          valor={efetivasHoje}
+          cor={COR_CONTATOS}
+          sub={tentativasHoje ? `${formatarPercentual((efetivasHoje / tentativasHoje) * 100)}% das tentativas` : 'nenhuma tentativa ainda'}
+        />
+        <Kpi titulo="Ligações no mês" valor={ligacoesMes} cor={COR_CONTATOS} sub="equipe toda" />
+        <Kpi titulo="No ritmo da meta" valor={`${batendo}/${lista.length}`} cor={COR_META_BATIDA} sub="vendedores 🎉" />
       </div>
+
+      <Card titulo="📞 Ranking de ligações · ritmo da meta do mês" cor={COR_CONTATOS} className="flex-1">
+        <div className="flex items-center gap-[1.4vh] text-[1.6vh] text-dark-400 uppercase tracking-wide pb-[0.8vh] border-b border-dark-600 shrink-0">
+          <span className="flex-1">Vendedor</span>
+          <span className="w-[13vh] text-right">Tentat. hoje</span>
+          <span className="w-[13vh] text-right">Efetivas hoje</span>
+          <span className="w-[11vh] text-right">% efetiva</span>
+          <span className="w-[16vh] text-right">Mês / meta</span>
+          <span className="w-[30%] text-right">% da meta</span>
+        </div>
+        <Linhas
+          itens={lista}
+          chave={(v) => v.id}
+          render={(v, i, fonteVh) => (
+            <>
+              <Posicao i={i} />
+              <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} destaque={v.bateuMetaLigacoes} tamanho={`${fonteVh * 1.9}vh`} />
+              <div className="flex-1 min-w-0 flex items-center gap-[0.8vh]">
+                <NomeVendedor nome={v.nome} fonteVh={fonteVh} />
+                {v.bateuMetaLigacoes && <span>🎉</span>}
+              </div>
+              <span className="w-[13vh] text-right font-mono tabular-nums text-dark-50 font-semibold">{v.ligacoesHoje}</span>
+              <span className="w-[13vh] text-right font-mono tabular-nums text-dark-50 font-semibold">{v.ligacoesEfetivasHoje}</span>
+              <span className="w-[11vh] text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</span>
+              <span className="w-[16vh] text-right font-mono tabular-nums text-dark-400">
+                {v.ligacoesMes} / {v.metaLigacoesAcumulada}
+              </span>
+              <div className="w-[30%] flex">
+                <BarraLinha
+                  percentual={v.percentualMetaLigacoes}
+                  cor={v.bateuMetaLigacoes ? COR_META_BATIDA : COR_CONTATOS}
+                  rotulo={`${formatarPercentual(v.percentualMetaLigacoes)}%`}
+                />
+              </div>
+            </>
+          )}
+        />
+      </Card>
     </div>
   )
 })
 
 // Fechados / (fechados + perdidos) — não fechados / total da carteira, que
-// deixaria todo mundo com % minúsculo e sem diferença nenhuma (a maioria dos
-// leads de qualquer vendedor ainda está intocada em "Novo"). Só entra quem
-// já decidiu pelo menos 1 negócio esse mês — sem isso, 1 venda solta vira
-// "100%" e engana quem está vendo de longe.
+// deixaria todo mundo com % minúsculo (a maioria dos leads ainda está em
+// "Novo"). Só entra quem já decidiu pelo menos 1 negócio esse mês — sem isso,
+// 1 venda solta vira "100%" e engana quem está vendo de longe.
 const SlideConversao = memo(function SlideConversao({ data }: { data: PainelData }) {
   const conversao = data.rankingConversao
+  const fechados = conversao.reduce((a, v) => a + v.qtdVendasMes, 0)
+  const perdidos = conversao.reduce((a, v) => a + v.qtdPerdidosMes, 0)
+  const taxaEquipe = fechados + perdidos > 0 ? (fechados / (fechados + perdidos)) * 100 : null
 
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_META_BATIDA}` }}>
-      <h2 className="text-lg font-semibold text-gold-400 mb-1">🎯 Taxa de conversão (mês)</h2>
-      <p className="text-xs text-dark-500 mb-4">Fechados ÷ (fechados + perdidos) · só quem já decidiu algum negócio esse mês</p>
-      {!conversao.length && <p className="text-sm text-dark-500">Ninguém fechou ou perdeu negócio ainda esse mês.</p>}
-      {!!conversao.length && (
-        <ResponsiveContainer width="100%" height={conversao.length * 30 + 10}>
-          <BarChart
-            data={conversao.map((v) => ({ nome: v.nome, valor: v.taxaConversao ?? 0 }))}
-            layout="vertical"
-            margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
-            barCategoryGap={6}
-          >
-            <XAxis type="number" hide domain={[0, 100]} />
-            <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={(v: number) => `${formatarPercentual(v)}%`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar
-              dataKey="valor"
-              radius={[0, 4, 4, 0]}
-              maxBarSize={20}
-              isAnimationActive={false}
-              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${formatarPercentual(v)}%`} />}
-            >
-              {conversao.map((v) => (
-                <Cell key={v.id} fill={(v.taxaConversao ?? 0) >= 50 ? COR_META_BATIDA : COR_VENDAS} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-      <div className="space-y-3 mt-4">
-        {conversao.map((v, i) => (
-          <div key={v.id} className="flex items-center gap-3">
-            <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-            <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} size="sm" />
-            <span className="flex-1 font-medium text-dark-100">{v.nome}</span>
-            <span className="text-xs text-dark-500 font-mono">
-              {v.qtdVendasMes} fechado{v.qtdVendasMes !== 1 ? 's' : ''} · {v.qtdPerdidosMes} perdido{v.qtdPerdidosMes !== 1 ? 's' : ''}
-            </span>
-            <span className="text-sm font-mono tabular-nums text-dark-100 w-14 text-right">{formatarPercentual(v.taxaConversao)}%</span>
-          </div>
-        ))}
+    <div className="grid grid-cols-12 gap-[2vh] h-full">
+      <Card titulo="🎯 Taxa de conversão do mês" cor={COR_META_BATIDA} className="col-span-8">
+        {!conversao.length && <p className="text-[2.2vh] text-dark-500">Ninguém fechou ou perdeu negócio ainda esse mês.</p>}
+        <Linhas
+          itens={conversao}
+          chave={(v) => v.id}
+          render={(v, i, fonteVh) => (
+            <>
+              <Posicao i={i} />
+              <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} tamanho={`${fonteVh * 1.9}vh`} />
+              <NomeVendedor nome={v.nome} fonteVh={fonteVh} />
+              <span className="w-[10em] shrink-0 text-[0.8em] text-dark-400 font-mono">
+                {v.qtdVendasMes}✔ · {v.qtdPerdidosMes}✖
+              </span>
+              <BarraLinha
+                percentual={v.taxaConversao ?? 0}
+                cor={(v.taxaConversao ?? 0) >= 50 ? COR_META_BATIDA : COR_VENDAS}
+                rotulo={`${formatarPercentual(v.taxaConversao)}%`}
+              />
+            </>
+          )}
+        />
+        <p className="text-[1.6vh] text-dark-500 mt-[1vh] shrink-0">
+          Fechados ÷ (fechados + perdidos) · só quem já decidiu algum negócio esse mês · ✔ fechados ✖ perdidos
+        </p>
+      </Card>
+      <div className="col-span-4 grid grid-rows-3 gap-[2vh] min-h-0">
+        <Kpi
+          titulo="Conversão da equipe"
+          valor={taxaEquipe != null ? `${formatarPercentual(taxaEquipe)}%` : '—'}
+          cor={taxaEquipe != null && taxaEquipe >= 50 ? COR_META_BATIDA : COR_VENDAS}
+          sub="no mês"
+        />
+        <Kpi titulo="Negócios fechados" valor={fechados} cor={COR_META_BATIDA} sub="no mês" />
+        <Kpi titulo="Negócios perdidos" valor={perdidos} cor={COR_RUIM} sub="no mês" />
       </div>
     </div>
   )
 })
 
-const SlideTendencias = memo(function SlideTendencias({ data }: { data: PainelData }) {
+const GraficoHistorico = memo(function GraficoHistorico({
+  data,
+  chave,
+  nome,
+  cor,
+  escala,
+}: {
+  data: PainelData['historico']
+  chave: 'vendas' | 'contatos'
+  nome: string
+  cor: string
+  escala: number
+}) {
+  const ultimo = data.length - 1
+  const fonte = Math.round(17 * escala)
   return (
-    <div className="space-y-6">
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_VENDAS}` }}>
-        <h2 className="text-lg font-semibold text-gold-400 mb-4">📈 Vendas por dia (últimos 14 dias)</h2>
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={data.historico} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="gradVendas" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={COR_VENDAS} stopOpacity={0.5} />
-                <stop offset="100%" stopColor={COR_VENDAS} stopOpacity={0.03} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
-            <XAxis dataKey="dia" tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <YAxis tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} width={30} />
-            <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-            <Area
-              type="monotone"
-              dataKey="vendas"
-              name="Vendas"
-              stroke={COR_VENDAS}
-              strokeWidth={3}
-              fill="url(#gradVendas)"
-              dot={{ r: 5, fill: COR_VENDAS, strokeWidth: 0 }}
-              activeDot={{ r: 7 }}
-              label={(props: any) => (
-                <LabelUltimoPonto {...props} ultimoIndice={data.historico.length - 1} formatarValor={(v) => `${v}`} cor={COR_VENDAS} />
-              )}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+    <ResponsiveContainer width="100%" height="100%">
+      <AreaChart data={data} margin={{ top: Math.round(36 * escala), right: Math.round(28 * escala), bottom: 0, left: 0 }}>
+        <defs>
+          <linearGradient id={`grad-${chave}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={cor} stopOpacity={0.5} />
+            <stop offset="100%" stopColor={cor} stopOpacity={0.03} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
+        <XAxis dataKey="dia" tick={{ fill: '#c3c2b7', fontSize: fonte }} tickLine={false} axisLine={false} interval={0} />
+        <YAxis tick={{ fill: '#c3c2b7', fontSize: fonte }} tickLine={false} axisLine={false} width={Math.round(44 * escala)} allowDecimals={false} />
+        <Area
+          type="monotone"
+          dataKey={chave}
+          name={nome}
+          stroke={cor}
+          strokeWidth={Math.max(3, 4 * escala)}
+          fill={`url(#grad-${chave})`}
+          dot={{ r: 6 * escala, fill: cor, strokeWidth: 0 }}
+          isAnimationActive={false}
+          label={(props: any) =>
+            props.index === ultimo && props.value != null ? (
+              <text x={props.x} y={props.y - 16 * escala} textAnchor="middle" fill={cor} fontSize={Math.round(26 * escala)} fontWeight={700}>
+                {props.value}
+              </text>
+            ) : null
+          }
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  )
+})
 
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_CONTATOS}` }}>
-        <h2 className="text-lg font-semibold text-gold-400 mb-4">📞 Clientes chamados por dia (últimos 14 dias)</h2>
-        <ResponsiveContainer width="100%" height={260}>
-          <AreaChart data={data.historico} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="gradContatos" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={COR_CONTATOS} stopOpacity={0.5} />
-                <stop offset="100%" stopColor={COR_CONTATOS} stopOpacity={0.03} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
-            <XAxis dataKey="dia" tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <YAxis tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} width={30} />
-            <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-            <Area
-              type="monotone"
-              dataKey="contatos"
-              name="Contatos"
-              stroke={COR_CONTATOS}
-              strokeWidth={3}
-              fill="url(#gradContatos)"
-              dot={{ r: 5, fill: COR_CONTATOS, strokeWidth: 0 }}
-              activeDot={{ r: 7 }}
-              label={(props: any) => (
-                <LabelUltimoPonto {...props} ultimoIndice={data.historico.length - 1} formatarValor={(v) => `${v}`} cor={COR_CONTATOS} />
-              )}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+const SlideTendencias = memo(function SlideTendencias({ data, escala }: { data: PainelData; escala: number }) {
+  return (
+    <div className="grid grid-rows-2 gap-[2vh] h-full">
+      <Card titulo="📈 Vendas por dia · últimos 14 dias" cor={COR_VENDAS}>
+        <div className="flex-1 min-h-0">
+          <GraficoHistorico data={data.historico} chave="vendas" nome="Vendas" cor={COR_VENDAS} escala={escala} />
+        </div>
+      </Card>
+      <Card titulo="📞 Clientes chamados por dia · últimos 14 dias" cor={COR_CONTATOS}>
+        <div className="flex-1 min-h-0">
+          <GraficoHistorico data={data.historico} chave="contatos" nome="Contatos" cor={COR_CONTATOS} escala={escala} />
+        </div>
+      </Card>
     </div>
   )
 })
 
 const SlideNegociacoes = memo(function SlideNegociacoes({ data }: { data: PainelData }) {
+  const visiveis = data.negociosAbertos.slice(0, MAX_LINHAS_ORCAMENTOS)
+  const resto = data.negociosAbertos.length - visiveis.length
+
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_CONTATOS}` }}>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gold-400">⏱ Orçamentos em aberto</h2>
-        <span className="text-sm font-bold text-amber-400 bg-amber-900/20 px-3 py-1 rounded-full">
-          {data.orcamentosAbertos.quantidade} propostas · {formatarMoeda(data.orcamentosAbertos.valor)}
-        </span>
+    <div className="grid grid-cols-12 gap-[2vh] h-full">
+      <div className="col-span-3 grid grid-rows-2 gap-[2vh] min-h-0">
+        <Kpi titulo="Orçamentos em aberto" valor={data.orcamentosAbertos.quantidade} cor={COR_CONTATOS} sub="propostas aguardando" />
+        <Kpi
+          titulo="Valor em aberto"
+          valor={<span className="text-[5.4vh]">{formatarMoeda(data.orcamentosAbertos.valor)}</span>}
+          cor={COR_CONTATOS}
+          sub="soma dos orçamentos"
+        />
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-dark-600 text-dark-400 text-[11px] uppercase tracking-wide">
-              <th className="text-left font-semibold py-2">Cliente</th>
-              <th className="text-left font-semibold py-2">Vendedor</th>
-              <th className="text-right font-semibold py-2">Orçamento</th>
-              <th className="text-right font-semibold py-2">Tempo na etapa</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-dark-700/50">
-            {data.negociosAbertos.map((n) => (
-              <tr key={n.clienteId}>
-                <td className="py-2.5 text-dark-100">{n.razaoSocial}</td>
-                <td className="py-2.5 text-dark-400">{n.vendedorNome}</td>
-                <td className="py-2.5 text-right font-mono tabular-nums text-amber-400">
-                  {n.valorOrcado != null ? formatarMoeda(n.valorOrcado) : '—'}
-                </td>
-                <td className="py-2.5 text-right font-mono tabular-nums text-blue-400">há {formatElapsed(n.dataEntradaEtapa)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {!data.negociosAbertos.length && <p className="text-sm text-dark-500 mt-2">Nenhuma negociação em andamento.</p>}
+      <Card titulo="⏱ Orçamentos em aberto" cor={COR_CONTATOS} className="col-span-9">
+        <div className="flex items-center gap-[1.4vh] text-[1.6vh] text-dark-400 uppercase tracking-wide pb-[0.8vh] border-b border-dark-600 shrink-0">
+          <span className="flex-1">Cliente</span>
+          <span className="w-[24vh]">Vendedor</span>
+          <span className="w-[20vh] text-right">Orçamento</span>
+          <span className="w-[18vh] text-right">Na etapa há</span>
+        </div>
+        {!data.negociosAbertos.length && <p className="text-[2.2vh] text-dark-500 mt-[1.4vh]">Nenhuma negociação em andamento.</p>}
+        <Linhas
+          itens={visiveis}
+          minLinhas={MAX_LINHAS_ORCAMENTOS}
+          chave={(n) => n.clienteId}
+          render={(n) => (
+            <>
+              <span className="flex-1 min-w-0 truncate text-dark-100">{n.razaoSocial}</span>
+              <span className="w-[24vh] truncate text-dark-400">{n.vendedorNome}</span>
+              <span className="w-[20vh] text-right font-mono tabular-nums text-amber-400 font-semibold">
+                {n.valorOrcado != null ? formatarMoeda(n.valorOrcado) : '—'}
+              </span>
+              <span className="w-[18vh] text-right font-mono tabular-nums text-blue-400">{formatElapsed(n.dataEntradaEtapa)}</span>
+            </>
+          )}
+        />
+        {resto > 0 && <p className="text-[1.8vh] text-dark-400 mt-[1vh] shrink-0">+ {resto} outro{resto !== 1 ? 's' : ''} orçamento{resto !== 1 ? 's' : ''} em aberto</p>}
+      </Card>
     </div>
   )
 })
 
-type LeadsNovoData = RouterOutputs['leads']['aguardandoPorVendedor']
-
-// Leads (site, tráfego pago etc.) que ainda estão em "Novo" no Joitec CRM,
-// esperando algum vendedor abordar — por vendedor.
+// Leads (site, tráfego pago etc.) ainda em "Novo", esperando algum vendedor
+// abordar — por vendedor.
 const SlideLeadsNovo = memo(function SlideLeadsNovo({ data }: { data: LeadsNovoData }) {
   const maiorFila = Math.max(0, ...data.vendedores.map((v) => v.leadsNovo))
   return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-6" style={{ borderLeft: `4px solid ${COR_CONTATOS}` }}>
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gold-400">📥 Leads aguardando atendimento (Novo)</h2>
-        <span className="text-sm font-bold text-amber-400 bg-amber-900/20 px-3 py-1 rounded-full">
-          {data.totalLeadsNovo} lead{data.totalLeadsNovo !== 1 ? 's' : ''} esperando
-        </span>
+    <div className="grid grid-cols-12 gap-[2vh] h-full">
+      <div className="col-span-3 grid grid-rows-2 gap-[2vh] min-h-0">
+        <Kpi titulo="Leads esperando" valor={data.totalLeadsNovo} cor={COR_RUIM} sub="ainda em “Novo”" />
+        {data.semVendedor > 0 && <Kpi titulo="Sem vendedor" valor={data.semVendedor} cor={COR_CONTATOS} sub="sem ninguém atribuído" />}
       </div>
-      {!data.vendedores.length && <p className="text-sm text-dark-500">Nenhum vendedor cadastrado nos dois sistemas ainda.</p>}
-      {!!data.vendedores.length && (
-        <ResponsiveContainer width="100%" height={data.vendedores.length * 32 + 10}>
-          <BarChart
-            data={data.vendedores.map((v) => ({ nome: v.nome, valor: v.leadsNovo }))}
-            layout="vertical"
-            margin={{ top: 0, right: 44, bottom: 0, left: 0 }}
-            barCategoryGap={6}
-          >
-            <XAxis type="number" hide domain={[0, 'dataMax']} />
-            <YAxis type="category" dataKey="nome" width={140} tick={{ fill: '#c3c2b7', fontSize: 12 }} tickLine={false} axisLine={false} />
-            <Tooltip content={<TooltipGrafico formatarValor={(v: number) => `${v} lead(s) esperando`} />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
-            <Bar
-              dataKey="valor"
-              radius={[0, 4, 4, 0]}
-              maxBarSize={22}
-              isAnimationActive={false}
-              label={(props: any) => <LabelFimDaBarra {...props} formatarValor={(v: number) => `${v}`} />}
-            >
-              {data.vendedores.map((v, i) => (
-                <Cell key={v.id ?? i} fill={maiorFila > 0 && v.leadsNovo === maiorFila ? '#dc4444' : COR_CONTATOS} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
-      )}
-      <div className="space-y-3 mt-4">
-        {data.vendedores.map((v, i) => (
-          <div key={v.id ?? i} className="flex items-center gap-3">
-            <span className="w-5 text-dark-500 font-mono text-xs">{i + 1}º</span>
-            <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} size="sm" />
-            <span className="flex-1 font-medium text-dark-100">{v.nome}</span>
-            {v.leadsNovo > 0 && <span className="text-xs" title="Tem lead esperando">📥</span>}
-            <span className="text-sm font-mono tabular-nums text-dark-100 w-10 text-right">{v.leadsNovo}</span>
-          </div>
-        ))}
-      </div>
-      {data.semVendedor > 0 && (
-        <p className="text-xs text-dark-500 mt-4 pt-3 border-t border-dark-700/60">
-          + {data.semVendedor} lead{data.semVendedor !== 1 ? 's' : ''} "Novo" sem vendedor atribuído no CRM de marketing.
-        </p>
-      )}
+      <Card titulo="📥 Leads aguardando atendimento · por vendedor" cor={COR_CONTATOS} className="col-span-9">
+        {!data.vendedores.length && <p className="text-[2.2vh] text-dark-500">Nenhum vendedor cadastrado ainda.</p>}
+        <Linhas
+          itens={data.vendedores}
+          chave={(v, i) => v.id ?? i}
+          render={(v, i, fonteVh) => (
+            <>
+              <Posicao i={i} medalhas={false} />
+              <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} tamanho={`${fonteVh * 1.9}vh`} />
+              <NomeVendedor nome={v.nome} fonteVh={fonteVh} />
+              <BarraLinha
+                percentual={maiorFila > 0 ? (v.leadsNovo / maiorFila) * 100 : 0}
+                cor={maiorFila > 0 && v.leadsNovo === maiorFila ? COR_RUIM : COR_CONTATOS}
+                rotulo={`${v.leadsNovo}`}
+              />
+            </>
+          )}
+        />
+      </Card>
     </div>
   )
 })
+
+type ChaveSlide = 'geral' | 'semana' | 'ligacoes' | 'conversao' | 'tendencias' | 'orcamentos' | 'leads'
 
 export default function PainelTV() {
   const [relogio, setRelogio] = useState(new Date())
@@ -697,6 +596,7 @@ export default function PainelTV() {
     const id = setInterval(() => setRelogio(new Date()), 1000)
     return () => clearInterval(id)
   }, [])
+  const escala = useEscala()
 
   // `refetchIntervalInBackground: true` é essencial aqui — um painel de TV
   // fica ligado numa tela sem mouse/teclado, então a aba nunca recebe foco
@@ -705,24 +605,21 @@ export default function PainelTV() {
   const { data } = trpc.painel.resumo.useQuery(undefined, { refetchInterval: 15000, refetchIntervalInBackground: true })
   const { celebracao, fecharCelebracao } = useCelebrarMeta(data?.vendedores)
 
-  // Leads parados em "Novo" na tabela local (trocado 2026-08-28 — antes
-  // vinha do CRM de marketing externo, que ficava com dado desatualizado).
-  // Some sozinho da rotação quando não tem nenhum lead esperando.
+  // Leads parados em "Novo" na tabela local. Some sozinho da rotação quando
+  // não tem nenhum lead esperando.
   const { data: leadsAguardando } = trpc.leads.aguardandoPorVendedor.useQuery(undefined, {
     refetchInterval: 15000,
     refetchIntervalInBackground: true,
   })
 
-  const slides = [
-    { titulo: 'Visão geral', render: SlideVisaoGeral },
-    { titulo: 'Semana', render: SlideRankingSemanal },
-    { titulo: 'Ligações', render: SlideLigacoes },
-    { titulo: 'Conversão', render: SlideConversao },
-    { titulo: 'Tendências', render: SlideTendencias },
-    { titulo: 'Orçamentos', render: SlideNegociacoes },
-    ...(leadsAguardando && leadsAguardando.totalLeadsNovo > 0
-      ? [{ titulo: 'Leads aguardando', render: () => <SlideLeadsNovo data={leadsAguardando} /> }]
-      : []),
+  const slides: { chave: ChaveSlide; titulo: string }[] = [
+    { chave: 'geral', titulo: 'Visão geral' },
+    { chave: 'semana', titulo: 'Semana' },
+    { chave: 'ligacoes', titulo: 'Ligações' },
+    { chave: 'conversao', titulo: 'Conversão' },
+    { chave: 'tendencias', titulo: 'Tendências' },
+    { chave: 'orcamentos', titulo: 'Orçamentos' },
+    ...(leadsAguardando && leadsAguardando.totalLeadsNovo > 0 ? [{ chave: 'leads' as const, titulo: 'Leads aguardando' }] : []),
   ]
   const [slideAtual, setSlideAtual] = useState(0)
   const [configAberta, setConfigAberta] = useState(false)
@@ -743,18 +640,44 @@ export default function PainelTV() {
     return () => clearInterval(id)
   }, [slides.length, segundos, autoplay])
 
-  useAutoScroll(slideAtual, segundos * 1000, autoplay)
+  // Slide de leads pode sumir da rotação com o índice apontando pra ele.
+  const atual = slides[slideAtual] ?? slides[0]
 
-  const Slide = slides[slideAtual].render
+  function renderSlide() {
+    if (!data) return <p className="text-dark-500 text-[2.4vh]">Carregando...</p>
+    switch (atual.chave) {
+      case 'geral':
+        return <SlideVisaoGeral data={data} />
+      case 'semana':
+        return <SlideRankingSemanal data={data} />
+      case 'ligacoes':
+        return <SlideLigacoes data={data} />
+      case 'conversao':
+        return <SlideConversao data={data} />
+      case 'tendencias':
+        return <SlideTendencias data={data} escala={escala} />
+      case 'orcamentos':
+        return <SlideNegociacoes data={data} />
+      case 'leads':
+        return leadsAguardando ? <SlideLeadsNovo data={leadsAguardando} /> : null
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-dark-950 text-dark-50 p-8">
-      <div className="flex items-center justify-between mb-8">
-        <h1 className="font-heading text-3xl text-gold-400 font-bold">Joitec CRM · Painel</h1>
-        <div className="flex items-center gap-4">
+    <div className="h-screen overflow-hidden bg-dark-950 text-dark-50 p-[2.4vh] flex flex-col gap-[2vh]">
+      <div className="flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-[2vh]">
+          <h1 className="font-heading text-[4vh] text-gold-400 font-bold leading-none">Painel de Vendas</h1>
+          <span className="text-[3vh] font-semibold text-dark-100 leading-none">· {atual.titulo}</span>
+          <span className="flex items-center gap-[0.8vh] text-[1.7vh] text-green-400 bg-green-900/25 px-[1.2vh] py-[0.5vh] rounded-full">
+            <span className="w-[1vh] h-[1vh] rounded-full bg-green-400 animate-pulse" />
+            ao vivo
+          </span>
+        </div>
+        <div className="flex items-center gap-[1.6vh]">
           <div className="text-right">
-            <p className="text-2xl font-mono">{relogio.toLocaleTimeString('pt-BR')}</p>
-            <p className="text-sm text-dark-400">
+            <p className="text-[4vh] font-mono leading-none tabular-nums">{relogio.toLocaleTimeString('pt-BR')}</p>
+            <p className="text-[1.8vh] text-dark-400 mt-[0.4vh]">
               {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
             </p>
           </div>
@@ -779,18 +702,26 @@ export default function PainelTV() {
         }
       />
 
-      {data ? <Slide data={data} /> : <p className="text-dark-500">Carregando...</p>}
+      <div className="flex-1 min-h-0">{renderSlide()}</div>
 
-      <div className="flex items-center justify-center gap-2 mt-8">
+      <div className="shrink-0 flex items-center gap-[1vh]">
         {slides.map((s, i) => (
           <button
-            key={s.titulo}
+            key={s.chave}
             onClick={() => setSlideAtual(i)}
-            className={`px-3 py-1 rounded-full text-xs transition-colors ${
-              i === slideAtual ? 'bg-gold-400 text-dark-950 font-semibold' : 'bg-dark-700 text-dark-400'
+            className={`relative flex-1 overflow-hidden rounded-full text-[1.7vh] py-[0.7vh] transition-colors ${
+              s.chave === atual.chave ? 'bg-dark-700 text-dark-50 font-semibold' : 'bg-dark-800 text-dark-500'
             }`}
           >
-            {s.titulo}
+            {/* Barra de progresso do slide — quem olha de longe vê quanto falta pra trocar. */}
+            {s.chave === atual.chave && autoplay && (
+              <span
+                key={`${slideAtual}-${segundos}`}
+                className="absolute inset-y-0 left-0 bg-gold-400/30 painel-progresso"
+                style={{ animationDuration: `${segundos}s` }}
+              />
+            )}
+            <span className="relative">{s.titulo}</span>
           </button>
         ))}
       </div>
