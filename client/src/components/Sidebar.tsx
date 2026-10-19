@@ -352,6 +352,17 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   // menos 1 item visível pro usuário/empresa atual dentro dele.
   const { data: grupos } = trpc.sidebarGrupos.listar.useQuery(undefined, { enabled: !!user })
   const idsAgrupados = new Set(grupos?.flatMap((g) => g.itens) ?? [])
+
+  // Só na Odin Compressores: a pasta CARTEIRA entra DENTRO da pasta ODIN
+  // COMPRESSORES (como uma seção "Carteira"), em vez de ficar separada —
+  // pedido do João, 2026-10-19: lá a equipe de peças (carteira) e a de
+  // máquinas são a mesma empresa e ele quer tudo num lugar só. As pastas
+  // em si são globais (Grupos da Sidebar) e continuam iguais pras outras
+  // empresas; a junção é só na hora de desenhar. Achadas pelo nome.
+  const grupoOdin = grupos?.find((g) => g.nome.trim().toUpperCase() === 'ODIN COMPRESSORES')
+  const grupoCarteira = grupos?.find((g) => g.nome.trim().toUpperCase() === 'CARTEIRA')
+  const juntarCarteiraNaOdin = empresaAtiva?.slug === SO_ODIN_COMPRESSORES && !!grupoOdin && !!grupoCarteira
+  const gruposExibidos = juntarCarteiraNaOdin ? grupos?.filter((g) => g.id !== grupoCarteira!.id) : grupos
   const itensSoltos = todosItensVisiveis.filter((item) => !idsAgrupados.has(item.to))
 
   const [gruposAbertos, setGruposAbertos] = useState<Record<number, boolean>>({})
@@ -485,9 +496,16 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
             )
           ) : (
             <>
-              {grupos?.map((grupo) => {
+              {gruposExibidos?.map((grupo) => {
                 const itensDoGrupo = grupo.itens.map((to) => itemPorTo.get(to)).filter((i): i is NonNullable<typeof i> => !!i)
-                if (itensDoGrupo.length === 0) return null
+                const itensCarteira =
+                  juntarCarteiraNaOdin && grupo.id === grupoOdin!.id
+                    ? grupoCarteira!.itens
+                        .filter((to) => !grupo.itens.includes(to))
+                        .map((to) => itemPorTo.get(to))
+                        .filter((i): i is NonNullable<typeof i> => !!i)
+                    : []
+                if (itensDoGrupo.length === 0 && itensCarteira.length === 0) return null
                 const GrupoIcon = ICONES_GRUPO[grupo.icone] ?? Folder
                 const aberto = grupoEstaAberto(grupo.id)
                 return (
@@ -505,6 +523,14 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
                         {itensDoGrupo.map((item) => (
                           <SidebarItemLink key={item.to} {...item} onNavigate={onClose} />
                         ))}
+                        {itensCarteira.length > 0 && (
+                          <>
+                            <p className="px-3 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-dark-500">Carteira</p>
+                            {itensCarteira.map((item) => (
+                              <SidebarItemLink key={item.to} {...item} onNavigate={onClose} />
+                            ))}
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
