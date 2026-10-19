@@ -134,7 +134,9 @@ export const ADMIN_LINKS = [
   // Painel Financeiro, relatórios etc.) — começa enxuto, pra ir ganhando
   // mais conteúdo conforme o João for definindo o que entra. Pedido do
   // João, 2026-09-15.
-  { to: '/admin/grupo-odin', label: 'Grupo Odin', icon: Building2, feature: 'grupo_odin' },
+  // Escondido do menu (João 2026-10-19: "pode tirar, depois construímos") —
+  // a tela /admin/grupo-odin continua existindo, só não aparece aqui.
+  // { to: '/admin/grupo-odin', label: 'Grupo Odin', icon: Building2, feature: 'grupo_odin' },
   // Liberação de Crédito — cross-empresa igual os dois acima. Financeiro
   // (hoje a Rubia) registra quando um cliente de qualquer empresa do grupo
   // foi liberado pra comprar mesmo com pendência/limite estourado. Pedido
@@ -314,10 +316,12 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { to: '/admin/permissoes', label: 'Permissões', icon: ShieldCheck, visivel: !!user?.superAdmin },
     { to: '/admin/funcoes', label: 'Funções', icon: UserCog, visivel: !!user?.superAdmin },
     { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
-    { to: '/admin/marketing-geral', label: 'Marketing — Geral', icon: BarChart3, visivel: !!user?.superAdmin },
+    // Marketing — Geral e Painel de TV Marketing escondidos do menu (João
+    // 2026-10-19: "pode tirar, depois construímos") — rotas continuam no App.tsx.
+    // { to: '/admin/marketing-geral', label: 'Marketing — Geral', icon: BarChart3, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
-    { to: '/painel-tv-marketing', label: 'Painel de TV Marketing', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_marketing')) },
+    // { to: '/painel-tv-marketing', label: 'Painel de TV Marketing', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_marketing')) },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     {
       // Sem trava de empresa aqui de propósito — a permissão concedida em
