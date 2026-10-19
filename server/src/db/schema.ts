@@ -165,7 +165,11 @@ export const users = sqliteTable('users', {
   // do site (Emily/Rodrigo/Matheus: lead → proposta → venda, sem visita).
   // Fica na tabela global de users, igual regiao/ocultoPainelTv, mesmo só
   // fazendo sentido pra essa empresa hoje.
-  canalVenda: text('canal_venda', { enum: ['visitas', 'leads'] }).notNull().default('visitas'),
+  // 'pecas' = vendedor interno de peças (Bruna/Ruan: carteira → atendimento
+  // ou proposta → venda, pelo Kanban/Carteira) e 'nenhum' = não é vendedor
+  // (operacional, gestão, logins legados) — pedido do João, 2026-10-19, pra
+  // o Dashboard Odin mostrar o trabalho de cada equipe do jeito dela.
+  canalVenda: text('canal_venda', { enum: ['visitas', 'leads', 'pecas', 'nenhum'] }).notNull().default('visitas'),
   // Só o último — o histórico dia a dia de acesso fica em logAcessoUsuario.
   lastLoginAt: text('last_login_at'),
   // Presença do Chat Grupo Odin — atualizado pelo socket (chatSocket.ts) a

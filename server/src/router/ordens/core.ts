@@ -55,7 +55,7 @@ export const ordensCoreRouter = router({
         vendedor: { columns: { id: true, name: true } },
         // Campos extras só pra deixar o card do Kanban tão informativo quanto o
         // do odincrm original (prioridade, badges de frete/preparação, rastreio).
-        detalhes: { columns: { prioridadeDespacho: true } },
+        detalhes: { columns: { prioridadeDespacho: true, numeroPedido: true } },
         aprovacaoFrete: { columns: { retiradaLocal: true, semFrete: true, cotacaoSelecionadaId: true, cotacaoFinalizada: true } },
         freteFinalizado: { columns: { confirmado: true } },
         preparacao: { columns: { aprovadoGestor: true, operadorFinalizou: true } },

@@ -16,6 +16,7 @@ import { Input } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 import Modal from '../components/ui/Modal'
+import EquipesOdin from '../components/odin/EquipesOdin'
 import { STAGE_LABELS, STAGE_COLORS, STAGE_COLORS_HEX, type Stage } from '../lib/ordensShared'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 
@@ -275,6 +276,8 @@ export default function DashboardOdin() {
           </button>
         </div>
       </div>
+
+      <EquipesOdin dataDe={dataDe || undefined} dataAte={dataAte || undefined} isAdmin={isAdmin} />
 
       {data.alertas.length > 0 && (
         <div className="bg-dark-800 border-l-4 border-red-500 rounded-2xl p-4">

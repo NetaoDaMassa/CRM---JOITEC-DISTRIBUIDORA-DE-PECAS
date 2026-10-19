@@ -813,6 +813,13 @@
       "when": 1792177521238,
       "tag": "0115_renomear_odin_automacao",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "6",
+      "when": 1792440367681,
+      "tag": "0116_equipes_odin_canal",
+      "breakpoints": true
     }
   ]
 }

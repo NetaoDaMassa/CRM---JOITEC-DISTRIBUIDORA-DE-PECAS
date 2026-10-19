@@ -9,6 +9,7 @@ import EtapaPedido from './EtapaPedido'
 import EtapaFrete from './EtapaFrete'
 import EtapaPreparacao from './EtapaPreparacao'
 import EtapaFreteFinalizado from './EtapaFreteFinalizado'
+import CampoNumeroPedido from './CampoNumeroPedido'
 import EtapaFaturamento from './EtapaFaturamento'
 import EtapaConferencia from './EtapaConferencia'
 import EtapaColeta from './EtapaColeta'
@@ -75,6 +76,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
         // finaliza tudo nesta única etapa.
         return (
           <div className="space-y-6">
+            <CampoNumeroPedido ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} />
             <EtapaFrete ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} vendedorWhatsapp={vendedorWhatsapp} clienteNome={clienteNome} />
             <EtapaFreteFinalizado ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} />
           </div>

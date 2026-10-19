@@ -138,6 +138,8 @@ const DEFAULT_FORM: UserForm = { name: '', username: '', funcaoTemplateId: '', r
 const CANAL_VENDA_OPTIONS = [
   { value: 'visitas', label: 'Visitas de campo' },
   { value: 'leads', label: 'Leads do site' },
+  { value: 'pecas', label: 'Peças (carteira)' },
+  { value: 'nenhum', label: 'Nenhum (não é vendedor)' },
 ]
 
 async function uploadFotoVendedor(file: File): Promise<string> {
@@ -526,9 +528,11 @@ export default function AdminUsers() {
               </div>
             </div>
           )}
-          {!!editUser && funcaoTemplates?.find((t) => t.id === form.funcaoTemplateId)?.role === 'vendor' && (
+          {/* Mostrado pra qualquer função (não só vendor): Roberto/Bruna são
+              admin e também vendem — a equipe deles no Dashboard Odin sai daqui. */}
+          {!!editUser && (
             <Select
-              label="Canal de venda"
+              label="Canal de venda (equipe)"
               value={form.canalVenda}
               onChange={(e) => setForm({ ...form, canalVenda: e.target.value })}
               options={CANAL_VENDA_OPTIONS}

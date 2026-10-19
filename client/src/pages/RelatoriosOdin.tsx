@@ -757,7 +757,7 @@ function baixarCsvSemanal(data: SemanalData) {
     ...data.vendedores.map((v) =>
       [
         v.nome,
-        v.canalVenda === 'leads' ? 'Leads' : 'Campo',
+        v.canalVenda === 'leads' ? 'Leads' : v.canalVenda === 'pecas' ? 'Pecas' : v.canalVenda === 'nenhum' ? 'Sem equipe' : 'Campo',
         v.visitasTotal,
         v.visitasGps,
         v.visitasManual,
@@ -910,7 +910,7 @@ function LinhaSemanal({ v, aberto, onToggle }: { v: SemanalVendedor; aberto: boo
             <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} size="sm" />
             <div>
               <p className="font-medium text-dark-100">{v.nome}</p>
-              <p className="text-[11px] text-dark-500">{v.canalVenda === 'leads' ? 'Equipe de leads' : 'Equipe de campo'}</p>
+              <p className="text-[11px] text-dark-500">{v.canalVenda === 'leads' ? 'Equipe de leads' : v.canalVenda === 'pecas' ? 'Equipe de peças' : v.canalVenda === 'nenhum' ? 'Sem equipe' : 'Equipe de campo'}</p>
             </div>
           </div>
         </td>

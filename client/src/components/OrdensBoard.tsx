@@ -17,7 +17,7 @@ type OrdemCard = {
   updatedAt: string
   cliente: { id: number; razaoSocial: string; codigo: string | null; telefoneWhatsapp: string | null } | null
   vendedor: { id: number; name: string } | null
-  detalhes: { prioridadeDespacho: string | null } | null
+  detalhes: { prioridadeDespacho: string | null; numeroPedido?: string | null } | null
   aprovacaoFrete: { retiradaLocal: boolean; semFrete: boolean; cotacaoSelecionadaId: number | null; cotacaoFinalizada?: boolean } | null
   freteFinalizado: { confirmado: boolean } | null
   preparacao: { aprovadoGestor: boolean; operadorFinalizou?: boolean } | null
@@ -116,6 +116,7 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                       <div className="flex items-start justify-between gap-2 mb-1">
                         <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors">
                           Pedido #{ordem.id}
+                          {ordem.detalhes?.numeroPedido && <span className="ml-1.5 text-[11px] font-normal text-dark-400">· Nº {ordem.detalhes.numeroPedido}</span>}
                         </h4>
                         {coletaPronta ? (
                           <CheckCircle2 size={14} className="text-green-500 shrink-0 mt-0.5" />

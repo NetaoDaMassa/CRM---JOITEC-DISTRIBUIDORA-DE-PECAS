@@ -31,7 +31,6 @@ function EtapaFaturamentoForm({
   const utils = trpc.useUtils()
   const [nf, setNf] = useState(data?.numeroNotaFiscal ?? '')
   const [dataPag, setDataPag] = useState(data?.dataPagamento ?? '')
-  const [picking, setPicking] = useState(data?.numeroPicking ?? '')
   const [dataFat, setDataFat] = useState(data?.dataFaturamento ?? '')
   const [enviando, setEnviando] = useState(false)
   const podeEditar = isAdmin && !readonly
@@ -71,7 +70,11 @@ function EtapaFaturamentoForm({
       {isPeca ? (
         <div className="grid grid-cols-2 gap-3">
           <Input label="Data do faturamento" type="date" defaultValue={dataFat} onChange={(e) => setDataFat(e.target.value)} disabled={!podeEditar} />
-          <Input label="Número do picking" defaultValue={picking} onChange={(e) => setPicking(e.target.value)} disabled={!podeEditar} />
+          {/* Era "Número do picking" — trocado por número da nota fiscal a
+              pedido do João (2026-10-19). Picking já gravado em pedidos
+              antigos continua aparecendo embaixo, só pra consulta. */}
+          <Input label="Número da nota fiscal" defaultValue={nf} onChange={(e) => setNf(e.target.value)} disabled={!podeEditar} />
+          {data?.numeroPicking && <p className="col-span-2 text-[11px] text-dark-500">Picking (antigo): {data.numeroPicking}</p>}
         </div>
       ) : (
         <>
@@ -93,7 +96,7 @@ function EtapaFaturamentoForm({
       )}
       {podeEditar && (
         <div className="flex gap-2">
-          <Button size="sm" variant="secondary" loading={salvarMut.isPending} onClick={() => salvarMut.mutate(isPeca ? { ordemId, dataFaturamento: dataFat, numeroPicking: picking } : { ordemId, numeroNotaFiscal: nf, dataPagamento: dataPag })}>Salvar</Button>
+          <Button size="sm" variant="secondary" loading={salvarMut.isPending} onClick={() => salvarMut.mutate(isPeca ? { ordemId, dataFaturamento: dataFat, numeroNotaFiscal: nf } : { ordemId, numeroNotaFiscal: nf, dataPagamento: dataPag })}>Salvar</Button>
           {!data?.pagamentoConfirmado && <Button size="sm" loading={confirmarMut.isPending} onClick={() => confirmarMut.mutate({ ordemId })}>Confirmar Pagamento</Button>}
         </div>
       )}

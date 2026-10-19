@@ -7,11 +7,11 @@
 // tabela nova. Igual aos módulos irmãos (pedidos_odin etc.), gestor e
 // vendedor (vendedor só vê os próprios números, sem a tabela por vendedor).
 import { z } from 'zod'
-import { eq, and, gte, lte, inArray } from 'drizzle-orm'
+import { eq, and, gte, lte, lt, ne, inArray, isNull } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas, users, leads } from '../db/schema.js'
+import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas, users, leads, vendas, registroContato, funilMensal } from '../db/schema.js'
 import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
 
 const SLUG_DASHBOARD = 'odin-compressores'
@@ -381,6 +381,116 @@ export const dashboardOdinRouter = router({
         pedidos: pedidosValidos.length,
         faturados: faturadasMes.length,
       },
+    }
+  }),
+  // Equipes da Odin Compressores — pedido do João, 2026-10-19: cada equipe
+  // vende de um jeito, e o dashboard precisa mostrar o trabalho de cada um
+  // do jeito dele (equipe = users.canalVenda, vale pra admin também —
+  // Roberto e Bruna são admin e vendem):
+  //   Externos (visitas): visitas (com GPS × manual) → propostas → vendas
+  //   Leads (leads):      leads recebidos → propostas → vendas
+  //   Peças (pecas):      contatos (ligação/WhatsApp) → clientes atendidos /
+  //                       propostas / orçamentos → vendas (Kanban da Carteira)
+  // Venda de externo/leads = pedido (ordens) não cancelado criado no período
+  // (mesma regra do painelTv e do relatório semanal). Venda de peças = venda
+  // registrada no Kanban (tabela `vendas`, que vira pedido de peça sozinha).
+  // Vendedor (role vendor) só recebe a própria linha.
+  equipes: adminOrFeatureProcedure('dashboard_odin').input(filtroInput).query(async ({ ctx, input }) => {
+    await assertEmpresa(ctx.empresaId)
+    const isAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+
+    // Período em dia de Brasília; sem filtro = mês atual.
+    const hojeBr = new Date(Date.now() - 3 * 3_600_000).toISOString().slice(0, 10)
+    const dataDe = input?.dataDe || `${hojeBr.slice(0, 8)}01`
+    const dataAte = input?.dataAte || hojeBr
+    const fimExclusivo = new Date(new Date(`${dataAte}T12:00:00Z`).getTime() + 86_400_000).toISOString().slice(0, 10)
+    // Colunas em UTC (datetime('now')) → janela deslocada +3h.
+    const inicioUtc = `${dataDe} 03:00:00`
+    const fimUtc = `${fimExclusivo} 03:00:00`
+
+    const membros = await db.query.users.findMany({
+      where: and(eq(users.empresaId, ctx.empresaId), eq(users.isActive, true), ne(users.canalVenda, 'nenhum')),
+      columns: { id: true, name: true, fotoUrl: true, canalVenda: true, role: true },
+    })
+    const visiveis = isAdmin ? membros : membros.filter((m) => m.id === ctx.user.id)
+    const ids = visiveis.map((m) => m.id)
+    if (!ids.length) return { dataDe, dataAte, externos: [], leads: [], pecas: [] }
+
+    const [visitasP, propostasP, ordensP, leadsP, vendasP, contatosP, orcamentosAbertos] = await Promise.all([
+      db.query.visitas.findMany({
+        where: and(eq(visitas.empresaId, ctx.empresaId), inArray(visitas.vendedorId, ids), gte(visitas.dataVisita, dataDe), lt(visitas.dataVisita, fimExclusivo)),
+        columns: { vendedorId: true, latCheckin: true },
+      }),
+      db.query.propostas.findMany({
+        where: and(eq(propostas.empresaId, ctx.empresaId), inArray(propostas.vendedorId, ids), gte(propostas.createdAt, inicioUtc), lt(propostas.createdAt, fimUtc)),
+        columns: { vendedorId: true },
+      }),
+      db
+        .select({ vendedorId: ordens.vendedorId, valor: ordemDetalhes.valorPedido })
+        .from(ordens)
+        .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
+        .where(and(eq(ordens.empresaId, ctx.empresaId), inArray(ordens.vendedorId, ids), ne(ordens.status, 'cancelado'), gte(ordens.createdAt, inicioUtc), lt(ordens.createdAt, fimUtc))),
+      db.query.leads.findMany({
+        where: and(eq(leads.empresaId, ctx.empresaId), inArray(leads.vendorId, ids), gte(leads.createdAt, inicioUtc), lt(leads.createdAt, fimUtc)),
+        columns: { vendorId: true },
+      }),
+      db.query.vendas.findMany({
+        where: and(inArray(vendas.vendedorId, ids), isNull(vendas.deletedAt), gte(vendas.dataFechamento, inicioUtc), lt(vendas.dataFechamento, fimUtc)),
+        columns: { vendedorId: true, valorFechado: true },
+      }),
+      db
+        .select({ vendedorId: registroContato.vendedorId, tipo: registroContato.tipo, clienteId: funilMensal.clienteId })
+        .from(registroContato)
+        .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+        .where(and(inArray(registroContato.vendedorId, ids), isNull(registroContato.deletedAt), gte(registroContato.dataHora, inicioUtc), lt(registroContato.dataHora, fimUtc))),
+      // Orçamentos em aberto = cards da Carteira parados em "Negociação"
+      // agora (foto do momento, não depende do período).
+      db.query.funilMensal.findMany({
+        where: and(inArray(funilMensal.vendedorId, ids), eq(funilMensal.etapa, 'negociacao'), eq(funilMensal.mesReferencia, `${hojeBr.slice(0, 8)}01`)),
+        columns: { vendedorId: true, valorOrcado: true },
+      }),
+    ])
+
+    const contar = <T extends Record<string, unknown>>(lista: T[], campo: keyof T, id: number) => lista.filter((x) => x[campo] === id).length
+
+    const linhas = visiveis.map((m) => {
+      const vendasPedido = ordensP.filter((o) => o.vendedorId === m.id)
+      const base = { id: m.id, nome: m.name, fotoUrl: m.fotoUrl, propostas: contar(propostasP, 'vendedorId', m.id) }
+      if (m.canalVenda === 'pecas') {
+        const contatos = contatosP.filter((c) => c.vendedorId === m.id)
+        const vendasKanban = vendasP.filter((v) => v.vendedorId === m.id)
+        const orcs = orcamentosAbertos.filter((o) => o.vendedorId === m.id)
+        return {
+          ...base,
+          equipe: 'pecas' as const,
+          contatos: contatos.length,
+          ligacoes: contatos.filter((c) => c.tipo === 'ligacao').length,
+          whatsapp: contatos.filter((c) => c.tipo === 'whatsapp').length,
+          clientesAtendidos: new Set(contatos.map((c) => c.clienteId)).size,
+          orcamentosAbertos: orcs.length,
+          valorOrcamentosAbertos: orcs.reduce((a, o) => a + (o.valorOrcado ?? 0), 0),
+          vendas: vendasKanban.length,
+          valorVendas: vendasKanban.reduce((a, v) => a + v.valorFechado, 0),
+        }
+      }
+      const vendasQtd = vendasPedido.length
+      const valorVendas = vendasPedido.reduce((a, o) => a + (o.valor ?? 0), 0)
+      if (m.canalVenda === 'leads') {
+        return { ...base, equipe: 'leads' as const, leadsRecebidos: contar(leadsP, 'vendorId', m.id), vendas: vendasQtd, valorVendas }
+      }
+      const vis = visitasP.filter((v) => v.vendedorId === m.id)
+      const gps = vis.filter((v) => v.latCheckin != null).length
+      return { ...base, equipe: 'externos' as const, visitas: vis.length, visitasGps: gps, visitasManual: vis.length - gps, vendas: vendasQtd, valorVendas }
+    })
+
+    const ordenar = <T extends { vendas: number; valorVendas: number; nome: string }>(l: T[]) =>
+      l.sort((a, b) => b.vendas - a.vendas || b.valorVendas - a.valorVendas || a.nome.localeCompare(b.nome))
+    return {
+      dataDe,
+      dataAte,
+      externos: ordenar(linhas.filter((l): l is Extract<typeof l, { equipe: 'externos' }> => l.equipe === 'externos')),
+      leads: ordenar(linhas.filter((l): l is Extract<typeof l, { equipe: 'leads' }> => l.equipe === 'leads')),
+      pecas: ordenar(linhas.filter((l): l is Extract<typeof l, { equipe: 'pecas' }> => l.equipe === 'pecas')),
     }
   }),
 })
