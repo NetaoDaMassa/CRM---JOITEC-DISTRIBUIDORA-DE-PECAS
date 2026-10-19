@@ -1,9 +1,9 @@
 import { memo, useEffect, useRef, useState } from 'react'
-import { Area, AreaChart, CartesianGrid, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { formatElapsed, formatarPercentual } from '../lib/utils'
+import { formatarMoeda } from '../lib/moeda'
 import AvatarMeta from '../components/ui/AvatarMeta'
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
@@ -136,7 +136,7 @@ function AnelMeta({
 
   return (
     <div className="flex flex-col items-center text-center min-w-0">
-      <div className="relative w-[19vh] h-[19vh]">
+      <div className="relative w-[15vh] h-[15vh]">
         <svg viewBox={`0 0 ${tamanho} ${tamanho}`} className="w-full h-full -rotate-90">
           <circle cx={50} cy={50} r={raio} fill="none" stroke="#1f2b3a" strokeWidth={9} />
           <circle
@@ -152,11 +152,11 @@ function AnelMeta({
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
-          <span className="text-[3.6vh] font-bold font-mono tabular-nums leading-none">{formatar(atual)}</span>
+          <span className="text-[3.2vh] font-bold font-mono tabular-nums leading-none">{formatar(atual)}</span>
           {temMeta && <span className="text-[1.5vh] text-dark-400 mt-[0.5vh]">meta {formatar(meta!)}</span>}
         </div>
       </div>
-      <p className="text-[1.9vh] font-semibold text-dark-100 mt-[1vh]">{titulo}</p>
+      <p className="text-[1.8vh] font-semibold text-dark-100 mt-[0.8vh]">{titulo}</p>
       <p className="text-[1.5vh] mt-[0.3vh]" style={{ color: cor }}>
         {!temMeta ? 'meta não definida' : bateu ? '🎯 meta batida' : noRitmo ? '✅ no ritmo' : ritmoEsperado != null ? '⚠️ abaixo do ritmo' : '⚠️ abaixo da meta'}
       </p>
@@ -165,18 +165,15 @@ function AnelMeta({
 }
 
 const BlocoMetas = memo(function BlocoMetas({ data }: { data: PainelData }) {
-  const hoje = new Date()
-  const diasMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate()
-  const ritmoLeads = data.metas.clientesAbertos != null ? (data.metas.clientesAbertos * hoje.getDate()) / diasMes : undefined
   return (
     <Card titulo="🎯 Metas de marketing do mês" cor={COR_OK} className="col-span-5">
       <div className="flex-1 grid grid-cols-3 items-center gap-[2vh]">
         <AnelMeta
-          titulo="Leads no mês"
-          atual={data.mes.totalLeads}
-          meta={data.metas.clientesAbertos}
+          titulo="Clientes ganhos"
+          atual={data.mes.totalGanhos}
+          meta={data.metas.clientesGanhos}
           formatar={(v) => String(Math.round(v))}
-          ritmoEsperado={ritmoLeads}
+          ritmoEsperado={data.metas.ritmoClientesGanhos ?? undefined}
         />
         <AnelMeta
           titulo="Taxa de conversão"
@@ -196,39 +193,41 @@ const BlocoMetas = memo(function BlocoMetas({ data }: { data: PainelData }) {
   )
 })
 
-const BlocoLeadsPorDia = memo(function BlocoLeadsPorDia({ data }: { data: PainelData }) {
-  const escala = useEscala()
+// Trocou o gráfico de "Leads por dia" (pedido do João, 2026-10-19): o que
+// importa no telão é quanto tem na mesa agora, não o histórico de entrada.
+const BlocoNegociacao = memo(function BlocoNegociacao({ data }: { data: PainelData }) {
+  const n = data.emNegociacao
+  const valorAnimado = useContador(n.valor)
   return (
-    <Card titulo="📈 Leads por dia (mês)" cor={COR_LEADS} className="col-span-4">
-      <div className="flex-1 min-h-0">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data.leadsPorDia} margin={{ top: 34 * escala, right: 18 * escala, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id="gradLeadsMkt" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={COR_LEADS} stopOpacity={0.55} />
-                <stop offset="100%" stopColor={COR_LEADS} stopOpacity={0.03} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
-            <XAxis dataKey="dia" tick={{ fill: '#c3c2b7', fontSize: 16 * escala }} tickLine={false} axisLine={false} interval="preserveStartEnd" />
-            <YAxis tick={{ fill: '#c3c2b7', fontSize: 16 * escala }} tickLine={false} axisLine={false} width={36 * escala} allowDecimals={false} />
-            <Area
-              type="monotone"
-              dataKey="leads"
-              stroke={COR_LEADS}
-              strokeWidth={4 * escala}
-              fill="url(#gradLeadsMkt)"
-              dot={{ r: 4 * escala, fill: COR_LEADS, strokeWidth: 0 }}
-              label={(props: any) =>
-                props.index === data.leadsPorDia.length - 1 ? (
-                  <text x={props.x} y={props.y - 12} textAnchor="middle" fill={COR_LEADS} fontSize={20 * escala} fontWeight={700}>
-                    {props.value}
-                  </text>
-                ) : null
-              }
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+    <Card titulo="🤝 Em negociação agora" cor={COR_CONTATOS} className="col-span-4">
+      <div className="flex items-end gap-[3vh] shrink-0">
+        <div>
+          <p className="text-[6vh] leading-none font-bold font-mono tabular-nums">{n.quantidade}</p>
+          <p className="text-[1.6vh] text-dark-400 mt-[0.4vh]">lead{n.quantidade !== 1 ? 's' : ''}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-[4.4vh] leading-none font-bold font-mono tabular-nums truncate" style={{ color: COR_CONTATOS }}>
+            {formatarMoeda(valorAnimado, { casas: 0 })}
+          </p>
+          <p className="text-[1.6vh] text-dark-400 mt-[0.4vh]">
+            em orçamentos{n.semValor > 0 ? ` · ${n.semValor} sem valor informado` : ''}
+          </p>
+        </div>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden mt-[1.4vh] pt-[1vh] border-t border-dark-700/60 flex flex-col justify-around">
+        {!n.quantidade && <p className="text-[1.8vh] text-dark-500">Nenhum lead em negociação no momento.</p>}
+        {n.maiores.slice(0, 3).map((l) => (
+          <div key={l.id} className="flex items-center gap-[1vh]">
+            <span className="flex-1 min-w-0 text-[1.9vh] text-dark-100 truncate">
+              {l.nome}
+              <span className="text-dark-400">{l.vendedor ? ` · ${l.vendedor}` : ' · sem vendedor'}</span>
+            </span>
+            <span className="text-[1.5vh] text-dark-400 font-mono shrink-0">há {formatElapsed(l.desde)}</span>
+            <span className="w-[14vh] text-right text-[2vh] font-bold font-mono tabular-nums shrink-0">
+              {l.valor ? formatarMoeda(l.valor, { casas: 0 }) : '—'}
+            </span>
+          </div>
+        ))}
       </div>
     </Card>
   )
@@ -245,7 +244,7 @@ const BlocoFunil = memo(function BlocoFunil({ data }: { data: PainelData }) {
             <div key={f.etapa} className="flex items-center gap-[1.2vh]">
               <div className="flex-1 flex justify-center">
                 <div
-                  className="h-[5vh] rounded-[0.8vh] flex items-center justify-between px-[1.4vh] transition-all duration-700"
+                  className="h-[4.2vh] rounded-[0.8vh] flex items-center justify-between px-[1.4vh] transition-all duration-700"
                   style={{
                     width: `${Math.max(55, (f.qtd / maior) * 100)}%`,
                     background: ganho ? COR_OK : COR_LEADS,
@@ -332,7 +331,7 @@ const BlocoUltimosLeads = memo(function BlocoUltimosLeads({ data, destaqueId }: 
   return (
     <Card titulo="🔔 Últimos leads" cor={COR_CONTATOS} className="col-span-3">
       <div className="flex-1 flex flex-col justify-around min-h-0 overflow-hidden">
-        {data.ultimosLeads.slice(0, 5).map((l) => (
+        {data.ultimosLeads.slice(0, 3).map((l) => (
           <div
             key={l.id}
             className={`flex items-center gap-[1vh] rounded-[0.8vh] px-[1vh] py-[0.6vh] transition-colors duration-1000 ${
@@ -357,13 +356,12 @@ const BlocoUltimosLeads = memo(function BlocoUltimosLeads({ data, destaqueId }: 
   )
 })
 
-export default function PainelTvMarketing() {
-  const [relogio, setRelogio] = useState(new Date())
-  useEffect(() => {
-    const id = setInterval(() => setRelogio(new Date()), 1000)
-    return () => clearInterval(id)
-  }, [])
-
+// Conteúdo do painel (KPIs + blocos) sem o cabeçalho/relógio — usado na
+// página própria (/painel-tv-marketing) e também como slide "Marketing" do
+// carrossel do Painel de TV geral (PainelTV.tsx), no lugar do antigo
+// "Leads aguardando" (pedido do João, 2026-10-19). Preenche a altura do
+// container pai (flex-1).
+export function PainelMarketingConteudo() {
   // `refetchIntervalInBackground: true` — TV fica sem mouse/teclado, a aba
   // nunca ganha foco (mesmo motivo do PainelTV.tsx).
   const { data, isError, error } = trpc.painelMarketing.resumo.useQuery(undefined, {
@@ -391,25 +389,7 @@ export default function PainelTvMarketing() {
   const metaMin = data?.metas.atendimentoRapidoHoras != null ? data.metas.atendimentoRapidoHoras * 60 : null
 
   return (
-    <div className="h-screen overflow-hidden bg-dark-950 text-dark-50 p-[2.4vh] flex flex-col gap-[1.8vh]">
-      <div className="flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-[1.6vh]">
-          <h1 className="font-heading text-[3.6vh] text-gold-400 font-bold leading-none">
-            Marketing{data?.empresaNome ? ` · ${data.empresaNome}` : ''}
-          </h1>
-          <span className="flex items-center gap-[0.8vh] text-[1.6vh] text-green-400 bg-green-900/25 px-[1.2vh] py-[0.5vh] rounded-full">
-            <span className="w-[1vh] h-[1vh] rounded-full bg-green-400 animate-pulse" />
-            ao vivo
-          </span>
-        </div>
-        <div className="text-right">
-          <p className="text-[3.4vh] font-mono leading-none">{relogio.toLocaleTimeString('pt-BR')}</p>
-          <p className="text-[1.7vh] text-dark-400 mt-[0.4vh]">
-            {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
-          </p>
-        </div>
-      </div>
-
+    <div className="flex-1 min-h-0 flex flex-col gap-[1.8vh]">
       {novoLead && (
         <div className="shrink-0 rounded-[1.4vh] bg-gold-400 text-dark-950 px-[2.4vh] py-[1.4vh] flex items-center gap-[1.6vh] animate-bounce">
           <span className="text-[3.4vh]">🔔</span>
@@ -449,7 +429,7 @@ export default function PainelTvMarketing() {
 
           <div className="grid grid-cols-12 gap-[1.8vh] flex-1 min-h-0">
             <BlocoMetas data={data} />
-            <BlocoLeadsPorDia data={data} />
+            <BlocoNegociacao data={data} />
             <BlocoFunil data={data} />
           </div>
 
@@ -460,6 +440,41 @@ export default function PainelTvMarketing() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+export default function PainelTvMarketing() {
+  const [relogio, setRelogio] = useState(new Date())
+  useEffect(() => {
+    const id = setInterval(() => setRelogio(new Date()), 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  // Mesma query do conteúdo (react-query reaproveita) — só pro nome da empresa no título.
+  const { data } = trpc.painelMarketing.resumo.useQuery(undefined, { refetchInterval: 15000, refetchIntervalInBackground: true, retry: false })
+
+  return (
+    <div className="h-screen overflow-hidden bg-dark-950 text-dark-50 p-[2.4vh] flex flex-col gap-[1.8vh]">
+      <div className="flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-[1.6vh]">
+          <h1 className="font-heading text-[3.6vh] text-gold-400 font-bold leading-none">
+            Marketing{data?.empresaNome ? ` · ${data.empresaNome}` : ''}
+          </h1>
+          <span className="flex items-center gap-[0.8vh] text-[1.6vh] text-green-400 bg-green-900/25 px-[1.2vh] py-[0.5vh] rounded-full">
+            <span className="w-[1vh] h-[1vh] rounded-full bg-green-400 animate-pulse" />
+            ao vivo
+          </span>
+        </div>
+        <div className="text-right">
+          <p className="text-[3.4vh] font-mono leading-none">{relogio.toLocaleTimeString('pt-BR')}</p>
+          <p className="text-[1.7vh] text-dark-400 mt-[0.4vh]">
+            {relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+          </p>
+        </div>
+      </div>
+
+      <PainelMarketingConteudo />
     </div>
   )
 }

@@ -1,3 +1,5 @@
+import { ehDiaNaoUtil } from './dataBr.js'
+
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000 // America/Sao_Paulo (UTC-3, sem horário de verão desde 2019)
 const BUSINESS_START_HOUR = 8
 const BUSINESS_END_HOUR = 18
@@ -30,10 +32,13 @@ export function businessHoursElapsedMs(fromISO: string, toISO: string = new Date
   let dayStart = Math.floor(from / DAY_MS) * DAY_MS
 
   while (dayStart <= to) {
-    const day = new Date(dayStart)
-    const weekday = day.getUTCDay()
-
-    if (weekday !== 0 && weekday !== 6) {
+    // Fim de semana E feriado (nacional + FERIADOS_EXTRAS de dataBr.ts) não
+    // contam — antes só pulava sáb/dom, então um lead que chegava antes de um
+    // feriado (ex: 12/10) ficava com o feriado inteiro contado como atraso
+    // no "Atendimento rápido"/1º contato. Achado do João, 2026-10-19.
+    // `dayStart` já está deslocado pro fuso de Brasília, então a data UTC
+    // dele é a data local — formato que ehDiaNaoUtil espera.
+    if (!ehDiaNaoUtil(new Date(dayStart))) {
       const windowStart = dayStart + BUSINESS_START_HOUR * 60 * 60 * 1000
       const windowEnd = dayStart + BUSINESS_END_HOUR * 60 * 60 * 1000
       const clippedStart = Math.max(windowStart, from)

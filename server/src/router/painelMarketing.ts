@@ -5,6 +5,7 @@ import { leads, leadContactAttempts, leadCampaigns, users, empresas, metasMarket
 import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { isTerminalStatus } from '../lib/leadsStatus.js'
 import { calcularReportGeral } from './leadsRelatorios.js'
+import { diasUteisDecorridos, diasUteisNoMes } from '../lib/dataBr.js'
 
 // Painel de TV só de Marketing/Leads (pedido do João, 2026-10-19) — tela
 // única pro telão de 75", tudo da empresa ativa. Os números de "mês" e as
@@ -60,6 +61,9 @@ export const painelMarketingRouter = router({
         source: true,
         campaignId: true,
         nextContactAt: true,
+        orderValue: true,
+        statusChangedAt: true,
+        updatedAt: true,
         createdAt: true,
       },
     })
@@ -125,13 +129,25 @@ export const painelMarketingRouter = router({
       }))
       .sort((a, b) => a.mediaMinutos - b.mediaMinutos)
 
-    // Leads por dia no mês (até hoje), pra o gráfico de área.
-    const porDia = new Map<string, number>()
-    for (const l of leadsDoMes) porDia.set(criadoLocal(l), (porDia.get(criadoLocal(l)) ?? 0) + 1)
-    const leadsPorDia: { dia: string; leads: number }[] = []
-    for (let d = 1; d <= Number(hoje.slice(8, 10)); d++) {
-      const chave = `${hoje.slice(0, 7)}-${String(d).padStart(2, '0')}`
-      leadsPorDia.push({ dia: String(d).padStart(2, '0'), leads: porDia.get(chave) ?? 0 })
+    // Leads em negociação AGORA (fotografia do momento, qualquer mês de
+    // entrada) — trocou o gráfico de "Leads por dia" a pedido do João,
+    // 2026-10-19. Valor = orçamento do lead (orderValue).
+    const negociando = todos
+      .filter((l) => l.status === 'em_negociacao')
+      .map((l) => ({
+        id: l.id,
+        nome: l.name.trim().split(/\s+/)[0],
+        cidade: l.city,
+        vendedor: l.vendorId ? vendedorPorId.get(l.vendorId)?.name.split(' ')[0] ?? null : null,
+        valor: l.orderValue ?? 0,
+        desde: toUtcISO(l.statusChangedAt ?? l.updatedAt),
+      }))
+      .sort((a, b) => b.valor - a.valor)
+    const emNegociacao = {
+      quantidade: negociando.length,
+      valor: negociando.reduce((s, l) => s + l.valor, 0),
+      semValor: negociando.filter((l) => !l.valor).length,
+      maiores: negociando.slice(0, 5),
     }
 
     const origemMap = new Map<string, number>()
@@ -180,14 +196,21 @@ export const painelMarketingRouter = router({
         primeiraRespostaHoras: geral.tempoMedioPrimeiroContatoHoras,
         amostraPrimeiraResposta: geral.amostraPrimeiroContato,
       },
+      // A meta "clientes" (coluna metaClientesAbertos, nome antigo) é de
+      // leads GANHOS no mês, não de leads recebidos — corrigido a pedido do
+      // João, 2026-10-19. Ritmo esperado proporcional aos dias úteis.
       metas: {
-        clientesAbertos: meta?.metaClientesAbertos ?? null,
+        clientesGanhos: meta?.metaClientesAbertos ?? null,
+        ritmoClientesGanhos:
+          meta?.metaClientesAbertos != null
+            ? (meta.metaClientesAbertos * diasUteisDecorridos(mesReferencia)) / Math.max(1, diasUteisNoMes(mesReferencia))
+            : null,
         taxaConversaoPct: meta?.metaTaxaConversaoPct ?? null,
         atendimentoRapidoHoras: meta?.metaAtendimentoRapidoHoras ?? null,
       },
       funil,
       rankingResposta,
-      leadsPorDia,
+      emNegociacao,
       porOrigem,
       ultimosLeads,
     }

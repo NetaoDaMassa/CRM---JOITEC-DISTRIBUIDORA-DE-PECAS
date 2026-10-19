@@ -377,7 +377,7 @@ function EditarMetaModal({
           onChange={(e) => setAtendimentoRapido(e.target.value)}
         />
         <Input
-          label="Clientes abertos no mês"
+          label="Clientes ganhos no mês (leads fechados)"
           type="number"
           step="1"
           value={clientesAbertos}
@@ -475,8 +475,8 @@ function GeralTab() {
                 maiorMelhor={false}
               />
               <MetaTile
-                label="Clientes abertos"
-                atual={data.totalLeads}
+                label="Clientes ganhos"
+                atual={data.totalGanhos}
                 meta={meta?.metaClientesAbertos}
                 formatarValor={(v) => String(Math.round(v))}
                 maiorMelhor

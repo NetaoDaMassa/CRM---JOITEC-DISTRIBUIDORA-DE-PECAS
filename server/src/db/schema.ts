@@ -679,7 +679,9 @@ export const metasMarketing = sqliteTable('metas_marketing', {
   // "Atendimento rápido" — meta de horas úteis até o 1º contato (quanto
   // menor, melhor), comparado com tempoMedioPrimeiroContatoHoras.
   metaAtendimentoRapidoHoras: real('meta_atendimento_rapido_horas'),
-  // "Clientes abertos" — quantidade de leads recebidos no mês (totalLeads).
+  // Meta de clientes GANHOS no mês (leads com status "ganho" — totalGanhos),
+  // não de leads recebidos. Nome da coluna é do tempo em que era "clientes
+  // abertos"; o significado mudou a pedido do João, 2026-10-19.
   metaClientesAbertos: integer('meta_clientes_abertos'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),

@@ -10,10 +10,10 @@ import AvatarMeta from '../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../lib/useCelebrarMeta'
 import CelebracaoPopup from '../components/ui/CelebracaoPopup'
 import PainelConfigModal from '../components/PainelConfigModal'
+import { PainelMarketingConteudo } from './PainelTvMarketing'
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type PainelData = RouterOutputs['painel']['resumo']
-type LeadsNovoData = RouterOutputs['leads']['aguardandoPorVendedor']
 
 // Formato telão (75", 16:9) — cada slide ocupa 100% da altura sem rolagem
 // (antes o conteúdo passava da dobra e dependia do useAutoScroll), e tudo é
@@ -555,40 +555,7 @@ const SlideNegociacoes = memo(function SlideNegociacoes({ data }: { data: Painel
   )
 })
 
-// Leads (site, tráfego pago etc.) ainda em "Novo", esperando algum vendedor
-// abordar — por vendedor.
-const SlideLeadsNovo = memo(function SlideLeadsNovo({ data }: { data: LeadsNovoData }) {
-  const maiorFila = Math.max(0, ...data.vendedores.map((v) => v.leadsNovo))
-  return (
-    <div className="grid grid-cols-12 gap-[2vh] h-full">
-      <div className="col-span-3 grid grid-rows-2 gap-[2vh] min-h-0">
-        <Kpi titulo="Leads esperando" valor={data.totalLeadsNovo} cor={COR_RUIM} sub="ainda em “Novo”" />
-        {data.semVendedor > 0 && <Kpi titulo="Sem vendedor" valor={data.semVendedor} cor={COR_CONTATOS} sub="sem ninguém atribuído" />}
-      </div>
-      <Card titulo="📥 Leads aguardando atendimento · por vendedor" cor={COR_CONTATOS} className="col-span-9">
-        {!data.vendedores.length && <p className="text-[2.2vh] text-dark-500">Nenhum vendedor cadastrado ainda.</p>}
-        <Linhas
-          itens={data.vendedores}
-          chave={(v, i) => v.id ?? i}
-          render={(v, i, fonteVh) => (
-            <>
-              <Posicao i={i} medalhas={false} />
-              <AvatarMeta nome={v.nome} fotoUrl={v.fotoUrl} tamanho={`${fonteVh * 1.9}vh`} />
-              <NomeVendedor nome={v.nome} fonteVh={fonteVh} />
-              <BarraLinha
-                percentual={maiorFila > 0 ? (v.leadsNovo / maiorFila) * 100 : 0}
-                cor={maiorFila > 0 && v.leadsNovo === maiorFila ? COR_RUIM : COR_CONTATOS}
-                rotulo={`${v.leadsNovo}`}
-              />
-            </>
-          )}
-        />
-      </Card>
-    </div>
-  )
-})
-
-type ChaveSlide = 'geral' | 'semana' | 'ligacoes' | 'conversao' | 'tendencias' | 'orcamentos' | 'leads'
+type ChaveSlide = 'geral' | 'semana' | 'ligacoes' | 'conversao' | 'tendencias' | 'orcamentos' | 'marketing'
 
 export default function PainelTV() {
   const [relogio, setRelogio] = useState(new Date())
@@ -605,12 +572,11 @@ export default function PainelTV() {
   const { data } = trpc.painel.resumo.useQuery(undefined, { refetchInterval: 15000, refetchIntervalInBackground: true })
   const { celebracao, fecharCelebracao } = useCelebrarMeta(data?.vendedores)
 
-  // Leads parados em "Novo" na tabela local. Some sozinho da rotação quando
-  // não tem nenhum lead esperando.
-  const { data: leadsAguardando } = trpc.leads.aguardandoPorVendedor.useQuery(undefined, {
-    refetchInterval: 15000,
-    refetchIntervalInBackground: true,
-  })
+  // Slide "Marketing" (mesmo conteúdo do /painel-tv-marketing) entrou no
+  // lugar do antigo "Leads aguardando" — pedido do João, 2026-10-19. A
+  // query roda aqui também (react-query reaproveita a mesma) só pra o
+  // slide já abrir com dado, sem "Carregando..." toda vez que entra.
+  trpc.painelMarketing.resumo.useQuery(undefined, { refetchInterval: 15000, refetchIntervalInBackground: true, retry: false })
 
   const slides: { chave: ChaveSlide; titulo: string }[] = [
     { chave: 'geral', titulo: 'Visão geral' },
@@ -619,7 +585,7 @@ export default function PainelTV() {
     { chave: 'conversao', titulo: 'Conversão' },
     { chave: 'tendencias', titulo: 'Tendências' },
     { chave: 'orcamentos', titulo: 'Orçamentos' },
-    ...(leadsAguardando && leadsAguardando.totalLeadsNovo > 0 ? [{ chave: 'leads' as const, titulo: 'Leads aguardando' }] : []),
+    { chave: 'marketing', titulo: 'Marketing' },
   ]
   const [slideAtual, setSlideAtual] = useState(0)
   const [configAberta, setConfigAberta] = useState(false)
@@ -640,7 +606,6 @@ export default function PainelTV() {
     return () => clearInterval(id)
   }, [slides.length, segundos, autoplay])
 
-  // Slide de leads pode sumir da rotação com o índice apontando pra ele.
   const atual = slides[slideAtual] ?? slides[0]
 
   function renderSlide() {
@@ -658,8 +623,12 @@ export default function PainelTV() {
         return <SlideTendencias data={data} escala={escala} />
       case 'orcamentos':
         return <SlideNegociacoes data={data} />
-      case 'leads':
-        return leadsAguardando ? <SlideLeadsNovo data={leadsAguardando} /> : null
+      case 'marketing':
+        return (
+          <div className="h-full flex flex-col">
+            <PainelMarketingConteudo />
+          </div>
+        )
     }
   }
 
