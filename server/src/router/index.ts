@@ -47,6 +47,7 @@ import { brevoRouter } from './brevo.js'
 import { leadsRouter } from './leads.js'
 import { leadsRelatoriosRouter } from './leadsRelatorios.js'
 import { marketingGeralRouter } from './marketingGeral.js'
+import { painelMarketingRouter } from './painelMarketing.js'
 import { leadsRegioesRouter } from './leadsRegioes.js'
 import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { pabxRouter } from './pabx.js'
@@ -123,6 +124,7 @@ export const appRouter = router({
   leads: leadsRouter,
   leadsRelatorios: leadsRelatoriosRouter,
   marketingGeral: marketingGeralRouter,
+  painelMarketing: painelMarketingRouter,
   leadsRegioes: leadsRegioesRouter,
   sidebarGrupos: sidebarGruposRouter,
   pabx: pabxRouter,

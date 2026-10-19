@@ -50,6 +50,9 @@ export const FEATURES_ADMIN = [
   // propostas → vendas) — mesmo padrão de painel_tv/painel_financeiro,
   // rota própria fora da sidebar normal.
   'painel_tv_odin',
+  // Painel de TV só de Marketing/Leads (telão de 75") — mesmo padrão dos
+  // outros painéis de TV, rota própria fora da sidebar normal.
+  'painel_tv_marketing',
   // Financeiro/Cobrança (planilhas), pedido do João — admin-only de
   // propósito, não existe em FEATURES_VENDEDOR. Concedido manualmente em
   // Permissões pra quem cuida disso (não libera pra todo mundo por padrão,

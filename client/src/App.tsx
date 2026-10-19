@@ -68,6 +68,7 @@ import FilaPosVenda from './pages/FilaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
+import PainelTvMarketing from './pages/PainelTvMarketing'
 import Devolucoes from './pages/Devolucoes'
 import MarketingArquivos from './pages/MarketingArquivos'
 import OrdensKanban from './pages/OrdensKanban'
@@ -182,6 +183,18 @@ export default function App() {
               <AdminGuard>
                 <FeatureGuard feature="painel_tv_odin">
                   <PainelTvOdin />
+                </FeatureGuard>
+              </AdminGuard>
+            </AuthGuard>
+          }
+        />
+        <Route
+          path="/painel-tv-marketing"
+          element={
+            <AuthGuard>
+              <AdminGuard>
+                <FeatureGuard feature="painel_tv_marketing">
+                  <PainelTvMarketing />
                 </FeatureGuard>
               </AdminGuard>
             </AuthGuard>

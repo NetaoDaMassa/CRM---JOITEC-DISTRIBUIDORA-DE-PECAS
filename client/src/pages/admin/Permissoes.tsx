@@ -23,6 +23,7 @@ const FEATURES = [
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
+  { feature: 'painel_tv_marketing', label: 'Painel de TV Marketing' },
   { feature: 'funil_excluir_card', label: 'Excluir card do Kanban' },
   // ETAPA 2 de Garantias (oficina/avaliação técnica) — não tem item de menu
   // próprio (fica numa aba dentro do processo), entra na mão igual
