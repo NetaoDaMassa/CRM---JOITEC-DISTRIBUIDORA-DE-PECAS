@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowDownRight, ArrowUpRight, ChevronRight, Info } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { Dica } from './ExplicacaoMetricas'
 
 // Peças visuais dos relatórios novos (resumo + detalhados) — pedido do João,
 // 2026-10-20, a partir de 3 referências: números grandes com "vs período
@@ -70,11 +71,7 @@ export function KpiCard({
       <div className="flex items-start justify-between gap-2">
         <p className="text-[13px] text-dark-300 flex items-center gap-1.5">
           {titulo}
-          {ajuda && (
-            <span title={ajuda} className="text-dark-500 cursor-help">
-              <Info size={13} />
-            </span>
-          )}
+          <Dica texto={ajuda} />
         </p>
         {Icone && (
           <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: cor }}>
@@ -172,7 +169,7 @@ export function Medidor({ percentual, cor = '#22a861', rotulo }: { percentual: n
   )
 }
 
-export type Segmento = { chave: string; rotulo: string; valor: number; cor: string }
+export type Segmento = { chave: string; rotulo: string; valor: number; cor: string; ajuda?: string }
 
 // Barra empilhada com legenda — "Atividade da carteira".
 export function BarraSegmentada({ segmentos, aoClicar, selecionado }: { segmentos: Segmento[]; aoClicar?: (chave: string) => void; selecionado?: string | null }) {
@@ -207,6 +204,7 @@ export function BarraSegmentada({ segmentos, aoClicar, selecionado }: { segmento
             key={s.chave}
             type="button"
             onClick={() => aoClicar?.(s.chave)}
+            title={s.ajuda}
             className={`flex items-center gap-1.5 text-[13px] text-dark-200 ${selecionado && selecionado !== s.chave ? 'opacity-45' : ''}`}
           >
             <span className="w-3 h-3 rounded-full shrink-0" style={{ background: s.cor }} />
@@ -219,7 +217,7 @@ export function BarraSegmentada({ segmentos, aoClicar, selecionado }: { segmento
 }
 
 // Número pequeno com ícone (cards da linha de baixo da referência).
-export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick }: { icone: LucideIcon; valor: ReactNode; rotulo: string; cor: string; href?: string; onClick?: () => void }) {
+export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick, ajuda }: { icone: LucideIcon; valor: ReactNode; rotulo: string; cor: string; href?: string; onClick?: () => void; ajuda?: string }) {
   const corpo = (
     <>
       <div className="flex items-center gap-3">
@@ -229,8 +227,9 @@ export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick }: 
         <p className="text-xl font-bold text-dark-50 ml-auto">{valor}</p>
         {(href || onClick) && <ChevronRight size={15} className="text-dark-500 group-hover:text-gold-400" />}
       </div>
-      <p className="text-[13px] mt-2 font-medium" style={{ color: cor }}>
+      <p className="text-[13px] mt-2 font-medium flex items-center gap-1.5" style={{ color: cor }}>
         {rotulo}
+        <Dica texto={ajuda} />
       </p>
     </>
   )

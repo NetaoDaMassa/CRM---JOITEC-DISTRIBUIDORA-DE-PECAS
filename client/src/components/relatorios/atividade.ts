@@ -19,5 +19,5 @@ export const ehAtivado = (categoria: string) => categoria !== 'inativo' && categ
 export function contarCategorias<T extends { categoria: string }>(clientes: T[] | undefined) {
   const contagem: Record<string, number> = {}
   for (const c of clientes ?? []) contagem[c.categoria] = (contagem[c.categoria] ?? 0) + 1
-  return CATEGORIAS_ATIVIDADE.map((c) => ({ chave: c.chave, rotulo: c.rotulo, cor: c.cor, valor: contagem[c.chave] ?? 0 }))
+  return CATEGORIAS_ATIVIDADE.map((c) => ({ chave: c.chave, rotulo: c.rotulo, cor: c.cor, ajuda: c.ajuda, valor: contagem[c.chave] ?? 0 }))
 }

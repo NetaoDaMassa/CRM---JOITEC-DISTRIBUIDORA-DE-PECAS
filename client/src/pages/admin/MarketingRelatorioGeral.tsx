@@ -4,6 +4,7 @@ import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
 import { formatarMoeda } from '../../lib/moeda'
 import { hojeBrString } from '../../lib/utils'
+import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
 
 function formatarHoras(h: number): string {
   if (!h || h <= 0) return '0h'
@@ -57,6 +58,8 @@ export default function MarketingRelatorioGeral() {
         </div>
         <Input type="month" value={mesReferencia} onChange={(e) => setMesReferencia(e.target.value)} className="w-40" />
       </div>
+
+      <ExplicacaoMetricas chave="marketing-geral" />
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
 

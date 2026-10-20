@@ -6,6 +6,7 @@ import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { BarraFiltros, useFiltrosRelatorio } from '../../components/relatorios/filtros'
 import { baseRelatorios, relatoriosPermitidos, RELATORIOS_DETALHADOS } from '../../components/relatorios/catalogo'
+import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
 import AdminReports from '../admin/Reports'
 import { ClientesParados, CurvaAbc, Positivacao } from './detalhes/Carteira'
 import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/Vendas'
@@ -109,6 +110,7 @@ export default function DetalheRelatorio() {
         </div>
       </div>
       <BarraFiltros f={f} semPeriodo={SEM_PERIODO.has(slug)} semVendedor={slug === 'todas-empresas'} />
+      <ExplicacaoMetricas chave={slug} />
       <Componente f={f} simples={simples} mostrarResumo={mostrarResumo} clientesBase={user?.role === 'admin' ? '/admin/clientes' : '/vendedor/clientes'} />
     </div>
   )

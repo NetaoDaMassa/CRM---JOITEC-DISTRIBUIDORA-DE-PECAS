@@ -14,6 +14,7 @@ import Modal from '../components/ui/Modal'
 import AvatarMeta from '../components/ui/AvatarMeta'
 import { STAGE_LABELS, STAGE_COLORS, type Stage } from '../lib/ordensShared'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
+import ExplicacaoMetricas from '../components/relatorios/ExplicacaoMetricas'
 
 function baixarCsv(filename: string, linhas: string[]) {
   const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
@@ -216,6 +217,7 @@ export default function RelatoriosOdin() {
         </div>
       )}
 
+      <ExplicacaoMetricas chave={`odin-${tab}`} className="mb-5" />
       {tab === 'semanal' && <RelatorioSemanalVendedores />}
       {tab === 'pedidos' && <RelatorioPedidosProcesso filtro={filtro} />}
       {tab === 'propostas' && <RelatorioPropostas filtro={filtro} />}

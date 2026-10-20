@@ -9,6 +9,7 @@ import TabelaDados from '../../../components/relatorios/TabelaDados'
 import type { Coluna } from '../../../components/relatorios/TabelaDados'
 import { CATEGORIAS_ATIVIDADE, categoriaInfo, contarCategorias, ehAtivado } from '../../../components/relatorios/atividade'
 import type { PropsDetalhe } from './tipos'
+import { explicar } from '../../../components/relatorios/glossario'
 
 // ── Positivação de carteira ─────────────────────────────────────────────
 export function Positivacao({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe) {
@@ -119,11 +120,11 @@ export function Positivacao({ f, simples, mostrarResumo, clientesBase }: PropsDe
             </div>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mt-6">
-            <MiniNumero icone={Users} cor="#3a86d6" valor={numero(clientes.length)} rotulo="Clientes na carteira" onClick={() => setCategoria(null)} />
-            <MiniNumero icone={UserCheck} cor="#22a861" valor={numero(ativados)} rotulo="Clientes ativados" />
-            <MiniNumero icone={Target} cor="#0ea5a4" valor={pct(posit?.percentual)} rotulo={`Positivação no período (${numero(posit?.ativados)})`} />
-            <MiniNumero icone={CalendarClock} cor="#8b5cf6" valor={`${numero(Math.round(mediaDias))} dias`} rotulo="Tempo médio desde a última compra" />
-            <MiniNumero icone={Wallet} cor="#22a861" valor={moeda(ltv)} rotulo="Valor médio por cliente (LTV)" />
+            <MiniNumero icone={Users} cor="#3a86d6" valor={numero(clientes.length)} rotulo="Clientes na carteira" ajuda={explicar('positivacao', 'Clientes na carteira')} onClick={() => setCategoria(null)} />
+            <MiniNumero icone={UserCheck} cor="#22a861" valor={numero(ativados)} rotulo="Clientes ativados" ajuda={explicar('positivacao', 'Clientes ativados / Taxa de ativação')} />
+            <MiniNumero icone={Target} cor="#0ea5a4" valor={pct(posit?.percentual)} rotulo={`Positivação no período (${numero(posit?.ativados)})`} ajuda={explicar('positivacao', 'Positivação no período')} />
+            <MiniNumero icone={CalendarClock} cor="#8b5cf6" valor={`${numero(Math.round(mediaDias))} dias`} rotulo="Tempo médio desde a última compra" ajuda={explicar('positivacao', 'Tempo médio desde a última compra')} />
+            <MiniNumero icone={Wallet} cor="#22a861" valor={moeda(ltv)} rotulo="Valor médio por cliente (LTV)" ajuda={explicar('positivacao', 'Valor médio por cliente (LTV)')} />
           </div>
           <p className="text-xs text-dark-500 mt-3 flex items-center gap-1.5">
             <HeartHandshake size={13} /> Positivação {pct(posit?.percentual)} contra {pct(positAnt?.percentual)} no período anterior.

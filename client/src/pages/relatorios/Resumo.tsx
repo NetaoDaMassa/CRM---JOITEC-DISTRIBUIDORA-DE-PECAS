@@ -8,6 +8,7 @@ import { BarraFiltros, formatarDataCurta, useFiltrosRelatorio } from '../../comp
 import { BarraSegmentada, KpiCard, Medidor, MiniNumero, OrigemVendas, Ranking, Secao, moeda, numero, pct } from '../../components/relatorios/blocos'
 import { contarCategorias, ehAtivado } from '../../components/relatorios/atividade'
 import { baseRelatorios, relatoriosPermitidos } from '../../components/relatorios/catalogo'
+import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
 
 // Resumo dos relatórios (pedido do João, 2026-10-20): o que antes era uma
 // página comprida de abas virou um painel de uma tela — números grandes com
@@ -114,6 +115,7 @@ export default function ResumoRelatorios() {
         </div>
       </div>
       <BarraFiltros f={f} />
+      <ExplicacaoMetricas chave="resumo" />
 
       {/* Números principais */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">

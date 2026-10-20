@@ -9,6 +9,7 @@ import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import { downloadBase64Excel } from '../../lib/utils'
+import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
 
 type Aba = 'sla' | 'transferencias' | 'geral' | 'vendas'
 
@@ -617,6 +618,7 @@ export default function LeadsRelatorios() {
         ))}
       </div>
 
+      <ExplicacaoMetricas chave={`leads-${aba}`} className="mb-6" />
       {aba === 'sla' && <SlaTab />}
       {aba === 'transferencias' && <TransferenciasTab />}
       {aba === 'geral' && <GeralTab />}
