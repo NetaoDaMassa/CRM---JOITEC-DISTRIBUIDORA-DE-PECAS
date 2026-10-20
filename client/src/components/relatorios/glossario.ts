@@ -138,8 +138,9 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'Em negociação agora', texto: 'Cards que estão AGORA na etapa Negociação do Kanban deste mês. É uma foto do momento, não muda com o filtro de data.' },
     { termo: 'Valor em aberto', texto: 'Soma dos valores orçados desses cards em negociação.' },
     { termo: 'Parados há +15 dias', texto: 'Orçamentos em negociação há mais de 15 dias sem avançar. São os que estão esfriando. Embaixo, o valor somado deles.' },
-    { termo: 'Dias em aberto', texto: 'Há quantos dias o card entrou em Negociação. Verde até 15 dias, amarelo de 16 a 30, vermelho acima de 30.' },
+    { termo: 'Dias em aberto', texto: 'Há quantos dias o orçamento está em Negociação, contando desde a PRIMEIRA vez que entrou na etapa (mesmo que o card tenha passado de um mês pro outro). Verde até 15 dias, amarelo de 16 a 30, vermelho acima de 30.' },
     { termo: 'Orçamentos feitos', texto: 'Quantas vezes um card ENTROU na etapa Negociação dentro do período (cada orçamento enviado conta uma vez), mais as cotações do SAP do período (abr–jul/2026, Joitec e Odin Tubos), que contam pro vendedor ATUAL do cliente.' },
+    { termo: 'Abas "Feitos no período" / "Em aberto hoje"', texto: '"Feitos no período" lista cada orçamento feito nas datas do filtro (cards que entraram em Negociação + cotações do SAP), com a situação de hoje e a origem. "Em aberto hoje" é a foto do momento: o que está em Negociação agora, sem depender do filtro de data.' },
   ],
   produtos: [
     { termo: 'Quantidade', texto: 'Total de unidades vendidas daquele item, somando os itens dos pedidos fechados no período.' },
