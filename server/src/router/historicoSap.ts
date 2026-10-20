@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, asc, desc, eq, isNull } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, sapImportacoes, sapVendasHistorico, users } from '../db/schema.js'
+import { clientes, sapCotacoesHistorico, sapImportacoes, sapVendasHistorico, users } from '../db/schema.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 
 // Histórico de vendas do SAP (só consulta) — ver sapImportacoes em schema.ts.
@@ -25,7 +25,7 @@ export const historicoSapRouter = router({
       })
       .from(sapImportacoes)
       .leftJoin(users, eq(users.id, sapImportacoes.importadoPor))
-      .where(eq(sapImportacoes.empresaId, ctx.empresaId))
+      .where(and(eq(sapImportacoes.empresaId, ctx.empresaId), eq(sapImportacoes.tipo, 'vendas')))
       .orderBy(desc(sapImportacoes.id))
   }),
 
@@ -110,6 +110,49 @@ export const historicoSapRouter = router({
       ultimaCompra: pedidos[0]?.dataPedido ?? null,
       primeiraCompra: pedidos[pedidos.length - 1]?.dataPedido ?? null,
       porAno: [...porAnoMap.entries()].map(([ano, v]) => ({ ano, ...v })).sort((a, b) => b.ano.localeCompare(a.ano)),
+    }
+  }),
+
+  // Cotações/orçamentos do SAP na ficha do cliente (pedido do João,
+  // 2026-10-20) — mesma regra de acesso de `doCliente`, só lotes ligados.
+  cotacoesDoCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
+    const cliente = await db.query.clientes.findFirst({
+      where: and(eq(clientes.id, input.clienteId), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)),
+      columns: { id: true, vendedorAtualId: true },
+    })
+    if (!cliente) throw new Error('Cliente não encontrado')
+    if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
+
+    const cotacoes = await db
+      .select({
+        id: sapCotacoesHistorico.id,
+        dataCotacao: sapCotacoesHistorico.dataCotacao,
+        numeroCotacao: sapCotacoesHistorico.numeroCotacao,
+        valor: sapCotacoesHistorico.valor,
+        status: sapCotacoesHistorico.status,
+      })
+      .from(sapCotacoesHistorico)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesHistorico.importacaoId))
+      .where(and(eq(sapCotacoesHistorico.clienteId, cliente.id), eq(sapImportacoes.ativo, true)))
+      .orderBy(desc(sapCotacoesHistorico.dataCotacao), desc(sapCotacoesHistorico.id))
+
+    const soma = (st?: string) => {
+      const l = st ? cotacoes.filter((c) => c.status === st) : cotacoes
+      return { qtd: l.length, valor: l.reduce((s, c) => s + c.valor, 0) }
+    }
+    const fechado = soma('fechado')
+    const cancelado = soma('cancelado')
+    const decididas = fechado.qtd + cancelado.qtd
+    return {
+      cotacoes,
+      total: soma(),
+      aberto: soma('aberto'),
+      fechado,
+      cancelado,
+      // Fechadas ÷ (fechadas + canceladas) — aberta ainda não decidiu.
+      taxaFechamento: decididas ? (fechado.qtd / decididas) * 100 : null,
+      ultima: cotacoes[0]?.dataCotacao ?? null,
+      primeira: cotacoes[cotacoes.length - 1]?.dataCotacao ?? null,
     }
   }),
 })

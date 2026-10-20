@@ -51,10 +51,10 @@ const COLS_VALOR = ['Valor', 'Valor Total', 'Total', 'Valor do Pedido', 'Valor P
 // Excel salva número inteiro como "123.0" às vezes — e o SAP às vezes manda
 // código com zeros à esquerda que o CRM não tem (ou o contrário). Compara
 // sem isso tudo.
-function limparCodigo(c: string): string {
+export function limparCodigo(c: string): string {
   return c.trim().replace(/\.0+$/, '').toUpperCase()
 }
-function semZerosEsquerda(c: string): string {
+export function semZerosEsquerda(c: string): string {
   return c.replace(/^0+(?=.)/, '')
 }
 
@@ -64,7 +64,7 @@ function pad2(n: number): string {
 
 // Excel manda data como número de série (dias desde 1899-12-30); CSV manda
 // texto "dd/mm/aaaa" (ou "aaaa-mm-dd"). Devolve YYYY-MM-DD ou null.
-function parseData(cru: unknown): string | null {
+export function parseData(cru: unknown): string | null {
   if (typeof cru === 'number' && cru > 20000 && cru < 80000) {
     const d = new Date(Math.round((cru - 25569) * 86400000))
     return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
@@ -90,7 +90,7 @@ function valida(ano: number, mes: number, dia: number): string | null {
 // Mesmas regras do parseValorBr do client (client/src/lib/valorBr.ts):
 // "1.234,56", "1234,56", "1,234.56", "R$ 1.500" — o que vier por último
 // entre vírgula e ponto é o decimal; só ponto com 3 dígitos depois = milhar.
-function parseValor(cru: unknown): number | null {
+export function parseValor(cru: unknown): number | null {
   if (typeof cru === 'number') return Number.isFinite(cru) ? cru : null
   let limpo = String(cru ?? '').replace(/[^\d,.-]/g, '')
   if (!limpo || !/\d/.test(limpo)) return null

@@ -7,13 +7,14 @@
 //   ... --de 2026-04-01 --ate 2026-07-31                                  → só esse período
 //   node dist/scripts/importarSap.js --lotes <slug-empresa>                → lista lotes
 //   node dist/scripts/importarSap.js --desligar <id> | --religar <id> | --excluir <id>
+//   (vale também pros lotes de cotações — ver importarCotacoesSap.ts)
 //
 // Mesma lógica da tela Histórico SAP (lib/importSapHistorico.ts).
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { empresas, sapImportacoes, sapVendasHistorico, users } from '../db/schema.js'
+import { empresas, sapCotacoesHistorico, sapImportacoes, sapVendasHistorico, users } from '../db/schema.js'
 import { processarHistoricoSap } from '../lib/importSapHistorico.js'
 
 const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -33,7 +34,7 @@ async function main() {
     const lotes = await db.query.sapImportacoes.findMany({ where: eq(sapImportacoes.empresaId, e.id) })
     console.log(`Lotes de ${e.nome}:`)
     for (const l of lotes) {
-      console.log(`  #${l.id} ${l.ativo ? 'LIGADO   ' : 'DESLIGADO'} ${l.nomeArquivo} · ${l.importadas} pedidos · ${brl(l.valorTotal)} · ${dataBr(l.dataInicio)} a ${dataBr(l.dataFim)} · ${l.createdAt}`)
+      console.log(`  #${l.id} ${l.ativo ? 'LIGADO   ' : 'DESLIGADO'} ${l.tipo === 'cotacoes' ? 'COTAÇÕES' : 'VENDAS  '} ${l.nomeArquivo} · ${l.importadas} ${l.tipo === 'cotacoes' ? 'cotações' : 'pedidos'} · ${brl(l.valorTotal)} · ${dataBr(l.dataInicio)} a ${dataBr(l.dataFim)} · ${l.createdAt}`)
     }
     if (!lotes.length) console.log('  (nenhum)')
     return
@@ -46,6 +47,7 @@ async function main() {
     if (args[0] === '--excluir') {
       await db.transaction(async (tx) => {
         await tx.delete(sapVendasHistorico).where(eq(sapVendasHistorico.importacaoId, id))
+        await tx.delete(sapCotacoesHistorico).where(eq(sapCotacoesHistorico.importacaoId, id))
         await tx.delete(sapImportacoes).where(eq(sapImportacoes.id, id))
       })
       console.log(`Lote #${id} (${lote.nomeArquivo}) EXCLUÍDO com ${lote.importadas} pedidos.`)

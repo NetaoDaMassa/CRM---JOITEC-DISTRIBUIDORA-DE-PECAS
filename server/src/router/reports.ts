@@ -16,6 +16,7 @@ import {
   ordemDetalhes,
   sapImportacoes,
   sapVendasHistorico,
+  sapCotacoesHistorico,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
@@ -1089,6 +1090,21 @@ export const reportsRouter = router({
         .where(and(inArray(funilMensal.clienteId, ids), isNotNull(funilMensal.valorOrcado), isNull(funilMensal.deletedAt)))
         .groupBy(funilMensal.clienteId)
       const ultimoPorCliente = new Map(ultimosOrcamentos.map((l) => [l.clienteId, l.ultimo]))
+      // Cotações do SAP (lotes ligados) também contam como orçamento — vale
+      // a mais recente entre CRM e SAP (pedido do João, 2026-10-20).
+      for (let i = 0; i < ids.length; i += 900) {
+        const sapRows = await db
+          .select({ clienteId: sapCotacoesHistorico.clienteId, ultima: sql<string>`max(${sapCotacoesHistorico.dataCotacao})` })
+          .from(sapCotacoesHistorico)
+          .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesHistorico.importacaoId))
+          .where(and(inArray(sapCotacoesHistorico.clienteId, ids.slice(i, i + 900)), eq(sapImportacoes.ativo, true)))
+          .groupBy(sapCotacoesHistorico.clienteId)
+        for (const r of sapRows) {
+          const data = dataSapComoDatetime(r.ultima)
+          const atual = ultimoPorCliente.get(r.clienteId)
+          if (!atual || data > atual) ultimoPorCliente.set(r.clienteId, data)
+        }
+      }
 
       const itens = carteira
         .map((c) => {
@@ -1351,6 +1367,28 @@ export const reportsRouter = router({
       for (const ev of eventos) {
         if (!ev.vendedorId) continue
         const chave = `${ev.vendedorId}|${bucketDe(ev.alteradoEm)}`
+        contagem.set(chave, (contagem.get(chave) ?? 0) + 1)
+      }
+
+      // Cotações do SAP (lotes ligados) no período — contam pro vendedor
+      // ATUAL do cliente, igual às vendas do SAP. Data já vem em dia "puro".
+      const filtrosSap = [
+        eq(sapImportacoes.ativo, true),
+        eq(sapCotacoesHistorico.empresaId, ctx.empresaId),
+        between(sapCotacoesHistorico.dataCotacao, input.dataInicio.slice(0, 10), input.dataFim.slice(0, 10)),
+        isNull(clientes.deletedAt),
+        inArray(clientes.vendedorAtualId, idsPermitidos),
+      ]
+      if (filtroReg) filtrosSap.push(filtroReg)
+      const cotacoesSap = await db
+        .select({ vendedorId: clientes.vendedorAtualId, data: sapCotacoesHistorico.dataCotacao })
+        .from(sapCotacoesHistorico)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesHistorico.importacaoId))
+        .innerJoin(clientes, eq(clientes.id, sapCotacoesHistorico.clienteId))
+        .where(and(...filtrosSap))
+      for (const c of cotacoesSap) {
+        if (!c.vendedorId) continue
+        const chave = `${c.vendedorId}|${bucketDe(dataSapComoDatetime(c.data))}`
         contagem.set(chave, (contagem.get(chave) ?? 0) + 1)
       }
 

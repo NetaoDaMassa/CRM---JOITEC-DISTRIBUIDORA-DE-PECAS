@@ -3804,6 +3804,9 @@ export const sapImportacoes = sqliteTable('sap_importacoes', {
   valorTotal: real('valor_total').notNull().default(0),
   dataInicio: text('data_inicio'),
   dataFim: text('data_fim'),
+  // 'vendas' (sap_vendas_historico) ou 'cotacoes' (sap_cotacoes_historico) —
+  // migração 0120.
+  tipo: text('tipo', { enum: ['vendas', 'cotacoes'] }).notNull().default('vendas'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -3829,5 +3832,34 @@ export const sapVendasHistorico = sqliteTable(
   (t) => ({
     clienteIdx: index('idx_sap_vendas_historico_cliente').on(t.clienteId, t.dataPedido),
     importacaoIdx: index('idx_sap_vendas_historico_importacao').on(t.importacaoId),
+  })
+)
+
+// Cotações/orçamentos do SAP (pedido do João, 2026-10-20) — mesma ideia do
+// histórico de vendas: só consulta, por lote que pode ser desligado, cliente
+// achado pelo código/CNPJ. Nº da cotação é único por empresa no SAP — é por
+// ele que reimportar não duplica.
+export const sapCotacoesHistorico = sqliteTable(
+  'sap_cotacoes_historico',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    importacaoId: integer('importacao_id').notNull().references(() => sapImportacoes.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    codigoCliente: text('codigo_cliente'),
+    nomeCliente: text('nome_cliente'),
+    // YYYY-MM-DD
+    dataCotacao: text('data_cotacao').notNull(),
+    numeroCotacao: text('numero_cotacao').notNull(),
+    valor: real('valor').notNull(),
+    // Como veio do SAP: Aberto / Fechado / Cancelado.
+    status: text('status', { enum: ['aberto', 'fechado', 'cancelado', 'outro'] }).notNull(),
+    casadoPor: text('casado_por', { enum: ['codigo', 'cnpj'] }).notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('idx_sap_cotacoes_historico_cliente').on(t.clienteId, t.dataCotacao),
+    importacaoIdx: index('idx_sap_cotacoes_historico_importacao').on(t.importacaoId),
+    empresaNumeroIdx: index('idx_sap_cotacoes_historico_numero').on(t.empresaId, t.numeroCotacao),
   })
 )
