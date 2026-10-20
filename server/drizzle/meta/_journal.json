@@ -834,6 +834,13 @@
       "when": 1792495581809,
       "tag": "0118_sidebar_grupo_cor",
       "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "6",
+      "when": 1792501602692,
+      "tag": "0119_historico_sap",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ import { and, eq } from 'drizzle-orm'
 import { adminEmpresasExtras, marketingArquivos, propostaArquivos, instagramAccounts } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
+import { processarHistoricoSap } from './lib/importSapHistorico.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
@@ -523,6 +524,31 @@ app.post('/upload/clientes-csv', uploadMemoria.array('files'), async (req, res) 
     }
   }
   res.json({ resultados })
+})
+
+// Histórico de vendas do SAP (só consulta) — 2 passos com o mesmo arquivo:
+// `?confirmar=1` grava num lote novo; sem isso, só devolve a prévia. Só o
+// superAdmin importa (é quem desfaz se vier errado). Limite maior que o dos
+// clientes porque o histórico de anos do SAP pode ser grande.
+const uploadSap = multer({ storage: multer.memoryStorage(), limits: { fileSize: 60 * 1024 * 1024 } })
+app.post('/upload/historico-sap', uploadSap.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!user.superAdmin) return res.status(403).json({ error: 'Acesso restrito ao superAdmin' })
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  if (!empresaId) return res.status(401).json({ error: 'Empresa não resolvida' })
+  const file = req.file
+  if (!file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+  try {
+    const resultado = await processarHistoricoSap(file.buffer, file.originalname, empresaId, {
+      confirmar: req.query.confirmar === '1',
+      usuarioId: user.id,
+    })
+    res.json(resultado)
+  } catch (err) {
+    console.error(`[upload/historico-sap] falha lendo ${file.originalname}:`, err)
+    res.status(400).json({ error: 'Não consegui ler esse arquivo — confirme se é um Excel/CSV válido' })
+  }
 })
 
 // Callback do OAuth da GoTo — precisa ser uma rota simples (não tRPC) porque

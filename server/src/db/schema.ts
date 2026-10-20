@@ -3784,3 +3784,50 @@ export const chatMensagensRelations = relations(chatMensagens, ({ one }) => ({
   conversa: one(chatConversas, { fields: [chatMensagens.conversaId], references: [chatConversas.id] }),
   autor: one(users, { fields: [chatMensagens.autorId], references: [users.id] }),
 }))
+
+// Histórico de vendas importado do SAP (pedido do João, 2026-10-20) — só
+// CONSULTA (ficha do cliente). Tabela à parte de propósito, fora de
+// `vendas`: não tem vendedor nem funil e NÃO pode entrar em meta, ranking,
+// Painel Financeiro etc. Cada planilha importada vira um lote
+// (`sapImportacoes`) que pode ser desligado/religado (`ativo`) ou excluído de
+// vez — é o "voltar atrás" se uma importação vier errada. Linha de lote
+// desligado some de todas as consultas.
+export const sapImportacoes = sqliteTable('sap_importacoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  nomeArquivo: text('nome_arquivo').notNull(),
+  importadoPor: integer('importado_por').references(() => users.id),
+  ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
+  totalLinhas: integer('total_linhas').notNull().default(0),
+  importadas: integer('importadas').notNull().default(0),
+  naoEncontradas: integer('nao_encontradas').notNull().default(0),
+  valorTotal: real('valor_total').notNull().default(0),
+  dataInicio: text('data_inicio'),
+  dataFim: text('data_fim'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const sapVendasHistorico = sqliteTable(
+  'sap_vendas_historico',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    importacaoId: integer('importacao_id').notNull().references(() => sapImportacoes.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    // Como veio na planilha (pra conferência) — o vínculo de verdade é clienteId.
+    codigoCliente: text('codigo_cliente'),
+    nomeCliente: text('nome_cliente'),
+    cnpj: text('cnpj'),
+    // YYYY-MM-DD
+    dataPedido: text('data_pedido').notNull(),
+    numeroPedido: text('numero_pedido'),
+    valor: real('valor').notNull(),
+    // Por onde a linha achou o cliente no CRM.
+    casadoPor: text('casado_por', { enum: ['codigo', 'cnpj'] }).notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('idx_sap_vendas_historico_cliente').on(t.clienteId, t.dataPedido),
+    importacaoIdx: index('idx_sap_vendas_historico_importacao').on(t.importacaoId),
+  })
+)

@@ -45,6 +45,7 @@ import IntegracaoBrevo from './pages/admin/IntegracaoBrevo'
 import IntegracaoInstagram from './pages/admin/IntegracaoInstagram'
 import LeadsRegioes from './pages/admin/LeadsRegioes'
 import SidebarGrupos from './pages/admin/SidebarGrupos'
+import HistoricoSap from './pages/admin/HistoricoSap'
 import AutomacaoLeads from './pages/admin/AutomacaoLeads'
 import Demandas from './pages/Demandas'
 import Boletos from './pages/admin/Boletos'
@@ -260,6 +261,7 @@ export default function App() {
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />
+          <Route path="admin/historico-sap" element={<AdminGuard><SuperAdminGuard><HistoricoSap /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-mecanica" element={<AdminGuard><FeatureGuard feature="devolucoes_mecanica"><DevolucaoMecanica /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-demonstracao" element={<AdminGuard><FeatureGuard feature="devolucoes_demonstracao"><DevolucaoDemonstracao /></FeatureGuard></AdminGuard>} />

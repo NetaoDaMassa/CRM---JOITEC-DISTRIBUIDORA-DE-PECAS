@@ -12,6 +12,7 @@ import ContatoButtons from '../components/ui/ContatoButtons'
 import TelefonesExtras from '../components/ui/TelefonesExtras'
 import EmailsExtras from '../components/ui/EmailsExtras'
 import HistoricoCliente from '../components/HistoricoCliente'
+import HistoricoSapCliente from '../components/HistoricoSapCliente'
 import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 import { parseValorBr } from '../lib/valorBr'
 
@@ -699,6 +700,8 @@ export default function ClienteDetail() {
       </form>
 
       <ClientesVinculados clienteId={cliente.id} basePath={basePath} />
+
+      <HistoricoSapCliente clienteId={cliente.id} />
 
       <HistoricoCliente clienteId={cliente.id} />
 

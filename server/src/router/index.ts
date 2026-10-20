@@ -50,6 +50,7 @@ import { marketingGeralRouter } from './marketingGeral.js'
 import { painelMarketingRouter } from './painelMarketing.js'
 import { leadsRegioesRouter } from './leadsRegioes.js'
 import { sidebarGruposRouter } from './sidebarGrupos.js'
+import { historicoSapRouter } from './historicoSap.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { devolucaoEcommerceRouter } from './devolucaoEcommerce.js'
@@ -127,6 +128,7 @@ export const appRouter = router({
   painelMarketing: painelMarketingRouter,
   leadsRegioes: leadsRegioesRouter,
   sidebarGrupos: sidebarGruposRouter,
+  historicoSap: historicoSapRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
   devolucaoEcommerce: devolucaoEcommerceRouter,

@@ -37,7 +37,7 @@ export interface ImportFileResult {
 // casa ignorando acento/maiúscula também (achado do João, 2026-09-24: uma
 // planilha real com "16 erros: Sem código" tinha a coluna, só não batia
 // 100% com o literal "Código").
-function normalizarTexto(s: string): string {
+export function normalizarTexto(s: string): string {
   return s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -45,16 +45,24 @@ function normalizarTexto(s: string): string {
     .toLowerCase()
 }
 
-function getCol(row: Record<string, unknown>, ...nomes: string[]): string {
+// Valor cru da coluna (número, texto...) — usado quando o tipo importa, ex:
+// data/valor do histórico SAP (importSapHistorico.ts), que o Excel entrega
+// como número.
+export function getColCru(row: Record<string, unknown>, ...nomes: string[]): unknown {
   const candidatos = nomes.map(normalizarTexto)
   const chave = Object.keys(row).find((k) => candidatos.includes(normalizarTexto(k.replace(/^﻿/, ''))))
-  return chave ? String(row[chave] ?? '').trim() : ''
+  return chave ? row[chave] : undefined
+}
+
+export function getCol(row: Record<string, unknown>, ...nomes: string[]): string {
+  const valor = getColCru(row, ...nomes)
+  return valor === undefined ? '' : String(valor ?? '').trim()
 }
 
 // Lista os cabeçalhos de verdade encontrados na planilha — mostrado junto do
 // erro "Sem código"/"Sem nome" pra quem importa conseguir ver na hora qual
 // nome de coluna usar, sem precisar me perguntar toda vez.
-function cabecalhosDetectados(row: Record<string, unknown> | undefined): string {
+export function cabecalhosDetectados(row: Record<string, unknown> | undefined): string {
   if (!row || !Object.keys(row).length) return '(planilha vazia)'
   return Object.keys(row)
     .map((k) => k.replace(/^﻿/, '').trim())
@@ -62,12 +70,13 @@ function cabecalhosDetectados(row: Record<string, unknown> | undefined): string 
     .join(', ')
 }
 
-export async function importarClientesCsv(
-  buffer: Buffer,
-  nomeArquivo: string,
-  alteradoPor: number,
-  empresaId: number
-): Promise<ImportFileResult> {
+// Lê a 1ª aba do Excel/CSV como lista de linhas { coluna: valor } —
+// compartilhado com a importação do histórico SAP (importSapHistorico.ts).
+// `csvTextoPuro`: no CSV, não deixa o xlsx "adivinhar" número/data — ele lê
+// "05/06/2025" como data AMERICANA (6 de maio). O histórico SAP usa isso e
+// trata data/valor por conta própria; a importação de clientes continua
+// como sempre foi (mudar ali alteraria código numérico com zero à esquerda).
+export function lerLinhasPlanilha(buffer: Buffer, nomeArquivo: string, opts?: { csvTextoPuro?: boolean }): Record<string, unknown>[] {
   // .csv sem BOM vem sempre acentuado ("Código", "Vendedor"...) — lido como
   // buffer bruto, o xlsx assume um codepage errado e transforma "Código" em
   // lixo, fazendo `getCol` nunca casar e todo o arquivo falhar com "Sem
@@ -84,14 +93,23 @@ export async function importarClientesCsv(
   const ehCsv = nomeArquivo.toLowerCase().endsWith('.csv')
   let textoCsv = ehCsv ? buffer.toString('utf8') : ''
   if (ehCsv && textoCsv.includes('�')) textoCsv = buffer.toString('latin1')
-  const wb = ehCsv ? XLSX.read(textoCsv, { type: 'string' }) : XLSX.read(buffer, { type: 'buffer' })
+  const wb = ehCsv ? XLSX.read(textoCsv, { type: 'string', raw: !!opts?.csvTextoPuro }) : XLSX.read(buffer, { type: 'buffer' })
   const sheet = wb.Sheets[wb.SheetNames[0]]
   // `raw: false` pedia pro xlsx formatar o valor como o Excel exibiria — pra
   // números de 14 dígitos (CNPJ) isso vira notação científica ("5.5E+13"),
   // destruindo o valor. `raw: true` devolve o número puro do JS, que o
   // `getCol` já converte certo com `String(...)` (sem notação científica até
   // 1e21, bem acima de qualquer CNPJ/telefone/código real).
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: true })
+  return XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: '', raw: true })
+}
+
+export async function importarClientesCsv(
+  buffer: Buffer,
+  nomeArquivo: string,
+  alteradoPor: number,
+  empresaId: number
+): Promise<ImportFileResult> {
+  const rows = lerLinhasPlanilha(buffer, nomeArquivo)
 
   const vendedores = await db.query.users.findMany({ where: and(eq(users.role, 'vendor'), eq(users.empresaId, empresaId)) })
   const vendedorPorNome = new Map(vendedores.map((v) => [normalizarTexto(v.name), v]))
