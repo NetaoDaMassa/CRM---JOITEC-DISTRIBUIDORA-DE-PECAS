@@ -514,7 +514,7 @@ export default function LeadDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <p className="text-sm font-semibold text-dark-100 mb-3">Tentativas de contato</p>
-          {(podeGerenciarTudo || isOwner) && <LeadContactAttemptForm leadId={lead.id} hasNextContact={!!lead.nextContactAt} />}
+          {(podeGerenciarTudo || isOwner) && <LeadContactAttemptForm leadId={lead.id} proximoContato={lead.nextContactAt ?? null} encerrado={isLeadTerminalStatus(lead.status)} />}
           <div className="space-y-2 mt-3 max-h-80 overflow-y-auto">
             {lead.contactAttempts.length === 0 ? (
               <p className="text-xs text-dark-500">Nenhuma tentativa registrada.</p>

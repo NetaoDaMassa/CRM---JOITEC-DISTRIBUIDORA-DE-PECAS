@@ -28,7 +28,7 @@ import { enviarEventoMeta } from '../lib/metaConversionsApi.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
-import { mesReferenciaAtual } from '../lib/dataBr.js'
+import { mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
 import { notificarGestores } from '../lib/propostasGates.js'
 import {
   STATUS_VALUES,
@@ -973,6 +973,12 @@ export const leadsRouter = router({
 
       if (!isTerminalStatus(lead.status) && !input.nextActionAt && !lead.nextContactAt) {
         throw new Error('Registrar uma tentativa requer uma data de próximo contato para leads ativos')
+      }
+      // Data de próximo contato já vencida: registrar a tentativa sem uma
+      // nova deixava o lead "ATRASADO" mesmo depois de atendido (o form nem
+      // mostrava o campo quando já existia data). Pedido do João, 2026-10-20.
+      if (!isTerminalStatus(lead.status) && !input.nextActionAt && lead.nextContactAt && lead.nextContactAt.slice(0, 10) < hojeBrString()) {
+        throw new Error('O próximo contato deste lead já venceu — informe a nova data de próximo contato')
       }
       if (lead.status === 'abordagem' && input.nextActionAt) {
         const error = validateNextContactLimit(input.nextActionAt, await abordagemMaxDiasUteis(lead.empresaId))

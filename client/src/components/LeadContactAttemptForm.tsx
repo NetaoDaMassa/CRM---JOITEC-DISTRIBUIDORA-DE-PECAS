@@ -7,9 +7,18 @@ import { Input } from './ui/Input'
 import { LEAD_CHANNEL_VALUES, LEAD_CHANNEL_LABELS, LEAD_RESULT_VALUES, LEAD_RESULT_LABELS } from '../lib/leadsShared'
 
 // Registra uma tentativa de contato (ligação/whatsapp/email) — leads ativos
-// exigem uma data de próximo contato (a do próprio lead já serve, só pede
-// aqui se ainda não tiver nenhuma).
-export default function LeadContactAttemptForm({ leadId, hasNextContact }: { leadId: number; hasNextContact: boolean }) {
+// exigem uma data de próximo contato. A do próprio lead serve enquanto não
+// venceu; se já venceu (lead ATRASADO), pede a nova aqui — antes o campo
+// sumia sempre que existia qualquer data, e o lead continuava atrasado
+// mesmo depois de atendido (João, 2026-10-20).
+function hojeLocalYmd(): string {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+export default function LeadContactAttemptForm({ leadId, proximoContato, encerrado }: { leadId: number; proximoContato: string | null; encerrado?: boolean }) {
+  const vencido = !encerrado && !!proximoContato && proximoContato.slice(0, 10) < hojeLocalYmd()
+  const pedirData = !encerrado && (!proximoContato || vencido)
   const utils = trpc.useUtils()
   const [channel, setChannel] = useState<(typeof LEAD_CHANNEL_VALUES)[number]>('whatsapp')
   const [result, setResult] = useState<(typeof LEAD_RESULT_VALUES)[number]>('sem_resposta')
@@ -31,6 +40,10 @@ export default function LeadContactAttemptForm({ leadId, hasNextContact }: { lea
     <form
       onSubmit={(e) => {
         e.preventDefault()
+        if (vencido && !nextActionAt) {
+          toast.error('O próximo contato já venceu — escolha a nova data pra tirar o lead do atraso')
+          return
+        }
         mut.mutate({ leadId, channel, result, nextActionAt: nextActionAt || undefined })
       }}
       className="bg-dark-900/60 rounded-xl p-3 space-y-2"
@@ -48,13 +61,18 @@ export default function LeadContactAttemptForm({ leadId, hasNextContact }: { lea
           options={LEAD_RESULT_VALUES.map((r) => ({ value: r, label: LEAD_RESULT_LABELS[r] }))}
         />
       </div>
-      {!hasNextContact && (
-        <Input
-          label="Próximo contato"
-          type="datetime-local"
-          value={nextActionAt}
-          onChange={(e) => setNextActionAt(e.target.value)}
-        />
+      {pedirData && (
+        <>
+          {vencido && (
+            <p className="text-[11px] text-red-400">⚠️ O próximo contato venceu — marque a nova data pra tirar o lead do atraso.</p>
+          )}
+          <Input
+            label={vencido ? 'Novo próximo contato *' : 'Próximo contato'}
+            type="datetime-local"
+            value={nextActionAt}
+            onChange={(e) => setNextActionAt(e.target.value)}
+          />
+        </>
       )}
       <Button type="submit" size="sm" className="w-full" loading={mut.isPending}>
         Registrar
