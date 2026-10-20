@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, History,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -376,8 +376,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     // { to: '/admin/marketing-geral', label: 'Marketing — Geral', icon: BarChart3, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
-    // Importação do histórico de vendas do SAP (só consulta, ficha do cliente).
-    { to: '/admin/historico-sap', label: 'Histórico SAP', icon: History, visivel: !!user?.superAdmin },
+    // Histórico SAP fora do menu (João 2026-10-20: importação é feita por
+    // script, não por tela) — rota /admin/historico-sap continua no App.tsx
+    // só como saída de emergência pra desligar um lote.
     // { to: '/painel-tv-marketing', label: 'Painel de TV Marketing', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_marketing')) },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     {

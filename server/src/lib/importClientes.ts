@@ -37,10 +37,13 @@ export interface ImportFileResult {
 // casa ignorando acento/maiúscula também (achado do João, 2026-09-24: uma
 // planilha real com "16 erros: Sem código" tinha a coluna, só não batia
 // 100% com o literal "Código").
+// "_" conta como espaço — o SAP exporta cabeçalho tipo "Codigo_PN",
+// "Data_Pedido" (achado com a planilha real da Joitec, 2026-10-20).
 export function normalizarTexto(s: string): string {
   return s
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
+    .replace(/[_\s]+/g, ' ')
     .trim()
     .toLowerCase()
 }

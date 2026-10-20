@@ -29,6 +29,8 @@ export interface SapResultado {
   porCodigo: number
   porCnpj: number
   jaImportadas: number
+  // Linhas com data fora de `opts.periodo` — ignoradas de propósito.
+  foraPeriodo: number
   valorTotal: number
   clientesDistintos: number
   dataInicio: string | null
@@ -110,7 +112,9 @@ export async function processarHistoricoSap(
   buffer: Buffer,
   nomeArquivo: string,
   empresaId: number,
-  opts: { confirmar: boolean; usuarioId: number }
+  // `periodo` (YYYY-MM-DD, inclusivo): só entra pedido com data dentro —
+  // ex: planilha veio de março a outubro mas o João quer só abril a julho.
+  opts: { confirmar: boolean; usuarioId: number; periodo?: { de: string; ate: string } }
 ): Promise<SapResultado> {
   const rows = lerLinhasPlanilha(buffer, nomeArquivo, { csvTextoPuro: true })
 
@@ -160,6 +164,7 @@ export async function processarHistoricoSap(
   let porCodigo = 0
   let porCnpj = 0
   let jaImportadas = 0
+  let foraPeriodo = 0
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]
@@ -186,6 +191,11 @@ export async function processarHistoricoSap(
     }
     if (valor == null) {
       invalidas.push({ ...base, motivo: 'Valor vazio ou inválido' })
+      continue
+    }
+
+    if (opts.periodo && (data < opts.periodo.de || data > opts.periodo.ate)) {
+      foraPeriodo++
       continue
     }
 
@@ -226,11 +236,12 @@ export async function processarHistoricoSap(
   const datas = paraGravar.map((l) => l.dataPedido).sort()
   const resultado: SapResultado = {
     arquivo: nomeArquivo,
-    totalLinhas: paraGravar.length + naoEncontradas.length + invalidas.length + jaImportadas,
+    totalLinhas: paraGravar.length + naoEncontradas.length + invalidas.length + jaImportadas + foraPeriodo,
     importaveis: paraGravar.length,
     porCodigo,
     porCnpj,
     jaImportadas,
+    foraPeriodo,
     valorTotal: paraGravar.reduce((s, l) => s + l.valor, 0),
     clientesDistintos: new Set(paraGravar.map((l) => l.clienteId)).size,
     dataInicio: datas[0] ?? null,
