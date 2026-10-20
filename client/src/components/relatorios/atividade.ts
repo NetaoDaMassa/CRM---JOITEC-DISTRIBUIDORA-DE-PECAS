@@ -6,7 +6,7 @@ export const CATEGORIAS_ATIVIDADE = [
   { chave: 'recuperado', rotulo: 'Recuperados', cor: '#3a86d6', ajuda: 'Voltaram a comprar no período depois de mais de 180 dias parados' },
   { chave: 'quase_inativo', rotulo: 'Quase inativos', cor: '#e8c440', ajuda: 'Última compra entre 91 e 180 dias atrás' },
   { chave: 'inativo', rotulo: 'Inativos', cor: '#e5534b', ajuda: 'Última compra há mais de 180 dias' },
-  { chave: 'nunca', rotulo: 'Nunca compraram', cor: '#9aa5b1', ajuda: 'Na carteira, mas sem nenhuma compra registrada' },
+  { chave: 'nunca', rotulo: 'Nunca compraram', cor: '#9aa5b1', ajuda: 'Na carteira, sem compra registrada desde abril/2026 (início do histórico SAP)' },
 ] as const
 
 export type CategoriaAtividade = (typeof CATEGORIAS_ATIVIDADE)[number]['chave']

@@ -48,7 +48,7 @@ const CARTEIRA: Explicacao[] = [
   {
     termo: 'Nunca compraram',
     cor: '#9aa5b1',
-    texto: 'Estão na carteira, mas não têm nenhuma compra registrada (nem no CRM, nem nos Pedidos, nem no histórico do SAP).',
+    texto: 'Estão na carteira, mas não têm nenhuma compra registrada (nem no CRM, nem nos Pedidos, nem no histórico do SAP). Atenção: o registro de compras só começa em abril/2026 (início do histórico do SAP importado). Cliente que comprou antes disso e não voltou a comprar aparece aqui como "nunca comprou" — não quer dizer que nunca foi cliente.',
   },
   {
     termo: 'Clientes ativados / Taxa de ativação',
