@@ -5,7 +5,7 @@ import { AlertTriangle, BadgeDollarSign, ChevronRight, Clock, FileText, MessageS
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { BarraFiltros, formatarDataCurta, useFiltrosRelatorio } from '../../components/relatorios/filtros'
-import { BarraSegmentada, KpiCard, Medidor, MiniNumero, Ranking, Secao, moeda, numero, pct } from '../../components/relatorios/blocos'
+import { BarraSegmentada, KpiCard, Medidor, MiniNumero, OrigemVendas, Ranking, Secao, moeda, numero, pct } from '../../components/relatorios/blocos'
 import { contarCategorias, ehAtivado } from '../../components/relatorios/atividade'
 import { baseRelatorios, relatoriosPermitidos } from '../../components/relatorios/catalogo'
 
@@ -117,7 +117,7 @@ export default function ResumoRelatorios() {
 
       {/* Números principais */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard titulo="Faturamento" icone={BadgeDollarSign} cor="#24aff4" valor={moeda(vendas?.valorTotal)} atual={vendas?.valorTotal ?? 0} anterior={vendasAnt?.valorTotal} href={linkDe('vendas')} ajuda="Vendas fechadas no CRM + histórico do SAP no período" />
+        <KpiCard titulo="Faturamento" icone={BadgeDollarSign} cor="#24aff4" valor={moeda(vendas?.valorTotal)} atual={vendas?.valorTotal ?? 0} anterior={vendasAnt?.valorTotal} href={linkDe('vendas')} ajuda="Vendas fechadas na Carteira + Pedidos (Odin) + histórico do SAP no período" />
         <KpiCard titulo="Vendas" icone={ShoppingBag} cor="#8b5cf6" valor={numero(vendas?.quantidade)} atual={vendas?.quantidade ?? 0} anterior={vendasAnt?.quantidade} href={linkDe('vendas')} />
         <KpiCard titulo="Ticket médio" icone={Receipt} cor="#0ea5a4" valor={moeda(vendas?.ticketMedio)} atual={vendas?.ticketMedio ?? 0} anterior={vendasAnt?.ticketMedio} href={linkDe('vendas')} />
         <KpiCard
@@ -132,6 +132,7 @@ export default function ResumoRelatorios() {
           ajuda="Quantos clientes da carteira compraram no período (CNPJs vinculados contam como um)"
         />
       </div>
+      <OrigemVendas origens={vendas?.porOrigem} />
 
       {/* Carteira + vendas */}
       <div className="grid lg:grid-cols-5 gap-4">

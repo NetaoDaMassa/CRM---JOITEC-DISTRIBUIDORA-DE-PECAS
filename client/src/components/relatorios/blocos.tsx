@@ -341,3 +341,44 @@ export function Chips<T extends string | number>({ valor, opcoes, onChange }: { 
     </div>
   )
 }
+
+// ── De onde vem o faturamento ───────────────────────────────────────────
+// Carteira (vendas do Kanban) × Pedidos (módulo Pedidos da Odin) × SAP.
+// Só aparece quando tem mais de uma fonte com venda no período.
+type Origem = { origem: 'carteira' | 'pedidos' | 'sap'; quantidade: number; valorTotal: number }
+const ORIGENS: Record<Origem['origem'], { rotulo: string; ajuda: string; cor: string }> = {
+  carteira: { rotulo: 'Carteira', ajuda: 'vendas fechadas no Kanban da Carteira', cor: '#24aff4' },
+  pedidos: { rotulo: 'Pedidos', ajuda: 'pedidos lançados direto no módulo Pedidos (máquinas, externos e leads)', cor: '#f97316' },
+  sap: { rotulo: 'Histórico SAP', ajuda: 'pedidos importados do SAP', cor: '#8b5cf6' },
+}
+
+export function OrigemVendas({ origens, className = '' }: { origens?: Origem[]; className?: string }) {
+  const com = (origens ?? []).filter((o) => o.quantidade > 0)
+  if (com.length < 2) return null
+  const total = com.reduce((s, o) => s + o.valorTotal, 0)
+  return (
+    <div className={`rounded-xl border border-dark-700 bg-dark-900 px-4 py-3 ${className}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-2 mb-2">
+        <p className="text-sm font-semibold text-dark-100">De onde vem o faturamento</p>
+        <p className="text-xs text-dark-400">Total {moeda(total)}</p>
+      </div>
+      <div className="flex h-2.5 w-full rounded-full overflow-hidden bg-dark-700">
+        {com.map((o) => (
+          <span key={o.origem} style={{ width: `${total ? (o.valorTotal / total) * 100 : 0}%`, background: ORIGENS[o.origem].cor }} />
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-x-6 gap-y-1.5 mt-2.5">
+        {com.map((o) => (
+          <span key={o.origem} className="flex items-center gap-1.5 text-[13px] text-dark-200" title={ORIGENS[o.origem].ajuda}>
+            <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: ORIGENS[o.origem].cor }} />
+            <span className="font-semibold">{ORIGENS[o.origem].rotulo}</span>
+            <span>{moeda(o.valorTotal)}</span>
+            <span className="text-dark-400">
+              · {numero(o.quantidade)} {o.quantidade === 1 ? 'venda' : 'vendas'} · {pct(total ? (o.valorTotal / total) * 100 : 0)}
+            </span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}

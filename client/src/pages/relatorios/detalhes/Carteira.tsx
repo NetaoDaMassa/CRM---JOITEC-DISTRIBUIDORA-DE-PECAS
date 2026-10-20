@@ -279,7 +279,7 @@ export function ClientesParados({ f, simples, mostrarResumo, clientesBase }: Pro
       return { linhas: (semOrc?.itens ?? []).map((c) => ({ ...c, dias: c.diasSemOrcamento, ultima: c.ultimoOrcamentoEm })), total: semOrc?.totalCarteira, carregando: c2 }
     if (tipo === 'venda')
       return {
-        linhas: (semVenda?.itens ?? []).map((c) => ({ ...c, dias: c.diasSemVenda, ultima: c.ultimaCompraEm, extra: c.origemUltimaCompra === 'sap' ? 'SAP' : c.origemUltimaCompra === 'crm' ? 'CRM' : undefined })),
+        linhas: (semVenda?.itens ?? []).map((c) => ({ ...c, dias: c.diasSemVenda, ultima: c.ultimaCompraEm, extra: c.origemUltimaCompra === 'sap' ? 'SAP' : c.origemUltimaCompra === 'pedido' ? 'Pedido' : c.origemUltimaCompra === 'crm' ? 'CRM' : undefined })),
         total: semVenda?.totalCarteira,
         carregando: c3,
       }

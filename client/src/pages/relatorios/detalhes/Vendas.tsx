@@ -3,7 +3,7 @@ import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAx
 import { BadgeDollarSign, Clock, FileText, Megaphone, Receipt, ShoppingBag, XCircle, Building2 } from 'lucide-react'
 import { trpc } from '../../../lib/trpc'
 import { formatarDataCurta } from '../../../components/relatorios/filtros'
-import { Abas, Etiqueta, KpiCard, Ranking, Secao, moeda, numero, pct } from '../../../components/relatorios/blocos'
+import { Abas, Etiqueta, KpiCard, OrigemVendas, Ranking, Secao, moeda, numero, pct } from '../../../components/relatorios/blocos'
 import TabelaDados from '../../../components/relatorios/TabelaDados'
 import type { Coluna } from '../../../components/relatorios/TabelaDados'
 import type { PropsDetalhe } from './tipos'
@@ -101,6 +101,7 @@ export function Vendas({ f, simples, mostrarResumo }: PropsDetalhe) {
               ajuda="Vendas pra clientes que vieram de marketing (leads)"
             />
           </div>
+          <OrigemVendas origens={vendas?.porOrigem} />
           <Secao
             titulo="Faturamento por dia"
             subtitulo={`${formatarDataCurta(f.inicio)} a ${formatarDataCurta(f.fim)}`}

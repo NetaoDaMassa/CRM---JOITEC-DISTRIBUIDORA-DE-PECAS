@@ -12,6 +12,8 @@ import {
   users,
   vendas as vendasTable,
   logAuditoria,
+  ordens,
+  ordemDetalhes,
   sapImportacoes,
   sapVendasHistorico,
 } from '../db/schema.js'
@@ -135,6 +137,76 @@ async function vendasSap(params: {
     .where(and(...filtros))
 }
 
+// Pedidos da Odin Compressores (módulo Pedidos/`ordens`) — pedido do João,
+// 2026-10-20: lá a maior parte das vendas (máquinas, equipes de externos e
+// de leads) não passa pela Carteira, vira Pedido direto. Conta como venda o
+// pedido não cancelado, na data em que foi criado (dia de Brasília) — mesma
+// regra do bloco "Equipes de venda" do Dashboard Odin. Pedido de peça que
+// nasceu de uma venda da Carteira (vendas.convertidoParaOrdemId) fica de
+// fora, porque a venda já conta. Vendedor = quem está no pedido.
+async function pedidosOdin(params: Parameters<typeof vendasSap>[0]) {
+  const dataBr = sql<string>`date(${ordens.createdAt}, '-3 hours')`
+  const filtros = [
+    sql`${dataBr} between ${params.dataInicio.slice(0, 10)} and ${params.dataFim.slice(0, 10)}`,
+    sql`${ordens.status} != 'cancelado'`,
+    sql`not exists (select 1 from ${vendasTable} where ${vendasTable.convertidoParaOrdemId} = ${ordens.id} and ${vendasTable.deletedAt} is null)`,
+    isNull(clientes.deletedAt),
+  ]
+  if (params.empresaId) filtros.push(eq(ordens.empresaId, params.empresaId))
+  if (params.ctx) {
+    const filtroVend = filtroVendedor(params.ctx.user.role, params.ctx.user.id, params.vendedorId, ordens.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+  }
+  const filtroReg = filtroRegiao(params.regiao, clientes.regiao)
+  if (filtroReg) filtros.push(filtroReg)
+  if (params.apenasMarketing) filtros.push(eq(clientes.origemMarketing, true))
+
+  const linhas = await db
+    .select({
+      clienteId: sql<number>`${ordens.clienteId}`.mapWith(Number),
+      empresaId: ordens.empresaId,
+      data: dataBr,
+      valor: sql<number>`coalesce(${ordemDetalhes.valorPedido}, 0)`.mapWith(Number),
+      razaoSocial: clientes.razaoSocial,
+      vendedorId: ordens.vendedorId,
+      vendedorNome: users.name,
+    })
+    .from(ordens)
+    .innerJoin(clientes, eq(clientes.id, ordens.clienteId))
+    .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
+    .leftJoin(users, eq(users.id, ordens.vendedorId))
+    .where(and(...filtros))
+  return linhas.map((l) => ({ ...l, origem: 'pedidos' as const }))
+}
+
+// Tudo que é venda mas não está na tabela `vendas` (Carteira): histórico do
+// SAP + Pedidos da Odin. Mesmo formato (data "YYYY-MM-DD").
+async function vendasExtras(params: Parameters<typeof vendasSap>[0]) {
+  const [sap, pedidos] = await Promise.all([vendasSap(params), pedidosOdin(params)])
+  return [...sap.map((v) => ({ ...v, origem: 'sap' as const })), ...pedidos]
+}
+
+// Última compra/compras por cliente vindas de Pedidos (Odin), pra posição
+// da carteira — mesma exclusão de pedido que nasceu de venda da Carteira.
+async function pedidosPorCliente(clienteIds: number[]) {
+  if (!clienteIds.length) return []
+  return db
+    .select({
+      clienteId: sql<number>`${ordens.clienteId}`.mapWith(Number),
+      data: sql<string>`date(${ordens.createdAt}, '-3 hours')`,
+      valor: sql<number>`coalesce(${ordemDetalhes.valorPedido}, 0)`.mapWith(Number),
+    })
+    .from(ordens)
+    .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
+    .where(
+      and(
+        inArray(ordens.clienteId, clienteIds),
+        sql`${ordens.status} != 'cancelado'`,
+        sql`not exists (select 1 from ${vendasTable} where ${vendasTable.convertidoParaOrdemId} = ${ordens.id} and ${vendasTable.deletedAt} is null)`
+      )
+    )
+}
+
 // Data do pedido SAP vem só "YYYY-MM-DD" — meio-dia evita que a conversão
 // de fuso (UTC → Brasília) em `diasDesde` jogue pro dia anterior.
 function dataSapComoDatetime(data: string): string {
@@ -210,7 +282,7 @@ export const reportsRouter = router({
 
     // Soma o SAP por cliente junto com o CRM e reordena.
     const porCliente = new Map(linhas.map((l) => [l.clienteId, { ...l, valorTotal: l.valorTotal ?? 0 }]))
-    for (const v of await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim, ctx, vendedorId: input.vendedorId, regiao: input.regiao })) {
+    for (const v of await vendasExtras({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim, ctx, vendedorId: input.vendedorId, regiao: input.regiao })) {
       const atual = porCliente.get(v.clienteId) ?? { clienteId: v.clienteId, razaoSocial: v.razaoSocial, vendedorNome: v.vendedorNome, valorTotal: 0 }
       atual.valorTotal += v.valor
       porCliente.set(v.clienteId, atual)
@@ -253,7 +325,7 @@ export const reportsRouter = router({
       columns: { id: true, dataUltimaCompra: true },
     })
     const compraramNoSap = new Set(
-      (await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim })).map((v) => v.clienteId)
+      (await vendasExtras({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim })).map((v) => v.clienteId)
     )
     const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesFiltrados, inicio, fim, compraramNoSap)
 
@@ -273,7 +345,7 @@ export const reportsRouter = router({
 
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     const compraramNoSap = new Set(
-      (await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim })).map((v) => v.clienteId)
+      (await vendasExtras({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim })).map((v) => v.clienteId)
     )
 
     const linhas = await Promise.all(
@@ -479,7 +551,7 @@ export const reportsRouter = router({
       .innerJoin(users, eq(users.id, funilMensal.vendedorId))
       .where(and(...filtros))
 
-    const sap = await vendasSap({
+    const sap = await vendasExtras({
       empresaId: ctx.empresaId,
       dataInicio: input.dataInicio,
       dataFim: input.dataFim,
@@ -490,11 +562,23 @@ export const reportsRouter = router({
     })
     const quantidadeTotal = quantidade + sap.length
     const valorGeral = (valorTotal ?? 0) + sap.reduce((s, v) => s + v.valor, 0)
+    // De onde veio cada venda — a tela mostra a divisão quando tem mais de
+    // uma fonte (ex.: Odin = Carteira + Pedidos).
+    const somaOrigem = (origem: 'sap' | 'pedidos') => {
+      const l = sap.filter((v) => v.origem === origem)
+      return { quantidade: l.length, valorTotal: l.reduce((s, v) => s + v.valor, 0) }
+    }
+    const porOrigem = [
+      { origem: 'carteira' as const, quantidade, valorTotal: valorTotal ?? 0 },
+      { origem: 'pedidos' as const, ...somaOrigem('pedidos') },
+      { origem: 'sap' as const, ...somaOrigem('sap') },
+    ]
 
     return {
       quantidade: quantidadeTotal,
       valorTotal: valorGeral,
       ticketMedio: quantidadeTotal > 0 ? valorGeral / quantidadeTotal : 0,
+      porOrigem,
     }
   }),
 
@@ -531,7 +615,7 @@ export const reportsRouter = router({
       atual.valorTotal += l.valorFechado
       mapa.set(chave, atual)
     }
-    for (const v of await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim, ctx, vendedorId: input.vendedorId, regiao: input.regiao })) {
+    for (const v of await vendasExtras({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim, ctx, vendedorId: input.vendedorId, regiao: input.regiao })) {
       // Cliente sem vendedor hoje (Banco de Clientes) → vendedorId 0.
       const vendedorId = v.vendedorId ?? 0
       const chave = `${v.data}|${vendedorId}`
@@ -632,7 +716,7 @@ export const reportsRouter = router({
 
       const todasEmpresas = await db.query.empresas.findMany({ columns: { id: true, nome: true } })
       const porEmpresaId = new Map(linhas.map((l) => [l.empresaId, { quantidade: l.quantidade, valorTotal: l.valorTotal ?? 0 }]))
-      for (const v of await vendasSap({ dataInicio: input.dataInicio, dataFim: input.dataFim })) {
+      for (const v of await vendasExtras({ dataInicio: input.dataInicio, dataFim: input.dataFim })) {
         const atual = porEmpresaId.get(v.empresaId) ?? { quantidade: 0, valorTotal: 0 }
         atual.quantidade += 1
         atual.valorTotal += v.valor
@@ -1056,6 +1140,7 @@ export const reportsRouter = router({
       // Último pedido no SAP (lotes ligados) — vale o mais recente entre CRM
       // e SAP.
       const ultimaSap = new Map<number, string>()
+      const ultimaPedido = new Map<number, string>()
       const sapRows = await db
         .select({ clienteId: sapVendasHistorico.clienteId, ultima: sql<string>`max(${sapVendasHistorico.dataPedido})` })
         .from(sapVendasHistorico)
@@ -1063,18 +1148,27 @@ export const reportsRouter = router({
         .where(and(eq(sapVendasHistorico.empresaId, ctx.empresaId), eq(sapImportacoes.ativo, true)))
         .groupBy(sapVendasHistorico.clienteId)
       for (const r of sapRows) ultimaSap.set(r.clienteId, dataSapComoDatetime(r.ultima))
+      // Pedidos da Odin entram junto (mesma coluna "SAP/fora da Carteira").
+      const idsCarteira = carteira.map((c) => c.id)
+      for (let i = 0; i < idsCarteira.length; i += 900) {
+        for (const r of await pedidosPorCliente(idsCarteira.slice(i, i + 900))) {
+          const data = dataSapComoDatetime(r.data)
+          if (!ultimaPedido.has(r.clienteId) || data > ultimaPedido.get(r.clienteId)!) ultimaPedido.set(r.clienteId, data)
+        }
+      }
 
       const itens = carteira
         .map((c) => {
           const sap = ultimaSap.get(c.id) ?? null
-          const ultima = sap && (!c.dataUltimaCompra || sap > c.dataUltimaCompra) ? sap : c.dataUltimaCompra
+          const pedido = ultimaPedido.get(c.id) ?? null
+          const ultima = [c.dataUltimaCompra, sap, pedido].filter((d): d is string => !!d).sort().pop() ?? null
           return {
             clienteId: c.id,
             razaoSocial: c.razaoSocial,
             codigo: c.codigo,
             vendedorNome: c.vendedorAtual?.name ?? '—',
             ultimaCompraEm: ultima,
-            origemUltimaCompra: ultima == null ? null : ultima === sap ? ('sap' as const) : ('crm' as const),
+            origemUltimaCompra: ultima == null ? null : ultima === sap ? ('sap' as const) : ultima === pedido ? ('pedido' as const) : ('crm' as const),
             // null = nunca comprou.
             diasSemVenda: diasDesde(ultima),
           }
@@ -1094,8 +1188,8 @@ export const reportsRouter = router({
   //   quase_inativo → última compra entre 91 e 180 dias
   //   inativo     → última compra há mais de 180 dias
   //   nunca       → nunca comprou
-  // Compras = vendas do CRM + histórico do SAP (lotes ligados) +
-  // clientes.dataUltimaCompra (pode vir de importação, sem venda lançada).
+  // Compras = vendas do CRM + histórico do SAP (lotes ligados) + Pedidos da
+  // Odin (ver pedidosOdin) + clientes.dataUltimaCompra (pode vir de importação, sem venda lançada).
   // Por CNPJ (não junta clientes vinculados, ao contrário da positivação).
   atividadeCarteira: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
@@ -1141,6 +1235,7 @@ export const reportsRouter = router({
         .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapVendasHistorico.importacaoId))
         .where(and(inArray(sapVendasHistorico.clienteId, lote), eq(sapImportacoes.ativo, true)))
       for (const v of sap) add(v.clienteId, dataSapComoDatetime(v.data), v.valor ?? 0)
+      for (const v of await pedidosPorCliente(lote)) add(v.clienteId, dataSapComoDatetime(v.data), v.valor)
     }
 
     const DIA = 86400000
