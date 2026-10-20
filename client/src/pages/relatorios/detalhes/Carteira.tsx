@@ -80,7 +80,6 @@ export function Positivacao({ f, simples, mostrarResumo, clientesBase }: PropsDe
       valor: (v: LinhaV) => v.cat[c.chave] ?? 0,
       formato: 'numero' as const,
       somar: true,
-      oculta: c.chave === 'nunca',
     })),
     { id: 'taxa', rotulo: 'Taxa de ativação', valor: (v) => Math.round(v.taxaAtivacao * 10) / 10, formato: 'pct' },
     {
