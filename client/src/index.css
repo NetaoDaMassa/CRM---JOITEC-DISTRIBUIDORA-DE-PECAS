@@ -136,3 +136,9 @@ h1, h2, h3 {
   animation-timing-function: linear;
   animation-fill-mode: forwards;
 }
+
+/* Sidebar: itens de um grupo entram deslizando em sequência ao abrir. */
+@keyframes sidebar-entra {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: none; }
+}

@@ -17,6 +17,8 @@ import { sidebarGroups, sidebarGroupItems } from '../db/schema.js'
 // antigo (tela removida depois) também não quebra nada — o Sidebar.tsx já
 // filtra silenciosamente qualquer item que não bata com nenhum link atual.
 const linkToSchema = z.string().min(1)
+// null = sem cor escolhida (Sidebar.tsx usa a paleta automática).
+const corSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable()
 
 export const sidebarGruposRouter = router({
   // Todo mundo lê — é o que monta a sidebar de qualquer usuário (admin ou
@@ -30,6 +32,7 @@ export const sidebarGruposRouter = router({
       id: g.id,
       nome: g.nome,
       icone: g.icone,
+      cor: g.cor,
       itens: g.itens.map((i) => i.linkTo),
     }))
   }),
@@ -39,6 +42,7 @@ export const sidebarGruposRouter = router({
       z.object({
         nome: z.string().min(2),
         icone: z.string().min(1),
+        cor: corSchema.optional(),
         itens: z.array(linkToSchema),
       })
     )
@@ -49,7 +53,7 @@ export const sidebarGruposRouter = router({
       const existentes = await db.query.sidebarGroups.findMany({ columns: { ordem: true } })
       const proximaOrdem = existentes.length ? Math.max(...existentes.map((g) => g.ordem)) + 1 : 0
 
-      const result = await db.insert(sidebarGroups).values({ nome: input.nome, icone: input.icone, ordem: proximaOrdem })
+      const result = await db.insert(sidebarGroups).values({ nome: input.nome, icone: input.icone, cor: input.cor ?? null, ordem: proximaOrdem })
       const id = Number(result.lastInsertRowid)
       if (input.itens.length > 0) {
         await db.insert(sidebarGroupItems).values(input.itens.map((linkTo, idx) => ({ groupId: id, linkTo, ordem: idx })))
@@ -75,6 +79,7 @@ export const sidebarGruposRouter = router({
         id: z.number(),
         nome: z.string().min(2).optional(),
         icone: z.string().min(1).optional(),
+        cor: corSchema.optional(),
         itens: z.array(linkToSchema).optional(),
       })
     )
@@ -82,10 +87,14 @@ export const sidebarGruposRouter = router({
       const grupo = await db.query.sidebarGroups.findFirst({ where: eq(sidebarGroups.id, input.id) })
       if (!grupo) throw new Error('Grupo não encontrado')
 
-      if (input.nome !== undefined || input.icone !== undefined) {
+      if (input.nome !== undefined || input.icone !== undefined || input.cor !== undefined) {
         await db
           .update(sidebarGroups)
-          .set({ ...(input.nome !== undefined ? { nome: input.nome } : {}), ...(input.icone !== undefined ? { icone: input.icone } : {}) })
+          .set({
+            ...(input.nome !== undefined ? { nome: input.nome } : {}),
+            ...(input.icone !== undefined ? { icone: input.icone } : {}),
+            ...(input.cor !== undefined ? { cor: input.cor } : {}),
+          })
           .where(eq(sidebarGroups.id, input.id))
       }
 

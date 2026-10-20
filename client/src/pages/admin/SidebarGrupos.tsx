@@ -5,7 +5,7 @@ import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
-import { ADMIN_LINKS, VENDOR_LINKS, NOMES_ICONES_GRUPO } from '../../components/Sidebar'
+import { ADMIN_LINKS, VENDOR_LINKS, NOMES_ICONES_GRUPO, PALETA_GRUPOS } from '../../components/Sidebar'
 import { textoContem } from '../../lib/utils'
 
 function moverNaLista<T>(lista: T[], indice: number, direcao: -1 | 1): T[] {
@@ -39,10 +39,11 @@ const LABEL_POR_ITEM = new Map(TODOS_ITENS.map((i) => [i.to, i.label]))
 interface GrupoForm {
   nome: string
   icone: string
+  cor: string | null
   itens: string[]
 }
 
-const FORM_VAZIO: GrupoForm = { nome: '', icone: 'Folder', itens: [] }
+const FORM_VAZIO: GrupoForm = { nome: '', icone: 'Folder', cor: null, itens: [] }
 
 // Grupos colapsáveis da sidebar (ex: "Marketing" juntando Leads/Kanban de
 // Leads/Solicitar Arte) — vale pra todo mundo que usa o sistema, não só
@@ -66,7 +67,7 @@ export default function SidebarGrupos() {
       return
     }
     const alvo = grupos?.find((g) => g.id === selecionadoId)
-    if (alvo) setForm({ nome: alvo.nome, icone: alvo.icone, itens: alvo.itens })
+    if (alvo) setForm({ nome: alvo.nome, icone: alvo.icone, cor: alvo.cor, itens: alvo.itens })
   }, [selecionadoId, grupos])
 
   const criarMut = trpc.sidebarGrupos.criar.useMutation({
@@ -135,9 +136,9 @@ export default function SidebarGrupos() {
     const nome = form.nome.trim()
     if (!nome) return toast.error('Dê um nome pro grupo.')
     if (selecionadoId === 'novo') {
-      criarMut.mutate({ nome, icone: form.icone, itens: form.itens as never })
+      criarMut.mutate({ nome, icone: form.icone, cor: form.cor, itens: form.itens as never })
     } else if (typeof selecionadoId === 'number') {
-      atualizarMut.mutate({ id: selecionadoId, nome, icone: form.icone, itens: form.itens as never })
+      atualizarMut.mutate({ id: selecionadoId, nome, icone: form.icone, cor: form.cor, itens: form.itens as never })
     }
   }
 
@@ -189,7 +190,10 @@ export default function SidebarGrupos() {
                     </button>
                   </div>
                   <button onClick={() => setSelecionadoId(g.id)} className="flex-1 text-left px-2 py-1.5 min-w-0">
-                    <p className="font-medium truncate">{g.nome}</p>
+                    <p className="font-medium truncate flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: g.cor ?? PALETA_GRUPOS[idx % PALETA_GRUPOS.length] }} />
+                      {g.nome}
+                    </p>
                     <p className="text-xs text-dark-500">
                       {g.itens.length} ite{g.itens.length !== 1 ? 'ns' : 'm'}
                     </p>
@@ -213,6 +217,32 @@ export default function SidebarGrupos() {
                     onChange={(e) => setForm({ ...form, icone: e.target.value })}
                     options={NOMES_ICONES_GRUPO.map((nome) => ({ value: nome, label: nome }))}
                   />
+                </div>
+
+                <div>
+                  <p className="text-xs text-dark-500 mb-2">Cor do grupo no menu</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForm({ ...form, cor: null })}
+                      className={`px-3 h-8 rounded-lg text-xs border transition-colors ${
+                        form.cor === null ? 'border-gold-500 text-gold-400 bg-gold-600/10' : 'border-dark-600 text-dark-300 hover:border-dark-400'
+                      }`}
+                    >
+                      Automática
+                    </button>
+                    {PALETA_GRUPOS.map((cor) => (
+                      <button
+                        key={cor}
+                        type="button"
+                        title={cor}
+                        aria-label={`Cor ${cor}`}
+                        onClick={() => setForm({ ...form, cor })}
+                        className={`w-8 h-8 rounded-lg transition-transform hover:scale-110 ${form.cor === cor ? 'ring-2 ring-offset-2 ring-offset-dark-800 ring-dark-100' : ''}`}
+                        style={{ background: cor }}
+                      />
+                    ))}
+                  </div>
                 </div>
 
                 <div>

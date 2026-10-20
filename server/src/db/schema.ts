@@ -84,6 +84,8 @@ export const sidebarGroups = sqliteTable('sidebar_groups', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   nome: text('nome').notNull(),
   icone: text('icone').notNull(),
+  // Hex (#rrggbb) escolhido em Grupos da Sidebar — null = cor automática.
+  cor: text('cor'),
   ordem: integer('ordem').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
