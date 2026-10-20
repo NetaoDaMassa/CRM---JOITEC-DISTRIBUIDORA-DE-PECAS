@@ -12,6 +12,8 @@ import {
   users,
   vendas as vendasTable,
   logAuditoria,
+  sapImportacoes,
+  sapVendasHistorico,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
@@ -42,7 +44,10 @@ async function vendedoresPermitidos(ctx: { user: { role: 'admin' | 'vendor' | 'g
 async function agruparCarteiraVinculada(
   clientesFiltrados: { id: number; dataUltimaCompra: string | null }[],
   inicio: string,
-  fim: string
+  fim: string,
+  // Clientes com pedido do SAP no período (ver `vendasSap`) — também contam
+  // como positivados.
+  compraramNoSap: Set<number> = new Set()
 ): Promise<{ totalCarteira: number; ativados: number }> {
   const ids = clientesFiltrados.map((c) => c.id)
   if (ids.length === 0) return { totalCarteira: 0, ativados: 0 }
@@ -77,11 +82,63 @@ async function agruparCarteiraVinculada(
   const grupoAtivado = new Map<number, boolean>()
   for (const c of clientesFiltrados) {
     const raiz = encontrar(c.id)
-    const comprouAgora = !!c.dataUltimaCompra && c.dataUltimaCompra >= inicio && c.dataUltimaCompra <= fim
+    const comprouAgora = (!!c.dataUltimaCompra && c.dataUltimaCompra >= inicio && c.dataUltimaCompra <= fim) || compraramNoSap.has(c.id)
     grupoAtivado.set(raiz, (grupoAtivado.get(raiz) ?? false) || comprouAgora)
   }
 
   return { totalCarteira: grupoAtivado.size, ativados: [...grupoAtivado.values()].filter(Boolean).length }
+}
+
+// Histórico do SAP (lotes LIGADOS) somado às vendas do CRM nos relatórios de
+// venda — pedido do João, 2026-10-20: o SAP cobre abril–julho/2026, antes do
+// CRM existir, e os relatórios precisam enxergar os dois como uma coisa só.
+// Venda do SAP não tem vendedor: conta pro vendedor ATUAL do cliente
+// (decisão do João). Metas, rankings e painéis NÃO usam isso. Desligar o
+// lote tira tudo daqui na hora (nada é gravado em `clientes`/`vendas`).
+async function vendasSap(params: {
+  empresaId?: number
+  dataInicio: string
+  dataFim: string
+  ctx?: { user: { role: 'admin' | 'vendor' | 'gestor'; id: number } }
+  vendedorId?: number
+  regiao?: string
+  apenasMarketing?: boolean
+}) {
+  const filtros = [
+    eq(sapImportacoes.ativo, true),
+    between(sapVendasHistorico.dataPedido, params.dataInicio.slice(0, 10), params.dataFim.slice(0, 10)),
+    isNull(clientes.deletedAt),
+  ]
+  if (params.empresaId) filtros.push(eq(sapVendasHistorico.empresaId, params.empresaId))
+  if (params.ctx) {
+    const filtroVend = filtroVendedor(params.ctx.user.role, params.ctx.user.id, params.vendedorId, clientes.vendedorAtualId)
+    if (filtroVend) filtros.push(filtroVend)
+  }
+  const filtroReg = filtroRegiao(params.regiao, clientes.regiao)
+  if (filtroReg) filtros.push(filtroReg)
+  if (params.apenasMarketing) filtros.push(eq(clientes.origemMarketing, true))
+
+  return db
+    .select({
+      clienteId: sapVendasHistorico.clienteId,
+      empresaId: sapVendasHistorico.empresaId,
+      data: sapVendasHistorico.dataPedido,
+      valor: sapVendasHistorico.valor,
+      razaoSocial: clientes.razaoSocial,
+      vendedorId: clientes.vendedorAtualId,
+      vendedorNome: users.name,
+    })
+    .from(sapVendasHistorico)
+    .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapVendasHistorico.importacaoId))
+    .innerJoin(clientes, eq(clientes.id, sapVendasHistorico.clienteId))
+    .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
+    .where(and(...filtros))
+}
+
+// Data do pedido SAP vem só "YYYY-MM-DD" — meio-dia evita que a conversão
+// de fuso (UTC → Brasília) em `diasDesde` jogue pro dia anterior.
+function dataSapComoDatetime(data: string): string {
+  return `${data} 12:00:00`
 }
 
 const regiaoEnum = z.enum(['norte', 'nordeste', 'centro_oeste', 'sudeste', 'sul']).optional()
@@ -151,9 +208,18 @@ export const reportsRouter = router({
       .groupBy(vendasTable.clienteId)
       .orderBy(desc(sql`sum(${vendasTable.valorFechado})`))
 
-    const totalGeral = linhas.reduce((acc, l) => acc + (l.valorTotal ?? 0), 0)
+    // Soma o SAP por cliente junto com o CRM e reordena.
+    const porCliente = new Map(linhas.map((l) => [l.clienteId, { ...l, valorTotal: l.valorTotal ?? 0 }]))
+    for (const v of await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim, ctx, vendedorId: input.vendedorId, regiao: input.regiao })) {
+      const atual = porCliente.get(v.clienteId) ?? { clienteId: v.clienteId, razaoSocial: v.razaoSocial, vendedorNome: v.vendedorNome, valorTotal: 0 }
+      atual.valorTotal += v.valor
+      porCliente.set(v.clienteId, atual)
+    }
+    const linhasComSap = [...porCliente.values()].sort((a, b) => b.valorTotal - a.valorTotal)
+
+    const totalGeral = linhasComSap.reduce((acc, l) => acc + (l.valorTotal ?? 0), 0)
     let acumulado = 0
-    return linhas.map((l) => {
+    return linhasComSap.map((l) => {
       acumulado += l.valorTotal ?? 0
       const pctAcumulado = totalGeral > 0 ? (acumulado / totalGeral) * 100 : 0
       const classe = pctAcumulado <= 80 ? 'A' : pctAcumulado <= 95 ? 'B' : 'C'
@@ -186,7 +252,10 @@ export const reportsRouter = router({
       where: and(...filtrosCarteira),
       columns: { id: true, dataUltimaCompra: true },
     })
-    const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesFiltrados, inicio, fim)
+    const compraramNoSap = new Set(
+      (await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim })).map((v) => v.clienteId)
+    )
+    const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesFiltrados, inicio, fim, compraramNoSap)
 
     return {
       totalCarteira,
@@ -203,6 +272,9 @@ export const reportsRouter = router({
     const vendedores = await vendedoresPermitidos(ctx, input.vendedorId)
 
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    const compraramNoSap = new Set(
+      (await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim })).map((v) => v.clienteId)
+    )
 
     const linhas = await Promise.all(
       vendedores.map(async (v) => {
@@ -212,7 +284,7 @@ export const reportsRouter = router({
           where: and(...filtrosCarteira),
           columns: { id: true, dataUltimaCompra: true },
         })
-        const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesDoVendedor, inicio, fim)
+        const { totalCarteira, ativados } = await agruparCarteiraVinculada(clientesDoVendedor, inicio, fim, compraramNoSap)
 
         // Total de contatos feitos pelo vendedor no período, quebrado por
         // canal (ligação x WhatsApp) — pedido do João pra ver ao lado da
@@ -407,10 +479,22 @@ export const reportsRouter = router({
       .innerJoin(users, eq(users.id, funilMensal.vendedorId))
       .where(and(...filtros))
 
+    const sap = await vendasSap({
+      empresaId: ctx.empresaId,
+      dataInicio: input.dataInicio,
+      dataFim: input.dataFim,
+      ctx,
+      vendedorId: input.vendedorId,
+      regiao: input.regiao,
+      apenasMarketing: input.apenasMarketing,
+    })
+    const quantidadeTotal = quantidade + sap.length
+    const valorGeral = (valorTotal ?? 0) + sap.reduce((s, v) => s + v.valor, 0)
+
     return {
-      quantidade,
-      valorTotal: valorTotal ?? 0,
-      ticketMedio: quantidade > 0 ? (valorTotal ?? 0) / quantidade : 0,
+      quantidade: quantidadeTotal,
+      valorTotal: valorGeral,
+      ticketMedio: quantidadeTotal > 0 ? valorGeral / quantidadeTotal : 0,
     }
   }),
 
@@ -445,6 +529,15 @@ export const reportsRouter = router({
       const atual = mapa.get(chave) ?? { data: l.data, vendedorId: l.vendedorId, nome: l.nome, quantidade: 0, valorTotal: 0 }
       atual.quantidade += 1
       atual.valorTotal += l.valorFechado
+      mapa.set(chave, atual)
+    }
+    for (const v of await vendasSap({ empresaId: ctx.empresaId, dataInicio: input.dataInicio, dataFim: input.dataFim, ctx, vendedorId: input.vendedorId, regiao: input.regiao })) {
+      // Cliente sem vendedor hoje (Banco de Clientes) → vendedorId 0.
+      const vendedorId = v.vendedorId ?? 0
+      const chave = `${v.data}|${vendedorId}`
+      const atual = mapa.get(chave) ?? { data: v.data, vendedorId, nome: v.vendedorNome ?? 'Sem vendedor', quantidade: 0, valorTotal: 0 }
+      atual.quantidade += 1
+      atual.valorTotal += v.valor
       mapa.set(chave, atual)
     }
     return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.nome.localeCompare(b.nome)))
@@ -538,7 +631,13 @@ export const reportsRouter = router({
         .groupBy(clientes.empresaId)
 
       const todasEmpresas = await db.query.empresas.findMany({ columns: { id: true, nome: true } })
-      const porEmpresaId = new Map(linhas.map((l) => [l.empresaId, l]))
+      const porEmpresaId = new Map(linhas.map((l) => [l.empresaId, { quantidade: l.quantidade, valorTotal: l.valorTotal ?? 0 }]))
+      for (const v of await vendasSap({ dataInicio: input.dataInicio, dataFim: input.dataFim })) {
+        const atual = porEmpresaId.get(v.empresaId) ?? { quantidade: 0, valorTotal: 0 }
+        atual.quantidade += 1
+        atual.valorTotal += v.valor
+        porEmpresaId.set(v.empresaId, atual)
+      }
 
       const porEmpresa = todasEmpresas
         .map((e) => ({
@@ -954,16 +1053,32 @@ export const reportsRouter = router({
         with: { vendedorAtual: { columns: { name: true } } },
       })
 
+      // Último pedido no SAP (lotes ligados) — vale o mais recente entre CRM
+      // e SAP.
+      const ultimaSap = new Map<number, string>()
+      const sapRows = await db
+        .select({ clienteId: sapVendasHistorico.clienteId, ultima: sql<string>`max(${sapVendasHistorico.dataPedido})` })
+        .from(sapVendasHistorico)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapVendasHistorico.importacaoId))
+        .where(and(eq(sapVendasHistorico.empresaId, ctx.empresaId), eq(sapImportacoes.ativo, true)))
+        .groupBy(sapVendasHistorico.clienteId)
+      for (const r of sapRows) ultimaSap.set(r.clienteId, dataSapComoDatetime(r.ultima))
+
       const itens = carteira
-        .map((c) => ({
-          clienteId: c.id,
-          razaoSocial: c.razaoSocial,
-          codigo: c.codigo,
-          vendedorNome: c.vendedorAtual?.name ?? '—',
-          ultimaCompraEm: c.dataUltimaCompra,
-          // null = nunca comprou.
-          diasSemVenda: diasDesde(c.dataUltimaCompra),
-        }))
+        .map((c) => {
+          const sap = ultimaSap.get(c.id) ?? null
+          const ultima = sap && (!c.dataUltimaCompra || sap > c.dataUltimaCompra) ? sap : c.dataUltimaCompra
+          return {
+            clienteId: c.id,
+            razaoSocial: c.razaoSocial,
+            codigo: c.codigo,
+            vendedorNome: c.vendedorAtual?.name ?? '—',
+            ultimaCompraEm: ultima,
+            origemUltimaCompra: ultima == null ? null : ultima === sap ? ('sap' as const) : ('crm' as const),
+            // null = nunca comprou.
+            diasSemVenda: diasDesde(ultima),
+          }
+        })
         .filter((c) => c.diasSemVenda === null || c.diasSemVenda >= input.minimoDias)
         .sort((a, b) => (b.diasSemVenda ?? Infinity) - (a.diasSemVenda ?? Infinity))
       return { totalCarteira: carteira.length, itens }

@@ -533,6 +533,9 @@ export default function AdminReports() {
 
       {aba === 'visao_geral' && (
         <div className="space-y-6">
+          {/* Vendas/curva ABC/positivação somam o histórico importado do SAP
+              (abr–jul/2026, antes do CRM) — pedido do João, 2026-10-20. */}
+          <p className="text-xs text-dark-500">Vendas, curva ABC e positivação incluem o histórico importado do SAP (venda do SAP conta pro vendedor atual do cliente).</p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
               <p className="text-xs text-dark-500">Vendas no período</p>
@@ -1359,7 +1362,7 @@ export default function AdminReports() {
 
           <AlertaClientesCard
             titulo="Clientes sem vendas"
-            subtitulo='Última compra de cada cliente, em qualquer mês. "Nunca" = cliente nunca fechou uma venda.'
+            subtitulo='Última compra de cada cliente, em qualquer mês (CRM ou histórico do SAP, o que for mais recente). "Nunca" = cliente nunca fechou uma venda.'
             dados={clientesSemVendaDias?.itens.map((c) => ({ ...c, dias: c.diasSemVenda }))}
             totalCarteira={clientesSemVendaDias?.totalCarteira}
             minimoDias={minimoDiasSemVenda}
