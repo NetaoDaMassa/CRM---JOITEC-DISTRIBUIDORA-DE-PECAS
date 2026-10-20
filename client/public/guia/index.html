@@ -1,0 +1,561 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="/favicon.ico">
+<title>Guia do Vendedor CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: manual de campo — coluna de leitura larga com prints anotados (marcadores âmbar = "olhe aqui"), seções por tipo de vendedor e um bloco de destaque pro "lead em atraso". */
+:root {
+  --bg: #f3f5f8;
+  --paper: #ffffff;
+  --ink: #142235;
+  --muted: #56657a;
+  --line: #dbe2ea;
+  --accent: #1f5fd1;
+  --accent-soft: #e6eefc;
+  --signal: #f3a712;
+  --signal-ink: #1b1300;
+  --late: #c8322b;
+  --late-soft: #fdecea;
+  --ok: #1d8a4e;
+  --ok-soft: #e5f5ec;
+  --shot-edge: #0b1522;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c131d; --paper: #111b28; --ink: #e8eef6; --muted: #9aa9bc; --line: #223246;
+    --accent: #6ea2ff; --accent-soft: #15243d; --late: #ff6b62; --late-soft: #2a1414;
+    --ok: #4fd18b; --ok-soft: #10251a; --shot-edge: #2a3a50; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c131d; --paper: #111b28; --ink: #e8eef6; --muted: #9aa9bc; --line: #223246;
+  --accent: #6ea2ff; --accent-soft: #15243d; --late: #ff6b62; --late-soft: #2a1414;
+  --ok: #4fd18b; --ok-soft: #10251a; --shot-edge: #2a3a50; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 17px; line-height: 1.55;
+}
+.wrap {
+  max-width: 1080px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+  display: grid; gap: 56px;
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.6rem, 3.4vw, 2.3rem); font-weight: 800; letter-spacing: -0.01em; }
+h3 { font-size: 1.25rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.lead { font-size: 1.15rem; color: var(--muted); }
+
+/* topo */
+header.top { display: grid; gap: 18px; }
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 8px; }
+.role {
+  display: grid; gap: 6px; text-decoration: none; color: inherit;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+  transition: border-color .15s, transform .15s;
+}
+.role:hover, .role:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+.role b { font-family: var(--font-display); font-size: 1.15rem; }
+.role span { color: var(--muted); font-size: 0.95rem; }
+.role .flow { font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent); }
+.role.late { border-color: color-mix(in srgb, var(--late) 45%, var(--line)); background: var(--late-soft); }
+.role.late .flow { color: var(--late); }
+
+nav.chips {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  display: flex; gap: 8px; overflow-x: auto; padding-block: 10px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+nav.chips a {
+  flex: none; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.92rem;
+  border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 14px;
+}
+nav.chips a:hover, nav.chips a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+
+section.part { display: grid; gap: 28px; scroll-margin-top: 70px; }
+.part-head { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+.step { display: grid; gap: 14px; }
+.step > p { color: var(--ink); }
+
+/* print anotado */
+figure.shot { margin: 0; display: grid; gap: 12px; }
+.frame { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--shot-edge); background: #0b1522; }
+.frame img { display: block; width: 100%; height: auto; }
+.pin {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--signal); color: var(--signal-ink);
+  font-family: var(--font-mono); font-weight: 600; font-size: 14px;
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 3px rgba(11, 21, 34, .85), 0 4px 10px rgba(0, 0, 0, .45);
+}
+figcaption ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+figcaption li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+figcaption li::before {
+  counter-increment: none; content: attr(data-n);
+  width: 26px; height: 26px; border-radius: 50%; background: var(--signal); color: var(--signal-ink);
+  font-family: var(--font-mono); font-weight: 600; font-size: 13px; display: grid; place-items: center; margin-top: 1px;
+}
+figcaption li span { min-width: 0; }
+
+/* blocos */
+.callout { border-radius: 14px; padding: 20px 22px; display: grid; gap: 10px; border: 1px solid var(--line); background: var(--paper); }
+.callout.late { background: var(--late-soft); border-color: color-mix(in srgb, var(--late) 40%, transparent); }
+.callout.late h3 { color: var(--late); }
+.callout.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.callout.ok h3 { color: var(--ok); }
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.way { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 6px; align-content: start; }
+.way b { font-family: var(--font-display); font-size: 1.05rem; }
+.way small { color: var(--muted); font-size: 0.92rem; }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600; letter-spacing: .06em; padding: 2px 8px; border-radius: 6px; vertical-align: 1px; }
+.tag.late { background: #b4261f; color: #fff; }
+.tag.today { background: #c26a0a; color: #fff; }
+.tag.tomorrow { background: #8a7a0e; color: #fff; }
+.tag.future { background: #1f5fd1; color: #fff; }
+.tag.gps { background: #1d8a4e; color: #fff; }
+
+.checklist { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.checklist li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; }
+.checklist li::before { content: ""; width: 16px; height: 16px; border: 2px solid var(--ok); border-radius: 4px; margin-top: 4px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.cols > * { min-width: 0; }
+table.etapas { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+table.etapas th, table.etapas td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.etapas th { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.tablewrap { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 18px; }
+kbd, .btn { font-family: var(--font-body); font-weight: 700; border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 0 6px; font-size: 0.92em; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) { .role { transition: none; } }
+@media print {
+  :root { --bg: #fff; --paper: #fff; color-scheme: light; }
+  body { font-size: 12pt; }
+  nav.chips, body::before { display: none; }
+  .wrap { padding-block: 0; gap: 28px; max-width: none; }
+  section.part { break-before: page; }
+  .step, figure.shot, .callout, .way { break-inside: avoid; }
+  .role:hover { transform: none; }
+}
+.crm-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crm-bar a { color: var(--accent); font-weight: 700; text-decoration: none; border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 14px; font-size: 0.92rem; }
+.crm-bar a:hover, .crm-bar a:focus-visible { border-color: var(--accent); outline: none; }
+@media print { .crm-bar { display: none; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <div class="crm-bar">
+    <a href="/">← Voltar ao CRM</a>
+    <a href="guia-do-vendedor.pdf" download="Guia do Vendedor - CRM Grupo Odin.pdf">Baixar em PDF</a>
+  </div>
+  <header class="top">
+    <span class="eyebrow">Grupo Odin · Joitec CRM</span>
+    <h1>Guia do Vendedor</h1>
+    <p class="lead">Como usar o CRM no dia a dia, tela por tela. Escolha o seu tipo de trabalho abaixo. Os números amarelos nos prints mostram onde clicar. Os clientes dos prints são de exemplo.</p>
+    <div class="roles">
+      <a class="role" href="#leads"><span class="flow">lead → proposta → venda</span><b>Vendedor de Leads</b><span>Atende os leads que chegam do Meta Ads, site e WhatsApp.</span></a>
+      <a class="role" href="#carteira"><span class="flow">carteira → atendimento → venda</span><b>Vendedor de Carteira</b><span>Cuida dos clientes da sua carteira pelo Kanban (Joitec, Tubos, Peças Odin).</span></a>
+      <a class="role" href="#externo"><span class="flow">visita → proposta → venda</span><b>Vendedor Externo</b><span>Visita clientes na rua e lança propostas e pedidos (Odin Compressores).</span></a>
+      <a class="role late" href="#atraso"><span class="flow">o mais importante</span><b>Tirar lead do atraso</b><span>O que fazer quando aparece a etiqueta vermelha ATRASADO.</span></a>
+    </div>
+  </header>
+
+  <nav class="chips" aria-label="Seções">
+    <a href="#comeco">Antes de começar</a>
+    <a href="#leads">Leads</a>
+    <a href="#atraso">Lead em atraso</a>
+    <a href="#carteira">Carteira</a>
+    <a href="#externo">Externo</a>
+    <a href="#rotina">Rotina diária</a>
+  </nav>
+
+  <!-- ───────────── COMEÇO ───────────── -->
+  <section class="part" id="comeco">
+    <div class="part-head">
+      <span class="eyebrow">Para todos</span>
+      <h2>Antes de começar</h2>
+    </div>
+    <div class="cols">
+      <div class="callout">
+        <h3>O menu da esquerda</h3>
+        <p>Cada vendedor vê só as telas do seu trabalho. Se faltar alguma tela, peça liberação ao gestor. A caixa <b>Buscar no menu</b> acha qualquer tela digitando parte do nome.</p>
+      </div>
+      <div class="callout">
+        <h3>O sininho</h3>
+        <p>No canto de cima fica o sino de avisos: lead novo distribuído para você, compromisso chegando, pedido que mudou de etapa. Abra sempre que tiver número vermelho.</p>
+      </div>
+      <div class="callout">
+        <h3>A regra de ouro</h3>
+        <p><b>Todo contato vai para o CRM.</b> Ligou, mandou WhatsApp ou visitou: registre na hora. O que não está no CRM não aparece no seu resultado, nos relatórios nem no painel da TV.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── LEADS ───────────── -->
+  <section class="part" id="leads">
+    <div class="part-head">
+      <span class="eyebrow">Vendedor de Leads</span>
+      <h2>Atendendo leads</h2>
+      <p class="lead">O lead chega distribuído para você. Seu trabalho é falar com ele rápido, marcar sempre o próximo contato e levar até o Ganho ou o Perdido.</p>
+    </div>
+
+    <div class="step">
+      <h3>Kanban de Leads: sua lista de trabalho</h3>
+      <p>Menu <b>Kanban de Leads</b>. Cada coluna é uma etapa e cada cartão é um lead. A etiqueta colorida embaixo do cartão diz quando é o próximo contato:
+        <span class="tag late">ATRASADO</span> a data já passou, <span class="tag today">HOJE</span> é para hoje, <span class="tag tomorrow">AMANHÃ</span>, e em azul são os próximos dias.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/leads-kanban.jpg" alt="Kanban de Leads com cartões nas colunas Novo, Abordagem, Qualificado e Em Negociação" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:24%;top:18%">1</span>
+          <span class="pin" style="left:61%;top:36.6%">2</span>
+          <span class="pin" style="left:61%;top:53%">3</span>
+          <span class="pin" style="left:37.6%;top:28.9%">4</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Novo:</b> leads que acabaram de chegar e ninguém atendeu. A meta é o primeiro contato em até 2 horas úteis.</span></li>
+          <li data-n="2"><span><span class="tag late">ATRASADO</span>: o dia do retorno passou. Resolva primeiro (veja <a href="#atraso">Lead em atraso</a>).</span></li>
+          <li data-n="3"><span><span class="tag today">HOJE</span>: retornos marcados para hoje.</span></li>
+          <li data-n="4"><span>Botão do WhatsApp: abre a conversa direto com o lead.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Dentro do lead: registrar contato e marcar o próximo</h3>
+      <p>Clique no cartão para abrir o lead. É aqui que você registra cada tentativa de contato e escolhe quando vai falar com ele de novo.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/lead-atrasado.jpg" alt="Tela de detalhe de um lead atrasado, com formulário de tentativa de contato" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:38%;top:20.8%">1</span>
+          <span class="pin" style="left:42.8%;top:33%">2</span>
+          <span class="pin" style="left:82.5%;top:47.5%">3</span>
+          <span class="pin" style="left:30.5%;top:77%">4</span>
+          <span class="pin" style="left:38.8%;top:87.5%">5</span>
+          <span class="pin" style="left:68%;top:72.7%">6</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span>Aviso de atraso: há quantos dias o retorno venceu.</span></li>
+          <li data-n="2"><span>Etapas do lead. Clique numa etapa para mudar (abre a janela abaixo).</span></li>
+          <li data-n="3"><span><b>Próximo contato</b> marcado hoje. Se a data já passou, o lead está em atraso.</span></li>
+          <li data-n="4"><span><b>Registrar tentativa:</b> escolha o canal (WhatsApp, ligação…) e o resultado (sem resposta, confirmado, reagendou…).</span></li>
+          <li data-n="5"><span>Com o retorno vencido, o CRM pede o <b>Novo próximo contato</b>. Escolha a data e clique em <span class="btn">Registrar</span>. O lead sai do atraso na hora.</span></li>
+          <li data-n="6"><span><b>Notas e lembretes:</b> anote o que o cliente falou. O <b>Lembrete</b> também aceita data de retorno.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Mudar a etapa</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/lead-mudar-etapa.jpg" alt="Janela Mudar etapa com os campos Nova etapa e Próximo contato" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:50%;top:47%">1</span>
+          <span class="pin" style="left:50%;top:55.5%">2</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span>Escolha a etapa nova.</span></li>
+          <li data-n="2"><span>Enquanto o lead está aberto, o <b>Próximo contato é obrigatório</b>. Em <b>Abordagem</b>, a data tem limite de dias úteis (normalmente 4).</span></li>
+        </ol></figcaption>
+      </figure>
+      <div class="tablewrap">
+        <table class="etapas">
+          <thead><tr><th>Etapa</th><th>Quando usar</th><th>O CRM pede</th></tr></thead>
+          <tbody>
+            <tr><td><b>Novo</b></td><td>Chegou e ainda não foi atendido.</td><td>Nada: fale com o lead.</td></tr>
+            <tr><td><b>Abordagem</b></td><td>Já tentou contato e está conversando.</td><td>Próximo contato (até o limite de dias úteis).</td></tr>
+            <tr><td><b>Qualificado</b></td><td>Tem interesse real e perfil de compra.</td><td>Próximo contato.</td></tr>
+            <tr><td><b>Em Negociação</b></td><td>Orçamento ou proposta enviada.</td><td>Próximo contato e valor.</td></tr>
+            <tr><td><b>Ganho</b></td><td>Fechou a venda.</td><td>Valor final e forma de pagamento.</td></tr>
+            <tr><td><b>Perdido</b></td><td>Não vai comprar agora.</td><td>Motivo da perda.</td></tr>
+            <tr><td><b>Desqualificado</b></td><td>Não é cliente (contato errado, fora do perfil).</td><td>Motivo.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── ATRASO ───────────── -->
+  <section class="part" id="atraso">
+    <div class="part-head">
+      <span class="eyebrow">O mais importante</span>
+      <h2>Como tirar um lead do atraso</h2>
+      <p class="lead">Um lead fica <span class="tag late">ATRASADO</span> quando está aberto e a data de <b>Próximo contato</b> já passou. Ele só sai do atraso de dois jeitos: <b>ganhando uma data nova</b> ou <b>sendo encerrado</b>.</p>
+    </div>
+    <div class="ways">
+      <div class="way"><span class="eyebrow">Jeito 1</span><b>Falou com o cliente</b><small>Abra o lead → <b>Registrar tentativa</b> → escolha canal e resultado → preencha o <b>Novo próximo contato</b> → <span class="btn">Registrar</span>.</small></div>
+      <div class="way"><span class="eyebrow">Jeito 2</span><b>A negociação andou</b><small>Clique na etapa nova (ex.: Qualificado) → escolha a data de <b>Próximo contato</b> → <span class="btn">Salvar</span>.</small></div>
+      <div class="way"><span class="eyebrow">Jeito 3</span><b>Não vai comprar</b><small>Mude para <b>Perdido</b> ou <b>Desqualificado</b> com o motivo. Lead encerrado não conta mais como atraso.</small></div>
+      <div class="way"><span class="eyebrow">Jeito 4</span><b>Fechou</b><small>Mude para <b>Ganho</b> com o valor final e a forma de pagamento.</small></div>
+    </div>
+    <div class="callout late">
+      <h3>O que NÃO tira do atraso</h3>
+      <p>Mandar mensagem pelo WhatsApp e não registrar nada no CRM. Escrever só uma nota sem data. Deixar para "ver depois". Se o cliente pediu para chamar daqui a uma semana, marque a data de daqui a uma semana. Se não respondeu, marque a próxima tentativa.</p>
+    </div>
+    <div class="callout ok">
+      <h3>Dica para nunca atrasar</h3>
+      <p>Comece o dia pelo Kanban de Leads: primeiro os <span class="tag late">ATRASADO</span>, depois os <span class="tag today">HOJE</span>, depois os <b>Novo</b>. Termine o dia sem nenhuma etiqueta vermelha.</p>
+    </div>
+  </section>
+
+  <!-- ───────────── CARTEIRA ───────────── -->
+  <section class="part" id="carteira">
+    <div class="part-head">
+      <span class="eyebrow">Vendedor de Carteira</span>
+      <h2>Trabalhando a carteira</h2>
+      <p class="lead">Todo mês cada cliente da sua carteira vira um cartão no Kanban. A meta é falar com todos dentro do mês e levar os interessados até o Fechado.</p>
+    </div>
+
+    <div class="step">
+      <h3>Fila de Hoje: por onde começar</h3>
+      <p>Menu <b>Fila de Hoje</b>. O CRM já monta a lista de quem precisa de atenção, do mais urgente para o menos urgente. Não precisa procurar no Kanban.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/fila.jpg" alt="Fila de Hoje com clientes ordenados por urgência" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:29.5%;top:21.2%">1</span>
+          <span class="pin" style="left:27.3%;top:34.9%">2</span>
+          <span class="pin" style="left:66%;top:29%">3</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span>Quantos clientes ainda estão sem nenhum contato no mês.</span></li>
+          <li data-n="2"><span>Sugestão do que fazer com cada cliente.</span></li>
+          <li data-n="3"><span>Ligar ou abrir o WhatsApp direto daqui.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Kanban: o funil do mês</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/kanban.jpg" alt="Kanban da carteira com barra de cobertura de contatos e colunas Novo, Abordagem, Interessado e Negociação" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:59%;top:17.4%">1</span>
+          <span class="pin" style="left:32%;top:28.2%">2</span>
+          <span class="pin" style="left:91%;top:55.6%">3</span>
+          <span class="pin" style="left:90.7%;top:85.8%">4</span>
+          <span class="pin" style="left:49.5%;top:68.2%">5</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Cobertura de contatos:</b> quantos % da carteira você já contatou no mês.</span></li>
+          <li data-n="2"><span>Ritmo do dia: onde você deveria estar hoje e onde está. Verde está em dia, vermelho está atrasado.</span></li>
+          <li data-n="3"><span>Compromisso marcado para o cliente (aqui, hoje às 14h).</span></li>
+          <li data-n="4"><span>Compromisso <b>atrasado</b>: resolva ou remarque na Agenda.</span></li>
+          <li data-n="5"><span>Sugestão do próximo passo, de acordo com o último contato.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Dentro do cartão: contato, agenda e etapa</h3>
+      <div class="cols">
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/card-modal.jpg" alt="Cartão do cliente aberto com dados, botões de contato e histórico" width="1600" height="1000" loading="lazy">
+            <span class="pin" style="left:39.5%;top:16.2%">1</span>
+            <span class="pin" style="left:30.8%;top:53.8%">2</span>
+            <span class="pin" style="left:67.9%;top:53.8%">3</span>
+            <span class="pin" style="left:50%;top:65%">4</span>
+            <span class="pin" style="left:34%;top:86.3%">5</span>
+          </div>
+          <figcaption><ol>
+            <li data-n="1"><span>Sugestão do que fazer agora.</span></li>
+            <li data-n="2"><span>Ligar ou WhatsApp. O contato fica registrado no histórico.</span></li>
+            <li data-n="3"><span><span class="btn">Agendar</span> um retorno ou visita. Aparece na Agenda e no cartão.</span></li>
+            <li data-n="4"><span>Mensagens prontas para mandar no WhatsApp.</span></li>
+            <li data-n="5"><span><span class="btn">Registrar manual</span> quando o contato foi por fora (telefone pessoal, presencial).</span></li>
+          </ol></figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/card-mover.jpg" alt="Parte de baixo do cartão com Mover etapa, valor orçado e anexo de proposta" width="1600" height="1000" loading="lazy">
+            <span class="pin" style="left:50%;top:38.4%">1</span>
+            <span class="pin" style="left:50%;top:83.3%">2</span>
+            <span class="pin" style="left:50%;top:92%">3</span>
+          </div>
+          <figcaption><ol>
+            <li data-n="1"><span><b>Mover etapa:</b> Abordagem, Interessado, Negociação, Fechado, Perdido…</span></li>
+            <li data-n="2"><span>Em <b>Negociação</b>, informe o <b>valor orçado</b>.</span></li>
+            <li data-n="3"><span>Anexe o PDF do orçamento (opcional). Em <b>Fechado</b> o CRM pede o valor e o PDF do pedido.</span></li>
+          </ol></figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>Agenda e Prospecção</h3>
+      <div class="cols">
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/agenda.jpg" alt="Minha Agenda em visão de mês com compromissos do dia" width="1600" height="1000" loading="lazy">
+            <span class="pin" style="left:88.5%;top:15.6%">1</span>
+            <span class="pin" style="left:38.2%;top:64.8%">2</span>
+            <span class="pin" style="left:91.7%;top:29.8%">3</span>
+          </div>
+          <figcaption><ol>
+            <li data-n="1"><span><span class="btn">+ Agendar</span> um compromisso.</span></li>
+            <li data-n="2"><span>Cada dia mostra contatos, vendas e compromissos.</span></li>
+            <li data-n="3"><span>Marque <b>Concluir</b> quando fizer. Para remarcar, arraste para outro dia.</span></li>
+          </ol></figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame">
+            <img src="img/prospeccao.jpg" alt="Tela de Prospecção com lista de prospects" width="1600" height="1000" loading="lazy">
+            <span class="pin" style="left:24.5%;top:17.2%">1</span>
+            <span class="pin" style="left:55.9%;top:24.5%">2</span>
+          </div>
+          <figcaption><ol>
+            <li data-n="1"><span><span class="btn">+ Novo prospect</span>: empresa que você achou (Google, indicação) e ainda não é cliente.</span></li>
+            <li data-n="2"><span>Fechou a primeira conversa? <span class="btn">Enviar pra carteira</span> e ela vira cartão no Kanban.</span></li>
+          </ol></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── EXTERNO ───────────── -->
+  <section class="part" id="externo">
+    <div class="part-head">
+      <span class="eyebrow">Vendedor Externo · Odin Compressores</span>
+      <h2>Visitas, propostas e pedidos</h2>
+      <p class="lead">Toda visita vai para o CRM com check-in no cliente. A visita boa vira proposta, e a proposta aprovada vira pedido, que é a venda.</p>
+    </div>
+
+    <div class="step">
+      <h3>Visitas de Campo</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/visitas.jpg" alt="Tela de Visitas com visitas do dia, check-in e GPS" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:31.5%;top:32.4%">1</span>
+          <span class="pin" style="left:93.8%;top:38.9%">2</span>
+          <span class="pin" style="left:94.2%;top:45.8%">3</span>
+          <span class="pin" style="left:94.2%;top:76.1%">4</span>
+          <span class="pin" style="left:31.7%;top:78.8%">5</span>
+          <span class="pin" style="left:34%;top:93.9%">6</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span>Abas <b>Hoje</b>, <b>Semana</b>, <b>Todas</b>: suas visitas por período.</span></li>
+          <li data-n="2"><span><span class="btn">Nova Visita</span> para planejar ou lançar uma visita.</span></li>
+          <li data-n="3"><span><b>Check-in:</b> aperte ao chegar no cliente. O celular pega a localização.</span></li>
+          <li data-n="4"><span><b>Check-out:</b> aperte ao sair. Sem check-out o CRM não calcula o tempo da visita.</span></li>
+          <li data-n="5"><span><span class="tag gps">GPS</span> a visita foi confirmada pela localização. Sem esse selo, conta como visita manual.</span></li>
+          <li data-n="6"><span>Com check-in e check-out, aparece quanto tempo você ficou no cliente.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Lançar uma visita</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/nova-visita.jpg" alt="Formulário Nova Visita com data, objetivo, localização e resultado" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:36.4%;top:31.2%">1</span>
+          <span class="pin" style="left:50%;top:65.6%">2</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><span class="btn">Capturar localização</span> quando estiver no cliente. Se o sinal falhar, salve assim mesmo e tente o GPS de novo depois.</span></li>
+          <li data-n="2"><span><b>Resultado:</b> Gerou proposta, Follow-up, Sem interesse ou Não encontrado. <b>Gerar proposta</b> já cria a proposta para você.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Propostas</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/propostas.jpg" alt="Kanban de Propostas com colunas Proposta, Negociação, Fechado e Perdidos" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:93.1%;top:10.7%">1</span>
+          <span class="pin" style="left:78.9%;top:10.7%">2</span>
+          <span class="pin" style="left:23.6%;top:34.2%">3</span>
+          <span class="pin" style="left:22.9%;top:46.1%">4</span>
+          <span class="pin" style="left:28.4%;top:46.1%">5</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><span class="btn">Nova Proposta</span>: cliente, produtos, pagamento.</span></li>
+          <li data-n="2"><span><span class="btn">Fechamento / Sem Proposta</span>: venda fechada direto, sem passar por proposta.</span></li>
+          <li data-n="3"><span>Anexe o PDF da proposta enviada.</span></li>
+          <li data-n="4"><span><span class="btn">Avançar</span>: Proposta → Negociação → Fechado. Fechado vira <b>Pedido</b>, e o pedido é a sua venda.</span></li>
+          <li data-n="5"><span><span class="btn">Chamar Depois</span>: o cliente pediu um tempo. Escolha a data de retorno.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Dashboard Odin: o seu resultado</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/dash-odin.jpg" alt="Dashboard Odin mostrando Meu trabalho com visitas, propostas e vendas" width="1600" height="1000" loading="lazy">
+          <span class="pin" style="left:30%;top:19.2%">1</span>
+          <span class="pin" style="left:54%;top:11%">2</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Meu trabalho:</b> suas visitas (com GPS e manual) → propostas → vendas no período.</span></li>
+          <li data-n="2"><span>Escolha o mês ou as datas para ver outro período.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ───────────── ROTINA ───────────── -->
+  <section class="part" id="rotina">
+    <div class="part-head">
+      <span class="eyebrow">Para imprimir e colar na mesa</span>
+      <h2>Rotina diária</h2>
+    </div>
+    <div class="cols">
+      <div class="callout">
+        <h3>Leads</h3>
+        <ul class="checklist">
+          <li>Abrir o Kanban de Leads e zerar os <span class="tag late">ATRASADO</span>.</li>
+          <li>Atender os <span class="tag today">HOJE</span>.</li>
+          <li>Falar com todo lead <b>Novo</b> em até 2 horas úteis.</li>
+          <li>Registrar cada tentativa com canal e resultado.</li>
+          <li>Todo lead aberto com data de próximo contato.</li>
+          <li>Encerrar (Ganho / Perdido / Desqualificado) quem já decidiu.</li>
+        </ul>
+      </div>
+      <div class="callout">
+        <h3>Carteira</h3>
+        <ul class="checklist">
+          <li>Começar pela Fila de Hoje.</li>
+          <li>Conferir a Agenda e concluir os compromissos.</li>
+          <li>Manter o ritmo da cobertura no verde.</li>
+          <li>Registrar todo contato (ligação, WhatsApp, manual).</li>
+          <li>Orçou: mover para Negociação com o valor.</li>
+          <li>Vendeu: mover para Fechado com o PDF do pedido.</li>
+        </ul>
+      </div>
+      <div class="callout">
+        <h3>Externo</h3>
+        <ul class="checklist">
+          <li>Planejar as visitas do dia em Visitas → Hoje.</li>
+          <li>Check-in ao chegar, com GPS.</li>
+          <li>Check-out ao sair.</li>
+          <li>Lançar o resultado de cada visita.</li>
+          <li>Criar a proposta no mesmo dia e anexar o PDF.</li>
+          <li>Avançar ou "Chamar Depois" as propostas paradas.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>Guia do CRM do Grupo Odin · outubro de 2026 · prints com clientes de exemplo. Dúvidas, fale com o seu gestor.</footer>
+</div>
+
+</body>
+</html>
