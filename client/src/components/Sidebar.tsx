@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -52,6 +52,20 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // em Permissoes.tsx (tira da lista de caixinhas — marcar/desmarcar não
 // faria diferença nenhuma pra esses itens).
 export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos'])
+
+// Guia do Financeiro (pedido do João, 2026-10-20) — só aparece/abre pra quem
+// tem pelo menos UMA das telas do Financeiro liberada.
+export const FEATURES_GUIA_FINANCEIRO = [
+  'caixa',
+  'boletos',
+  'negociacoes',
+  'liberacao_credito',
+  'solicitacao_credito',
+  'requisicao_posto',
+  'cartao_credito_relatorio',
+  'faturamento_geral',
+  'painel_financeiro',
+]
 
 // `feature` é a chave usada em permissoesAdmin/FEATURES_ADMIN (server) —
 // controla quem vê cada item pra admins não-superAdmin.
@@ -426,6 +440,12 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     // Guia ilustrado do vendedor (página estática em client/public/guia/) —
     // pedido do João, 2026-10-20: disponível pra todo mundo, a qualquer hora.
     { to: '/guia/', label: 'Guia do CRM', icon: BookOpen, external: true, visivel: !!user },
+    {
+      to: '/admin/guia-financeiro',
+      label: 'Guia do Financeiro',
+      icon: NotebookText,
+      visivel: user?.role === 'admin' && !!(user.superAdmin || FEATURES_GUIA_FINANCEIRO.some((f) => minhasFeatures?.includes(f))),
+    },
     { to: '/painel-tv', label: 'Painel de TV', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv')) },
     { to: '/admin/permissoes', label: 'Permissões', icon: ShieldCheck, visivel: !!user?.superAdmin },
     { to: '/admin/funcoes', label: 'Funções', icon: UserCog, visivel: !!user?.superAdmin },

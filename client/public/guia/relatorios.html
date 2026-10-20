@@ -190,6 +190,7 @@ figcaption { color: var(--ink); }
     <a href="#comeco">Como usar</a>
     <a href="#fontes">De onde vêm os números</a>
     <a href="#gestor">Gestor</a>
+    <a href="#outros">Leads, Odin e Devolução</a>
     <a href="#vendedor">Vendedor</a>
     <a href="#glossario">Glossário</a>
     <a href="#rotina">Rotina</a>
@@ -440,7 +441,91 @@ figcaption { color: var(--ink); }
     </div>
     <div class="callout">
       <h3>Outros relatórios do CRM</h3>
-      <p><b>Relatórios de Leads</b> (marketing: tempo até o 1º contato, conversão e funil), <b>Relatórios Odin</b> (semanal por vendedor, pedidos, propostas e faturamento) e <b>Devoluções</b> ficam nos menus de cada módulo. Eles têm o mesmo painel <b>O que significa cada número?</b>.</p>
+      <p>Leads (marketing), Odin Compressores e Devolução têm relatórios próprios, explicados na parte <a href="#outros">Leads, Odin e Devolução</a>.</p>
+    </div>
+  </section>
+
+  <!-- ───────────── OUTROS RELATÓRIOS ───────────── -->
+  <section class="part" id="outros">
+    <div class="part-head">
+      <span class="eyebrow">Gestor / administrador</span>
+      <h2>Leads, Odin e Devolução</h2>
+      <p class="lead">Relatórios que ficam dentro de cada módulo. Eles também têm o painel <b>O que significa cada número?</b> no alto.</p>
+    </div>
+
+    <div class="step">
+      <h3>Relatórios de Leads (marketing)</h3>
+      <p>Menu <b>Relatórios de Leads</b>. Mostra se os leads que chegam do Meta Ads, site e WhatsApp estão sendo atendidos rápido e virando venda. Tem 4 abas.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-leads-geral.jpg" alt="Relatórios de Leads na aba Geral com total de leads, conversão, perda, tempo até o primeiro contato e metas do mês" width="1600" height="1089" loading="lazy">
+          <span class="pin" style="left:33%;top:17%">1</span>
+          <span class="pin" style="left:37.5%;top:44%">2</span>
+          <span class="pin" style="left:34%;top:70%">3</span>
+          <span class="pin" style="left:19%;top:79.6%">4</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Abas:</b> SLA, Transferências, Geral e Vendas.</span></li>
+          <li data-n="2"><span><b>Total, conversão e perda</b> dos leads do período. Conversão = ganhos ÷ leads que já saíram de "Novo".</span></li>
+          <li data-n="3"><span><b>Tempo médio até o 1º contato</b>, em horas úteis (8h às 18h, sem almoço, fim de semana e feriado).</span></li>
+          <li data-n="4"><span><b>Metas do mês</b>, com o aviso quando está abaixo do ritmo.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="cols">
+      <div class="step">
+        <h3>Aba SLA</h3>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-leads-sla.jpg" alt="Aba SLA com alertas de leads críticos, leads atrasados por vendedor e tempo parado em Abordagem" width="1600" height="1089" loading="lazy"></div>
+          <figcaption>Quem tem leads atrasados ("em risco" está perto do prazo, "crítico" já passou), quanto tempo os leads ficam parados em Abordagem e quantos leads cada vendedor recebeu ou perdeu por reatribuição.</figcaption>
+        </figure>
+      </div>
+      <div class="step">
+        <h3>Aba Transferências</h3>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-leads-transf.jpg" alt="Aba Transferências com histórico de leads que mudaram de vendedor" width="1600" height="1089" loading="lazy"></div>
+          <figcaption>Todo lead que mudou de vendedor: de quem saiu, para quem foi e quem mudou (uma pessoa ou o sistema, automático por falta de atendimento).</figcaption>
+        </figure>
+      </div>
+    </div>
+    <div class="ways">
+      <div class="way"><b>Aba Vendas</b><small>Vendas feitas para leads no período, uma por linha, com cliente, vendedor, pagamento e valor. Dá para exportar para o Excel.</small></div>
+      <div class="way"><b>Tempo médio de fechamento</b><small>Dias entre o lead ser entregue ao vendedor e ser encerrado (ganho, perdido ou desqualificado).</small></div>
+      <div class="way"><b>Funil</b><small>Quantos leads do período estão hoje em cada etapa.</small></div>
+    </div>
+
+    <div class="step">
+      <h3>Relatórios Odin (Odin Compressores)</h3>
+      <p>Menu <b>Relatórios Odin</b>, só na Odin Compressores. Cada aba é um assunto. Mês, De/Até e Vendedor filtram a aba aberta.</p>
+      <figure class="shot">
+        <div class="frame"><img src="img/rel-odin-pedidos.jpg" alt="Relatórios Odin na aba Pedidos em Processo com total, ativos, concluídos e cancelados" width="1600" height="1089" loading="lazy"></div>
+        <figcaption>A aba Pedidos em Processo: cada pedido, a etapa em que está agora e há quanto tempo.</figcaption>
+      </figure>
+    </div>
+    <div class="tablewrap"><table class="etapas">
+      <thead><tr><th>Aba</th><th>O que mostra</th></tr></thead>
+      <tbody>
+        <tr><td><b>Semanal por Vendedor</b></td><td>Visitas da semana (com GPS ou lançadas à mão), tempo médio de visita (só quando o vendedor faz check-in e check-out), propostas feitas e fechamentos.</td></tr>
+        <tr><td><b>Pedidos em Processo</b></td><td>Pedidos ativos, concluídos (chegaram ao Pós-venda) e cancelados.</td></tr>
+        <tr><td><b>Marketing &amp; Propostas</b></td><td>Visitas planejadas e em campo, e quantas viraram proposta, negociação e fechamento. Mostra também as propostas sem o PDF anexado.</td></tr>
+        <tr><td><b>Pós-Venda</b></td><td>Atendimentos de pós-venda, feedback do cliente, nota NPS média (0 a 10) e lembretes pendentes.</td></tr>
+        <tr><td><b>Máquinas</b></td><td>Máquinas cadastradas no estoque, por status e porte. Não usa filtro de data.</td></tr>
+        <tr><td><b>Pipeline</b></td><td>Pedidos do período pela etapa em que estão, por status e por tipo (máquina ou peça).</td></tr>
+        <tr><td><b>Propostas</b></td><td>Propostas criadas, quantas viraram pedido e a taxa de conversão.</td></tr>
+        <tr><td><b>Faturamento</b></td><td>Pedidos que entraram na etapa Faturamento no período (é a mesma conta do Painel Financeiro), o valor e quanto já teve o pagamento confirmado.</td></tr>
+      </tbody>
+    </table></div>
+
+    <div class="step">
+      <h3>Relatórios de Devolução</h3>
+      <p>Menu <b>Relatórios (Devolução)</b>. Filtre por empresa e período para ver os chamados de devolução.</p>
+      <div class="ways">
+        <div class="way"><b>Total de chamados / Finalizados</b><small>Chamados abertos no período e quantos já foram finalizados.</small></div>
+        <div class="way"><b>Taxa de análise positiva</b><small>Das devoluções já analisadas, quantas tiveram resultado positivo.</small></div>
+        <div class="way"><b>Tempo médio até finalizar</b><small>Dias, em média, entre abrir o chamado e finalizar.</small></div>
+        <div class="way"><b>Quebras</b><small>Chamados por status, por vendedor, por empresa e por tipo de ocorrência, e os produtos mais devolvidos. "Quem errou" e o impacto na comissão só aparecem para quem tem acesso.</small></div>
+      </div>
     </div>
   </section>
 

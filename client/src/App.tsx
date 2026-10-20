@@ -2,7 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import { trpc } from './lib/trpc'
 import Layout from './components/Layout'
-import { FEATURES_SEMPRE_LIBERADAS } from './components/Sidebar'
+import { FEATURES_SEMPRE_LIBERADAS, FEATURES_GUIA_FINANCEIRO } from './components/Sidebar'
 import Login from './pages/Login'
 import TrocarSenha from './pages/TrocarSenha'
 import EsqueciSenha from './pages/EsqueciSenha'
@@ -65,6 +65,7 @@ import SolicitacaoCreditoAdmin from './pages/admin/SolicitacaoCredito'
 import SolicitacaoCreditoVendor from './pages/vendor/SolicitacaoCredito'
 import CartaoCredito from './pages/vendor/CartaoCredito'
 import CartaoCreditoRelatorio from './pages/admin/CartaoCreditoRelatorio'
+import GuiaFinanceiro from './pages/admin/GuiaFinanceiro'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import Chat from './pages/Chat'
 import FilaPosVenda from './pages/FilaPosVenda'
@@ -120,7 +121,9 @@ function SuperAdminGuard({ children }: { children: React.ReactNode }) {
 // Bloqueia acesso direto por URL a uma página que o admin não tem
 // permissão pra ver (o Sidebar já filtra o link, isso cobre quem digita a
 // URL na mão). superAdmin sempre passa, sem depender de linha na tabela.
-function FeatureGuard({ feature, children }: { feature: string; children: React.ReactNode }) {
+// `feature` aceita uma lista: basta ter UMA delas liberada (ex: Guia do
+// Financeiro abre pra quem tem qualquer tela do Financeiro).
+function FeatureGuard({ feature, children }: { feature: string | string[]; children: React.ReactNode }) {
   const { user } = useAuth()
   const { data: minhasFeatures, isLoading } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: !!user && user.role === 'admin' && !user.superAdmin,
@@ -129,10 +132,11 @@ function FeatureGuard({ feature, children }: { feature: string; children: React.
   // dependem de linha em Permissões — o Sidebar já mostra o link pra qualquer
   // um, então a página tem que abrir igual, senão o admin não-superAdmin clica
   // e leva "sem permissão". Mesma lista usada no Sidebar.
-  if (FEATURES_SEMPRE_LIBERADAS.has(feature)) return <>{children}</>
+  const lista = Array.isArray(feature) ? feature : [feature]
+  if (lista.some((f) => FEATURES_SEMPRE_LIBERADAS.has(f))) return <>{children}</>
   if (!user || user.role !== 'admin' || user.superAdmin) return <>{children}</>
   if (isLoading) return null
-  if (!minhasFeatures?.includes(feature)) {
+  if (!lista.some((f) => minhasFeatures?.includes(f))) {
     return (
       <div className="p-6 text-center text-dark-400">
         <p>Você não tem permissão pra acessar essa área. Fale com o administrador.</p>
@@ -262,6 +266,7 @@ export default function App() {
           <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitacao-credito" element={<AdminGuard><FeatureGuard feature="solicitacao_credito"><SolicitacaoCreditoAdmin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cartao-relatorio" element={<AdminGuard><FeatureGuard feature="cartao_credito_relatorio"><CartaoCreditoRelatorio /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/guia-financeiro" element={<AdminGuard><FeatureGuard feature={FEATURES_GUIA_FINANCEIRO}><GuiaFinanceiro /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />
