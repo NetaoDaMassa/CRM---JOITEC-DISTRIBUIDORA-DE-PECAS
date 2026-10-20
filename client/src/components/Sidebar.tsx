@@ -12,6 +12,7 @@ import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { trpc } from '../lib/trpc'
+import { relatoriosPermitidos } from './relatorios/catalogo'
 
 // Ícones disponíveis pra montar um grupo em "Grupos da Sidebar" — nome
 // salvo como texto no banco (sidebarGroups.icone), mapeado pro componente
@@ -65,7 +66,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
   { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft, feature: 'carteira' },
   { to: '/admin/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
-  { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
+  { to: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, end: true, feature: 'relatorios' },
   { to: '/admin/usuarios', label: 'Vendedores', icon: Users, feature: 'usuarios' },
   { to: '/admin/metas', label: 'Metas', icon: Target, feature: 'metas' },
   { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText, feature: 'mensagens' },
@@ -174,7 +175,7 @@ export const VENDOR_LINKS = [
   },
   // Mesma chave 'relatorios' do admin (controla o link aparecer ou não) —
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
-  { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, feature: 'relatorios' },
+  { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, end: true, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
   { to: '/vendedor/dashboard-odin', label: 'Dashboard Odin', icon: Gauge, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/vendedor/calendario-odin', label: 'Calendário Odin', icon: CalendarRange, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
@@ -310,6 +311,64 @@ function SidebarItemLink({
   )
 }
 
+// Subpasta "Relatórios detalhados" — pedido do João, 2026-10-20: dentro da
+// pasta onde estiver o item "Relatórios" (ou logo abaixo dele, se estiver
+// solto), uma subpasta com cada relatório detalhado. Só admin.
+function SubpastaRelatorios({
+  itens,
+  cor,
+  recolhido,
+  onDica,
+  onNavigate,
+}: {
+  itens: { to: string; label: string; icon: LucideIcon }[]
+  cor: string
+  recolhido: boolean
+  onDica: (dica: Dica) => void
+  onNavigate?: () => void
+}) {
+  const { pathname } = useLocation()
+  const dentro = pathname.startsWith('/admin/relatorios/')
+  const [aberta, setAberta] = useState(() => {
+    try {
+      return localStorage.getItem('sidebar_subpasta_relatorios') === '1'
+    } catch {
+      return false
+    }
+  })
+  const mostrar = aberta || dentro
+  function alternar() {
+    const novo = !mostrar
+    setAberta(novo)
+    try {
+      localStorage.setItem('sidebar_subpasta_relatorios', novo ? '1' : '0')
+    } catch {
+      // só não persiste
+    }
+  }
+  if (!itens.length) return null
+  return (
+    <div className={recolhido ? 'md:hidden' : ''}>
+      <button
+        type="button"
+        onClick={alternar}
+        className="w-full flex items-center gap-3 px-3 min-h-10 rounded-xl text-sm font-medium text-dark-300 hover:text-dark-100 hover:bg-dark-800 transition-all hover:translate-x-1"
+      >
+        <Folder size={17} style={{ color: cor }} className="shrink-0" />
+        <span className="flex-1 text-left truncate">Relatórios detalhados</span>
+        <ChevronDown size={14} style={{ color: cor }} className={`shrink-0 transition-transform duration-300 ${mostrar ? 'rotate-180' : ''}`} />
+      </button>
+      {mostrar && (
+        <div className="ml-[18px] pl-2.5 border-l-2 space-y-0.5 mb-1" style={{ borderColor: `${cor}40` }}>
+          {itens.map((item, idx) => (
+            <SidebarItemLink key={item.to} {...item} end cor={cor} sub atrasoMs={idx * 30} recolhido={recolhido} onDica={onDica} onNavigate={onNavigate} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // `open`/`onClose` só controlam a gaveta no mobile (abaixo do breakpoint
 // `md`) — no desktop o Sidebar continua sempre visível e fixo, exatamente
 // como antes (pedido do João, 2026-08-31: não mexer em nada do desktop).
@@ -404,6 +463,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     ...extras.filter((e) => e.visivel).map((e) => ({ to: e.to, label: e.label, icon: e.icon, external: e.external })),
   ]
   const itemPorTo = new Map(todosItensVisiveis.map((item) => [item.to, item]))
+  const itensDetalhados =
+    user?.role === 'admin' && itemPorTo.has('/admin/relatorios')
+      ? relatoriosPermitidos(user, minhasFeatures).map((r) => ({ to: `/admin/relatorios/${r.slug}`, label: r.curto, icon: r.icone }))
+      : []
 
   // Grupos configurados em "Grupos da Sidebar" — globais, valem pra todo
   // mundo (não só quem configurou). Um grupo só aparece se sobrar pelo
@@ -422,6 +485,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   const juntarCarteiraNaOdin = empresaAtiva?.slug === SO_ODIN_COMPRESSORES && !!grupoOdin && !!grupoCarteira
   const gruposExibidos = juntarCarteiraNaOdin ? grupos?.filter((g) => g.id !== grupoCarteira!.id) : grupos
   const itensSoltos = todosItensVisiveis.filter((item) => !idsAgrupados.has(item.to))
+  const grupoDosRelatorios = gruposExibidos?.find((g) => g.itens.includes('/admin/relatorios'))?.id
 
   const [gruposAbertos, setGruposAbertos] = useState<Record<number, boolean>>({})
   function grupoEstaAberto(groupId: number) {
@@ -499,7 +563,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   const gruposBatidos = grupos?.filter((g) => g.nome.toLowerCase().includes(buscaNormalizada)) ?? []
   const idsDeGruposBatidos = new Set(gruposBatidos.flatMap((g) => g.itens))
   const itensBuscados = buscaNormalizada
-    ? todosItensVisiveis.filter((item) => item.label.toLowerCase().includes(buscaNormalizada) || idsDeGruposBatidos.has(item.to))
+    ? [
+        ...todosItensVisiveis.filter((item) => item.label.toLowerCase().includes(buscaNormalizada) || idsDeGruposBatidos.has(item.to)),
+        ...itensDetalhados.filter((item) => item.label.toLowerCase().includes(buscaNormalizada) || 'relatórios detalhados'.includes(buscaNormalizada)),
+      ]
     : null
 
   return (
@@ -671,16 +738,20 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
                     {aberto && (
                       <div className={`ml-[25px] pl-3 border-l-2 space-y-0.5 mt-0.5 mb-1.5 ${escondeSeRecolhido}`} style={{ borderColor: `${cor}4d` }}>
                         {itensDoGrupo.map((item, idx) => (
-                          <SidebarItemLink
-                            key={item.to}
-                            {...item}
-                            cor={cor}
-                            sub
-                            atrasoMs={idx * 35}
-                            recolhido={recolhido}
-                            onDica={setDica}
-                            onNavigate={onClose}
-                          />
+                          <div key={item.to}>
+                            <SidebarItemLink
+                              {...item}
+                              cor={cor}
+                              sub
+                              atrasoMs={idx * 35}
+                              recolhido={recolhido}
+                              onDica={setDica}
+                              onNavigate={onClose}
+                            />
+                            {item.to === '/admin/relatorios' && grupo.id === grupoDosRelatorios && (
+                              <SubpastaRelatorios itens={itensDetalhados} cor={cor} recolhido={recolhido} onDica={setDica} onNavigate={onClose} />
+                            )}
+                          </div>
                         ))}
                         {itensCarteira.length > 0 && (
                           <>
@@ -706,14 +777,20 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
               })}
 
               {itensSoltos.map((item) => (
-                <SidebarItemLink
-                  key={item.to}
-                  {...item}
-                  cor={corPorTo.get(item.to) ?? PALETA_GRUPOS[0]}
-                  recolhido={recolhido}
-                  onDica={setDica}
-                  onNavigate={onClose}
-                />
+                <div key={item.to}>
+                  <SidebarItemLink
+                    {...item}
+                    cor={corPorTo.get(item.to) ?? PALETA_GRUPOS[0]}
+                    recolhido={recolhido}
+                    onDica={setDica}
+                    onNavigate={onClose}
+                  />
+                  {item.to === '/admin/relatorios' && (
+                    <div className="ml-[25px] pl-3">
+                      <SubpastaRelatorios itens={itensDetalhados} cor={corPorTo.get(item.to) ?? PALETA_GRUPOS[0]} recolhido={recolhido} onDica={setDica} onNavigate={onClose} />
+                    </div>
+                  )}
+                </div>
               ))}
             </>
           )}

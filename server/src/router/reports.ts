@@ -1084,6 +1084,117 @@ export const reportsRouter = router({
       return { totalCarteira: carteira.length, itens }
     }),
 
+  // Atividade da carteira — pedido do João, 2026-10-20 (referência: tela de
+  // "carteira categorizada pela data da última venda"). Cada cliente da
+  // carteira de vendedor cai em UMA categoria, olhando a posição no fim do
+  // período (dataFim):
+  //   novo        → primeira compra da vida dentro do período
+  //   recuperado  → comprou no período depois de mais de 180 dias parado
+  //   ativo       → última compra até 90 dias antes do fim do período
+  //   quase_inativo → última compra entre 91 e 180 dias
+  //   inativo     → última compra há mais de 180 dias
+  //   nunca       → nunca comprou
+  // Compras = vendas do CRM + histórico do SAP (lotes ligados) +
+  // clientes.dataUltimaCompra (pode vir de importação, sem venda lançada).
+  // Por CNPJ (não junta clientes vinculados, ao contrário da positivação).
+  atividadeCarteira: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtrosCliente = [
+      eq(clientes.empresaId, ctx.empresaId),
+      eq(clientes.emProspeccao, false),
+      isNull(clientes.deletedAt),
+      isNotNull(clientes.vendedorAtualId),
+    ]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+    if (filtroVend) filtrosCliente.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtrosCliente.push(filtroReg)
+
+    // Só carteira de vendedor ATIVO (igual positivacaoCarteira).
+    const ativos = new Map((await vendedoresPermitidos(ctx, input.vendedorId)).map((v) => [v.id, v.name]))
+    const carteira = (
+      await db.query.clientes.findMany({
+        where: and(...filtrosCliente),
+        columns: { id: true, razaoSocial: true, codigo: true, cidade: true, estado: true, vendedorAtualId: true, dataUltimaCompra: true },
+      })
+    ).filter((c) => c.vendedorAtualId && ativos.has(c.vendedorAtualId))
+    if (!carteira.length) return { dataPosicao: input.dataFim, clientes: [] }
+
+    const ids = carteira.map((c) => c.id)
+    const compras = new Map<number, { data: string; valor: number }[]>()
+    const add = (id: number, data: string, valor: number) => {
+      const l = compras.get(id) ?? []
+      l.push({ data, valor })
+      compras.set(id, l)
+    }
+    // Lotes de 900 ids — limite de variáveis do SQLite.
+    for (let i = 0; i < ids.length; i += 900) {
+      const lote = ids.slice(i, i + 900)
+      const crm = await db
+        .select({ clienteId: vendasTable.clienteId, data: vendasTable.dataFechamento, valor: vendasTable.valorFechado })
+        .from(vendasTable)
+        .where(and(inArray(vendasTable.clienteId, lote), isNull(vendasTable.deletedAt)))
+      for (const v of crm) if (v.data) add(v.clienteId, v.data, v.valor ?? 0)
+      const sap = await db
+        .select({ clienteId: sapVendasHistorico.clienteId, data: sapVendasHistorico.dataPedido, valor: sapVendasHistorico.valor })
+        .from(sapVendasHistorico)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapVendasHistorico.importacaoId))
+        .where(and(inArray(sapVendasHistorico.clienteId, lote), eq(sapImportacoes.ativo, true)))
+      for (const v of sap) add(v.clienteId, dataSapComoDatetime(v.data), v.valor ?? 0)
+    }
+
+    const DIA = 86400000
+    const fimMs = new Date(`${input.dataFim}T23:59:59Z`).getTime()
+    const diasAte = (data: string) => Math.max(0, Math.floor((fimMs - new Date(data.replace(' ', 'T') + 'Z').getTime()) / DIA))
+
+    const linhas = carteira.map((c) => {
+      // Só o que aconteceu até o fim do período conta pra "posição".
+      const lista = (compras.get(c.id) ?? []).filter((x) => x.data <= fim).sort((a, b) => (a.data < b.data ? -1 : 1))
+      const datas = lista.map((x) => x.data)
+      if (c.dataUltimaCompra && c.dataUltimaCompra <= fim && !datas.includes(c.dataUltimaCompra)) {
+        datas.push(c.dataUltimaCompra)
+        datas.sort()
+      }
+      const noPeriodo = lista.filter((x) => x.data >= inicio)
+      const ultima = datas[datas.length - 1] ?? null
+      const primeira = datas[0] ?? null
+      const comprouNoPeriodo = datas.some((d) => d >= inicio)
+      // Compra anterior à primeira do período — define "recuperado".
+      const anteriorAoPeriodo = [...datas].reverse().find((d) => d < inicio) ?? null
+      const primeiraNoPeriodo = datas.find((d) => d >= inicio) ?? null
+      let categoria: 'novo' | 'recuperado' | 'ativo' | 'quase_inativo' | 'inativo' | 'nunca'
+      if (!ultima) categoria = 'nunca'
+      else if (comprouNoPeriodo && primeira && primeira >= inicio) categoria = 'novo'
+      else if (comprouNoPeriodo && anteriorAoPeriodo && primeiraNoPeriodo && diasEntre(anteriorAoPeriodo, primeiraNoPeriodo) > 180) categoria = 'recuperado'
+      else {
+        const d = diasAte(ultima)
+        categoria = d <= 90 ? 'ativo' : d <= 180 ? 'quase_inativo' : 'inativo'
+      }
+      return {
+        clienteId: c.id,
+        razaoSocial: c.razaoSocial,
+        codigo: c.codigo,
+        cidade: c.cidade,
+        estado: c.estado,
+        vendedorId: c.vendedorAtualId!,
+        vendedorNome: ativos.get(c.vendedorAtualId!) ?? '—',
+        categoria,
+        primeiraCompra: primeira,
+        ultimaCompra: ultima,
+        diasSemComprar: ultima ? diasAte(ultima) : null,
+        comprasNoPeriodo: noPeriodo.length,
+        valorNoPeriodo: noPeriodo.reduce((s, x) => s + x.valor, 0),
+        comprasTotal: lista.length,
+        valorTotal: lista.reduce((s, x) => s + x.valor, 0),
+      }
+    })
+    return { dataPosicao: input.dataFim, clientes: linhas }
+
+    function diasEntre(a: string, b: string) {
+      return Math.floor((new Date(b.replace(' ', 'T') + 'Z').getTime() - new Date(a.replace(' ', 'T') + 'Z').getTime()) / DIA)
+    }
+  }),
+
   // "Quantos orçamentos cada vendedor faz, por dia/semana/mês" — usa
   // log_auditoria (não funilMensal.dataEntradaEtapa, que é sobrescrita toda
   // vez que a etapa do card é resalva, mesmo sem mudar) porque só o log de
