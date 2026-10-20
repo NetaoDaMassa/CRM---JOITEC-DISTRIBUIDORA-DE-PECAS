@@ -61,14 +61,74 @@ function useEscala(): number {
   return escala
 }
 
-function Card({ titulo, children, className = '', cor }: { titulo?: string; children: React.ReactNode; className?: string; cor?: string }) {
+// `alerta` = card em modo urgente (fundo e título na cor do card) — usado
+// pelo aviso de leads em Novo.
+function Card({
+  titulo,
+  children,
+  className = '',
+  cor,
+  alerta,
+}: {
+  titulo?: string
+  children: React.ReactNode
+  className?: string
+  cor?: string
+  alerta?: boolean
+}) {
   return (
     <div
       className={`bg-dark-800 border border-dark-600 rounded-[1.4vh] p-[1.8vh] flex flex-col min-h-0 overflow-hidden ${className}`}
-      style={cor ? { borderLeft: `0.45vh solid ${cor}` } : undefined}
+      style={{
+        ...(cor ? { borderLeft: `0.45vh solid ${cor}` } : {}),
+        ...(alerta && cor ? { backgroundImage: `linear-gradient(${cor}1f, ${cor}1f)`, borderColor: `${cor}80` } : {}),
+      }}
     >
-      {titulo && <h2 className="text-[1.9vh] font-semibold text-gold-400 mb-[1.2vh] uppercase tracking-wide">{titulo}</h2>}
+      {titulo && (
+        <h2 className={`text-[1.9vh] font-semibold mb-[1.2vh] uppercase tracking-wide ${alerta ? '' : 'text-gold-400'}`} style={alerta ? { color: cor } : undefined}>
+          {titulo}
+        </h2>
+      )}
       {children}
+    </div>
+  )
+}
+
+// Lista que rola sozinha de baixo pra cima, em loop, quando não cabe no
+// card — a TV não tem mouse pra rolar (pedido do João, 2026-10-20). Se
+// couber, fica parada igual antes. Rola desenhando a lista 2x e subindo
+// metade da altura, então o fim emenda no começo sem pulo.
+function AutoRolagem({ children, classeLista = '' }: { children: React.ReactNode; classeLista?: string }) {
+  const caixa = useRef<HTMLDivElement>(null)
+  const conteudo = useRef<HTMLDivElement>(null)
+  const [duracao, setDuracao] = useState<number | null>(null)
+  useEffect(() => {
+    const medir = () => {
+      const c = caixa.current
+      const d = conteudo.current
+      if (!c || !d) return
+      const altura = d.offsetHeight
+      // ~2.5vh por segundo — devagar o bastante pra ler de longe.
+      setDuracao(altura > c.clientHeight + 2 ? Math.max(8, Math.round(altura / (window.innerHeight * 0.025))) : null)
+    }
+    medir()
+    const ro = new ResizeObserver(medir)
+    if (caixa.current) ro.observe(caixa.current)
+    if (conteudo.current) ro.observe(conteudo.current)
+    return () => ro.disconnect()
+  }, [])
+  return (
+    <div ref={caixa} className="flex-1 min-h-0 overflow-hidden">
+      <div className={duracao ? 'animate-[tv-rolar_linear_infinite]' : ''} style={duracao ? { animationDuration: `${duracao}s` } : undefined}>
+        <div ref={conteudo} className={classeLista}>
+          {children}
+        </div>
+        {duracao && (
+          <div aria-hidden className={classeLista}>
+            {children}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -214,9 +274,10 @@ const BlocoNegociacao = memo(function BlocoNegociacao({ data }: { data: PainelDa
           </p>
         </div>
       </div>
-      <div className="flex-1 min-h-0 overflow-hidden mt-[1.4vh] pt-[1vh] border-t border-dark-700/60 flex flex-col justify-around">
+      <div className="flex-1 min-h-0 mt-[1.4vh] pt-[1vh] border-t border-dark-700/60 flex flex-col">
         {!n.quantidade && <p className="text-[1.8vh] text-dark-500">Nenhum lead em negociação no momento.</p>}
-        {n.maiores.slice(0, 3).map((l) => (
+        <AutoRolagem classeLista="flex flex-col gap-[1.2vh] pb-[1.2vh]">
+        {n.maiores.map((l) => (
           <div key={l.id} className="flex items-center gap-[1vh]">
             <span className="flex-1 min-w-0 text-[1.9vh] text-dark-100 truncate">
               {l.nome}
@@ -228,6 +289,7 @@ const BlocoNegociacao = memo(function BlocoNegociacao({ data }: { data: PainelDa
             </span>
           </div>
         ))}
+        </AutoRolagem>
       </div>
     </Card>
   )
@@ -299,10 +361,62 @@ const BlocoRanking = memo(function BlocoRanking({ data, metaMin }: { data: Paine
 
 const CORES_ORIGEM = ['#3987e5', '#c2691a', '#0ca30c', '#a35fd6', '#d9488f', '#2bb3a6', '#7a8696', '#5a6676']
 
+function BlocoLeadsEmNovo({ data }: { data: PainelData }) {
+  const { quantidade, lista } = data.leadsEmNovo
+  return (
+    <Card titulo="🚨 Leads em Novo — atender agora" cor={COR_RUIM} alerta className="col-span-4 animate-[tv-aparece_.6s_both]">
+      <div className="flex items-baseline gap-[1.4vh] shrink-0 mb-[1.2vh]">
+        <span className="text-[5vh] leading-none font-bold font-mono tabular-nums animate-pulse" style={{ color: COR_RUIM }}>
+          {quantidade}
+        </span>
+        <span className="text-[1.9vh] text-dark-200">lead{quantidade !== 1 ? 's' : ''} esperando o 1º atendimento</span>
+      </div>
+      <AutoRolagem classeLista="flex flex-col gap-[1vh] pb-[1vh]">
+        {lista.map((l) => (
+          <div key={l.id} className="flex items-center gap-[1.2vh] rounded-[0.8vh] bg-dark-800/70 px-[1.2vh] py-[0.8vh]">
+            <div className="flex-1 min-w-0">
+              <p className="text-[2vh] font-semibold text-dark-50 truncate">
+                {l.nome}
+                {l.cidade && <span className="text-dark-400 font-normal"> · {l.cidade}</span>}
+              </p>
+              <p className="text-[1.6vh] truncate">
+                {l.vendedor ? (
+                  <span className="text-dark-200">Vendedor: {l.vendedor}</span>
+                ) : (
+                  <span className="font-bold" style={{ color: COR_RUIM }}>⚠ sem vendedor</span>
+                )}
+                <span className="text-dark-500"> · {l.canal}</span>
+              </p>
+            </div>
+            <span className="text-[1.7vh] font-bold font-mono shrink-0" style={{ color: COR_RUIM }}>
+              há {formatElapsed(l.criadoEm)}
+            </span>
+          </div>
+        ))}
+      </AutoRolagem>
+    </Card>
+  )
+}
+
+// Alterna a cada 12s entre "De onde vêm os leads" e o alerta de leads
+// parados em Novo (pedido do João, 2026-10-20) — sem nenhum em Novo, fica
+// só na origem, igual antes.
 const BlocoOrigem = memo(function BlocoOrigem({ data }: { data: PainelData }) {
+  const temNovos = data.leadsEmNovo.quantidade > 0
+  const [mostrarNovos, setMostrarNovos] = useState(false)
+  useEffect(() => {
+    if (!temNovos) {
+      setMostrarNovos(false)
+      return
+    }
+    const t = setInterval(() => setMostrarNovos((v) => !v), 12000)
+    return () => clearInterval(t)
+  }, [temNovos])
+  if (mostrarNovos && temNovos) return <BlocoLeadsEmNovo data={data} />
+
   const total = data.porOrigem.reduce((s, o) => s + o.qtd, 0)
   return (
-    <Card titulo="📣 De onde vêm os leads (mês)" cor={COR_LEADS} className="col-span-4">
+    <Card titulo="📣 De onde vêm os leads (mês)" cor={COR_LEADS} className="col-span-4 animate-[tv-aparece_.6s_both]">
       {!total && <p className="text-[1.8vh] text-dark-500">Nenhum lead no mês ainda.</p>}
       {!!total && (
         <>
@@ -330,8 +444,8 @@ const BlocoOrigem = memo(function BlocoOrigem({ data }: { data: PainelData }) {
 const BlocoUltimosLeads = memo(function BlocoUltimosLeads({ data, destaqueId }: { data: PainelData; destaqueId: number | null }) {
   return (
     <Card titulo="🔔 Últimos leads" cor={COR_CONTATOS} className="col-span-3">
-      <div className="flex-1 flex flex-col justify-around min-h-0 overflow-hidden">
-        {data.ultimosLeads.slice(0, 3).map((l) => (
+      <AutoRolagem classeLista="flex flex-col gap-[1.2vh] pb-[1.2vh]">
+        {data.ultimosLeads.map((l) => (
           <div
             key={l.id}
             className={`flex items-center gap-[1vh] rounded-[0.8vh] px-[1vh] py-[0.6vh] transition-colors duration-1000 ${
@@ -351,7 +465,7 @@ const BlocoUltimosLeads = memo(function BlocoUltimosLeads({ data, destaqueId }: 
             <span className="text-[1.5vh] text-dark-400 font-mono shrink-0">há {formatElapsed(l.criadoEm)}</span>
           </div>
         ))}
-      </div>
+      </AutoRolagem>
     </Card>
   )
 })

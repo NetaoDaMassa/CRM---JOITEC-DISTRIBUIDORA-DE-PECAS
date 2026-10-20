@@ -147,7 +147,9 @@ export const painelMarketingRouter = router({
       quantidade: negociando.length,
       valor: negociando.reduce((s, l) => s + l.valor, 0),
       semValor: negociando.filter((l) => !l.valor).length,
-      maiores: negociando.slice(0, 5),
+      // Lista inteira (até 30) — o card no telão rola sozinho quando não
+      // cabe (pedido do João, 2026-10-20), antes cortava nos 3 maiores.
+      maiores: negociando.slice(0, 30),
     }
 
     const origemMap = new Map<string, number>()
@@ -160,7 +162,7 @@ export const painelMarketingRouter = router({
     const ultimosLeads = todos
       .slice()
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-      .slice(0, 6)
+      .slice(0, 15)
       .map((l) => ({
         id: l.id,
         // Só o primeiro nome — o telão fica visível pra qualquer um que passar.
@@ -179,6 +181,25 @@ export const painelMarketingRouter = router({
       { etapa: 'Negociação', qtd: contar('em_negociacao') },
       { etapa: 'Ganho', qtd: contar('ganho') },
     ]
+
+    // Leads parados em "Novo" (ninguém atendeu ainda) — o card "De onde vêm
+    // os leads" alterna com essa lista em vermelho no telão, como alerta
+    // (pedido do João, 2026-10-20). Mais antigo primeiro = mais urgente.
+    const novosOrdenados = todos
+      .filter((l) => l.status === 'novo' || l.status === 'novo_consumidor_final')
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    const leadsEmNovo = {
+      quantidade: novosOrdenados.length,
+      lista: novosOrdenados.slice(0, 30).map((l) => ({
+        id: l.id,
+        // Só o primeiro nome, mesmo motivo de `ultimosLeads`.
+        nome: l.name.trim().split(/\s+/)[0],
+        cidade: l.city,
+        canal: canalDoLead(l.source, l.campaignId ? canalCampanha.get(l.campaignId) ?? null : null),
+        vendedor: l.vendorId ? vendedorPorId.get(l.vendorId)?.name.split(' ')[0] ?? null : null,
+        criadoEm: toUtcISO(l.createdAt),
+      })),
+    }
 
     return {
       empresaNome: empresa?.nome ?? '',
@@ -213,6 +234,7 @@ export const painelMarketingRouter = router({
       emNegociacao,
       porOrigem,
       ultimosLeads,
+      leadsEmNovo,
     }
   }),
 })
