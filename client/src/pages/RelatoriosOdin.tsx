@@ -15,6 +15,7 @@ import AvatarMeta from '../components/ui/AvatarMeta'
 import { STAGE_LABELS, STAGE_COLORS, type Stage } from '../lib/ordensShared'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
 import ExplicacaoMetricas from '../components/relatorios/ExplicacaoMetricas'
+import BotaoImprimir from '../components/relatorios/BotaoImprimir'
 
 function baixarCsv(filename: string, linhas: string[]) {
   const blob = new Blob(['﻿' + linhas.join('\n')], { type: 'text/csv;charset=utf-8' })
@@ -160,12 +161,15 @@ export default function RelatoriosOdin() {
     <div className="p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
         <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-2"><BarChart3 size={22} /> Relatórios</h1>
-        <button
-          onClick={() => utils.relatoriosOdin.invalidate()}
-          className="flex items-center gap-1.5 text-xs text-dark-400 hover:text-gold-400 transition-colors"
-        >
-          <RefreshCw size={13} /> Atualizar
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => utils.relatoriosOdin.invalidate()}
+            className="flex items-center gap-1.5 text-xs text-dark-400 hover:text-gold-400 transition-colors print:hidden"
+          >
+            <RefreshCw size={13} /> Atualizar
+          </button>
+          <BotaoImprimir nomeArquivo={`relatorio-odin-${tab}`} />
+        </div>
       </div>
 
       <div className="flex gap-1 rounded-xl bg-dark-800 border border-dark-600 p-1 w-fit flex-wrap mb-5">

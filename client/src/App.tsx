@@ -21,6 +21,7 @@ import AdminBancoClientes from './pages/admin/BancoClientes'
 import AdminLixeira from './pages/admin/Lixeira'
 import ResumoRelatorios from './pages/relatorios/Resumo'
 import DetalheRelatorio from './pages/relatorios/Detalhe'
+import ExportarRelatorios from './pages/relatorios/Exportar'
 import AdminMessageTemplates from './pages/admin/MessageTemplates'
 import AdminConfiguracoes from './pages/admin/Configuracoes'
 import AdminCaixa from './pages/admin/Caixa'
@@ -224,6 +225,7 @@ export default function App() {
           <Route path="admin/banco-clientes" element={<AdminGuard><FeatureGuard feature="banco_clientes"><AdminBancoClientes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/lixeira" element={<AdminGuard><FeatureGuard feature="lixeira"><AdminLixeira /></FeatureGuard></AdminGuard>} />
           <Route path="admin/relatorios" element={<AdminGuard><FeatureGuard feature="relatorios"><ResumoRelatorios /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/relatorios/exportar" element={<AdminGuard><FeatureGuard feature="relatorios"><ExportarRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/relatorios/:slug" element={<AdminGuard><FeatureGuard feature="relatorios"><DetalheRelatorio /></FeatureGuard></AdminGuard>} />
           <Route path="admin/usuarios" element={<AdminGuard><FeatureGuard feature="usuarios"><AdminUsers /></FeatureGuard></AdminGuard>} />
           <Route path="admin/mensagens" element={<AdminGuard><FeatureGuard feature="mensagens"><AdminMessageTemplates /></FeatureGuard></AdminGuard>} />
@@ -296,6 +298,7 @@ export default function App() {
           <Route path="vendedor/clientes/novo" element={<ClienteNovo />} />
           <Route path="vendedor/clientes/:id" element={<ClienteDetail />} />
           <Route path="vendedor/relatorios" element={<ResumoRelatorios />} />
+          <Route path="vendedor/relatorios/exportar" element={<ExportarRelatorios />} />
           <Route path="vendedor/relatorios/:slug" element={<DetalheRelatorio />} />
           <Route path="vendedor/banco-clientes" element={<AdminBancoClientes />} />
           <Route path="vendedor/faturamento-geral" element={<FaturamentoGeral />} />

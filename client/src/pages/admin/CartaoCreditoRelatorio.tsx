@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input'
 import { Badge } from '../../components/ui/Badge'
 import { hojeBrString } from '../../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
+import BotaoImprimir from '../../components/relatorios/BotaoImprimir'
 
 function formatarMoeda(v: number): string {
   return formatarMoedaBr(v)
@@ -38,7 +39,10 @@ export default function CartaoCreditoRelatorio() {
             <p className="text-sm text-dark-400">Gastos de todos os vendedores com cartão corporativo.</p>
           </div>
         </div>
-        <Input type="month" value={mesReferencia} onChange={(e) => setMesReferencia(e.target.value)} className="w-40" />
+        <div className="flex items-center gap-2">
+          <Input type="month" value={mesReferencia} onChange={(e) => setMesReferencia(e.target.value)} className="w-40" />
+          <BotaoImprimir nomeArquivo={`cartao-credito-${mesReferencia}`} />
+        </div>
       </div>
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}

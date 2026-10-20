@@ -17,10 +17,13 @@ export default function Layout() {
   useEffect(() => setMenuAberto(false), [location.pathname])
 
   return (
-    <div className="flex min-h-screen bg-dark-950">
-      <Sidebar open={menuAberto} onClose={() => setMenuAberto(false)} />
-      <main className="flex-1 overflow-auto">
-        <header className="h-14 border-b border-dark-700 flex items-center justify-between md:justify-end px-4 md:px-6 shrink-0">
+    <div className="flex min-h-screen bg-dark-950 print:block print:min-h-0">
+      {/* print:hidden — exportar relatório em PDF imprime só o conteúdo. */}
+      <div className="contents print:hidden">
+        <Sidebar open={menuAberto} onClose={() => setMenuAberto(false)} />
+      </div>
+      <main className="flex-1 overflow-auto print:overflow-visible">
+        <header className="print:hidden h-14 border-b border-dark-700 flex items-center justify-between md:justify-end px-4 md:px-6 shrink-0">
           <button
             onClick={() => setMenuAberto(true)}
             className="p-2 -ml-2 rounded-lg text-dark-300 hover:text-dark-100 hover:bg-dark-800 md:hidden"
@@ -34,8 +37,10 @@ export default function Layout() {
         </header>
         <Outlet />
       </main>
-      <ChatFloatingButton />
-      <LembretesCompromisso />
+      <div className="contents print:hidden">
+        <ChatFloatingButton />
+        <LembretesCompromisso />
+      </div>
     </div>
   )
 }

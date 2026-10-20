@@ -29,7 +29,7 @@ export default function ExplicacaoMetricas({ chave, className = '' }: { chave: s
   }
 
   return (
-    <div className={`rounded-2xl border border-dark-600 bg-dark-800 ${className}`}>
+    <div className={`rounded-2xl border border-dark-600 bg-dark-800 print:hidden ${className}`}>
       <button type="button" onClick={alternar} aria-expanded={aberto} className="w-full flex items-center gap-2.5 px-4 py-3 text-left">
         <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gold-500/15 text-gold-500">
           <BookOpen size={16} />
@@ -85,7 +85,7 @@ export function Dica({ texto, tamanho = 13 }: { texto?: string; tamanho?: number
     abrir()
   }
   return (
-    <span ref={ref} className="relative inline-flex" onMouseEnter={abrir} onMouseLeave={() => setAberta(false)}>
+    <span ref={ref} className="relative inline-flex print:hidden" onMouseEnter={abrir} onMouseLeave={() => setAberta(false)}>
       <span
         role="button"
         tabIndex={0}

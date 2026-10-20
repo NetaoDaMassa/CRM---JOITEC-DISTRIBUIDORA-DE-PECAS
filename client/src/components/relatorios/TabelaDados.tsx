@@ -5,6 +5,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLef
 import { paraCsv, baixarCsv } from '../../lib/csv'
 import { moeda, numero, pct } from './blocos'
 import { formatarDataCurta } from './filtros'
+import { tituloDoArquivo, useExportacao } from './exportacao'
 
 // Tabela dos relatórios detalhados (referência do João, 2026-10-20: busca,
 // ordenar clicando na coluna, escolher colunas, exportar, paginação com
@@ -79,6 +80,9 @@ export default function TabelaDados<T>({
   carregando?: boolean
 }) {
   const navigate = useNavigate()
+  // Dentro da tela de exportação (PDF/Excel): sem busca/paginação, todas as
+  // linhas vão pro Excel e o PDF mostra até `limiteLinhas`.
+  const exp = useExportacao()
   const [busca, setBusca] = useState('')
   const [ordem, setOrdem] = useState(ordemInicial ?? null)
   const [pagina, setPagina] = useState(1)
@@ -142,9 +146,35 @@ export default function TabelaDados<T>({
 
   useEffect(() => setPagina(1), [busca, ordem, porPagina, linhas])
 
+  // Grava num ref do coletor (não é estado), então rodar a cada render não
+  // causa loop — só mantém o Excel com o que está na tela agora.
+  useEffect(() => {
+    if (!exp) return
+    exp.registrar(
+      exp.secao,
+      id,
+      carregando
+        ? null
+        : {
+            titulo: tituloDoArquivo(nomeArquivo),
+            colunas: visiveis.map((c) => ({ rotulo: c.rotulo, formato: c.formato ?? 'texto' })),
+            linhas: filtradas.map((l) =>
+              visiveis.map((c) => {
+                const v = c.valor(l)
+                return v === undefined || v === '' ? null : v
+              })
+            ),
+          }
+    )
+  })
+  useEffect(() => {
+    if (!exp) return
+    return () => exp.registrar(exp.secao, id, null)
+  }, [exp, id])
+
   const totalPaginas = Math.max(1, Math.ceil(filtradas.length / porPagina))
   const paginaAtual = Math.min(pagina, totalPaginas)
-  const pedaco = filtradas.slice((paginaAtual - 1) * porPagina, paginaAtual * porPagina)
+  const pedaco = exp ? filtradas.slice(0, exp.limiteLinhas) : filtradas.slice((paginaAtual - 1) * porPagina, paginaAtual * porPagina)
   const temSoma = visiveis.some((c) => c.somar)
 
   function clicarCabecalho(colId: string) {
@@ -169,6 +199,68 @@ export default function TabelaDados<T>({
   }, [totalPaginas, paginaAtual])
 
   const botaoPagina = 'h-8 min-w-8 px-2 rounded-lg border text-sm flex items-center justify-center transition-colors'
+
+  if (exp) {
+    // "Sem tabelas" no PDF: some da folha, mas continua indo pro Excel.
+    if (!exp.limiteLinhas) return null
+    return (
+      <div className="bg-dark-800 border border-dark-600 rounded-xl overflow-hidden break-inside-auto">
+        <table className="w-full text-[11px]">
+          <thead className="table-header-group">
+            <tr className="bg-dark-900 border-b border-dark-600">
+              {visiveis.map((c) => (
+                <th key={c.id} className={`px-2 py-1.5 font-semibold text-dark-300 ${ehNumerico(c.formato) ? 'text-right' : 'text-left'}`}>
+                  {c.rotulo}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {carregando && (
+              <tr>
+                <td colSpan={visiveis.length} className="px-2 py-6 text-center text-dark-500">
+                  Carregando...
+                </td>
+              </tr>
+            )}
+            {!carregando && !pedaco.length && (
+              <tr>
+                <td colSpan={visiveis.length} className="px-2 py-6 text-center text-dark-500">
+                  {vazio}
+                </td>
+              </tr>
+            )}
+            {!carregando &&
+              pedaco.map((l) => (
+                <tr key={chave(l)} className="border-b border-dark-700 last:border-0 break-inside-avoid">
+                  {visiveis.map((c) => (
+                    <td key={c.id} className={`px-2 py-1 ${ehNumerico(c.formato) ? 'text-right tabular-nums whitespace-nowrap text-dark-100' : 'text-dark-200'}`}>
+                      {c.render ? c.render(l) : formatar(c.valor(l), c.formato)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+          </tbody>
+          {temSoma && !carregando && filtradas.length > 0 && (
+            <tfoot>
+              <tr className="bg-dark-900 border-t border-dark-600 font-semibold">
+                {visiveis.map((c, idx) => (
+                  <td key={c.id} className={`px-2 py-1.5 ${ehNumerico(c.formato) ? 'text-right tabular-nums whitespace-nowrap text-dark-50' : 'text-dark-300'}`}>
+                    {c.somar ? formatar(filtradas.reduce((s, l) => s + (Number(c.valor(l)) || 0), 0), c.formato) : idx === 0 ? 'Total' : ''}
+                  </td>
+                ))}
+              </tr>
+            </tfoot>
+          )}
+        </table>
+        {!carregando && filtradas.length > pedaco.length && (
+          <p className="px-2 py-1.5 text-[11px] text-dark-400 border-t border-dark-600">
+            Mostrando {numero(pedaco.length)} de {numero(filtradas.length)} linhas (o total soma todas) — o Excel traz a lista completa.
+          </p>
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">

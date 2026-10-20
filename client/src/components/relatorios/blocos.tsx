@@ -70,7 +70,7 @@ export function KpiCard({
     <>
       <div className="flex items-start justify-between gap-2">
         <p className="text-[13px] text-dark-300 flex items-center gap-1.5">
-          {titulo}
+          <span data-kpi-titulo>{titulo}</span>
           <Dica texto={ajuda} />
         </p>
         {Icone && (
@@ -80,6 +80,7 @@ export function KpiCard({
         )}
       </div>
       <p
+        data-kpi-valor
         className={`text-[26px] leading-tight font-bold mt-1 tracking-tight ${
           destaque === 'ruim' ? 'text-red-500' : destaque === 'bom' ? 'text-emerald-500' : 'text-dark-50'
         }`}
@@ -87,24 +88,30 @@ export function KpiCard({
         {valor}
       </p>
       <div className="mt-1.5 min-h-5">
-        {atual !== undefined ? <Variacao atual={atual} anterior={anterior} inverter={inverter} /> : detalhe && <p className="text-xs text-dark-400">{detalhe}</p>}
+        {atual !== undefined ? <Variacao atual={atual} anterior={anterior} inverter={inverter} /> : detalhe && <p data-kpi-detalhe className="text-xs text-dark-400">{detalhe}</p>}
       </div>
-      {atual !== undefined && detalhe && <p className="text-xs text-dark-500 mt-1">{detalhe}</p>}
+      {atual !== undefined && detalhe && (
+        <p data-kpi-detalhe className="text-xs text-dark-500 mt-1">
+          {detalhe}
+        </p>
+      )}
       {href && (
-        <span className="absolute right-3 bottom-3 text-dark-500 group-hover:text-gold-400 transition-colors">
+        <span className="absolute right-3 bottom-3 text-dark-500 group-hover:text-gold-400 transition-colors print:hidden">
           <ChevronRight size={16} />
         </span>
       )}
     </>
   )
   // hover:z-20: a caixinha do ⓘ abre por cima do card vizinho em vez de ficar escondida atrás dele.
-  const classe = 'group relative hover:z-20 focus-within:z-20 block bg-dark-800 border border-dark-600 rounded-2xl p-4 transition-all'
+  const classe = 'group relative hover:z-20 focus-within:z-20 block bg-dark-800 border border-dark-600 rounded-2xl p-4 transition-all break-inside-avoid'
   return href ? (
-    <Link to={href} className={`${classe} hover:border-gold-500/60 hover:shadow-lg hover:-translate-y-0.5`}>
+    <Link data-kpi to={href} className={`${classe} hover:border-gold-500/60 hover:shadow-lg hover:-translate-y-0.5`}>
       {conteudo}
     </Link>
   ) : (
-    <div className={classe}>{conteudo}</div>
+    <div data-kpi className={classe}>
+      {conteudo}
+    </div>
   )
 }
 
@@ -126,7 +133,7 @@ export function Secao({
   rotuloLink?: string
 }) {
   return (
-    <section className={`bg-dark-800 border border-dark-600 rounded-2xl p-5 ${className}`}>
+    <section className={`bg-dark-800 border border-dark-600 rounded-2xl p-5 break-inside-avoid ${className}`}>
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div>
           <h2 className="text-[15px] font-semibold text-dark-50">{titulo}</h2>
@@ -136,7 +143,7 @@ export function Secao({
       </div>
       {children}
       {href && (
-        <Link to={href} className="inline-flex items-center gap-1 mt-4 text-sm font-medium text-gold-500 hover:text-gold-400">
+        <Link to={href} className="inline-flex items-center gap-1 mt-4 text-sm font-medium text-gold-500 hover:text-gold-400 print:hidden">
           {rotuloLink} <ChevronRight size={15} />
         </Link>
       )}
@@ -225,29 +232,35 @@ export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick, aj
         <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: cor }}>
           <Icone size={19} />
         </span>
-        <p className="text-xl font-bold text-dark-50 ml-auto">{valor}</p>
-        {(href || onClick) && <ChevronRight size={15} className="text-dark-500 group-hover:text-gold-400" />}
+        <p data-kpi-valor className="text-xl font-bold text-dark-50 ml-auto">
+          {valor}
+        </p>
+        {(href || onClick) && <ChevronRight size={15} className="text-dark-500 group-hover:text-gold-400 print:hidden" />}
       </div>
       <p className="text-[13px] mt-2 font-medium flex items-center gap-1.5" style={{ color: cor }}>
-        {rotulo}
+        <span data-kpi-titulo>{rotulo}</span>
         <Dica texto={ajuda} />
       </p>
     </>
   )
-  const classe = 'group relative hover:z-20 focus-within:z-20 block bg-dark-900 border border-dark-700 rounded-xl p-3.5 transition-all text-left w-full'
+  const classe = 'group relative hover:z-20 focus-within:z-20 block bg-dark-900 border border-dark-700 rounded-xl p-3.5 transition-all text-left w-full break-inside-avoid'
   if (href)
     return (
-      <Link to={href} className={`${classe} hover:border-gold-500/50`}>
+      <Link data-kpi to={href} className={`${classe} hover:border-gold-500/50`}>
         {corpo}
       </Link>
     )
   if (onClick)
     return (
-      <button type="button" onClick={onClick} className={`${classe} hover:border-gold-500/50`}>
+      <button data-kpi type="button" onClick={onClick} className={`${classe} hover:border-gold-500/50`}>
         {corpo}
       </button>
     )
-  return <div className={classe}>{corpo}</div>
+  return (
+    <div data-kpi className={classe}>
+      {corpo}
+    </div>
+  )
 }
 
 // Lista de ranking com barra embutida (ranking de vendedores, top produtos).

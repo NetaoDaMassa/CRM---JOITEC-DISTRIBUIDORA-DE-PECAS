@@ -5,6 +5,7 @@ import { Input } from '../../components/ui/Input'
 import { formatarMoeda } from '../../lib/moeda'
 import { hojeBrString } from '../../lib/utils'
 import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
+import BotaoImprimir from '../../components/relatorios/BotaoImprimir'
 
 function formatarHoras(h: number): string {
   if (!h || h <= 0) return '0h'
@@ -56,7 +57,10 @@ export default function MarketingRelatorioGeral() {
             <p className="text-sm text-dark-400">Leads e vendas de Marketing de todas as empresas do grupo.</p>
           </div>
         </div>
-        <Input type="month" value={mesReferencia} onChange={(e) => setMesReferencia(e.target.value)} className="w-40" />
+        <div className="flex items-center gap-2">
+          <Input type="month" value={mesReferencia} onChange={(e) => setMesReferencia(e.target.value)} className="w-40" />
+          <BotaoImprimir nomeArquivo={`marketing-geral-${mesReferencia}`} />
+        </div>
       </div>
 
       <ExplicacaoMetricas chave="marketing-geral" />

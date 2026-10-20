@@ -48,6 +48,7 @@ import { leadsRouter } from './leads.js'
 import { leadsRelatoriosRouter } from './leadsRelatorios.js'
 import { marketingGeralRouter } from './marketingGeral.js'
 import { painelMarketingRouter } from './painelMarketing.js'
+import { exportacaoRouter } from './exportacao.js'
 import { leadsRegioesRouter } from './leadsRegioes.js'
 import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { historicoSapRouter } from './historicoSap.js'
@@ -126,6 +127,7 @@ export const appRouter = router({
   leadsRelatorios: leadsRelatoriosRouter,
   marketingGeral: marketingGeralRouter,
   painelMarketing: painelMarketingRouter,
+  exportacao: exportacaoRouter,
   leadsRegioes: leadsRegioesRouter,
   sidebarGrupos: sidebarGruposRouter,
   historicoSap: historicoSapRouter,

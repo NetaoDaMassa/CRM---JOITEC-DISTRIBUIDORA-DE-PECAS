@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { BarraFiltros, useFiltrosRelatorio } from '../../components/relatorios/filtros'
 import { baseRelatorios, relatoriosPermitidos, RELATORIOS_DETALHADOS } from '../../components/relatorios/catalogo'
 import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
+import BotaoExportar from '../../components/relatorios/BotaoExportar'
 import AdminReports from '../admin/Reports'
 import { ClientesParados, CurvaAbc, Positivacao } from './detalhes/Carteira'
 import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/Vendas'
@@ -95,18 +96,21 @@ export default function DetalheRelatorio() {
               </p>
             </div>
           </div>
-          <label className="flex items-center gap-2.5 text-sm text-dark-200 cursor-pointer select-none mt-1">
-            Mostrar resumo
-            <button
-              type="button"
-              role="switch"
-              aria-checked={mostrarResumo}
-              onClick={alternarResumo}
-              className={`relative w-11 h-6 rounded-full transition-colors ${mostrarResumo ? 'bg-gold-500' : 'bg-dark-600'}`}
-            >
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${mostrarResumo ? 'translate-x-5' : ''}`} />
-            </button>
-          </label>
+          <div className="flex items-center gap-4 flex-wrap">
+            <BotaoExportar relatorio={slug} />
+            <label className="flex items-center gap-2.5 text-sm text-dark-200 cursor-pointer select-none">
+              Mostrar resumo
+              <button
+                type="button"
+                role="switch"
+                aria-checked={mostrarResumo}
+                onClick={alternarResumo}
+                className={`relative w-11 h-6 rounded-full transition-colors ${mostrarResumo ? 'bg-gold-500' : 'bg-dark-600'}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${mostrarResumo ? 'translate-x-5' : ''}`} />
+              </button>
+            </label>
+          </div>
         </div>
       </div>
       <BarraFiltros f={f} semPeriodo={SEM_PERIODO.has(slug)} semVendedor={slug === 'todas-empresas'} />
