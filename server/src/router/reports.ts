@@ -933,6 +933,7 @@ export const reportsRouter = router({
         vendedorNome: users.name,
         valorOrcado: funilMensal.valorOrcado,
         dataEntradaEtapa: funilMensal.dataEntradaEtapa,
+        carregado: funilMensal.carregadoMesAnterior,
       })
       .from(funilMensal)
       .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
@@ -940,9 +941,48 @@ export const reportsRouter = router({
       .where(and(...filtros))
       .orderBy(desc(funilMensal.valorOrcado))
 
+    // Card que passou de um mês pro outro ainda em Negociação (resetMensal)
+    // nasce com dataEntradaEtapa = dia 1º — o orçamento parecia "novo" todo
+    // mês (achado do João, 2026-10-20). Volta mês a mês enquanto o cliente
+    // tinha card em Negociação e usa a data de entrada do primeiro.
+    const idsCarregados = [...new Set(linhas.filter((l) => l.carregado).map((l) => l.clienteId))]
+    const entradaReal = new Map<number, string>()
+    if (idsCarregados.length) {
+      const mesAnterior = (mes: string) => {
+        const [a, m] = mes.split('-').map(Number)
+        return m === 1 ? `${a - 1}-12-01` : `${a}-${String(m - 1).padStart(2, '0')}-01`
+      }
+      const historico = new Map<number, Map<string, { data: string; carregado: boolean }>>()
+      for (let i = 0; i < idsCarregados.length; i += 900) {
+        const cards = await db
+          .select({ clienteId: funilMensal.clienteId, mes: funilMensal.mesReferencia, data: funilMensal.dataEntradaEtapa, carregado: funilMensal.carregadoMesAnterior })
+          .from(funilMensal)
+          .where(and(inArray(funilMensal.clienteId, idsCarregados.slice(i, i + 900)), eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt)))
+        for (const c of cards) {
+          const porMes = historico.get(c.clienteId) ?? new Map()
+          const atual = porMes.get(c.mes)
+          if (!atual || c.data < atual.data) porMes.set(c.mes, { data: c.data, carregado: !!c.carregado })
+          historico.set(c.clienteId, porMes)
+        }
+      }
+      for (const clienteId of idsCarregados) {
+        const porMes = historico.get(clienteId)
+        let mes = mesReferenciaAtual()
+        let card = porMes?.get(mes)
+        while (card?.carregado && porMes?.get(mesAnterior(mes))) {
+          mes = mesAnterior(mes)
+          card = porMes.get(mes)
+        }
+        if (card) entradaReal.set(clienteId, card.data)
+      }
+    }
+
     // Dias parado em negociação desde que entrou na etapa — pedido do João
     // pra enxergar quais orçamentos estão esfriando, não só o valor.
-    const linhasComDias = linhas.map((l) => ({ ...l, diasEmAberto: diasDesde(l.dataEntradaEtapa) }))
+    const linhasComDias = linhas.map(({ carregado, ...l }) => {
+      const desde = (carregado && entradaReal.get(l.clienteId)) || l.dataEntradaEtapa
+      return { ...l, dataEntradaEtapa: desde, diasEmAberto: diasDesde(desde) }
+    })
 
     const valorTotal = linhas.reduce((acc, l) => acc + (l.valorOrcado ?? 0), 0)
     return { linhas: linhasComDias, quantidade: linhas.length, valorTotal }
@@ -1314,6 +1354,98 @@ export const reportsRouter = router({
   // ver funil.ts). Bucket de dia/mês/semana calculado aqui (não em SQL) pra
   // não depender de função de data específica do SQLite pra "segunda-feira
   // da semana", que não existe pronta.
+  // Lista de orçamentos FEITOS no período (pedido do João, 2026-10-20: a
+  // tabela "Em aberto" é foto de hoje e não segue as datas). Mesma régua de
+  // `orcamentosPorVendedor`: cada vez que um card entrou em Negociação no
+  // período (log_auditoria) + cotações do SAP (lotes ligados, vendedor atual
+  // do cliente). Situação = etapa ATUAL do card / status do SAP.
+  orcamentosNoPeriodo: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const vendedores = await vendedoresPermitidos(ctx, input.vendedorId)
+    const idsPermitidos = vendedores.map((v) => v.id)
+    if (!idsPermitidos.length) return []
+    const nomePorVendedor = new Map(vendedores.map((v) => [v.id, v.name]))
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+
+    const filtrosEventos = [
+      eq(logAuditoria.tabela, 'funil_mensal'),
+      eq(logAuditoria.acao, 'mudar_etapa'),
+      eq(logAuditoria.campo, 'etapa'),
+      eq(logAuditoria.valorNovo, 'negociacao'),
+      between(logAuditoria.alteradoEm, inicio, fim),
+      inArray(logAuditoria.alteradoPor, idsPermitidos),
+    ]
+    if (filtroReg) filtrosEventos.push(filtroReg)
+    const eventos = await db
+      .select({
+        id: logAuditoria.id,
+        vendedorId: logAuditoria.alteradoPor,
+        alteradoEm: logAuditoria.alteradoEm,
+        clienteId: clientes.id,
+        razaoSocial: clientes.razaoSocial,
+        valor: funilMensal.valorOrcado,
+        etapa: funilMensal.etapa,
+      })
+      .from(logAuditoria)
+      .innerJoin(funilMensal, eq(funilMensal.id, logAuditoria.registroId))
+      .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+      .where(and(...filtrosEventos))
+
+    type Situacao = 'aberto' | 'fechado' | 'perdido' | 'outro'
+    type Linha = { chave: string; origem: 'crm' | 'sap'; data: string; numero: string | null; clienteId: number; razaoSocial: string; vendedorNome: string; valor: number; situacao: Situacao }
+    const situacaoCrm = (etapa: string): Situacao =>
+      etapa === 'negociacao' ? 'aberto' : etapa === 'fechado' || etapa === 'faturamento' ? 'fechado' : etapa === 'perdido' ? 'perdido' : 'outro'
+    const linhas: Linha[] = eventos.map((e) => ({
+      chave: `crm-${e.id}`,
+      origem: 'crm',
+      data: toLocalDateKey(toUtcISO(e.alteradoEm)),
+      numero: null,
+      clienteId: e.clienteId,
+      razaoSocial: e.razaoSocial,
+      vendedorNome: (e.vendedorId && nomePorVendedor.get(e.vendedorId)) || '—',
+      valor: e.valor ?? 0,
+      situacao: situacaoCrm(e.etapa),
+    }))
+
+    const filtrosSap = [
+      eq(sapImportacoes.ativo, true),
+      eq(sapCotacoesHistorico.empresaId, ctx.empresaId),
+      between(sapCotacoesHistorico.dataCotacao, input.dataInicio.slice(0, 10), input.dataFim.slice(0, 10)),
+      isNull(clientes.deletedAt),
+      inArray(clientes.vendedorAtualId, idsPermitidos),
+    ]
+    if (filtroReg) filtrosSap.push(filtroReg)
+    const sap = await db
+      .select({
+        id: sapCotacoesHistorico.id,
+        data: sapCotacoesHistorico.dataCotacao,
+        numero: sapCotacoesHistorico.numeroCotacao,
+        valor: sapCotacoesHistorico.valor,
+        status: sapCotacoesHistorico.status,
+        clienteId: clientes.id,
+        razaoSocial: clientes.razaoSocial,
+        vendedorId: clientes.vendedorAtualId,
+      })
+      .from(sapCotacoesHistorico)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesHistorico.importacaoId))
+      .innerJoin(clientes, eq(clientes.id, sapCotacoesHistorico.clienteId))
+      .where(and(...filtrosSap))
+    for (const c of sap) {
+      linhas.push({
+        chave: `sap-${c.id}`,
+        origem: 'sap',
+        data: c.data,
+        numero: c.numero,
+        clienteId: c.clienteId,
+        razaoSocial: c.razaoSocial,
+        vendedorNome: (c.vendedorId && nomePorVendedor.get(c.vendedorId)) || '—',
+        valor: c.valor,
+        situacao: c.status === 'cancelado' ? 'perdido' : c.status,
+      })
+    }
+    return linhas.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : 0))
+  }),
+
   orcamentosPorVendedor: protectedProcedure
     .input(periodoInput.extend({ granularidade: z.enum(['dia', 'semana', 'mes']).default('dia') }))
     .query(async ({ ctx, input }) => {

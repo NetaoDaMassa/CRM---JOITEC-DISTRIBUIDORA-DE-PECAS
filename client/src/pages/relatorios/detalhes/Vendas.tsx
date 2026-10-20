@@ -166,7 +166,8 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
   const { data: abertos, isLoading } = trpc.reports.orcamentosAbertos.useQuery(f.filtroAtual)
   const { data: feitos } = trpc.reports.orcamentosPorVendedor.useQuery({ ...f.periodo, granularidade })
   const { data: feitosAnt } = trpc.reports.orcamentosPorVendedor.useQuery({ ...f.anterior, granularidade: 'mes' })
-  const [aba, setAba] = useState<'abertos' | 'feitos'>('abertos')
+  const { data: noPeriodo, isLoading: carregandoPeriodo } = trpc.reports.orcamentosNoPeriodo.useQuery(f.periodo)
+  const [aba, setAba] = useState<'periodo' | 'abertos' | 'feitos'>('periodo')
 
   const linhas = abertos?.linhas ?? []
   const parados = linhas.filter((l) => (l.diasEmAberto ?? 0) > 15)
@@ -212,6 +213,21 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
         return <Etiqueta cor={d > 30 ? '#e5534b' : d > 15 ? '#f2a516' : '#22a861'}>{numero(d)} dias</Etiqueta>
       },
     },
+  ]
+  type P = NonNullable<typeof noPeriodo>[number]
+  const SITUACAO: Record<P['situacao'], { rotulo: string; cor: string }> = {
+    aberto: { rotulo: 'Em aberto', cor: '#3a86d6' },
+    fechado: { rotulo: 'Fechado', cor: '#22a861' },
+    perdido: { rotulo: 'Perdido', cor: '#e5534b' },
+    outro: { rotulo: 'Saiu da negociação', cor: '#64748b' },
+  }
+  const colPeriodo: Coluna<P>[] = [
+    { id: 'data', rotulo: 'Data', valor: (l) => l.data, formato: 'data' },
+    { id: 'cliente', rotulo: 'Cliente', valor: (l) => l.razaoSocial, render: (l) => <span className="font-medium text-dark-50">{l.razaoSocial}</span> },
+    ...(simples ? [] : [{ id: 'vendedor', rotulo: 'Vendedor', valor: (l: P) => l.vendedorNome }]),
+    { id: 'valor', rotulo: 'Valor', valor: (l) => l.valor, formato: 'moeda', somar: true },
+    { id: 'situacao', rotulo: 'Situação', valor: (l) => SITUACAO[l.situacao].rotulo, render: (l) => <Etiqueta cor={SITUACAO[l.situacao].cor}>{SITUACAO[l.situacao].rotulo}</Etiqueta> },
+    { id: 'origem', rotulo: 'Origem', valor: (l) => (l.origem === 'sap' ? `SAP ${l.numero ?? ''}`.trim() : 'CRM') },
   ]
   type F = (typeof porVendedor)[number]
   const colFeitos: Coluna<F>[] = [
@@ -264,30 +280,51 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
           </Secao>
         </>
       )}
-      {!simples && (
-        <Abas<'abertos' | 'feitos'>
-          valor={aba}
-          onChange={setAba}
-          opcoes={[
-            { valor: 'abertos', rotulo: 'Em aberto', contagem: linhas.length },
-            { valor: 'feitos', rotulo: 'Por vendedor', contagem: porVendedor.length },
-          ]}
-        />
-      )}
-      {aba === 'abertos' || simples ? (
-        <TabelaDados
-          id="orcamentos-abertos"
-          linhas={linhas}
-          colunas={colAbertos}
-          chave={(l) => l.clienteId}
-          buscaEm={(l) => `${l.razaoSocial} ${l.vendedorNome}`}
-          placeholderBusca="Buscar cliente ou vendedor..."
-          nomeArquivo="orcamentos-em-aberto.csv"
-          link={(l) => `${clientesBase}/${l.clienteId}`}
-          ordemInicial={{ coluna: 'dias', direcao: 'desc' }}
-          simples={simples}
-          carregando={isLoading}
-        />
+      <Abas<'periodo' | 'abertos' | 'feitos'>
+        valor={aba}
+        onChange={setAba}
+        opcoes={[
+          { valor: 'periodo', rotulo: 'Feitos no período', contagem: noPeriodo?.length ?? 0 },
+          { valor: 'abertos', rotulo: 'Em aberto hoje', contagem: linhas.length },
+          ...(simples ? [] : [{ valor: 'feitos' as const, rotulo: 'Por vendedor', contagem: porVendedor.length }]),
+        ]}
+      />
+      {aba === 'periodo' ? (
+        <>
+          <p className="text-xs text-dark-400 -mt-2">
+            Cada orçamento feito entre {formatarDataCurta(f.inicio)} e {formatarDataCurta(f.fim)} (card que entrou em Negociação, mais as cotações do SAP). A situação é a de hoje.
+          </p>
+          <TabelaDados
+            id="orcamentos-periodo"
+            linhas={noPeriodo ?? []}
+            colunas={colPeriodo}
+            chave={(l) => l.chave}
+            buscaEm={(l) => `${l.razaoSocial} ${l.vendedorNome} ${l.numero ?? ''}`}
+            placeholderBusca="Buscar cliente, vendedor ou nº da cotação..."
+            nomeArquivo="orcamentos-no-periodo.csv"
+            link={(l) => `${clientesBase}/${l.clienteId}`}
+            ordemInicial={{ coluna: 'data', direcao: 'desc' }}
+            simples={simples}
+            carregando={carregandoPeriodo}
+          />
+        </>
+      ) : aba === 'abertos' ? (
+        <>
+          <p className="text-xs text-dark-400 -mt-2">Foto de hoje: cards parados em Negociação neste mês. Não muda com as datas do filtro.</p>
+          <TabelaDados
+            id="orcamentos-abertos"
+            linhas={linhas}
+            colunas={colAbertos}
+            chave={(l) => l.clienteId}
+            buscaEm={(l) => `${l.razaoSocial} ${l.vendedorNome}`}
+            placeholderBusca="Buscar cliente ou vendedor..."
+            nomeArquivo="orcamentos-em-aberto.csv"
+            link={(l) => `${clientesBase}/${l.clienteId}`}
+            ordemInicial={{ coluna: 'dias', direcao: 'desc' }}
+            simples={simples}
+            carregando={isLoading}
+          />
+        </>
       ) : (
         <TabelaDados id="orcamentos-vendedor" linhas={porVendedor} colunas={colFeitos} chave={(v) => v.nome} buscaEm={(v) => v.nome} placeholderBusca="Buscar vendedor..." nomeArquivo="orcamentos-por-vendedor.csv" ordemInicial={{ coluna: 'qtd', direcao: 'desc' }} />
       )}
