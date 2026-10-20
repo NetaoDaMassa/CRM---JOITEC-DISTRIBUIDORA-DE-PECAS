@@ -7,6 +7,7 @@ import { leads, leadHistory, leadContactAttempts, users, metasMarketing } from '
 import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { STATUS_VALUES, STATUS_LABELS, getLeadEffectiveDate } from '../lib/leadsStatus.js'
 import { agoraSqlite } from '../lib/dataBr.js'
+import { linhasPainelLeads } from '../lib/leadsPainel.js'
 
 const PAYMENT_LABEL: Record<string, string> = {
   avista: 'À vista',
@@ -183,6 +184,13 @@ export async function calcularReportGeral(empresaId: number, dataInicio?: string
 // aqui via um Map, em vez de `with: { fromVendor, toVendor }`.
 
 export const leadsRelatoriosRouter = router({
+  // Base do relatório de Leads novo (ver lib/leadsPainel.ts): uma linha por
+  // lead que entrou OU fechou entre `desde` e `ate` — a tela pede já com o
+  // período anterior incluído, pra comparar sem uma 2ª chamada.
+  painel: featureProcedure('leads')
+    .input(z.object({ desde: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(async ({ ctx, input }) => linhasPainelLeads(ctx.empresaId, input.desde, input.ate)),
+
   slaOverview: featureProcedure('leads').query(async ({ ctx }) => {
     const abordagemLeads = await db.query.leads.findMany({
       where: and(eq(leads.status, 'abordagem'), eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
