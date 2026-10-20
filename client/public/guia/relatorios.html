@@ -1,0 +1,603 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="/favicon.ico">
+<title>Guia de Relatórios CRM</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Source+Sans+3:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: manual de campo — coluna de leitura larga com prints anotados (marcadores âmbar = "olhe aqui"), seções por tipo de vendedor e um bloco de destaque pro "lead em atraso". */
+:root {
+  --bg: #f3f5f8;
+  --paper: #ffffff;
+  --ink: #142235;
+  --muted: #56657a;
+  --line: #dbe2ea;
+  --accent: #1f5fd1;
+  --accent-soft: #e6eefc;
+  --signal: #f3a712;
+  --signal-ink: #1b1300;
+  --late: #c8322b;
+  --late-soft: #fdecea;
+  --ok: #1d8a4e;
+  --ok-soft: #e5f5ec;
+  --shot-edge: #0b1522;
+  --font-display: "Bricolage Grotesque", "Avenir Next", "Segoe UI", sans-serif;
+  --font-body: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c131d; --paper: #111b28; --ink: #e8eef6; --muted: #9aa9bc; --line: #223246;
+    --accent: #6ea2ff; --accent-soft: #15243d; --late: #ff6b62; --late-soft: #2a1414;
+    --ok: #4fd18b; --ok-soft: #10251a; --shot-edge: #2a3a50; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c131d; --paper: #111b28; --ink: #e8eef6; --muted: #9aa9bc; --line: #223246;
+  --accent: #6ea2ff; --accent-soft: #15243d; --late: #ff6b62; --late-soft: #2a1414;
+  --ok: #4fd18b; --ok-soft: #10251a; --shot-edge: #2a3a50; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink);
+  font-family: var(--font-body); font-size: 17px; line-height: 1.55;
+}
+.wrap {
+  max-width: 1080px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 80px;
+  display: grid; gap: 56px;
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; line-height: 1.1; }
+h1 { font-size: clamp(2.2rem, 5vw, 3.6rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.6rem, 3.4vw, 2.3rem); font-weight: 800; letter-spacing: -0.01em; }
+h3 { font-size: 1.25rem; font-weight: 600; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--font-mono); font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.lead { font-size: 1.15rem; color: var(--muted); }
+
+/* topo */
+header.top { display: grid; gap: 18px; }
+.roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-top: 8px; }
+.role {
+  display: grid; gap: 6px; text-decoration: none; color: inherit;
+  background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 18px;
+  transition: border-color .15s, transform .15s;
+}
+.role:hover, .role:focus-visible { border-color: var(--accent); transform: translateY(-2px); outline: none; }
+.role b { font-family: var(--font-display); font-size: 1.15rem; }
+.role span { color: var(--muted); font-size: 0.95rem; }
+.role .flow { font-family: var(--font-mono); font-size: 0.78rem; color: var(--accent); }
+.role.late { border-color: color-mix(in srgb, var(--late) 45%, var(--line)); background: var(--late-soft); }
+.role.late .flow { color: var(--late); }
+
+nav.chips {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+  display: flex; gap: 8px; overflow-x: auto; padding-block: 10px;
+  background: var(--bg); border-bottom: 1px solid var(--line);
+}
+nav.chips a {
+  flex: none; text-decoration: none; color: var(--ink); font-weight: 600; font-size: 0.92rem;
+  border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 14px;
+}
+nav.chips a:hover, nav.chips a:focus-visible { border-color: var(--accent); color: var(--accent); outline: none; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+
+section.part { display: grid; gap: 28px; scroll-margin-top: 70px; }
+.part-head { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+.step { display: grid; gap: 14px; }
+.step > p { color: var(--ink); }
+
+/* print anotado */
+figure.shot { margin: 0; display: grid; gap: 12px; }
+.frame { position: relative; border-radius: 12px; overflow: hidden; border: 1px solid var(--shot-edge); background: #0b1522; }
+.frame img { display: block; width: 100%; height: auto; }
+.pin {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 30px; height: 30px; border-radius: 50%;
+  background: var(--signal); color: var(--signal-ink);
+  font-family: var(--font-mono); font-weight: 600; font-size: 14px;
+  display: grid; place-items: center;
+  box-shadow: 0 0 0 3px rgba(11, 21, 34, .85), 0 4px 10px rgba(0, 0, 0, .45);
+}
+figcaption ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+figcaption li { display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; }
+figcaption li::before {
+  counter-increment: none; content: attr(data-n);
+  width: 26px; height: 26px; border-radius: 50%; background: var(--signal); color: var(--signal-ink);
+  font-family: var(--font-mono); font-weight: 600; font-size: 13px; display: grid; place-items: center; margin-top: 1px;
+}
+figcaption li span { min-width: 0; }
+
+/* blocos */
+.callout { border-radius: 14px; padding: 20px 22px; display: grid; gap: 10px; border: 1px solid var(--line); background: var(--paper); }
+.callout.late { background: var(--late-soft); border-color: color-mix(in srgb, var(--late) 40%, transparent); }
+.callout.late h3 { color: var(--late); }
+.callout.ok { background: var(--ok-soft); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.callout.ok h3 { color: var(--ok); }
+.ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.way { background: var(--paper); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 6px; align-content: start; }
+.way b { font-family: var(--font-display); font-size: 1.05rem; }
+.way small { color: var(--muted); font-size: 0.92rem; }
+.tag { display: inline-block; font-family: var(--font-mono); font-size: 0.72rem; font-weight: 600; letter-spacing: .06em; padding: 2px 8px; border-radius: 6px; vertical-align: 1px; }
+.tag.late { background: #b4261f; color: #fff; }
+.tag.today { background: #c26a0a; color: #fff; }
+.tag.tomorrow { background: #8a7a0e; color: #fff; }
+.tag.future { background: #1f5fd1; color: #fff; }
+.tag.gps { background: #1d8a4e; color: #fff; }
+
+.checklist { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.checklist li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; }
+.checklist li::before { content: ""; width: 16px; height: 16px; border: 2px solid var(--ok); border-radius: 4px; margin-top: 4px; }
+.cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.cols > * { min-width: 0; }
+table.etapas { width: 100%; border-collapse: collapse; font-size: 0.95rem; }
+table.etapas th, table.etapas td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.etapas th { font-family: var(--font-mono); font-size: 0.75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+.tablewrap { overflow-x: auto; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; }
+footer { color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--line); padding-top: 18px; }
+kbd, .btn { font-family: var(--font-body); font-weight: 700; border: 1px solid var(--line); background: var(--paper); border-radius: 6px; padding: 0 6px; font-size: 0.92em; white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) { .role { transition: none; } }
+@media print {
+  :root { --bg: #fff; --paper: #fff; color-scheme: light; }
+  body { font-size: 12pt; }
+  nav.chips, body::before { display: none; }
+  .wrap { padding-block: 0; gap: 28px; max-width: none; }
+  section.part { break-before: page; }
+  .step, figure.shot, .callout, .way { break-inside: avoid; }
+  .role:hover { transform: none; }
+}
+.crm-bar { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.crm-bar a { color: var(--accent); font-weight: 700; text-decoration: none; border: 1px solid var(--line); background: var(--paper); border-radius: 999px; padding: 6px 14px; font-size: 0.92rem; }
+.crm-bar a:hover, .crm-bar a:focus-visible { border-color: var(--accent); outline: none; }
+@media print { .crm-bar { display: none; } }
+.role.ok { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: var(--ok-soft); }
+.role.ok .flow { color: var(--ok); }
+.crm-bar-dir { display: flex; gap: 8px; flex-wrap: wrap; }
+.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
+section.part > h3 { margin-top: 8px; }
+figcaption { color: var(--ink); }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <div class="crm-bar">
+    <a href="/">← Voltar ao CRM</a>
+    <span class="crm-bar-dir">
+      <a href="./">Guia do Vendedor</a>
+      <a href="guia-de-relatorios.pdf" download="Guia de Relatórios e Métricas - CRM Grupo Odin.pdf">Baixar em PDF</a>
+    </span>
+  </div>
+  <header class="top">
+    <span class="eyebrow">Grupo Odin · Joitec CRM</span>
+    <h1>Guia de Relatórios e Métricas</h1>
+    <p class="lead">Onde achar cada relatório, como filtrar, o que cada número quer dizer e o que fazer com ele. Os números amarelos nos prints mostram onde olhar. Os clientes e vendedores dos prints são de exemplo.</p>
+    <div class="roles">
+      <a class="role" href="#comeco"><span class="flow">filtros · explicações · Excel</span><b>Como usar qualquer relatório</b><span>O básico que vale para todas as telas de relatório.</span></a>
+      <a class="role" href="#gestor"><span class="flow">resumo → relatórios detalhados</span><b>Para o gestor</b><span>O resumo de uma tela e os 10 relatórios detalhados.</span></a>
+      <a class="role" href="#vendedor"><span class="flow">só os seus clientes</span><b>Para o vendedor</b><span>Meus relatórios: a sua carteira, as suas vendas e quem está parado.</span></a>
+      <a class="role ok" href="#glossario"><span class="flow">o que significa cada número</span><b>Glossário de métricas</b><span>Ativos, positivação, ticket médio, curva ABC, cobertura e outros.</span></a>
+    </div>
+  </header>
+
+  <nav class="chips" aria-label="Seções">
+    <a href="#comeco">Como usar</a>
+    <a href="#fontes">De onde vêm os números</a>
+    <a href="#gestor">Gestor</a>
+    <a href="#vendedor">Vendedor</a>
+    <a href="#glossario">Glossário</a>
+    <a href="#rotina">Rotina</a>
+  </nav>
+
+  <!-- ───────────── COMO USAR ───────────── -->
+  <section class="part" id="comeco">
+    <div class="part-head">
+      <span class="eyebrow">Para todos</span>
+      <h2>Como usar qualquer relatório</h2>
+    </div>
+    <div class="cols">
+      <div class="callout">
+        <h3>Onde ficam</h3>
+        <p><b>Gestor:</b> menu <b>Relatórios</b>. Logo abaixo dele fica a pasta <b>Relatórios detalhados</b>, com um relatório por assunto.</p>
+        <p><b>Vendedor:</b> menu <b>Relatórios</b> (aparece como <b>Meus relatórios</b>), já filtrado só com os seus clientes.</p>
+      </div>
+      <div class="callout">
+        <h3>Nada aqui muda dados</h3>
+        <p>Relatório só mostra. Pode filtrar, clicar e exportar à vontade, nada no CRM é alterado. Se um número parecer errado, a correção é feita no cadastro, no Kanban ou no pedido.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>1. Escolha o período e o vendedor</h3>
+      <p>A barra de filtros fica no alto de todo relatório. O período padrão é <b>Este mês</b>.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-filtros.jpg" alt="Barra de filtros com atalhos de período, datas, vendedor, região e botão Atualizar" width="1600" height="141" loading="lazy">
+          <span class="pin" style="left:13%;top:30%">1</span>
+          <span class="pin" style="left:62%;top:30%">2</span>
+          <span class="pin" style="left:86%;top:30%">3</span>
+          <span class="pin" style="left:9%;top:76%">4</span>
+          <span class="pin" style="left:21%;top:76%">5</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Atalhos de período:</b> Hoje, 7 dias, Este mês, Mês passado, 90 dias, Este ano. <b>Personalizado</b> libera as datas.</span></li>
+          <li data-n="2"><span><b>De / até:</b> escolha qualquer intervalo, por exemplo 01/04/2026 a 31/07/2026.</span></li>
+          <li data-n="3"><span><b>Vendedor:</b> "Todos os vendedores" mostra a empresa inteira. Escolha um nome para ver só a carteira dele.</span></li>
+          <li data-n="4"><span><b>Região:</b> filtra os clientes pelo estado (Norte, Nordeste, Centro-Oeste, Sudeste, Sul).</span></li>
+          <li data-n="5"><span><b>Atualizar:</b> busca os números de novo, sem recarregar a página.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>2. Não sabe o que um número quer dizer? O CRM explica</h3>
+      <p>Todo relatório tem o painel <b>O que significa cada número?</b>. Clique nele para abrir a explicação de todas as métricas daquela tela. Ao lado de alguns números há um <b>ⓘ</b>: passe o mouse (ou toque, no celular) e a explicação aparece.</p>
+      <div class="cols">
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-explicacao.jpg" alt="Painel O que significa cada número aberto, com a explicação de Ativos, Novos, Recuperados e outros" width="1600" height="977" loading="lazy"></div>
+          <figcaption>O painel aberto no relatório de Positivação. Ele lembra se você deixou aberto.</figcaption>
+        </figure>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-dica.jpg" alt="Caixinha de explicação aberta ao passar o mouse no ícone ao lado de Faturamento" width="840" height="389" loading="lazy"></div>
+          <figcaption>O ⓘ ao lado de "Faturamento" explica de onde vem o valor.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>3. Tabelas: buscar, ordenar, escolher colunas e levar pro Excel</h3>
+      <p>Toda lista dos relatórios funciona do mesmo jeito.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-tabela.jpg" alt="Tabela da Curva ABC com busca, filtros de classe, botões Colunas e Exportar" width="1600" height="632" loading="lazy">
+          <span class="pin" style="left:3.5%;top:8%">1</span>
+          <span class="pin" style="left:44%;top:8%">2</span>
+          <span class="pin" style="left:62%;top:20%">3</span>
+          <span class="pin" style="left:82.6%;top:8%">4</span>
+          <span class="pin" style="left:91.6%;top:8%">5</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Buscar:</b> digite parte do nome do cliente ou do vendedor.</span></li>
+          <li data-n="2"><span><b>Filtros rápidos</b> da própria tabela (aqui, Classe A, B ou C).</span></li>
+          <li data-n="3"><span><b>Clique no título da coluna</b> para ordenar do maior para o menor, e clique de novo para inverter.</span></li>
+          <li data-n="4"><span><b>Colunas:</b> esconde ou mostra colunas.</span></li>
+          <li data-n="5"><span><b>Exportar:</b> baixa a planilha com o que está na tela (filtros e colunas escolhidos), pronta para abrir no Excel.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="ways">
+      <div class="way"><b>Seta verde / vermelha</b><small>Compara com o período anterior do mesmo tamanho. Exemplo: "este mês" até o dia 20 é comparado com o mês passado até o dia 20. Verde melhorou, vermelho piorou.</small></div>
+      <div class="way"><b>Cards clicáveis</b><small>Card com a setinha <b>›</b> abre o relatório detalhado daquele número, ou a lista de clientes por trás dele.</small></div>
+      <div class="way"><b>Mostrar resumo</b><small>Chave no canto de cima dos relatórios detalhados. Desligue para esconder os cards e gráficos e ver só a tabela.</small></div>
+    </div>
+  </section>
+
+  <!-- ───────────── FONTES ───────────── -->
+  <section class="part" id="fontes">
+    <div class="part-head">
+      <span class="eyebrow">Para todos</span>
+      <h2>De onde vêm os números</h2>
+    </div>
+    <p>O faturamento dos relatórios soma três lugares. O card <b>De onde vem o faturamento</b> mostra quanto veio de cada um.</p>
+    <div class="ways">
+      <div class="way"><b>Carteira (Kanban)</b><small>Vendas fechadas no Kanban da Carteira. Conta para o vendedor que fechou.</small></div>
+      <div class="way"><b>Pedidos (Odin)</b><small>Pedidos lançados no módulo Pedidos da Odin Compressores (máquinas, externos e leads). Pedido cancelado não conta.</small></div>
+      <div class="way"><b>Histórico do SAP</b><small>Vendas de abril a julho de 2026, de antes do CRM (Joitec e Odin Tubos). Contam para o vendedor <b>atual</b> do cliente.</small></div>
+    </div>
+    <div class="callout">
+      <h3>O que fica de fora do SAP</h3>
+      <p>O histórico do SAP entra em vendas, ticket médio, curva ABC, positivação, todas as empresas e clientes parados. <b>Não</b> entra em metas, rankings, Painel de TV e Painel Financeiro, e não aparece em Produtos e mix, porque o SAP não traz os itens dos pedidos.</p>
+    </div>
+  </section>
+
+  <!-- ───────────── GESTOR ───────────── -->
+  <section class="part" id="gestor">
+    <div class="part-head">
+      <span class="eyebrow">Gestor / administrador</span>
+      <h2>O resumo e os relatórios detalhados</h2>
+      <p class="lead">Comece pelo resumo, que mostra a empresa toda numa tela só. Quando um número chamar atenção, clique nele para abrir o relatório detalhado.</p>
+    </div>
+
+    <div class="step">
+      <h3>Resumo: a empresa numa tela</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-resumo.jpg" alt="Tela Relatórios com cards de faturamento, vendas, ticket médio e positivação, posição da carteira e faturamento por dia" width="1600" height="1089" loading="lazy">
+          <span class="pin" style="left:10%;top:70.4%">1</span>
+          <span class="pin" style="left:31.5%;top:29.2%">2</span>
+          <span class="pin" style="left:30.5%;top:44.8%">3</span>
+          <span class="pin" style="left:62%;top:58.8%">4</span>
+          <span class="pin" style="left:50.5%;top:76.6%">5</span>
+          <span class="pin" style="left:79%;top:95.3%">6</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Relatórios detalhados:</b> a pasta do menu com os 10 relatórios.</span></li>
+          <li data-n="2"><span><b>O que significa cada número?</b> Abre a explicação de todas as métricas do resumo.</span></li>
+          <li data-n="3"><span><b>Cards principais:</b> faturamento, número de vendas, ticket médio e positivação, cada um com a comparação com o período anterior.</span></li>
+          <li data-n="4"><span><b>De onde vem o faturamento:</b> quanto veio da Carteira, dos Pedidos e do SAP.</span></li>
+          <li data-n="5"><span><b>Atividade da carteira:</b> quantos clientes estão ativos, novos, recuperados, quase inativos, inativos e quantos nunca compraram. "Ver clientes por categoria" abre a lista.</span></li>
+          <li data-n="6"><span><b>Ver relatório completo:</b> cada bloco do resumo leva ao relatório detalhado do assunto.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Positivação de carteira</h3>
+      <p><b>Pergunta que responde:</b> quantos clientes da carteira estão comprando, e quantos estão esfriando?</p>
+      <figure class="shot">
+        <div class="frame"><img src="img/rel-positivacao.jpg" alt="Relatório de Positivação com taxa de ativação, atividade da carteira e tabela por vendedor" width="1600" height="1089" loading="lazy"></div>
+        <figcaption><b>O que olhar:</b> a taxa de ativação e a faixa amarela <b>quase inativos</b> (91 a 180 dias sem comprar). Esses são os clientes que mais vale ligar agora. A tabela "Por vendedor" compara a carteira de cada um.</figcaption>
+      </figure>
+    </div>
+
+    <div class="cols">
+      <div class="step">
+        <h3>Vendas</h3>
+        <p><b>Pergunta:</b> quanto vendemos, em quantas vendas, e quem vendeu?</p>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-vendas.jpg" alt="Relatório de Vendas com faturamento, vendas, ticket médio, clientes de marketing e gráfico por dia" width="1600" height="1089" loading="lazy"></div>
+          <figcaption>Faturamento por dia (ou por vendedor, no botão ao lado do gráfico), ticket médio e quanto veio de clientes do marketing.</figcaption>
+        </figure>
+      </div>
+      <div class="step">
+        <h3>Curva ABC de clientes</h3>
+        <p><b>Pergunta:</b> quais clientes trazem a maior parte do dinheiro?</p>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-curva-abc.jpg" alt="Curva ABC com classes A, B e C e gráfico dos 12 clientes que mais faturaram" width="1600" height="1089" loading="lazy"></div>
+          <figcaption><b>Classe A</b> soma 80% do faturamento: são poucos clientes, e não se pode perder nenhum. <b>B</b> são os próximos 15%. <b>C</b> é o resto.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>Orçamentos</h3>
+      <p><b>Pergunta:</b> quanto dinheiro está em negociação, e o que está parado?</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-orcamentos.jpg" alt="Relatório de Orçamentos com cards, gráfico de orçamentos feitos por dia e abas" width="1600" height="1089" loading="lazy">
+          <span class="pin" style="left:29%;top:43.7%">1</span>
+          <span class="pin" style="left:64.7%;top:43.7%">2</span>
+          <span class="pin" style="left:89.7%;top:56.4%">3</span>
+          <span class="pin" style="left:25.7%;top:86.5%">4</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Em negociação agora / Valor em aberto:</b> o que está hoje na etapa Negociação. Esses dois não mudam com o filtro de data.</span></li>
+          <li data-n="2"><span><b>Parados há +15 dias:</b> orçamentos esfriando, com o valor somado. Cobre o vendedor por esses.</span></li>
+          <li data-n="3"><span><b>Dia / Semana / Mês:</b> muda o agrupamento do gráfico de orçamentos feitos.</span></li>
+          <li data-n="4"><span><b>Abas:</b> "Feitos no período" (cada orçamento enviado nas datas do filtro, com a situação de hoje), "Em aberto hoje" (com os dias em aberto: verde até 15, amarelo até 30, vermelho acima) e "Por vendedor".</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="cols">
+      <div class="step">
+        <h3>Contatos e cobertura</h3>
+        <p><b>Pergunta:</b> o vendedor está falando com a carteira inteira?</p>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-contatos.jpg" alt="Relatório de Contatos com cobertura da carteira e contatos por dia" width="1600" height="1089" loading="lazy"></div>
+          <figcaption><b>Cobertura</b> é a porcentagem da carteira com pelo menos 1 contato no mês. As abas mostram os números por vendedor, por cliente e por dia.</figcaption>
+        </figure>
+      </div>
+      <div class="step">
+        <h3>Ligações</h3>
+        <p><b>Pergunta:</b> as ligações viram conversa de verdade?</p>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-ligacoes.jpg" alt="Relatório de Ligações com tentativas, efetivas, porcentagem e sem resultado confirmado" width="1600" height="1089" loading="lazy"></div>
+          <figcaption><b>Tentativas</b> são todas as ligações. <b>Efetivas</b> são as que o cliente atendeu. Muitas ligações "sem resultado confirmado" quer dizer que o vendedor não está marcando no card se o cliente atendeu.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="step">
+        <h3>Produtos e mix</h3>
+        <p><b>Pergunta:</b> o que mais sai, e quem vende mais variedade?</p>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-produtos.jpg" alt="Relatório Produtos e mix com itens mais vendidos e mix por vendedor" width="1600" height="1089" loading="lazy"></div>
+          <figcaption><b>Mix</b> é a média de produtos diferentes por cliente. Quanto maior, mais o vendedor oferece além do pedido de sempre. Só usa vendas com itens lançados, por isso o SAP não entra.</figcaption>
+        </figure>
+      </div>
+      <div class="step">
+        <h3>Motivos de perda</h3>
+        <p><b>Pergunta:</b> por que estamos perdendo pedidos?</p>
+        <figure class="shot">
+          <div class="frame"><img src="img/rel-perdas.jpg" alt="Relatório Motivos de perda com pedidos perdidos, valor e motivos por categoria e por item" width="1600" height="1089" loading="lazy"></div>
+          <figcaption>Pedidos perdidos no período, o valor que ficou na mesa, a categoria do motivo (preço, prazo, estoque...) e os itens mais citados.</figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="step">
+      <h3>Clientes parados</h3>
+      <p><b>Pergunta:</b> quem ninguém está atendendo? Esta é a lista de trabalho mais útil para cobrar a equipe.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-clientes-parados.jpg" alt="Relatório Clientes parados na aba Sem comprar, 60 dias ou mais, com lista de clientes" width="1600" height="1089" loading="lazy">
+          <span class="pin" style="left:41%;top:29.5%">1</span>
+          <span class="pin" style="left:65%;top:29.5%">2</span>
+          <span class="pin" style="left:59%;top:44%">3</span>
+          <span class="pin" style="left:94%;top:55%">4</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>Abas:</b> sem contato, sem orçamento, sem comprar, ou intocados no mês (sem contato e sem orçamento).</span></li>
+          <li data-n="2"><span><b>Há quantos dias:</b> 30, 60, 90 ou 180 dias ou mais.</span></li>
+          <li data-n="3"><span><b>Nunca / Com histórico:</b> separa quem nunca teve aquilo de quem já teve e parou.</span></li>
+          <li data-n="4"><span><b>Exportar:</b> baixe a lista e mande para o vendedor trabalhar.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="callout">
+      <h3>Todas as empresas</h3>
+      <p>Só para o super administrador: vendas e carteira contatada de todas as empresas do grupo lado a lado, comparando com o período anterior.</p>
+    </div>
+    <div class="callout">
+      <h3>Outros relatórios do CRM</h3>
+      <p><b>Relatórios de Leads</b> (marketing: tempo até o 1º contato, conversão e funil), <b>Relatórios Odin</b> (semanal por vendedor, pedidos, propostas e faturamento) e <b>Devoluções</b> ficam nos menus de cada módulo. Eles têm o mesmo painel <b>O que significa cada número?</b>.</p>
+    </div>
+  </section>
+
+  <!-- ───────────── VENDEDOR ───────────── -->
+  <section class="part" id="vendedor">
+    <div class="part-head">
+      <span class="eyebrow">Vendedor</span>
+      <h2>Meus relatórios</h2>
+      <p class="lead">O vendedor vê uma versão mais simples, sempre só com os clientes da carteira dele. Os números são calculados do mesmo jeito que os do gestor.</p>
+    </div>
+
+    <div class="step">
+      <h3>O resumo da sua carteira</h3>
+      <figure class="shot">
+        <div class="frame">
+          <img src="img/rel-vend-resumo.jpg" alt="Tela Meus relatórios do vendedor com faturamento, vendas, ticket médio, positivação e atividade da carteira" width="1600" height="1089" loading="lazy">
+          <span class="pin" style="left:47.5%;top:12.6%">1</span>
+          <span class="pin" style="left:91%;top:41.5%">2</span>
+          <span class="pin" style="left:62%;top:76.6%">3</span>
+        </div>
+        <figcaption><ol>
+          <li data-n="1"><span><b>"Só os seus clientes":</b> tudo aqui é da sua carteira.</span></li>
+          <li data-n="2"><span><b>Positivação:</b> quantos dos seus clientes compraram no período. Ex.: 10 de 55 = 18,2%.</span></li>
+          <li data-n="3"><span><b>Atividade da carteira:</b> clique em "Ver clientes por categoria" para ver os quase inativos (amarelo) e inativos (vermelho). Eles são a sua lista de ligações.</span></li>
+        </ol></figcaption>
+      </figure>
+    </div>
+
+    <div class="step">
+      <h3>Clientes parados: sua lista de quem ligar</h3>
+      <p>Abra <b>Clientes parados</b>, escolha <b>Sem comprar</b> e <b>60+ dias</b>. A lista já vem com quem está há mais tempo sem comprar no topo.</p>
+      <figure class="shot">
+        <div class="frame"><img src="img/rel-vend-parados.jpg" alt="Clientes parados do vendedor, aba Sem comprar" width="1600" height="1089" loading="lazy"></div>
+      </figure>
+    </div>
+
+    <div class="ways">
+      <div class="way"><b>Positivação</b><small>Sua carteira por data da última compra.</small></div>
+      <div class="way"><b>Vendas</b><small>Quanto você vendeu, por dia, e o seu ticket médio.</small></div>
+      <div class="way"><b>Orçamentos</b><small>Seus orçamentos em aberto e há quantos dias estão parados.</small></div>
+      <div class="way"><b>Clientes parados</b><small>Quem está sem contato, sem orçamento ou sem compra.</small></div>
+    </div>
+  </section>
+
+  <!-- ───────────── GLOSSÁRIO ───────────── -->
+  <section class="part" id="glossario">
+    <div class="part-head">
+      <span class="eyebrow">Para todos</span>
+      <h2>Glossário de métricas</h2>
+      <p class="lead">Os mesmos textos do painel "O que significa cada número?" do CRM, juntos num lugar só.</p>
+    </div>
+
+    <h3>Carteira</h3>
+    <div class="tablewrap"><table class="etapas">
+      <thead><tr><th>Métrica</th><th>O que conta</th></tr></thead>
+      <tbody>
+        <tr><td><b>Clientes na carteira</b></td><td>Clientes que estão hoje na carteira de um vendedor ativo. Não entram os do Banco de Clientes (sem vendedor), os de vendedor desativado e os em prospecção.</td></tr>
+        <tr><td><span class="dot" style="background:#4cb860"></span><b>Ativos</b></td><td>Compraram nos últimos 90 dias (contando até a data final do filtro).</td></tr>
+        <tr><td><span class="dot" style="background:#7cc4f2"></span><b>Novos</b></td><td>Fizeram a primeira compra da vida dentro do período.</td></tr>
+        <tr><td><span class="dot" style="background:#3a86d6"></span><b>Recuperados</b></td><td>Estavam parados há mais de 180 dias e voltaram a comprar no período.</td></tr>
+        <tr><td><span class="dot" style="background:#e8c440"></span><b>Quase inativos</b></td><td>Última compra entre 91 e 180 dias atrás. São os que mais vale ligar agora.</td></tr>
+        <tr><td><span class="dot" style="background:#e5534b"></span><b>Inativos</b></td><td>Última compra há mais de 180 dias.</td></tr>
+        <tr><td><span class="dot" style="background:#9aa5b1"></span><b>Nunca compraram</b></td><td>Estão na carteira sem nenhuma compra, nem no CRM, nem nos Pedidos, nem no SAP.</td></tr>
+        <tr><td><b>Ativados / Taxa de ativação</b></td><td>Ativados = ativos + novos + recuperados + quase inativos (compraram nos últimos 180 dias). Taxa = ativados ÷ clientes na carteira.</td></tr>
+        <tr><td><b>Positivação no período</b></td><td>Clientes da carteira que compraram <b>dentro do período</b> ÷ total da carteira. CNPJs vinculados contam como um cliente só. Ex.: 135 compraram este mês numa carteira de 3.140 = 4,3%.</td></tr>
+        <tr><td><b>Tempo médio desde a última compra</b></td><td>Média de dias desde a última compra, só entre quem já comprou.</td></tr>
+        <tr><td><b>Valor médio por cliente (LTV)</b></td><td>Tudo o que os clientes já compraram ÷ número de clientes que já compraram.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Vendas</h3>
+    <div class="tablewrap"><table class="etapas">
+      <thead><tr><th>Métrica</th><th>O que conta</th></tr></thead>
+      <tbody>
+        <tr><td><b>Faturamento</b></td><td>Soma das vendas fechadas no período: Carteira + Pedidos (Odin) + histórico do SAP.</td></tr>
+        <tr><td><b>Vendas</b></td><td>Quantidade de vendas ou pedidos. Não é número de clientes: um cliente pode ter várias.</td></tr>
+        <tr><td><b>Ticket médio</b></td><td>Faturamento ÷ número de vendas.</td></tr>
+        <tr><td><b>Clientes de marketing</b></td><td>Vendas para clientes que chegaram como lead.</td></tr>
+        <tr><td><b>% do total</b></td><td>Quanto cada vendedor representa do faturamento da empresa.</td></tr>
+        <tr><td><b>Curva ABC</b></td><td>A = clientes que somam os primeiros 80% do faturamento; B = os próximos 15%; C = os últimos 5%. O vendedor mostrado é o dono do cliente hoje.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Orçamentos e perdas</h3>
+    <div class="tablewrap"><table class="etapas">
+      <thead><tr><th>Métrica</th><th>O que conta</th></tr></thead>
+      <tbody>
+        <tr><td><b>Em negociação agora</b></td><td>Cards que estão agora na etapa Negociação. É uma foto do momento e não muda com o filtro de data.</td></tr>
+        <tr><td><b>Parados há +15 dias</b></td><td>Orçamentos em Negociação há mais de 15 dias sem avançar.</td></tr>
+        <tr><td><b>Dias em aberto</b></td><td>Desde a primeira vez que o card entrou em Negociação, mesmo que tenha passado de um mês para o outro.</td></tr>
+        <tr><td><b>Orçamentos feitos</b></td><td>Cada vez que um card entrou em Negociação no período, mais as cotações do SAP (abr–jul/2026).</td></tr>
+        <tr><td><b>Pedidos perdidos / Valor perdido</b></td><td>Cards que foram para "Perdido" no período e a soma do que estava orçado neles.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Contatos e ligações</h3>
+    <div class="tablewrap"><table class="etapas">
+      <thead><tr><th>Métrica</th><th>O que conta</th></tr></thead>
+      <tbody>
+        <tr><td><b>Cobertura (carteira contatada)</b></td><td>Clientes da carteira com pelo menos 1 contato no mês (ligação, WhatsApp, e-mail ou visita) ÷ carteira. Ex.: falou com 150 de 200 = 75%.</td></tr>
+        <tr><td><b>Tentativas</b></td><td>Toda ligação registrada, atendida ou não.</td></tr>
+        <tr><td><b>Ligações efetivas</b></td><td>O vendedor falou com o cliente: marcou "Respondeu" no card, ou a central confirmou que a ligação foi atendida. Caixa postal não conta.</td></tr>
+        <tr><td><b>% efetivas</b></td><td>Efetivas ÷ tentativas. Mostra quem liga muito e conversa pouco.</td></tr>
+        <tr><td><b>Sem resultado confirmado</b></td><td>Ligações que o vendedor ainda não marcou se o cliente atendeu.</td></tr>
+      </tbody>
+    </table></div>
+
+    <h3>Clientes parados</h3>
+    <div class="tablewrap"><table class="etapas">
+      <thead><tr><th>Métrica</th><th>O que conta</th></tr></thead>
+      <tbody>
+        <tr><td><b>Sem contato há X dias</b></td><td>Nenhum contato registrado nos últimos X dias.</td></tr>
+        <tr><td><b>Sem orçamento há X dias</b></td><td>Nenhum orçamento nos últimos X dias (card com valor orçado ou cotação do SAP).</td></tr>
+        <tr><td><b>Sem comprar há X dias</b></td><td>Nenhuma compra nos últimos X dias no CRM, nos Pedidos ou no SAP. A etiqueta mostra de onde veio a última compra.</td></tr>
+        <tr><td><b>Intocados no mês</b></td><td>Clientes sem contato e sem orçamento neste mês.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <!-- ───────────── ROTINA ───────────── -->
+  <section class="part" id="rotina">
+    <div class="part-head">
+      <span class="eyebrow">Sugestão</span>
+      <h2>Quando olhar o quê</h2>
+    </div>
+    <div class="cols">
+      <div class="callout ok">
+        <h3>Vendedor, todo dia</h3>
+        <ul class="checklist">
+          <li>Clientes parados → Sem comprar 60+ dias: escolha quem ligar hoje.</li>
+          <li>Orçamentos → Em aberto hoje: retome os amarelos e vermelhos.</li>
+          <li>Positivação: acompanhe quantos dos seus clientes já compraram no mês.</li>
+        </ul>
+      </div>
+      <div class="callout ok">
+        <h3>Gestor, toda semana</h3>
+        <ul class="checklist">
+          <li>Contatos: a cobertura de cada vendedor está acompanhando o mês?</li>
+          <li>Ligações: quem tem poucas efetivas ou muitas sem resultado confirmado?</li>
+          <li>Orçamentos: cobre os parados há +15 dias.</li>
+          <li>Clientes parados: exporte a lista e mande para cada vendedor.</li>
+        </ul>
+      </div>
+      <div class="callout ok">
+        <h3>Gestor, todo mês</h3>
+        <ul class="checklist">
+          <li>Resumo com "Mês passado": compare com o mês anterior (setas).</li>
+          <li>Positivação: a taxa de ativação subiu? Os quase inativos diminuíram?</li>
+          <li>Curva ABC: algum cliente A sumiu? Ligue antes que vire inativo.</li>
+          <li>Motivos de perda: o motivo nº 1 se repete? Leve para a reunião.</li>
+          <li>Produtos e mix: quem vende pouca variedade por cliente?</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer>Guia de Relatórios do CRM do Grupo Odin · outubro de 2026 · prints com clientes e vendedores de exemplo. Dúvidas, fale com o seu gestor.</footer>
+</div>
+</body>
+</html>

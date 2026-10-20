@@ -54,6 +54,11 @@ export default function ExplicacaoMetricas({ chave, className = '' }: { chave: s
           ))}
         </dl>
       )}
+      {aberto && (
+        <a href="/guia/relatorios.html#glossario" target="_blank" rel="noreferrer" className="block px-4 pb-4 -mt-1 text-xs text-gold-500 hover:underline">
+          Ver o Guia de Relatórios e Métricas completo, com prints e rotina sugerida →
+        </a>
+      )}
     </div>
   )
 }

@@ -97,7 +97,8 @@ export function KpiCard({
       )}
     </>
   )
-  const classe = 'group relative block bg-dark-800 border border-dark-600 rounded-2xl p-4 transition-all'
+  // hover:z-20: a caixinha do ⓘ abre por cima do card vizinho em vez de ficar escondida atrás dele.
+  const classe = 'group relative hover:z-20 focus-within:z-20 block bg-dark-800 border border-dark-600 rounded-2xl p-4 transition-all'
   return href ? (
     <Link to={href} className={`${classe} hover:border-gold-500/60 hover:shadow-lg hover:-translate-y-0.5`}>
       {conteudo}
@@ -233,7 +234,7 @@ export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick, aj
       </p>
     </>
   )
-  const classe = 'group block bg-dark-900 border border-dark-700 rounded-xl p-3.5 transition-all text-left w-full'
+  const classe = 'group relative hover:z-20 focus-within:z-20 block bg-dark-900 border border-dark-700 rounded-xl p-3.5 transition-all text-left w-full'
   if (href)
     return (
       <Link to={href} className={`${classe} hover:border-gold-500/50`}>
