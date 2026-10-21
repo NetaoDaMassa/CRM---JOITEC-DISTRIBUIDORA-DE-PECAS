@@ -376,6 +376,7 @@ export const clientes = sqliteTable('clientes', {
 }, (t) => ({
   empresaCnpj: unique().on(t.empresaId, t.cnpj),
   empresaCodigo: unique().on(t.empresaId, t.codigo),
+  vendedorIdx: index('idx_clientes_vendedor').on(t.vendedorAtualId),
 }))
 
 // Telefones extras de um cliente, além do principal (`clientes.telefoneWhatsapp`)
@@ -489,7 +490,13 @@ export const funilMensal = sqliteTable('funil_mensal', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
-})
+}, (t) => ({
+  // Índices (2026-10-21): sem eles a tarefa de toda hora (reset mensal +
+  // alerta de cliente sem contato) lia a tabela inteira a cada cliente e
+  // travava o servidor ~1min47s por hora. Ver migração 0121.
+  clienteMesIdx: index('idx_funil_mensal_cliente_mes').on(t.clienteId, t.mesReferencia),
+  vendedorMesIdx: index('idx_funil_mensal_vendedor_mes').on(t.vendedorId, t.mesReferencia),
+}))
 
 // Um pedido/venda individual — um cliente pode ter várias no mesmo mês
 // (funilMensal continua sendo só o rastreador de etapa/relacionamento,
@@ -525,7 +532,10 @@ export const vendas = sqliteTable('vendas', {
   convertidoParaOrdemId: integer('convertido_para_ordem_id').references(() => ordens.id, { onDelete: 'set null' }),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
-})
+}, (t) => ({
+  clienteIdx: index('idx_vendas_cliente').on(t.clienteId),
+  funilIdx: index('idx_vendas_funil').on(t.funilMensalId),
+}))
 
 export const itensPedido = sqliteTable('itens_pedido', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -660,7 +670,10 @@ export const registroContato = sqliteTable('registro_contato', {
   efetiva: integer('efetiva', { mode: 'boolean' }),
   dataHora: text('data_hora').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
-})
+}, (t) => ({
+  funilIdx: index('idx_registro_contato_funil').on(t.funilMensalId),
+  vendedorDataIdx: index('idx_registro_contato_vendedor_data').on(t.vendedorId, t.dataHora),
+}))
 
 export const metasMensais = sqliteTable('metas_mensais', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -786,7 +799,10 @@ export const notifications = sqliteTable('notifications', {
   message: text('message').notNull(),
   read: integer('read', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, (t) => ({
+  clienteTipoIdx: index('idx_notifications_cliente_tipo').on(t.clienteId, t.type, t.createdAt),
+  vendedorIdx: index('idx_notifications_vendedor').on(t.vendedorId, t.createdAt),
+}))
 
 // Vínculo entre dois cadastros de cliente que são, na prática, a mesma
 // empresa/pessoa (ex: matriz e filial, ou o mesmo cliente com CNPJs
@@ -1534,7 +1550,9 @@ export const leadHistory = sqliteTable('lead_history', {
   toVendorId: integer('to_vendor_id').references(() => users.id, { onDelete: 'set null' }),
   details: text('details'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, (t) => ({
+  leadIdx: index('idx_lead_history_lead').on(t.leadId),
+}))
 
 export const leadContactAttempts = sqliteTable('lead_contact_attempts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
@@ -1553,7 +1571,9 @@ export const leadContactAttempts = sqliteTable('lead_contact_attempts', {
   }),
   nextActionAt: text('next_action_at'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
-})
+}, (t) => ({
+  leadIdx: index('idx_lead_contact_attempts_lead').on(t.leadId),
+}))
 
 // Visitante do site (identificado por um uid gerado no navegador,
 // localStorage) — alimenta a timeline "veio do site" na ficha do lead. A

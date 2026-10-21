@@ -46,15 +46,23 @@ export async function executarResetMensal(): Promise<{ criados: number }> {
     columns: { id: true, empresaId: true, vendedorAtualId: true },
   })
 
+  // Quem já tem card no mês — UMA consulta, em vez de uma por cliente.
+  // Isto roda TODA HORA (scheduler) e quase sempre todo mundo já tem card;
+  // a busca cliente a cliente travava o servidor (2026-10-21).
+  const comCardNoMes = new Set(
+    (
+      await db
+        .select({ clienteId: funilMensal.clienteId })
+        .from(funilMensal)
+        .where(eq(funilMensal.mesReferencia, mesAtual))
+    ).map((f) => f.clienteId)
+  )
+
   let criados = 0
 
   for (const cliente of clientesAtivos) {
     if (!cliente.vendedorAtualId) continue
-
-    const jaExiste = await db.query.funilMensal.findFirst({
-      where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesAtual)),
-    })
-    if (jaExiste) continue
+    if (comCardNoMes.has(cliente.id)) continue
 
     // Cards do mês anterior mais recente (pode ter mais de um — orçamentos
     // em paralelo).

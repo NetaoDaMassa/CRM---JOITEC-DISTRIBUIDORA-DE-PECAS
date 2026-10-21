@@ -25,6 +25,17 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
   const ultimoContatoGrupo = await ultimoContatoDoGrupoPorCliente(mesAtual)
   // 1 aviso por GRUPO de CNPJs vinculados (não 1 por cadastro).
   const gruposAvisados = new Set<number>()
+  // Clientes já avisados na última semana — UMA consulta, em vez de uma por
+  // card (isto roda toda hora e a busca card a card travava o servidor
+  // ~1min30s, 2026-10-21).
+  const avisadosRecente = new Set(
+    (
+      await db
+        .select({ clienteId: notifications.clienteId })
+        .from(notifications)
+        .where(and(eq(notifications.type, 'cliente_sem_contato'), gte(notifications.createdAt, seteDiasAtras)))
+    ).map((n) => n.clienteId)
+  )
 
   let criadas = 0
 
@@ -45,14 +56,7 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
     const dias = diasDesde(ultimoContato ?? funil.dataEntradaEtapa)
     if (dias === null || dias < limiteDias) continue
 
-    const jaNotificadoRecente = await db.query.notifications.findFirst({
-      where: and(
-        eq(notifications.clienteId, funil.clienteId),
-        eq(notifications.type, 'cliente_sem_contato'),
-        gte(notifications.createdAt, seteDiasAtras)
-      ),
-    })
-    if (jaNotificadoRecente) continue
+    if (avisadosRecente.has(funil.clienteId)) continue
 
     await db.insert(notifications).values({
       vendedorId: funil.vendedorId,
@@ -62,6 +66,7 @@ export async function checarClientesSemContato(): Promise<{ criadas: number }> {
       message: `${funil.cliente.razaoSocial} está há ${dias} dia(s) sem contato.`,
     })
     gruposAvisados.add(raizGrupo)
+    avisadosRecente.add(funil.clienteId)
     criadas++
   }
 

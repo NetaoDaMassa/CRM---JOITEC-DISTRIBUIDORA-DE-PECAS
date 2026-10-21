@@ -67,10 +67,14 @@ services:
       AVISO_LEADS_MIN_INTERVALO_MS: ${AVISO_LEADS_MIN_INTERVALO_MS:-3000}
       AVISO_LEADS_MAX_INTERVALO_MS: ${AVISO_LEADS_MAX_INTERVALO_MS:-5000}
       WA_SESSION_DIR: /app/wa-session
+      BACKUPS_DIR: /app/backups
     volumes:
       - db_data:/app/data
       - uploads:/app/uploads
       - wa_session:/app/wa-session
+      # Backup diário do banco — volume próprio pra sobreviver a deploy (antes
+      # ficava dentro do container e sumia a cada atualização).
+      - backups:/app/backups
     expose:
       - "3001"
     networks:
@@ -106,3 +110,4 @@ volumes:
   # Sessão do WhatsApp (Baileys) do aviso de leads novos — precisa persistir
   # entre deploys, senão o QR teria que ser pareado de novo a cada atualização.
   wa_session:
+  backups:

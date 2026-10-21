@@ -848,6 +848,13 @@
       "when": 1792508000000,
       "tag": "0120_cotacoes_sap",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "6",
+      "when": 1792592843855,
+      "tag": "0121_indices_desempenho",
+      "breakpoints": true
     }
   ]
 }

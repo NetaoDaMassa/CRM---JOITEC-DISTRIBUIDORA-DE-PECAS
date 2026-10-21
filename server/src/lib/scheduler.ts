@@ -38,6 +38,8 @@ export async function runChecks() {
 // e com rodadas concorrentes, se uma demorar mais que 1min). Só roda de
 // verdade quando as credenciais estão configuradas — sem elas, sai calado,
 // não é erro (empresa nenhuma além da Odin Tubos configura isso).
+const PABXONE360_LIGADA = false
+
 async function sincronizarPabxone360() {
   const [usuario, token] = await Promise.all([getConfigTexto('pabxone360_usuario'), getConfigTexto('pabxone360_token')])
   if (!usuario || !token) return
@@ -148,10 +150,15 @@ export function startScheduler() {
   runChecks().catch((err) => console.error('[scheduler] erro ao processar checagens iniciais:', err))
   console.log('[scheduler] reset mensal + notificações rodando a cada hora')
 
-  cron.schedule('* * * * *', () => {
-    sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações:', err))
-  })
-  sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
+  // PABXONE360 DESLIGADA a pedido do João (2026-10-21): a Odin Tubos não vai
+  // usar por enquanto, e a API vinha devolvendo 401 a cada minuto. Pra religar,
+  // volte PABXONE360_LIGADA pra true (credenciais seguem em Configurações).
+  if (PABXONE360_LIGADA) {
+    cron.schedule('* * * * *', () => {
+      sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações:', err))
+    })
+    sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
+  }
 
   iniciarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha na inicialização:', err))
 

@@ -611,6 +611,13 @@ app.get('/api/instagram/callback', async (req, res) => {
   }
 })
 
+// Erro assíncrono que ninguém tratou (ex.: rota de upload que faz `await`
+// no banco sem try/catch) — no Node 20 isso DERRUBA o processo e o CRM cai
+// pra todo mundo até o Docker reiniciar. Registra e segue (2026-10-21).
+process.on('unhandledRejection', (motivo) => {
+  console.error('[processo] erro assíncrono não tratado (servidor continua no ar):', motivo)
+})
+
 async function start() {
   try {
     await migrate(db, { migrationsFolder: path.resolve('drizzle') })
