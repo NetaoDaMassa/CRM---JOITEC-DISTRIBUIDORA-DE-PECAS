@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Folder, FolderPlus, FolderUp, FolderInput, Upload, Download, Trash2, ChevronRight, Home,
-  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock, MessageCircle,
+  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock, MessageCircle, ExternalLink, CloudUpload, HardDrive,
 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -297,6 +297,10 @@ export default function MarketingArquivos() {
   const { data: pastas, isLoading: carregandoPastas, error: erroPastas } = trpc.marketing.listarPastas.useQuery(argPasta)
   const { data: arquivos, isLoading: carregandoArquivos } = trpc.marketing.listarArquivos.useQuery(argPasta)
   const { data: trilha } = trpc.marketing.caminhoPasta.useQuery({ pastaId: pastaAtualId! }, { enabled: pastaAtualId != null })
+  // Google Drive (2026-10-21): link da pasta atual + se ela é restrita (aí
+  // só admin recebe link — a equipe não teria acesso lá).
+  const { data: drive } = trpc.marketing.linkDrive.useQuery(argPasta)
+  const podeVerNoDrive = !!drive?.conectado && (!drive.restrita || isAdmin)
   const { data: todasPastas } = trpc.marketing.listarTodasPastas.useQuery(undefined, { enabled: isAdmin && !!movendo })
   const { data: todosUsuarios } = trpc.users.list.useQuery()
   const nomePastaAtual = pastaAtualId == null ? 'Raiz' : (trilha?.[trilha.length - 1]?.nome ?? '')
@@ -502,7 +506,27 @@ export default function MarketingArquivos() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-2">
-        <h1 className="font-heading text-2xl text-dark-50 font-bold">Arquivos/Mídia</h1>
+        <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-3 flex-wrap">
+          Arquivos/Mídia
+          {drive?.url && (
+            <a
+              href={drive.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-dark-600 bg-dark-800 text-dark-100 hover:border-gold-500 hover:text-gold-400 transition-colors"
+              title={`Abrir "${nomePastaAtual}" no Google Drive`}
+            >
+              <HardDrive size={14} className="text-gold-400" />
+              Abrir no Google Drive
+              <ExternalLink size={13} />
+            </a>
+          )}
+          {drive?.conectado && !drive.url && (!drive.restrita || isAdmin) && (
+            <span className="text-xs font-normal text-dark-400 flex items-center gap-1">
+              <CloudUpload size={13} /> enviando pro Google Drive…
+            </span>
+          )}
+        </h1>
         {isAdmin && (
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-1.5 text-xs text-dark-400 cursor-pointer select-none" title="Quem não é admin só vai poder visualizar, sem botão de baixar">
@@ -626,6 +650,22 @@ export default function MarketingArquivos() {
                   </button>
                 )}
                 <div className="flex items-center gap-2">
+                  {podeVerNoDrive && arquivo.driveFileId && (
+                    <a
+                      href={`https://drive.google.com/file/d/${arquivo.driveFileId}/view`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-dark-400 hover:text-gold-400"
+                      title="Ver no Google Drive"
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  )}
+                  {isAdmin && drive?.conectado && !arquivo.driveFileId && (
+                    <span className="text-dark-500" title={arquivo.driveErro ? `Não foi pro Drive: ${arquivo.driveErro}` : 'Enviando pro Google Drive…'}>
+                      <CloudUpload size={13} className={arquivo.driveErro ? 'text-red-400' : ''} />
+                    </span>
+                  )}
                   <button
                     onClick={() => setNotificando(arquivo)}
                     className="text-dark-400 hover:text-green-400"

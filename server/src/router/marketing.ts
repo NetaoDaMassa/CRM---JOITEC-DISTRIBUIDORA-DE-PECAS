@@ -16,7 +16,9 @@ import { z } from 'zod'
 import { and, eq, isNull, inArray } from 'drizzle-orm'
 import { router, adminProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketingPastaAcessos, solicitacoesDesign } from '../db/schema.js'
+import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketingPastaAcessos, solicitacoesDesign, googleDriveConexao, googleDriveEmpresas } from '../db/schema.js'
+import { marcarArquivoPendente, marcarPastaPendente } from '../lib/googleDriveSync.js'
+import { linkPasta } from '../lib/googleDrive.js'
 
 // Sem nenhuma linha em marketingPastaAcessos pra essa pasta = aberta pra
 // todo mundo da empresa (comportamento de sempre — pastas já existentes
@@ -167,6 +169,7 @@ export const marketingRouter = router({
   renomearPasta: adminProcedure.input(z.object({ id: z.number(), nome: z.string().min(1) })).mutation(async ({ ctx, input }) => {
     await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.id)
     await db.update(marketingPastas).set({ nome: input.nome }).where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
+    await marcarPastaPendente(ctx.empresaId, input.id)
     return { ok: true }
   }),
 
@@ -208,6 +211,7 @@ export const marketingRouter = router({
         .update(marketingPastas)
         .set({ pastaPaiId: input.pastaDestinoId ?? null })
         .where(and(eq(marketingPastas.id, input.id), eq(marketingPastas.empresaId, ctx.empresaId)))
+      await marcarPastaPendente(ctx.empresaId, input.id)
       return { ok: true }
     }),
 
@@ -272,6 +276,8 @@ export const marketingRouter = router({
       if (input.userIds.length > 0) {
         await db.insert(marketingPastaAcessos).values(input.userIds.map((userId) => ({ pastaId: input.pastaId, userId })))
       }
+      // Virar/deixar de ser restrita muda a pasta de lugar no Drive.
+      await marcarPastaPendente(ctx.empresaId, input.pastaId)
       return { ok: true }
     }),
 
@@ -344,6 +350,7 @@ export const marketingRouter = router({
       .update(marketingArquivos)
       .set({ nomeOriginal: input.nome.trim() })
       .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
+    await marcarArquivoPendente(input.id)
     return { ok: true }
   }),
 
@@ -355,6 +362,7 @@ export const marketingRouter = router({
         .update(marketingArquivos)
         .set({ somenteVisualizacao: input.somenteVisualizacao })
         .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
+      await marcarArquivoPendente(input.id)
       return { ok: true }
     }),
 
@@ -368,8 +376,35 @@ export const marketingRouter = router({
         .update(marketingArquivos)
         .set({ pastaId: input.pastaDestinoId ?? null })
         .where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))
+      await marcarArquivoPendente(input.id)
       return { ok: true }
     }),
+
+  // Botão "Abrir no Google Drive" (2026-10-21): link da pasta atual no
+  // Drive. Pasta restrita (ela ou alguma acima tem lista de acesso) fica na
+  // árvore "Restritos", sem link aberto — só admin recebe o link (a equipe
+  // não teria permissão de abrir lá). null = Drive não conectado ou a
+  // pasta ainda não foi enviada.
+  linkDrive: protectedProcedure.input(z.object({ pastaId: z.number().optional() })).query(async ({ ctx, input }) => {
+    const conexao = await db.query.googleDriveConexao.findFirst({ where: eq(googleDriveConexao.id, 1), columns: { id: true } })
+    if (!conexao) return { conectado: false, url: null, restrita: false }
+    if (!input.pastaId) {
+      const empresa = await db.query.googleDriveEmpresas.findFirst({ where: eq(googleDriveEmpresas.empresaId, ctx.empresaId) })
+      return { conectado: true, url: empresa?.folderId ? linkPasta(empresa.folderId) : null, restrita: false }
+    }
+    await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, input.pastaId)
+    const todas = await db.query.marketingPastas.findMany({
+      where: eq(marketingPastas.empresaId, ctx.empresaId),
+      columns: { id: true, pastaPaiId: true, driveFolderId: true },
+    })
+    const porId = new Map(todas.map((p) => [p.id, p]))
+    const acima: number[] = []
+    for (let p = porId.get(input.pastaId); p; p = p.pastaPaiId ? porId.get(p.pastaPaiId) : undefined) acima.push(p.id)
+    const restrita = acima.length > 0 && (await db.query.marketingPastaAcessos.findFirst({ where: inArray(marketingPastaAcessos.pastaId, acima) })) != null
+    const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+    const folderId = porId.get(input.pastaId)?.driveFolderId
+    return { conectado: true, url: folderId && (!restrita || souAdmin) ? linkPasta(folderId) : null, restrita }
+  }),
 
   excluirArquivo: adminProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
     await db.delete(marketingArquivos).where(and(eq(marketingArquivos.id, input.id), eq(marketingArquivos.empresaId, ctx.empresaId)))

@@ -3215,6 +3215,10 @@ export const marketingPastas = sqliteTable(
     pastaPaiId: integer('pasta_pai_id').references((): AnySQLiteColumn => marketingPastas.id, { onDelete: 'cascade' }),
     criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Cópia no Google Drive (lib/googleDriveSync.ts, 2026-10-21): id da pasta
+    // espelho e se precisa (re)sincronizar nome/lugar. Nasce pendente.
+    driveFolderId: text('drive_folder_id'),
+    driveSyncPendente: integer('drive_sync_pendente', { mode: 'boolean' }).notNull().default(true),
   },
   (t) => ({
     empresaPastaPaiIdx: index('marketing_pastas_empresa_pasta_pai_idx').on(t.empresaId, t.pastaPaiId),
@@ -3243,9 +3247,16 @@ export const marketingArquivos = sqliteTable(
     somenteVisualizacao: integer('somente_visualizacao', { mode: 'boolean' }).notNull().default(false),
     enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Cópia no Google Drive — ver marketingPastas.driveFolderId. Tentativas
+    // limita o reenvio de um arquivo que falha sempre (ex.: sumiu do disco).
+    driveFileId: text('drive_file_id'),
+    driveSyncPendente: integer('drive_sync_pendente', { mode: 'boolean' }).notNull().default(true),
+    driveTentativas: integer('drive_tentativas').notNull().default(0),
+    driveErro: text('drive_erro'),
   },
   (t) => ({
     empresaPastaIdx: index('marketing_arquivos_empresa_pasta_idx').on(t.empresaId, t.pastaId),
+    drivePendenteIdx: index('idx_marketing_arquivos_drive_pendente').on(t.driveSyncPendente),
   })
 )
 
@@ -3274,6 +3285,30 @@ export const marketingArquivoDownloads = sqliteTable(
 // comportamento de sempre — pastas já existentes não mudam). Com 1+ linha,
 // só quem está listado (mais superAdmin, que sempre vê tudo) enxerga a
 // pasta e o que tem dentro. Ver assertPodeVerPasta em marketing.ts.
+// Google Drive de Arquivos/Mídia (2026-10-21, pedido do João): UMA conta
+// Google pro CRM inteiro (joitecpublicidade@gmail.com), escopo drive.file —
+// o app só enxerga o que ele mesmo criou. Refresh token criptografado
+// (lib/googleDrive.ts). Linha única (id = 1).
+export const googleDriveConexao = sqliteTable('google_drive_conexao', {
+  id: integer('id').primaryKey(),
+  email: text('email'),
+  refreshTokenEnc: text('refresh_token_enc').notNull(),
+  // "Arquivos CRM" (pastas das empresas, abertas pra quem tem o link) e
+  // "Arquivos CRM - Restritos" (pastas com controle de acesso, sem link).
+  raizFolderId: text('raiz_folder_id'),
+  restritosFolderId: text('restritos_folder_id'),
+  conectadoPor: integer('conectado_por').references(() => users.id, { onDelete: 'set null' }),
+  conectadoEm: text('conectado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+// Pasta de cada empresa no Drive — uma dentro de "Arquivos CRM" e outra
+// dentro de "Arquivos CRM - Restritos".
+export const googleDriveEmpresas = sqliteTable('google_drive_empresas', {
+  empresaId: integer('empresa_id').primaryKey().references(() => empresas.id, { onDelete: 'cascade' }),
+  folderId: text('folder_id'),
+  restritosFolderId: text('restritos_folder_id'),
+})
+
 export const marketingPastaAcessos = sqliteTable(
   'marketing_pasta_acessos',
   {

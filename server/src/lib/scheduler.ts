@@ -11,6 +11,7 @@ import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresas
 import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
 import { sincronizarStatusNotion } from './pollNotionStatus.js'
 import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoAbandonadoPoller.js'
+import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -161,6 +162,13 @@ export function startScheduler() {
   }
 
   iniciarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha na inicialização:', err))
+
+  // Arquivos/Mídia → Google Drive (googleDriveSync.ts). Sem conta conectada
+  // em Configurações, sai calado. A rodada tem tempo máximo e não deixa
+  // duas rodarem juntas.
+  cron.schedule('* * * * *', () => {
+    sincronizarGoogleDrive().catch((err) => console.error('[google-drive] erro ao sincronizar:', err))
+  })
 
   // Motor de SLA de Leads (novo parado/rodízio/abordagem sem contato/
   // esfriando) — mesma cadência de 5min do sistema antigo, separado do

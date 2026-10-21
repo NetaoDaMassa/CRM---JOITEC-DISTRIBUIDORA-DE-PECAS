@@ -164,6 +164,105 @@ function IntegracaoGoTo() {
   )
 }
 
+// Arquivos/Mídia → Google Drive (2026-10-21): UMA conta Google pro CRM
+// inteiro (joitecpublicidade@gmail.com). Só superAdmin conecta. Mostra o
+// andamento do envio (o servidor manda aos poucos, a cada minuto).
+function IntegracaoGoogleDrive() {
+  const utils = trpc.useUtils()
+  const { data: status, isLoading } = trpc.googleDrive.status.useQuery(undefined, { refetchInterval: 30_000 })
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const resultado = params.get('drive')
+    if (resultado === 'conectado') {
+      toast.success('Google Drive conectado! Os arquivos começam a ir pro Drive em até 1 minuto.')
+      utils.googleDrive.status.invalidate()
+      window.history.replaceState({}, '', window.location.pathname)
+    } else if (resultado === 'erro') {
+      toast.error('Não deu pra conectar o Google Drive. Tente de novo.')
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
+
+  const conectarMut = trpc.googleDrive.urlConexao.useMutation({
+    onSuccess(r) {
+      window.location.href = r.url
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+  const desconectarMut = trpc.googleDrive.desconectar.useMutation({
+    onSuccess() {
+      toast.success('Google Drive desconectado')
+      utils.googleDrive.status.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+  const reenviarMut = trpc.googleDrive.reenviarComErro.useMutation({
+    onSuccess() {
+      toast.success('Vou tentar enviar de novo no próximo minuto')
+      utils.googleDrive.status.invalidate()
+    },
+  })
+
+  if (isLoading || !status) return null
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-dark-100">Google Drive (Arquivos/Mídia)</h2>
+      <p className="text-xs text-dark-400">
+        Tudo o que entra em Arquivos/Mídia vai também pro Google Drive, na pasta "Arquivos CRM", separado por empresa —
+        a equipe abre pelo botão "Abrir no Google Drive". Pastas com acesso restrito vão pra "Arquivos CRM - Restritos",
+        que não fica aberta. Excluir no CRM não apaga no Drive.
+      </p>
+      {!status.configurado ? (
+        <p className="text-sm text-amber-400">Falta configurar as chaves do Google no servidor (GOOGLE_DRIVE_CLIENT_ID/SECRET/REDIRECT_URI).</p>
+      ) : status.conectado ? (
+        <>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-sm text-green-400">Conectado como {status.email ?? 'conta Google'}</p>
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={desconectarMut.isPending}
+              onClick={() => {
+                if (confirm('Desconectar o Google Drive? O que já está no Drive continua lá; ao conectar de novo, o CRM monta a estrutura do zero.')) desconectarMut.mutate()
+              }}
+            >
+              Desconectar
+            </Button>
+          </div>
+          <p className="text-xs text-dark-300">
+            {status.arquivosPendentes + status.pastasPendentes === 0
+              ? `Tudo em dia — ${status.arquivosEnviados} arquivo(s) no Drive.`
+              : `Enviando: faltam ${status.arquivosPendentes} arquivo(s) e ${status.pastasPendentes} pasta(s) · ${status.arquivosEnviados} já no Drive.`}
+          </p>
+          {status.comErro.length > 0 && (
+            <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-3 space-y-1">
+              <p className="text-xs font-semibold text-red-400">{status.comErro.length} arquivo(s) não foram pro Drive:</p>
+              {status.comErro.slice(0, 5).map((a) => (
+                <p key={a.id} className="text-xs text-dark-300 truncate" title={a.driveErro ?? ''}>
+                  {a.nomeOriginal} — {a.driveErro}
+                </p>
+              ))}
+              <Button size="sm" variant="secondary" loading={reenviarMut.isPending} onClick={() => reenviarMut.mutate()}>
+                Tentar de novo
+              </Button>
+            </div>
+          )}
+        </>
+      ) : (
+        <Button size="sm" loading={conectarMut.isPending} onClick={() => conectarMut.mutate()}>
+          Conectar Google Drive
+        </Button>
+      )}
+    </div>
+  )
+}
+
 // Cada card Compretec do Painel Financeiro (Ecommerce/Loja Física) puxa
 // vendas direto da API do Aton ERP em vez do funil local (não tem
 // vendedor/cliente cadastrado no CRM) — cada loja tem seu próprio Token de
@@ -437,7 +536,7 @@ export default function AdminConfiguracoes() {
   const titulosForaForm = [
     'Integração GoTo Connect',
     ...(user?.superAdmin
-      ? ['Integração Aton ERP (Compretec)', 'Integração CRM Odin Compressores', 'Integração Meta Ads (Conversions API)']
+      ? ['Integração Aton ERP (Compretec)', 'Integração CRM Odin Compressores', 'Integração Meta Ads (Conversions API)', 'Google Drive (Arquivos/Mídia)']
       : []),
     ...(ehOdinCompressores ? ['Itens de manutenção por horas'] : []),
   ]
@@ -697,6 +796,7 @@ export default function AdminConfiguracoes() {
       {user?.superAdmin && bate('Integração Aton ERP (Compretec)') && <IntegracaoAton />}
       {user?.superAdmin && bate('Integração CRM Odin Compressores') && <IntegracaoOdinCrm />}
       {user?.superAdmin && bate('Integração Meta Ads (Conversions API)') && <IntegracaoMetaAds />}
+      {user?.superAdmin && bate('Google Drive (Arquivos/Mídia)') && <IntegracaoGoogleDrive />}
 
       {ehOdinCompressores && bate('Itens de manutenção por horas') && <ItensManutencao />}
     </div>

@@ -55,6 +55,12 @@ services:
       NOTION_DATABASE_ID_DESIGN: ${NOTION_DATABASE_ID_DESIGN:-}
       NOTION_API_KEY_VIDEO: ${NOTION_API_KEY_VIDEO:-}
       NOTION_DATABASE_ID_DESIGN_VIDEO: ${NOTION_DATABASE_ID_DESIGN_VIDEO:-}
+      # Arquivos/Mídia → Google Drive (joitecpublicidade@gmail.com). Cliente
+      # OAuth "Aplicativo da Web" do projeto CRM-JOITEC no Google Cloud. Se
+      # vazio, o card em Configurações avisa e nada é enviado.
+      GOOGLE_DRIVE_CLIENT_ID: ${GOOGLE_DRIVE_CLIENT_ID:-}
+      GOOGLE_DRIVE_CLIENT_SECRET: ${GOOGLE_DRIVE_CLIENT_SECRET:-}
+      GOOGLE_DRIVE_REDIRECT_URI: ${GOOGLE_DRIVE_REDIRECT_URI:-}
       # Aviso amigável de leads novos no WhatsApp (server/src/lib/avisoLeadsNovos.ts).
       # Enquanto AVISO_LEADS_ENABLED != true, nada disso roda nem sobe sessão de WhatsApp.
       AVISO_LEADS_ENABLED: ${AVISO_LEADS_ENABLED:-false}

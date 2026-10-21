@@ -12,7 +12,7 @@ import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
-import { adminEmpresasExtras, marketingArquivos, propostaArquivos, instagramAccounts } from './db/schema.js'
+import { adminEmpresasExtras, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
@@ -26,6 +26,7 @@ import { woocommerceRouter } from './routes/woocommerce.js'
 import { instagramRouter } from './routes/instagram.js'
 import { trocarCodigoEAcharConta, validarState } from './lib/instagramApi.js'
 import { encryptSecret } from './lib/crypto.js'
+import { cifrar as cifrarDrive, trocarCodigo as trocarCodigoDrive, validarState as validarStateDrive, limparTokenCache as limparTokenDrive } from './lib/googleDrive.js'
 import { iniciarChatSocket } from './lib/chatSocket.js'
 
 config()
@@ -569,6 +570,30 @@ app.get('/api/goto/callback', async (req, res) => {
   } catch (err) {
     console.error('[goto] falha no callback de autorização:', err)
     res.redirect(`${clientUrl}/admin/configuracoes?goto=erro`)
+  }
+})
+
+// Callback do OAuth do Google Drive (Arquivos/Mídia) — mesmo motivo dos
+// callbacks acima. `state` assinado traz quem pediu; só superAdmin conecta.
+app.get('/api/google-drive/callback', async (req, res) => {
+  const clientUrl = process.env.CLIENT_URL ?? 'http://localhost:5183'
+  const voltar = (resultado: string) => res.redirect(`${clientUrl}/admin/configuracoes?drive=${resultado}`)
+  const code = req.query.code as string | undefined
+  const userId = validarStateDrive(String(req.query.state ?? ''))
+  if (!code || !userId) return voltar('erro')
+  try {
+    const quem = await db.query.users.findFirst({ where: eq(usersTabela.id, userId), columns: { superAdmin: true } })
+    if (!quem?.superAdmin) return voltar('erro')
+    const { refreshToken, email } = await trocarCodigoDrive(code)
+    const valores = { email, refreshTokenEnc: cifrarDrive(refreshToken), conectadoPor: userId, conectadoEm: new Date().toISOString().replace('T', ' ').slice(0, 19) }
+    const existente = await db.query.googleDriveConexao.findFirst({ where: eq(googleDriveConexao.id, 1) })
+    if (existente) await db.update(googleDriveConexao).set(valores).where(eq(googleDriveConexao.id, 1))
+    else await db.insert(googleDriveConexao).values({ id: 1, ...valores })
+    limparTokenDrive()
+    voltar('conectado')
+  } catch (err) {
+    console.error('[google-drive] falha no callback de autorização:', err)
+    voltar('erro')
   }
 })
 
