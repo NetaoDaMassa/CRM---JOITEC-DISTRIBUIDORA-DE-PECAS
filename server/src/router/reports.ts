@@ -3,6 +3,7 @@ import { and, between, count, desc, eq, inArray, isNotNull, isNull, or, sql, sum
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import {
+  carteiraHistorico,
   clientes,
   clienteVinculos,
   empresas,
@@ -21,6 +22,25 @@ import {
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
+
+// Desde quando o cliente está com o vendedor atual — pedido do João,
+// 2026-10-21: nos "Clientes parados", um cliente passado pro vendedor há 3
+// dias aparecia igual a um esquecido há meses. Vale a entrada mais recente
+// do histórico de carteira pra esse par cliente+vendedor; sem histórico
+// (cadastros antigos), cai na data de cadastro do cliente.
+async function naCarteiraDesde(pares: { clienteId: number; vendedorId: number | null; cadastradoEm: string }[]): Promise<Map<number, string>> {
+  const ultimaEntrada = new Map<string, string>()
+  const ids = [...new Set(pares.map((p) => p.clienteId))]
+  for (let i = 0; i < ids.length; i += 900) {
+    const linhas = await db
+      .select({ clienteId: carteiraHistorico.clienteId, vendedorId: carteiraHistorico.vendedorId, desde: sql<string>`max(${carteiraHistorico.createdAt})` })
+      .from(carteiraHistorico)
+      .where(inArray(carteiraHistorico.clienteId, ids.slice(i, i + 900)))
+      .groupBy(carteiraHistorico.clienteId, carteiraHistorico.vendedorId)
+    for (const l of linhas) ultimaEntrada.set(`${l.clienteId}-${l.vendedorId}`, l.desde)
+  }
+  return new Map(pares.map((p) => [p.clienteId, ultimaEntrada.get(`${p.clienteId}-${p.vendedorId}`) ?? p.cadastradoEm]))
+}
 
 // Vendedores que o usuário logado tem permissão de ver neste relatório —
 // admin vê todos (ou só um, se filtrar) e vendedor só vê a si mesmo.
@@ -822,7 +842,7 @@ export const reportsRouter = router({
 
       const lista = await db.query.clientes.findMany({
         where: and(...filtros),
-        columns: { id: true, razaoSocial: true, codigo: true },
+        columns: { id: true, razaoSocial: true, codigo: true, vendedorAtualId: true, createdAt: true },
         with: {
           vendedorAtual: { columns: { name: true } },
           funis: {
@@ -834,11 +854,12 @@ export const reportsRouter = router({
         },
       })
 
+      const desde = await naCarteiraDesde(lista.map((c) => ({ clienteId: c.id, vendedorId: c.vendedorAtualId, cadastradoEm: c.createdAt })))
       const itens = lista
         .map((c) => {
           const ultimoFunil = c.funis[0]
           const dias = ultimoFunil ? diasDesde(ultimoFunil.dataUltimoContato ?? ultimoFunil.dataEntradaEtapa) : null
-          return { clienteId: c.id, razaoSocial: c.razaoSocial, codigo: c.codigo, vendedorNome: c.vendedorAtual?.name ?? '—', dias }
+          return { clienteId: c.id, razaoSocial: c.razaoSocial, codigo: c.codigo, vendedorNome: c.vendedorAtual?.name ?? '—', dias, naCarteiraDesde: desde.get(c.id) ?? null }
         })
         .filter((c) => c.dias === null || c.dias >= input.minimoDias)
         .sort((a, b) => (b.dias ?? Infinity) - (a.dias ?? Infinity))
@@ -1063,6 +1084,8 @@ export const reportsRouter = router({
         .select({
           clienteId: funilMensal.clienteId,
           razaoSocial: clientes.razaoSocial,
+          cadastradoEm: clientes.createdAt,
+          vendedorId: funilMensal.vendedorId,
           vendedorNome: users.name,
           valorOrcado: funilMensal.valorOrcado,
           qtdTentativasContato: funilMensal.qtdTentativasContato,
@@ -1073,9 +1096,9 @@ export const reportsRouter = router({
         .innerJoin(users, eq(users.id, funilMensal.vendedorId))
         .where(and(...filtros))
 
-      return funis
-        .filter((f) => f.valorOrcado === null && f.qtdTentativasContato === 0)
-        .map((f) => ({ clienteId: f.clienteId, razaoSocial: f.razaoSocial, vendedorNome: f.vendedorNome, etapa: f.etapa }))
+      const intocados = funis.filter((f) => f.valorOrcado === null && f.qtdTentativasContato === 0)
+      const desde = await naCarteiraDesde(intocados)
+      return intocados.map((f) => ({ clienteId: f.clienteId, razaoSocial: f.razaoSocial, vendedorNome: f.vendedorNome, etapa: f.etapa, naCarteiraDesde: desde.get(f.clienteId) ?? null }))
     }),
 
   // "Cliente há 30/60 dias sem orçamento" — pedido do João, 2026-09-11.
@@ -1114,7 +1137,7 @@ export const reportsRouter = router({
 
       const carteira = await db.query.clientes.findMany({
         where: and(...filtrosCliente),
-        columns: { id: true, razaoSocial: true, codigo: true },
+        columns: { id: true, razaoSocial: true, codigo: true, vendedorAtualId: true, createdAt: true },
         with: { vendedorAtual: { columns: { name: true } } },
       })
       // `totalCarteira` (o denominador) vai junto na resposta — pedido do
@@ -1146,6 +1169,7 @@ export const reportsRouter = router({
         }
       }
 
+      const desde = await naCarteiraDesde(carteira.map((c) => ({ clienteId: c.id, vendedorId: c.vendedorAtualId, cadastradoEm: c.createdAt })))
       const itens = carteira
         .map((c) => {
           const ultimoOrcamentoEm = ultimoPorCliente.get(c.id) ?? null
@@ -1157,6 +1181,7 @@ export const reportsRouter = router({
             ultimoOrcamentoEm,
             // null = nunca teve orçamento nenhum registrado.
             diasSemOrcamento: diasDesde(ultimoOrcamentoEm),
+            naCarteiraDesde: desde.get(c.id) ?? null,
           }
         })
         .filter((c) => c.diasSemOrcamento === null || c.diasSemOrcamento >= input.minimoDias)
@@ -1189,7 +1214,7 @@ export const reportsRouter = router({
 
       const carteira = await db.query.clientes.findMany({
         where: and(...filtrosCliente),
-        columns: { id: true, razaoSocial: true, codigo: true, dataUltimaCompra: true },
+        columns: { id: true, razaoSocial: true, codigo: true, dataUltimaCompra: true, vendedorAtualId: true, createdAt: true },
         with: { vendedorAtual: { columns: { name: true } } },
       })
 
@@ -1213,6 +1238,7 @@ export const reportsRouter = router({
         }
       }
 
+      const desde = await naCarteiraDesde(carteira.map((c) => ({ clienteId: c.id, vendedorId: c.vendedorAtualId, cadastradoEm: c.createdAt })))
       const itens = carteira
         .map((c) => {
           const sap = ultimaSap.get(c.id) ?? null
@@ -1227,6 +1253,7 @@ export const reportsRouter = router({
             origemUltimaCompra: ultima == null ? null : ultima === sap ? ('sap' as const) : ultima === pedido ? ('pedido' as const) : ('crm' as const),
             // null = nunca comprou.
             diasSemVenda: diasDesde(ultima),
+            naCarteiraDesde: desde.get(c.id) ?? null,
           }
         })
         .filter((c) => c.diasSemVenda === null || c.diasSemVenda >= input.minimoDias)

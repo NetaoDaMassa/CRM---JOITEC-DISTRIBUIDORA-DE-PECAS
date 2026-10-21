@@ -260,6 +260,14 @@ export function CurvaAbc({ f, mostrarResumo, clientesBase }: PropsDetalhe) {
 // ── Clientes parados ────────────────────────────────────────────────────
 type Tipo = 'contato' | 'orcamento' | 'venda' | 'intocados'
 
+// Dias desde que o cliente entrou na carteira do vendedor atual (datas do
+// servidor vêm em UTC, "YYYY-MM-DD HH:MM:SS").
+function diasNaCarteira(desde: string | null): number | null {
+  if (!desde) return null
+  const ms = Date.now() - new Date(`${desde.replace(' ', 'T')}${desde.length > 10 ? 'Z' : 'T00:00:00Z'}`).getTime()
+  return Number.isNaN(ms) ? null : Math.max(0, Math.floor(ms / 86400000))
+}
+
 export function ClientesParados({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe) {
   const [params, setParams] = useSearchParams()
   const tipo = (params.get('tipo') as Tipo) || 'contato'
@@ -271,7 +279,7 @@ export function ClientesParados({ f, simples, mostrarResumo, clientesBase }: Pro
   const { data: semVenda, isLoading: c3 } = trpc.reports.clientesSemVendaDias.useQuery({ ...f.filtroAtual, minimoDias: dias }, { enabled: tipo === 'venda' })
   const { data: intocados, isLoading: c4 } = trpc.reports.clientesSemOrcamentoEContato.useQuery(f.filtroAtual, { enabled: tipo === 'intocados' })
 
-  type Linha = { clienteId: number; razaoSocial: string; codigo?: string | null; vendedorNome: string; dias: number | null; ultima: string | null; extra?: string }
+  type Linha = { clienteId: number; razaoSocial: string; codigo?: string | null; vendedorNome: string; dias: number | null; ultima: string | null; extra?: string; naCarteiraDesde: string | null }
   const { linhas, total, carregando } = useMemo((): { linhas: Linha[]; total: number | undefined; carregando: boolean } => {
     if (tipo === 'contato')
       return { linhas: (semContato?.itens ?? []).map((c) => ({ ...c, ultima: null })), total: semContato?.totalCarteira, carregando: c1 }
@@ -293,6 +301,22 @@ export function ClientesParados({ f, simples, mostrarResumo, clientesBase }: Pro
     { id: 'cliente', rotulo: 'Cliente', valor: (l) => l.razaoSocial, render: (l) => <span className="font-medium text-dark-50">{l.razaoSocial}</span> },
     { id: 'codigo', rotulo: 'Código', valor: (l) => l.codigo ?? null, oculta: true },
     ...(simples ? [] : [{ id: 'vendedor', rotulo: 'Vendedor', valor: (l: Linha) => l.vendedorNome }]),
+    {
+      id: 'naCarteira',
+      rotulo: 'Na carteira há',
+      valor: (l: Linha) => diasNaCarteira(l.naCarteiraDesde),
+      formato: 'numero' as const,
+      render: (l: Linha) => {
+        const d = diasNaCarteira(l.naCarteiraDesde)
+        if (d === null) return '—'
+        return (
+          <span className="inline-flex items-center gap-1.5 justify-end" title={`Com esse vendedor desde ${formatarDataCurta(l.naCarteiraDesde)}`}>
+            {d <= 30 && <Etiqueta cor="#3a86d6">Chegou agora</Etiqueta>}
+            {numero(d)} {d === 1 ? 'dia' : 'dias'}
+          </span>
+        )
+      },
+    },
     ...(tipo === 'intocados'
       ? [{ id: 'etapa', rotulo: 'Etapa no Kanban', valor: (l: Linha) => l.extra ?? null }]
       : [

@@ -162,7 +162,8 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'Sem orçamento há X dias', texto: 'Clientes que não receberam nenhum orçamento nos últimos X dias. Vale o mais recente entre o card da Carteira com valor orçado e a última cotação do SAP (o SAP cobre abr–jul/2026, Joitec e Odin Tubos).' },
     { termo: 'Sem comprar há X dias', texto: 'Clientes sem nenhuma compra nos últimos X dias (CRM, Pedidos ou SAP). A etiqueta mostra de onde veio a última compra.' },
     { termo: 'Nunca / Com histórico', texto: '"Nunca contatado / Nunca orçou / Nunca comprou" = o cliente nunca teve aquilo. "Com histórico, mas parados" = já teve, mas faz mais de X dias.' },
-    { termo: 'Sem contato e sem orçamento neste mês', texto: 'Clientes que ninguém tocou neste mês: nem contato, nem orçamento.' },
+    { termo: 'Sem contato e sem orçamento neste mês', texto: 'Clientes que ninguém tocou neste mês: nenhum contato (nem ligação, nem WhatsApp, nem e-mail, nem visita) e nenhum orçamento no card do mês. Ligação automática do PABX que não foi atendida ou durou muito pouco fica no histórico do card, mas não conta como contato. WhatsApp automático só conta depois que o vendedor confirma.' },
+    { termo: 'Na carteira há', texto: 'Há quantos dias o cliente está com o vendedor atual (desde que foi passado pra ele). Serve pra não confundir: "nunca contatado" com 3 dias de carteira é cliente que acabou de chegar; com 120 dias é cliente esquecido. "Chegou agora" = até 30 dias. Cadastros antigos sem registro de transferência usam a data de cadastro do cliente.' },
   ],
   perdas: [
     { termo: 'Pedidos perdidos', texto: 'Cards que foram pra etapa "Perdido" dentro do período.' },
