@@ -526,6 +526,7 @@ export default function FunilBoard({
     { vendedorId: coberturaVendedorId, todos: coberturaTodos, mesReferencia: coberturaMes },
     { enabled: !!coberturaMes, refetchInterval: 10_000 },
   )
+  const [explicacaoCoberturaAberta, setExplicacaoCoberturaAberta] = useState(false)
   const percentualContatados = cobertura?.percentual ?? 0
   const corCobertura = percentualContatados >= 70 ? 'bg-green-500' : percentualContatados >= 40 ? 'bg-amber-500' : 'bg-red-500'
 
@@ -534,9 +535,40 @@ export default function FunilBoard({
       {!!coberturaMes && !!cobertura && cobertura.total > 0 && (
         <div className="mb-4 bg-dark-800 border border-dark-600 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-dark-100">📞 Cobertura de contatos este mês</h3>
+            <h3 className="text-sm font-semibold text-dark-100">
+              📞 Cobertura de contatos este mês
+              <button
+                type="button"
+                onClick={() => setExplicacaoCoberturaAberta((v) => !v)}
+                className="ml-2 text-xs font-normal text-gold-500 hover:underline"
+              >
+                {explicacaoCoberturaAberta ? 'fechar explicação' : 'ⓘ como é feita essa conta?'}
+              </button>
+            </h3>
             <span className="text-sm font-bold text-dark-50">{percentualContatados}%</span>
           </div>
+          {/* Regras em lib/coberturaContatos.ts (server) — manter os dois iguais. */}
+          {explicacaoCoberturaAberta && (
+            <ul className="mb-3 space-y-1.5 rounded-xl bg-dark-900 border border-dark-700 p-3 text-xs text-dark-300 leading-relaxed list-disc pl-7">
+              <li>
+                A conta é em cima da <b className="text-dark-100">carteira inteira</b>, não só da coluna Novo: cada cliente seu precisa de
+                pelo menos <b className="text-dark-100">1 contato registrado neste mês</b> (ligação, WhatsApp, e-mail ou visita).
+              </li>
+              <li>
+                <b className="text-dark-100">Por isso "sem contato" pode ser maior que o Novo:</b> card em Negociação que veio do mês
+                passado (ou em Perdido, Fechado, Outras Linhas) também precisa de um contato novo este mês pra contar.
+              </li>
+              <li>
+                <b className="text-dark-100">Clique no botão do WhatsApp só conta depois de confirmar</b> — abra o card e clique em
+                "Confirmar" no contato.
+              </li>
+              <li>
+                <b className="text-dark-100">Não entram na conta:</b> clientes parados em Consumidor Final (repassado), Consumidor Final da
+                loja ou Faturamento que não tiveram contato no mês. Se tiverem contato, contam normal.
+              </li>
+              <li>CNPJs vinculados da sua carteira contam como 1 cliente só — contato em um vale pro outro.</li>
+            </ul>
+          )}
           <div className="h-2 rounded-full bg-dark-700 overflow-hidden">
             <div className={`h-full rounded-full ${corCobertura} transition-all`} style={{ width: `${percentualContatados}%` }} />
           </div>
