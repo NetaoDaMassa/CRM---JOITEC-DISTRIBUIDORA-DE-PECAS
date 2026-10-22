@@ -15,7 +15,7 @@ import { registrarAuditoria } from './auditoria.js'
 //     lote LIGADO (desligar o lote errado e importar de novo funciona).
 
 // Nome da filial no SAP de cada empresa do CRM (slug).
-const FILIAL_POR_SLUG: Record<string, string> = {
+export const FILIAL_POR_SLUG: Record<string, string> = {
   joitec: 'joitec distribuidora',
   'odin-tubos': 'odin tubos',
   'odin-compressores': 'odin compressores',

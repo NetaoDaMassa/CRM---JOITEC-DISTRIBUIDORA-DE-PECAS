@@ -3859,9 +3859,9 @@ export const sapImportacoes = sqliteTable('sap_importacoes', {
   valorTotal: real('valor_total').notNull().default(0),
   dataInicio: text('data_inicio'),
   dataFim: text('data_fim'),
-  // 'vendas' (sap_vendas_historico) ou 'cotacoes' (sap_cotacoes_historico) —
-  // migração 0120.
-  tipo: text('tipo', { enum: ['vendas', 'cotacoes'] }).notNull().default('vendas'),
+  // 'vendas' (sap_vendas_historico), 'cotacoes' (sap_cotacoes_historico,
+  // migração 0120) ou 'itens' (sap_itens_historico, migração 0123).
+  tipo: text('tipo', { enum: ['vendas', 'cotacoes', 'itens'] }).notNull().default('vendas'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -3916,5 +3916,36 @@ export const sapCotacoesHistorico = sqliteTable(
     clienteIdx: index('idx_sap_cotacoes_historico_cliente').on(t.clienteId, t.dataCotacao),
     importacaoIdx: index('idx_sap_cotacoes_historico_importacao').on(t.importacaoId),
     empresaNumeroIdx: index('idx_sap_cotacoes_historico_numero').on(t.empresaId, t.numeroCotacao),
+  })
+)
+
+// Itens das notas de VENDA do SAP (pedido do João, 2026-10-21) — o detalhe
+// do que foi vendido, linha por linha. São as MESMAS vendas que já entram
+// pelo sap_vendas_historico (abr–jul) e pelo CRM (ago em diante): aqui só
+// mora o "o quê", NUNCA soma no faturamento. Usado em itens mais
+// comprados, mix por vendedor e na ficha do cliente (ver lib/sapItens.ts).
+export const sapItensHistorico = sqliteTable(
+  'sap_itens_historico',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    importacaoId: integer('importacao_id').notNull().references(() => sapImportacoes.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    codigoCliente: text('codigo_cliente'),
+    numeroNota: text('numero_nota').notNull(),
+    // YYYY-MM-DD
+    dataNota: text('data_nota').notNull(),
+    codigoItem: text('codigo_item'),
+    descricao: text('descricao').notNull(),
+    quantidade: real('quantidade'),
+    valorUnitario: real('valor_unitario'),
+    valorTotal: real('valor_total'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('idx_sap_itens_historico_cliente').on(t.clienteId, t.dataNota),
+    empresaDataIdx: index('idx_sap_itens_historico_empresa_data').on(t.empresaId, t.dataNota),
+    importacaoIdx: index('idx_sap_itens_historico_importacao').on(t.importacaoId),
+    empresaNotaIdx: index('idx_sap_itens_historico_nota').on(t.empresaId, t.numeroNota),
   })
 )

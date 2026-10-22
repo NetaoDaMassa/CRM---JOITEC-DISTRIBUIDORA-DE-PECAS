@@ -143,6 +143,7 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'Abas "Feitos no período" / "Em aberto hoje"', texto: '"Feitos no período" lista cada orçamento feito nas datas do filtro (cards que entraram em Negociação + cotações do SAP), com a situação de hoje e a origem. "Em aberto hoje" é a foto do momento: o que está em Negociação agora, sem depender do filtro de data.' },
   ],
   produtos: [
+    { termo: 'De onde vêm os itens', texto: 'Dos itens das notas de venda do SAP (Joitec e Odin Tubos, desde abril/2026) e, fora do período que o SAP cobre, dos itens lançados nos pedidos do CRM. Na mesma venda nunca soma os dois. Os valores aqui são só dos itens: não mexem no faturamento dos outros relatórios.' },
     { termo: 'Quantidade', texto: 'Total de unidades vendidas daquele item, somando os itens dos pedidos fechados no período.' },
     { termo: 'Valor / Preço médio', texto: 'Valor = soma vendida do item. Preço médio = valor ÷ quantidade.' },
     { termo: 'Clientes que compraram', texto: 'Quantos clientes diferentes daquele vendedor compraram no período.' },

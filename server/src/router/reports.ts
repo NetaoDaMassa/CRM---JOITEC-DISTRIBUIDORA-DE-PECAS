@@ -18,10 +18,12 @@ import {
   sapImportacoes,
   sapVendasHistorico,
   sapCotacoesHistorico,
+  sapItensHistorico,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
+import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
 
 // Desde quando o cliente está com o vendedor atual — pedido do João,
 // 2026-10-21: nos "Clientes parados", um cliente passado pro vendedor há 3
@@ -866,8 +868,11 @@ export const reportsRouter = router({
       return { totalCarteira: lista.length, itens }
     }),
 
+  // Itens do CRM (itens_pedido) + itens das notas do SAP (sap_itens_historico)
+  // — sem contar a mesma venda 2x, ver lib/sapItens.ts.
   itensMaisComprados: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
+    const cobertura = await coberturaItensSap(ctx.empresaId)
     const filtros = [
       between(itensPedido.createdAt, inicio, fim),
       isNull(itensPedido.deletedAt),
@@ -878,18 +883,47 @@ export const reportsRouter = router({
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
 
-    return db
+    const crm = await db
       .select({
         descricao: itensPedido.descricao,
-        quantidadeTotal: sum(itensPedido.quantidade).mapWith(Number),
-        valorTotal: sum(itensPedido.valorTotal).mapWith(Number),
+        criadoEm: itensPedido.createdAt,
+        quantidade: itensPedido.quantidade,
+        valorTotal: itensPedido.valorTotal,
       })
       .from(itensPedido)
       .innerJoin(clientes, eq(clientes.id, itensPedido.clienteId))
       .where(and(...filtros))
-      .groupBy(itensPedido.descricao)
-      .orderBy(desc(sql`sum(${itensPedido.quantidade})`))
-      .limit(50)
+
+    const filtrosSap = [
+      eq(sapItensHistorico.empresaId, ctx.empresaId),
+      eq(sapImportacoes.ativo, true),
+      between(sapItensHistorico.dataNota, input.dataInicio, input.dataFim),
+      isNull(clientes.deletedAt),
+    ]
+    if (filtroVend) filtrosSap.push(filtroVend)
+    if (filtroReg) filtrosSap.push(filtroReg)
+    const sap = await db
+      .select({
+        descricao: sapItensHistorico.descricao,
+        quantidadeTotal: sum(sapItensHistorico.quantidade).mapWith(Number),
+        valorTotal: sum(sapItensHistorico.valorTotal).mapWith(Number),
+      })
+      .from(sapItensHistorico)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+      .innerJoin(clientes, eq(clientes.id, sapItensHistorico.clienteId))
+      .where(and(...filtrosSap))
+      .groupBy(sapItensHistorico.descricao)
+
+    const grupos = new Map<string, { descricao: string; quantidadeTotal: number; valorTotal: number }>()
+    const somar = (descricao: string, qtd: number, valor: number) => {
+      const g = grupos.get(chaveItem(descricao)) ?? { descricao: descricao.trim(), quantidadeTotal: 0, valorTotal: 0 }
+      g.quantidadeTotal += qtd
+      g.valorTotal += valor
+      grupos.set(chaveItem(descricao), g)
+    }
+    for (const i of crm) if (!dentroDaCobertura(cobertura, i.criadoEm)) somar(i.descricao, i.quantidade ?? 0, i.valorTotal ?? 0)
+    for (const i of sap) somar(i.descricao, i.quantidadeTotal ?? 0, i.valorTotal ?? 0)
+    return [...grupos.values()].sort((a, b) => b.quantidadeTotal - a.quantidadeTotal).slice(0, 50)
   }),
 
   // "Vendedor com 100 clientes, qual a quantidade média de itens que ele
@@ -897,8 +931,12 @@ export const reportsRouter = router({
   // cliente que efetivamente COMPROU no período (não a carteira inteira de
   // 100 — dividir pela carteira toda afundaria o número pra quase zero e
   // não diria nada sobre o tamanho real da cesta de compra).
+  // Vendas do CRM + notas do SAP com itens; no período coberto pelo SAP
+  // valem só as notas (mesma venda, ver lib/sapItens.ts) — e aí o cliente
+  // conta pro vendedor que tem ele na carteira hoje, como no resto do SAP.
   mixProdutosPorVendedor: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
+    const cobertura = await coberturaItensSap(ctx.empresaId)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
     // Filtra e agrupa por funil_mensal.vendedorId, não vendas.vendedorId —
     // esse último é gravado uma vez no fechamento e fica desatualizado se o
@@ -908,13 +946,14 @@ export const reportsRouter = router({
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
 
-    const linhas = await db
+    const crm = await db
       .select({
         vendedorId: funilMensal.vendedorId,
         nome: users.name,
-        clientesComVenda: sql<number>`count(distinct ${vendasTable.clienteId})`.mapWith(Number),
-        totalLinhasItem: sql<number>`count(${itensPedido.id})`.mapWith(Number),
-        totalQuantidade: sql<number>`coalesce(sum(${itensPedido.quantidade}), 0)`.mapWith(Number),
+        clienteId: vendasTable.clienteId,
+        dataFechamento: vendasTable.dataFechamento,
+        linhas: sql<number>`count(${itensPedido.id})`.mapWith(Number),
+        quantidade: sql<number>`coalesce(sum(${itensPedido.quantidade}), 0)`.mapWith(Number),
       })
       .from(vendasTable)
       .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
@@ -922,13 +961,53 @@ export const reportsRouter = router({
       .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
       .leftJoin(itensPedido, and(eq(itensPedido.vendaId, vendasTable.id), isNull(itensPedido.deletedAt)))
       .where(and(...filtros))
-      .groupBy(funilMensal.vendedorId)
+      .groupBy(vendasTable.id)
 
-    return linhas.map((l) => ({
-      ...l,
-      mediaItensPorCliente: l.clientesComVenda > 0 ? Math.round((l.totalLinhasItem / l.clientesComVenda) * 10) / 10 : 0,
-      mediaQuantidadePorCliente: l.clientesComVenda > 0 ? Math.round((l.totalQuantidade / l.clientesComVenda) * 10) / 10 : 0,
-    }))
+    const filtrosSap = [
+      eq(sapItensHistorico.empresaId, ctx.empresaId),
+      eq(sapImportacoes.ativo, true),
+      between(sapItensHistorico.dataNota, input.dataInicio, input.dataFim),
+      isNull(clientes.deletedAt),
+      isNotNull(clientes.vendedorAtualId),
+    ]
+    const filtroVendSap = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+    if (filtroVendSap) filtrosSap.push(filtroVendSap)
+    if (filtroReg) filtrosSap.push(filtroReg)
+    const sap = await db
+      .select({
+        vendedorId: clientes.vendedorAtualId,
+        nome: users.name,
+        clienteId: sapItensHistorico.clienteId,
+        linhas: sql<number>`count(*)`.mapWith(Number),
+        quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
+      })
+      .from(sapItensHistorico)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+      .innerJoin(clientes, eq(clientes.id, sapItensHistorico.clienteId))
+      .innerJoin(users, eq(users.id, clientes.vendedorAtualId))
+      .where(and(...filtrosSap))
+      .groupBy(clientes.vendedorAtualId, sapItensHistorico.clienteId)
+
+    const porVendedor = new Map<number, { vendedorId: number; nome: string; clientes: Set<number>; totalLinhasItem: number; totalQuantidade: number }>()
+    const somar = (vendedorId: number, nome: string, clienteId: number, linhas: number, quantidade: number) => {
+      const v = porVendedor.get(vendedorId) ?? { vendedorId, nome, clientes: new Set<number>(), totalLinhasItem: 0, totalQuantidade: 0 }
+      v.clientes.add(clienteId)
+      v.totalLinhasItem += linhas
+      v.totalQuantidade += quantidade
+      porVendedor.set(vendedorId, v)
+    }
+    for (const l of crm) if (!dentroDaCobertura(cobertura, l.dataFechamento)) somar(l.vendedorId, l.nome, l.clienteId, l.linhas, l.quantidade)
+    for (const l of sap) if (l.vendedorId) somar(l.vendedorId, l.nome, l.clienteId, l.linhas, l.quantidade)
+
+    return [...porVendedor.values()].map(({ clientes: cli, ...l }) => {
+      const clientesComVenda = cli.size
+      return {
+        ...l,
+        clientesComVenda,
+        mediaItensPorCliente: clientesComVenda > 0 ? Math.round((l.totalLinhasItem / clientesComVenda) * 10) / 10 : 0,
+        mediaQuantidadePorCliente: clientesComVenda > 0 ? Math.round((l.totalQuantidade / clientesComVenda) * 10) / 10 : 0,
+      }
+    })
   }),
 
   // Orçamentos/propostas em aberto — negócios em "negociação" no mês

@@ -7,7 +7,7 @@
 //   ... --de 2026-04-01 --ate 2026-07-31                                  → só esse período
 //   node dist/scripts/importarSap.js --lotes <slug-empresa>                → lista lotes
 //   node dist/scripts/importarSap.js --desligar <id> | --religar <id> | --excluir <id>
-//   (vale também pros lotes de cotações — ver importarCotacoesSap.ts)
+//   (vale também pros lotes de cotações e de itens — ver importarCotacoesSap.ts / importarItensSap.ts)
 //
 // Mesma lógica da tela Histórico SAP (lib/importSapHistorico.ts).
 import { readFileSync } from 'node:fs'
@@ -34,7 +34,7 @@ async function main() {
     const lotes = await db.query.sapImportacoes.findMany({ where: eq(sapImportacoes.empresaId, e.id) })
     console.log(`Lotes de ${e.nome}:`)
     for (const l of lotes) {
-      console.log(`  #${l.id} ${l.ativo ? 'LIGADO   ' : 'DESLIGADO'} ${l.tipo === 'cotacoes' ? 'COTAÇÕES' : 'VENDAS  '} ${l.nomeArquivo} · ${l.importadas} ${l.tipo === 'cotacoes' ? 'cotações' : 'pedidos'} · ${brl(l.valorTotal)} · ${dataBr(l.dataInicio)} a ${dataBr(l.dataFim)} · ${l.createdAt}`)
+      console.log(`  #${l.id} ${l.ativo ? 'LIGADO   ' : 'DESLIGADO'} ${l.tipo === 'cotacoes' ? 'COTAÇÕES' : l.tipo === 'itens' ? 'ITENS   ' : 'VENDAS  '} ${l.nomeArquivo} · ${l.importadas} ${l.tipo === 'cotacoes' ? 'cotações' : l.tipo === 'itens' ? 'linhas de item' : 'pedidos'} · ${brl(l.valorTotal)} · ${dataBr(l.dataInicio)} a ${dataBr(l.dataFim)} · ${l.createdAt}`)
     }
     if (!lotes.length) console.log('  (nenhum)')
     return

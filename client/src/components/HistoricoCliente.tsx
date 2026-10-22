@@ -96,7 +96,7 @@ export function HistoricoClienteView({ data, isLoading }: { data: HistoricoData 
       {data.itensMaisComprados.length > 0 && (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <h2 className="text-sm font-semibold text-dark-100 mb-3">🏆 Itens que mais compra</h2>
-          <div className="divide-y divide-dark-700">
+          <div className="divide-y divide-dark-700 max-h-96 overflow-y-auto">
             {data.itensMaisComprados.map((i, idx) => (
               <div key={i.descricao} className="flex items-center justify-between py-2 text-sm gap-3">
                 <span className="text-dark-200 flex items-center gap-2 min-w-0">
@@ -116,11 +116,17 @@ export function HistoricoClienteView({ data, isLoading }: { data: HistoricoData 
       {data.itens.length > 0 && (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <h2 className="text-sm font-semibold text-dark-100 mb-3">📦 Histórico de compras (detalhado)</h2>
-          <div className="divide-y divide-dark-700">
+          <div className="divide-y divide-dark-700 max-h-96 overflow-y-auto">
             {data.itens.map((i) => (
-              <div key={i.id} className="flex items-center justify-between py-2 text-sm">
-                <span className="text-dark-200">{i.descricao}</span>
-                <span className="text-xs text-dark-400">
+              <div key={i.id} className="flex items-center justify-between py-2 text-sm gap-3">
+                <span className="min-w-0">
+                  <span className="text-dark-200 block truncate">{i.descricao}</span>
+                  <span className="text-[11px] text-dark-500">
+                    {i.createdAt.slice(0, 10).split('-').reverse().join('/')}
+                    {i.origem === 'sap' ? ` · SAP · NF ${i.numeroNota}` : ''}
+                  </span>
+                </span>
+                <span className="text-xs text-dark-400 shrink-0">
                   {i.quantidade != null ? `${i.quantidade} un. · ` : ''}
                   {formatarMoedaHist(i.valorTotal)}
                 </span>

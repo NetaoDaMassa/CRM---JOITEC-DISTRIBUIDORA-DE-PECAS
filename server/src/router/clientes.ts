@@ -2,7 +2,8 @@ import { z } from 'zod'
 import { and, asc, count, desc, eq, inArray, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas, sapImportacoes, sapItensHistorico } from '../db/schema.js'
+import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
@@ -41,10 +42,36 @@ export async function buildHistoricoCliente(clienteId: number) {
       })
     : []
 
-  const itens = await db.query.itensPedido.findMany({
+  const itensCrm = await db.query.itensPedido.findMany({
     where: and(eq(itensPedido.clienteId, clienteId), isNull(itensPedido.deletedAt)),
     orderBy: (i, { desc }) => [desc(i.createdAt)],
   })
+  // Itens das notas de venda do SAP entram junto; no período que o SAP
+  // cobre, o item lançado no CRM sai (é a mesma venda — ver lib/sapItens.ts).
+  const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { empresaId: true } })
+  const cobertura = cliente ? await coberturaItensSap(cliente.empresaId) : null
+  const itensSap = cobertura
+    ? await db
+        .select({
+          id: sapItensHistorico.id,
+          numeroNota: sapItensHistorico.numeroNota,
+          dataNota: sapItensHistorico.dataNota,
+          descricao: sapItensHistorico.descricao,
+          quantidade: sapItensHistorico.quantidade,
+          valorUnitario: sapItensHistorico.valorUnitario,
+          valorTotal: sapItensHistorico.valorTotal,
+        })
+        .from(sapItensHistorico)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+        .where(and(eq(sapItensHistorico.clienteId, clienteId), eq(sapImportacoes.ativo, true)))
+    : []
+  const itens = [
+    ...itensCrm
+      .filter((i) => !dentroDaCobertura(cobertura, i.createdAt))
+      .map((i) => ({ ...i, pedido: `crm-${i.vendaId}`, origem: 'crm' as const, numeroNota: null as string | null })),
+    // id negativo: não colide com o id do itens_pedido na lista da tela.
+    ...itensSap.map((i) => ({ ...i, id: -i.id, createdAt: i.dataNota, pedido: `sap-${i.numeroNota}`, origem: 'sap' as const })),
+  ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0))
 
   return {
     funis: funis.map((f) => ({
@@ -80,6 +107,8 @@ export async function buildHistoricoCliente(clienteId: number) {
       valorUnitario: i.valorUnitario,
       valorTotal: i.valorTotal,
       createdAt: i.createdAt,
+      origem: i.origem,
+      numeroNota: i.numeroNota,
     })),
     // "Qual item ele mais compra" — agrupa por descrição normalizada
     // (maiúsculas + espaços colapsados, pra "Filtro de óleo" e "FILTRO DE
@@ -92,11 +121,17 @@ export async function buildHistoricoCliente(clienteId: number) {
         string,
         { descricao: string; qtdPedidos: number; quantidadeTotal: number; valorTotal: number; ultimaCompra: string }
       >()
+      // Mesmo item 2x na mesma nota/pedido conta 1 pedido só.
+      const pedidosPorItem = new Map<string, Set<string>>()
       for (const i of itens) {
-        const chave = i.descricao.trim().toUpperCase().replace(/\s+/g, ' ')
+        const chave = chaveItem(i.descricao)
+        const pedidos = pedidosPorItem.get(chave) ?? new Set<string>()
+        const pedidoNovo = !pedidos.has(i.pedido)
+        pedidos.add(i.pedido)
+        pedidosPorItem.set(chave, pedidos)
         const atual = grupos.get(chave)
         if (atual) {
-          atual.qtdPedidos += 1
+          if (pedidoNovo) atual.qtdPedidos += 1
           atual.quantidadeTotal += i.quantidade ?? 0
           atual.valorTotal += i.valorTotal ?? 0
           if (i.createdAt > atual.ultimaCompra) atual.ultimaCompra = i.createdAt
