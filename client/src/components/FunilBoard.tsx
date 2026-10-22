@@ -46,6 +46,15 @@ function corFaixaUrgencia(dias: number | null): string {
   return '#22a861'
 }
 
+// Explicação da faixa ao passar o mouse no card (mesmas faixas acima e da
+// Legenda).
+function textoFaixaUrgencia(dias: number | null): string {
+  if (dias === null) return 'Faixa cinza: nunca teve contato registrado'
+  if (dias >= 7) return `Faixa vermelha: ${dias} dias sem contato (7 ou mais) — retomar`
+  if (dias >= 3) return `Faixa amarela: ${dias} dias sem contato (3 a 6)`
+  return 'Faixa verde: contato há menos de 3 dias'
+}
+
 const ETAPAS = [
   { value: 'novo', label: 'Novo' },
   { value: 'abordagem', label: 'Abordagem' },
@@ -577,7 +586,7 @@ export default function FunilBoard({
           </button>
         )}
         <div className="ml-auto">
-          <LegendaIcones />
+          <LegendaIcones faixaCard />
         </div>
       </div>
 
@@ -638,6 +647,7 @@ export default function FunilBoard({
                       onClick={() => setCardAbertoId(card.funilMensalId)}
                       className="bg-dark-800 border border-dark-600 border-l-4 rounded-xl p-3 cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 transition-all"
                       style={{ borderLeftColor: corFaixaUrgencia(card.diasSemContato) }}
+                      title={textoFaixaUrgencia(card.diasSemContato)}
                     >
                       <div className="flex items-start gap-2 mb-1">
                         <AvatarIniciais nome={card.razaoSocial} tamanho={30} />
