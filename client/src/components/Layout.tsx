@@ -103,7 +103,7 @@ export default function Layout() {
           <div className="flex items-center gap-3 min-w-0">
             {empresa && (
               <span className="hidden lg:flex items-center gap-2 text-xs font-semibold text-dark-300 truncate">
-                <span className="w-2 h-2 rounded-full bg-gold-400 shadow-[0_0_8px] shadow-gold-400" />
+                <span className="w-2 h-2 rounded-full bg-gold-400 ring-4 ring-gold-400/15" />
                 {empresa.nome}
               </span>
             )}

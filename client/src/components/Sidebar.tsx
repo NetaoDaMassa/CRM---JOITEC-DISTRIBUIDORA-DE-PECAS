@@ -600,7 +600,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           sozinho a partir do `md` porque o Sidebar nunca fica "aberto" lá. */}
       {open && <div className="fixed inset-0 z-40 bg-black/60 md:hidden" onClick={onClose} />}
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-dark-900 border-r border-dark-700 flex flex-col h-screen transform transition-[transform,width] duration-300 ease-out md:sticky md:top-0 md:translate-x-0 md:z-auto ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-dark-900 border-r border-dark-700 flex flex-col h-screen transform transition-[transform,width] duration-300 ease-out md:sticky md:top-0 md:translate-x-0 md:z-40 ${
           recolhido ? 'md:w-20' : ''
         } ${open ? 'translate-x-0' : '-translate-x-full'}`}
       >
