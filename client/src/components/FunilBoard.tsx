@@ -476,6 +476,8 @@ export default function FunilBoard({
         return b.contatos.length - a.contatos.length
       case 'mais_venda':
         return b.valorFechadoTotal - a.valorFechadoTotal
+      case 'mais_orcado':
+        return (b.valorOrcado ?? 0) - (a.valorOrcado ?? 0)
       default:
         return 0
     }
@@ -583,6 +585,7 @@ export default function FunilBoard({
               { value: 'mais_dias_sem_contato', label: 'Mais dias sem contato' },
               { value: 'mais_contatos', label: 'Mais contatos' },
               { value: 'mais_venda', label: 'Maior valor fechado' },
+              { value: 'mais_orcado', label: 'Maior valor orçado' },
             ]}
           />
         </div>
@@ -640,8 +643,23 @@ export default function FunilBoard({
                 <span className="text-sm font-semibold text-dark-100">{etapa.label}</span>
                 <span className="text-[11px] font-semibold text-dark-300 bg-dark-700 rounded-full px-2 py-0.5">{colCards.length}</span>
                 {(() => {
-                  const total = colCards.reduce((soma, c) => soma + (c.valorFechadoTotal > 0 ? c.valorFechadoTotal : (c.valorOrcado ?? 0)), 0)
-                  return total > 0 ? <span className="ml-auto text-[11px] font-medium text-dark-400">{formatarMoeda(total)}</span> : null
+                  // Fechado/Faturamento: soma das vendas registradas nos cards
+                  // da coluna. Outras colunas: soma do valor orçado. Nunca
+                  // mistura os dois (antes um card fechado sem venda somava o
+                  // orçado, e um card com venda fora do Fechado somava a venda).
+                  const ehVenda = etapa.value === 'fechado' || etapa.value === 'faturamento'
+                  const comValor = colCards.filter((c) => (ehVenda ? c.valorFechadoTotal > 0 : c.valorOrcado != null && c.valorOrcado > 0))
+                  const total = comValor.reduce((soma, c) => soma + (ehVenda ? c.valorFechadoTotal : (c.valorOrcado ?? 0)), 0)
+                  if (total <= 0) return null
+                  const dica = ehVenda
+                    ? `Soma das vendas registradas nos ${comValor.length} card(s) desta coluna (só os cards deste mês e deste filtro — pode ser diferente do faturamento dos Relatórios, que conta pela data da venda)`
+                    : `Soma do valor orçado de ${comValor.length} card(s) desta coluna — procure os cards com a etiqueta "Orçado"`
+                  return (
+                    <span className="ml-auto text-[11px] font-medium text-dark-400 cursor-help" title={dica}>
+                      {ehVenda ? '' : 'orçado '}
+                      {formatarMoeda(total)}
+                    </span>
+                  )
                 })()}
               </div>
               {etapa.value === 'fechado' && permitirVendaRapida && (
