@@ -5,15 +5,48 @@
 //  - Universo (denominador): a CARTEIRA INTEIRA do vendedor — clientes
 //    ativos, não-prospect. Não é só o mês, não é só a coluna "Novo".
 //  - "Contatado": o cliente teve QUALQUER contato (ligação, WhatsApp,
-//    e-mail ou visita) registrado no card do mês corrente.
+//    e-mail ou visita) registrado no card do mês corrente. Clique no botão
+//    do WhatsApp / ligação automática só conta depois que o vendedor
+//    confirma (ganha `resultado`) — antes ficava contando sozinho (achado
+//    do João, 2026-10-22: 236 clientes "contatados" só por clique).
+//  - Cliente PARADO em etapa terminal — Consumidor Final (repassado),
+//    Consumidor Final da loja ou Faturamento — sem contato no mês sai da
+//    conta. O reset mensal não cria card novo pra eles, então sumiam do
+//    Kanban mas contavam como "sem contato" pra sempre (o vendedor tirava
+//    tudo do Novo e ainda faltava 1-2%). Se teve contato no mês, conta
+//    normal (não pune quem vendeu). Pedido do João, 2026-10-22.
 //  - CNPJ vinculado: contato no cliente A conta pro cliente B vinculado —
 //    MAS só quando A e B são do MESMO vendedor. Vínculo entre carteiras de
 //    vendedores diferentes não propaga.
 
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, funilMensal, registroContato, clienteVinculos } from '../db/schema.js'
 import { mesReferenciaAtual, diasUteisNoMes, diasUteisDecorridos } from './dataBr.js'
+
+const ETAPAS_PARADAS = ['consumidor_final', 'consumidor_final_loja', 'faturamento']
+
+// Registro automático ainda não confirmado não conta como contato.
+const contatoValido = or(eq(registroContato.origem, 'manual'), isNotNull(registroContato.resultado))
+
+// Clientes cuja etapa "vigente" no mês é só etapa parada: o card do mês, ou,
+// sem card no mês, o card mais recente de antes (reset não recria esses).
+async function clientesParados(clienteIds: number[], mesReferencia: string): Promise<Set<number>> {
+  const cards = clienteIds.length
+    ? await db
+        .select({ clienteId: funilMensal.clienteId, mes: funilMensal.mesReferencia, etapa: funilMensal.etapa })
+        .from(funilMensal)
+        .where(and(inArray(funilMensal.clienteId, clienteIds), lte(funilMensal.mesReferencia, mesReferencia), isNull(funilMensal.deletedAt)))
+    : []
+  const ultimoMes = new Map<number, string>()
+  for (const c of cards) if (c.mes > (ultimoMes.get(c.clienteId) ?? '')) ultimoMes.set(c.clienteId, c.mes)
+  const parado = new Map<number, boolean>()
+  for (const c of cards) {
+    if (c.mes !== ultimoMes.get(c.clienteId)) continue
+    parado.set(c.clienteId, (parado.get(c.clienteId) ?? true) && ETAPAS_PARADAS.includes(c.etapa))
+  }
+  return new Set([...parado].filter(([, p]) => p).map(([id]) => id))
+}
 
 // União-busca (union-find) pra agrupar CNPJs vinculados do mesmo vendedor.
 class UnionFind {
@@ -114,6 +147,7 @@ export async function coberturaContatosVendedor(
         eq(funilMensal.mesReferencia, mesReferencia),
         isNull(funilMensal.deletedAt),
         isNull(registroContato.deletedAt),
+        contatoValido,
       ),
     )
   const comContatoProprio = new Set<number>(regs.map((r) => r.clienteId))
@@ -130,15 +164,22 @@ export async function coberturaContatosVendedor(
     }
   }
 
-  // 3 cadastros com o mesmo CNPJ (mesmo vendedor) = 1 cliente. O denominador
-  // conta GRUPOS (raízes do union-find), não linhas de `clientes`.
-  const raizes = new Set<number>()
-  for (const id of idSet) raizes.add(uf.find(id))
-  const total = raizes.size
-
   // Um grupo conta como contatado se qualquer membro teve contato.
   const gruposContatados = new Set<number>()
   for (const cid of comContatoProprio) gruposContatados.add(uf.find(cid))
+
+  // 3 cadastros com o mesmo CNPJ (mesmo vendedor) = 1 cliente. O denominador
+  // conta GRUPOS (raízes do union-find), não linhas de `clientes` — tirando
+  // grupo inteiro parado em etapa terminal e sem contato no mês.
+  const parados = await clientesParados([...idSet], mesReferencia)
+  const naoParado = new Set<number>()
+  for (const id of idSet) if (!parados.has(id)) naoParado.add(uf.find(id))
+  const raizes = new Set<number>()
+  for (const id of idSet) {
+    const raiz = uf.find(id)
+    if (naoParado.has(raiz) || gruposContatados.has(raiz)) raizes.add(raiz)
+  }
+  const total = raizes.size
 
   let contatados = 0
   for (const raiz of raizes) if (gruposContatados.has(raiz)) contatados++
@@ -156,7 +197,7 @@ export async function coberturaContatosVendedor(
     total,
     contatados,
     semContato: total - contatados,
-    percentual: Math.round((contatados / total) * 100),
+    percentual: total ? Math.round((contatados / total) * 100) : 0,
     mediaEsperadaPorDia,
     diasUteisMes,
     diasUteisAteHoje,
@@ -226,6 +267,7 @@ export async function ultimoContatoDoGrupoPorCliente(
         eq(funilMensal.mesReferencia, mesReferencia),
         isNull(funilMensal.deletedAt),
         isNull(registroContato.deletedAt),
+        contatoValido,
       ),
     )
   const ultimoProprio = new Map<number, string>()
