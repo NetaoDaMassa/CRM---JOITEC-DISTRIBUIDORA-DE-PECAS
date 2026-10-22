@@ -962,13 +962,13 @@ export const devolucoesRouter = router({
 
     const chamados = await db.query.devolucaoChamados.findMany({
       where: and(...condicoesRelatorio),
-      columns: { id: true, status: true, empresaId: true, vendedorId: true, createdAt: true, fechadoEm: true },
+      columns: { id: true, protocolo: true, clienteNome: true, clienteId: true, clienteCodigo: true, status: true, empresaId: true, vendedorId: true, createdAt: true, fechadoEm: true, freteChegadaValor: true, freteEnvioValor: true },
       with: {
         vendedor: { columns: { name: true } },
         empresa: { columns: { nome: true } },
         ocorrencias: { columns: { tipo: true } },
         materiais: { columns: { descricaoItem: true } },
-        analise: { columns: { resultado: true, quemErrou: true, impactaComissao: true, valorImpactoComissao: true } },
+        analise: { columns: { resultado: true, quemErrou: true, tipoResolucao: true, impactaComissao: true, valorImpactoComissao: true } },
       },
     })
 
@@ -1022,9 +1022,85 @@ export const devolucoesRouter = router({
         ) / 10
       : null
 
+    // Visual novo do relatório (pedido do João, 2026-10-22): evolução por
+    // mês, chamados em aberto mais antigos (clicáveis), custo de frete e
+    // como foi resolvido.
+    const agora = Date.now()
+    const diasDesde = (data: string) => Math.floor((agora - new Date(`${data.replace(' ', 'T')}Z`).getTime()) / 86400000)
+    const mapaMes = new Map<string, { abertos: number; finalizados: number }>()
+    for (const c of chamados) {
+      const m = c.createdAt.slice(0, 7)
+      const linha = mapaMes.get(m) ?? { abertos: 0, finalizados: 0 }
+      linha.abertos++
+      mapaMes.set(m, linha)
+      if (c.status === 'finalizado' && c.fechadoEm) {
+        const mf = c.fechadoEm.slice(0, 7)
+        const lf = mapaMes.get(mf) ?? { abertos: 0, finalizados: 0 }
+        lf.finalizados++
+        mapaMes.set(mf, lf)
+      }
+    }
+    const porMes = [...mapaMes.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .slice(-12)
+      .map(([mes, v]) => ({ mes, ...v }))
+    const emAberto = chamados.filter((c) => c.status !== 'finalizado')
+    const maisAntigosEmAberto = [...emAberto]
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+      .slice(0, 8)
+      .map((c) => ({ id: c.id, protocolo: c.protocolo, clienteNome: c.clienteNome, status: c.status, dias: diasDesde(c.createdAt), vendedor: c.vendedor?.name ?? null, empresa: c.empresa?.nome ?? null }))
+    const diasMedioEmAberto = emAberto.length ? Math.round(emAberto.reduce((s, c) => s + diasDesde(c.createdAt), 0) / emAberto.length) : null
+    const custoFrete = Math.round(chamados.reduce((s, c) => s + (c.freteChegadaValor ?? 0) + (c.freteEnvioValor ?? 0), 0) * 100) / 100
+    const porResolucao = contar(analises.map((a) => a.tipoResolucao).filter((t): t is NonNullable<typeof t> => !!t))
+    const resultadoAnalises = { positivas: positivos, negativas: analises.length - positivos }
+
+    // Lista leve de todos os chamados do período — clicar numa etapa da
+    // barra colorida abre os chamados dela (pedido do João, 2026-10-22).
+    const listaChamados = chamados
+      .map((c) => ({ id: c.id, protocolo: c.protocolo, clienteNome: c.clienteNome, status: c.status, dias: diasDesde(c.createdAt), vendedor: c.vendedor?.name ?? null, empresa: c.empresa?.nome ?? null }))
+      .sort((a, b) => b.dias - a.dias)
+
+    // Custo por mês (mês de abertura): frete de chegada + envio e, pra quem
+    // pode ver comissão, o desconto de comissão lançado na análise.
+    const mapaCusto = new Map<string, { frete: number; comissao: number }>()
+    for (const c of chamados) {
+      const m = c.createdAt.slice(0, 7)
+      const linha = mapaCusto.get(m) ?? { frete: 0, comissao: 0 }
+      linha.frete += (c.freteChegadaValor ?? 0) + (c.freteEnvioValor ?? 0)
+      if (vejoComissao && c.analise?.impactaComissao) linha.comissao += c.analise.valorImpactoComissao ?? 0
+      mapaCusto.set(m, linha)
+    }
+    const custoPorMes = [...mapaCusto.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .slice(-12)
+      .map(([mes, v]) => ({ mes, frete: Math.round(v.frete * 100) / 100, comissao: Math.round(v.comissao * 100) / 100 }))
+
+    // Clientes que mais devolvem — agrupa pelo cadastro quando o chamado
+    // está ligado a um cliente, senão pelo nome digitado.
+    const mapaClientes = new Map<string, { clienteId: number | null; nome: string; quantidade: number; frete: number }>()
+    for (const c of chamados) {
+      const chave = c.clienteId ? `id:${c.clienteId}` : `nome:${(c.clienteNome ?? '').trim().toLowerCase()}`
+      if (chave === 'nome:') continue
+      const linha = mapaClientes.get(chave) ?? { clienteId: c.clienteId ?? null, nome: c.clienteNome ?? 'Cliente sem nome', quantidade: 0, frete: 0 }
+      linha.quantidade++
+      linha.frete += (c.freteChegadaValor ?? 0) + (c.freteEnvioValor ?? 0)
+      mapaClientes.set(chave, linha)
+    }
+    const clientesQueMaisDevolvem = [...mapaClientes.values()].sort((a, b) => b.quantidade - a.quantidade || b.frete - a.frete).slice(0, 10)
+
     return {
       totalChamados: chamados.length,
       totalFinalizados: finalizados.length,
+      totalEmAberto: emAberto.length,
+      diasMedioEmAberto,
+      maisAntigosEmAberto,
+      porMes,
+      custoFrete,
+      porResolucao,
+      resultadoAnalises,
+      listaChamados,
+      custoPorMes,
+      clientesQueMaisDevolvem,
       taxaPositiva,
       tempoMedioResolucaoDias,
       porStatus,

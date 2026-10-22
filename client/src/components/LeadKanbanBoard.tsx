@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Building2, Calendar, ChevronRight, AlertCircle, Repeat2, Phone, Hand, MessageSquare, Image as ImageIcon, Mic, Play } from 'lucide-react'
+import { Building2, Calendar, ChevronRight, ChevronsLeftRight, AlertCircle, Repeat2, Phone, Hand, MessageSquare, Image as ImageIcon, Mic, Play, Snowflake, NotebookPen, Timer } from 'lucide-react'
 import { formatElapsed, timeAgo } from '../lib/utils'
 import { useAuth } from '../contexts/AuthContext'
 import { trpc } from '../lib/trpc'
@@ -9,6 +9,12 @@ import { WhatsappButton } from './ui/ContatoButtons'
 import EmailButton from './ui/EmailButton'
 import Button from './ui/Button'
 import { Badge } from './ui/Badge'
+import { AvatarIniciais } from './ui/Visual'
+import Modal from './ui/Modal'
+import LeadChangeStatusModal from './LeadChangeStatusModal'
+import LeadContactAttemptForm from './LeadContactAttemptForm'
+import { formatarMoeda } from '../lib/moeda'
+import { COR_ETAPA_LEAD, DIAS_ESFRIANDO, diasEsquecido, temperaturaLead, SeloTemperatura, relogioNovo, MensagensProntas } from './leads/KanbanLeadsExtras'
 import {
   LEAD_STATUS_VALUES,
   LEAD_STATUS_LABELS,
@@ -18,6 +24,7 @@ import {
   LEAD_NEGOTIATION_TAG_CARD_CLASSES,
   isLeadStatusAllowedForEmpresa,
   getLeadContactUrgency,
+  isLeadTerminalStatus,
   leadTelefoneCompleto,
   leadTelefoneFormatado,
 } from '../lib/leadsShared'
@@ -37,6 +44,11 @@ type LeadCard = {
   createdAt: string
   updatedAt: string
   statusChangedAt: string | null
+  assignedAt?: string | null
+  lastContactAt?: string | null
+  attemptCount?: number | null
+  orderValue?: number | null
+  finalOrderValue?: number | null
   requiresAttachment: boolean
   finalConsumerReason: string | null
   vendor?: { name: string } | null
@@ -110,21 +122,66 @@ function LeadCardPreview({ lead }: { lead: LeadCard }) {
   )
 }
 
+// Visual novo do Kanban de Leads (pedido do João, 2026-10-22): cor por etapa
+// no topo da coluna, colunas de fim (Ganho, Perdido...) recolhíveis, cards
+// mais urgentes primeiro e aviso de lead "esquecido" (sem próximo contato).
+// Ordem no card: atrasado → hoje → amanhã → resto (mais recente em cima).
+function pesoUrgencia(lead: LeadCard) {
+  if (!lead.nextContactAt) return 3
+  const u = getLeadContactUrgency(lead.nextContactAt, lead.status)
+  if (!u) return 3
+  if (u.atrasado) return 0
+  if (u.label === 'HOJE') return 1
+  if (u.label === 'AMANHÃ') return 2
+  return 3
+}
+
 export default function LeadKanbanBoard({
   leads,
   basePath,
   empresaSlug,
   mostrarVendedor = true,
+  recolhidas,
+  aoAlternarColuna,
+  empresaNome = '',
 }: {
   leads: LeadCard[]
   basePath: string
   empresaSlug: string | undefined
   mostrarVendedor?: boolean
+  recolhidas?: string[]
+  aoAlternarColuna?: (status: string) => void
+  empresaNome?: string
 }) {
   const navigate = useNavigate()
   const { user } = useAuth()
   const utils = trpc.useUtils()
   const colunas = LEAD_STATUS_VALUES.filter((s) => isLeadStatusAllowedForEmpresa(s, empresaSlug))
+
+  // Arrastar o card pra outra coluna abre a mesma janela de "mudar etapa"
+  // (que pede os campos obrigatórios da etapa) já com a etapa de destino.
+  const [arrastando, setArrastando] = useState<LeadCard | null>(null)
+  const [colunaAlvo, setColunaAlvo] = useState<string | null>(null)
+  const [mudarEtapa, setMudarEtapa] = useState<{ lead: LeadCard; para: string } | null>(null)
+  const [registrar, setRegistrar] = useState<LeadCard | null>(null)
+  const podeSoltar = (status: string) => !!arrastando && arrastando.status !== status && status !== 'novo_consumidor_final'
+  const soltar = (status: string) => {
+    if (arrastando && podeSoltar(status)) setMudarEtapa({ lead: arrastando, para: status })
+    setArrastando(null)
+    setColunaAlvo(null)
+  }
+  const alvoProps = (status: string) => ({
+    onDragOver: (e: React.DragEvent) => {
+      if (!podeSoltar(status)) return
+      e.preventDefault()
+      setColunaAlvo(status)
+    },
+    onDragLeave: () => setColunaAlvo((c) => (c === status ? null : c)),
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault()
+      soltar(status)
+    },
+  })
 
   // "Pegar esse lead" — fila de Consumidor Final, sem rodízio por tempo:
   // primeiro vendedor da região que clicar fica com o lead. Pedido do João,
@@ -176,34 +233,125 @@ export default function LeadKanbanBoard({
         {colunas.map((status) => {
           const cards = leads
             .filter((l) => l.status === status)
-            .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+            .sort((a, b) => pesoUrgencia(a) - pesoUrgencia(b) || (a.updatedAt < b.updatedAt ? 1 : -1))
+          const cor = COR_ETAPA_LEAD[status] ?? '#94a3b8'
+          const terminal = isLeadTerminalStatus(status)
+          const atrasadosColuna = terminal ? 0 : cards.filter((c) => pesoUrgencia(c) === 0).length
+          // Valor em jogo: orçamentos (etapas abertas) ou vendas (Ganho).
+          const valorColuna = cards.reduce((soma, c) => soma + ((status === 'ganho' ? c.finalOrderValue : c.orderValue) ?? 0), 0)
+
+          if (recolhidas?.includes(status)) {
+            return (
+              <button
+                key={status}
+                type="button"
+                onClick={() => aoAlternarColuna?.(status)}
+                title="Clique para abrir a coluna (ou solte um card aqui)"
+                {...alvoProps(status)}
+                className={`shrink-0 w-11 rounded-xl border bg-dark-800/60 hover:bg-dark-800 flex flex-col items-center gap-2 py-3 transition-colors ${colunaAlvo === status ? 'border-gold-400 bg-gold-500/10' : 'border-dark-700'}`}
+                style={{ borderTop: `3px solid ${cor}` }}
+              >
+                <span className="text-xs font-bold rounded-full px-1.5 min-w-6 text-center" style={{ color: cor, background: `${cor}22` }}>
+                  {cards.length}
+                </span>
+                <span className="text-xs font-semibold text-dark-300 [writing-mode:vertical-rl] rotate-180 whitespace-nowrap">{LEAD_STATUS_LABELS[status]}</span>
+              </button>
+            )
+          }
+
           return (
-            <div key={status} className="shrink-0 w-72">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-sm font-semibold text-dark-200">{LEAD_STATUS_LABELS[status]}</span>
-                <span className="text-dark-500 text-xs">{cards.length}</span>
+            <div
+              key={status}
+              {...alvoProps(status)}
+              className={`shrink-0 w-72 rounded-2xl transition-colors ${colunaAlvo === status ? 'bg-gold-500/10 ring-2 ring-gold-400/60 ring-offset-4 ring-offset-dark-950' : ''}`}
+            >
+              <div className="rounded-xl bg-dark-800/60 border border-dark-700 px-3 py-2 mb-3" style={{ borderTop: `3px solid ${cor}` }}>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cor }} />
+                  <span className="text-sm font-semibold text-dark-100 truncate">{LEAD_STATUS_LABELS[status]}</span>
+                  <span className="text-xs font-bold rounded-full px-2 py-0.5" style={{ color: cor, background: `${cor}22` }}>
+                    {cards.length}
+                  </span>
+                  {atrasadosColuna > 0 && (
+                    <span className="text-[10px] font-bold text-red-400 bg-red-500/15 rounded-full px-1.5 py-0.5" title="Leads com contato atrasado nesta etapa">
+                      {atrasadosColuna} atrasado{atrasadosColuna > 1 ? 's' : ''}
+                    </span>
+                  )}
+                  {terminal && aoAlternarColuna && (
+                    <button
+                      type="button"
+                      onClick={() => aoAlternarColuna(status)}
+                      title="Recolher coluna"
+                      className="ml-auto text-dark-500 hover:text-dark-200 transition-colors"
+                    >
+                      <ChevronsLeftRight size={14} />
+                    </button>
+                  )}
+                </div>
+                {valorColuna > 0 && (
+                  <p className="text-[11px] text-dark-400 mt-1" title={status === 'ganho' ? 'Soma das vendas fechadas nesta coluna' : 'Soma dos orçamentos dos leads desta coluna'}>
+                    <span className="font-semibold text-emerald-400">{formatarMoeda(valorColuna, { casas: 0 })}</span> {status === 'ganho' ? 'vendidos' : 'em jogo'}
+                  </p>
+                )}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-h-24">
                 {cards.map((lead) => {
                   const urgency = lead.nextContactAt ? getLeadContactUrgency(lead.nextContactAt, lead.status) : null
                   const tagClasses = lead.negotiationTag ? LEAD_NEGOTIATION_TAG_CARD_CLASSES[lead.negotiationTag] : ''
                   const borderClasses =
                     tagClasses || (lead.requiresAttachment ? 'border-yellow-600/50' : urgency?.atrasado ? 'border-red-600/30' : 'border-dark-600')
+                  const parado = diasEsquecido(lead)
 
                   return (
                     <div
                       key={lead.id}
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.effectAllowed = 'move'
+                        setArrastando(lead)
+                      }}
+                      onDragEnd={() => {
+                        setArrastando(null)
+                        setColunaAlvo(null)
+                      }}
                       onClick={() => navigate(`${basePath}/${lead.id}`)}
-                      className={`group bg-dark-800 border rounded-xl p-3 cursor-pointer hover:border-gold-600/50 transition-all ${borderClasses}`}
+                      className={`group bg-dark-800 border rounded-xl p-3 cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all ${borderClasses} ${arrastando?.id === lead.id ? 'opacity-40' : ''}`}
+                      style={{ boxShadow: `inset 3px 0 0 ${cor}` }}
                     >
-                      <div className="flex items-start justify-between gap-2 mb-1">
-                        <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors">
-                          {lead.name}
-                        </h4>
+                      <div className="flex items-start gap-2 mb-1">
+                        <AvatarIniciais nome={lead.company || lead.name} tamanho={28} />
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors">{lead.name}</h4>
+                          <div className="text-[11px] text-dark-500">recebido há {formatElapsed(lead.createdAt)}</div>
+                        </div>
                         <ChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors shrink-0 mt-0.5" />
                       </div>
 
-                      <div className="text-[11px] text-dark-500 mb-2">recebido há {formatElapsed(lead.createdAt)}</div>
+                      {parado >= DIAS_ESFRIANDO && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-sky-300 bg-sky-500/10 border border-sky-500/20 rounded-lg px-2 py-1 mb-2 mt-1.5" title="Sem próximo contato marcado e ninguém mexeu nesse lead há dias">
+                          <Snowflake size={11} /> esquecido: sem próximo contato, parado há {parado} dias
+                        </div>
+                      )}
+                      {(() => {
+                        const t = temperaturaLead(lead)
+                        const relogio = relogioNovo(lead)
+                        if (!t && !relogio) return null
+                        return (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1.5 mb-2">
+                            {t && <SeloTemperatura t={t} />}
+                            {relogio && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5"
+                                style={{ color: relogio.cor, background: `${relogio.cor}1f` }}
+                                title="Tempo desde que o lead chegou para você, sem nenhum contato registrado. Verde até 1h, amarelo até 4h, vermelho depois."
+                              >
+                                <Timer size={10} /> {relogio.texto}
+                              </span>
+                            )}
+                          </div>
+                        )
+                      })()}
+                      <div className="mb-1" />
 
                       <LeadCardPreview lead={lead} />
 
@@ -320,6 +468,20 @@ export default function LeadKanbanBoard({
                         </div>
                       )}
 
+                      {!terminal && (
+                        <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-dark-700/70" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setRegistrar(lead)}
+                            className="flex items-center gap-1 text-[11px] font-medium text-gold-400 hover:text-gold-300 bg-gold-500/10 hover:bg-gold-500/20 rounded-md px-2 py-1 transition-colors"
+                            title="Registrar ligação, WhatsApp ou e-mail e marcar o próximo contato"
+                          >
+                            <NotebookPen size={12} /> Registrar contato
+                          </button>
+                          <MensagensProntas lead={lead} vendedor={user?.name ?? lead.vendor?.name ?? ''} empresa={empresaNome} />
+                        </div>
+                      )}
+
                       {lead.requiresAttachment && (
                         <div className="flex items-center gap-1 mt-2 text-xs text-yellow-500">
                           <AlertCircle size={11} />
@@ -340,6 +502,24 @@ export default function LeadKanbanBoard({
           )
         })}
       </div>
+      {mudarEtapa && (
+        <LeadChangeStatusModal
+          leadId={mudarEtapa.lead.id}
+          currentStatus={mudarEtapa.lead.status}
+          initialStatus={mudarEtapa.para}
+          empresaSlug={empresaSlug}
+          open
+          onClose={() => {
+            setMudarEtapa(null)
+            utils.leads.list.invalidate()
+          }}
+        />
+      )}
+      {registrar && (
+        <Modal open onClose={() => setRegistrar(null)} title={`Registrar contato — ${registrar.name}`}>
+          <LeadContactAttemptForm leadId={registrar.id} proximoContato={registrar.nextContactAt} encerrado={isLeadTerminalStatus(registrar.status)} />
+        </Modal>
+      )}
     </div>
   )
 }

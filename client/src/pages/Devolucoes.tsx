@@ -1379,7 +1379,8 @@ function norm(v: unknown): string {
 export default function Devolucoes() {
   const { user } = useAuth()
   const [modalNovo, setModalNovo] = useState(false)
-  const [chamadoAberto, setChamadoAberto] = useState<number | null>(null)
+  // ?chamado=ID abre o chamado direto (link vindo do Relatório de Devolução).
+  const [chamadoAberto, setChamadoAberto] = useState<number | null>(() => Number(new URLSearchParams(window.location.search).get('chamado')) || null)
   const [empresaFiltro, setEmpresaFiltro] = useState('')
   const [dataInicio, setDataInicio] = useState('')
   const [dataFim, setDataFim] = useState('')
