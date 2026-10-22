@@ -17,6 +17,9 @@ import { diffObs } from './financeiro.js'
 // modelo — mesma convenção `{categoria}__{maquinaId}` do odincrm original.
 function categoriasObrigatorias(modelo: string): string[] {
   const prefixo = modelo.trim().toUpperCase()
+  // ODM (ex.: ODM27) começa com "OD" mas é outro tipo: 1 foto só, igual
+  // SEC/SEP — por isso vem antes do OD. Pedido do João, 2026-10-22.
+  if (prefixo.startsWith('ODM')) return ['placa']
   if (prefixo.startsWith('OD')) return ['placa_vaso_pressao', 'placa_compressor', 'vaso_pressao', 'valvula_seguranca']
   if (prefixo.startsWith('SEC') || prefixo.startsWith('SEP')) return ['placa']
   return []
