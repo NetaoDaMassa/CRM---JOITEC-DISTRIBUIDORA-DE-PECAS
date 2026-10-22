@@ -427,7 +427,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
       (!somenteEmpresas || somenteEmpresas.includes(empresaAtiva?.slug ?? '')) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
-      (user?.superAdmin || FEATURES_SEMPRE_LIBERADAS.has(l.feature) || !!minhasFeatures?.includes(l.feature))
+      (user?.superAdmin || FEATURES_SEMPRE_LIBERADAS.has(l.feature) || !!minhasFeatures?.includes(l.feature)) &&
+      // "Meu Painel" sai do menu de quem tem Kanban — o Painel do dia do
+      // Kanban substitui ele (ver InicioVendedor em App.tsx).
+      !(user?.role === 'vendor' && l.to === '/vendedor' && minhasFeatures?.includes('kanban'))
     )
   })
 

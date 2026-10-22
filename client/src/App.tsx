@@ -146,6 +146,22 @@ function FeatureGuard({ feature, children }: { feature: string | string[]; child
   return <>{children}</>
 }
 
+// Tela inicial do vendedor: o Kanban (que tem o Painel do dia no topo) —
+// o antigo "Meu Painel" repetia o Painel do dia e os Relatórios. Quem não
+// tem o Kanban liberado continua caindo no Meu Painel. Pedido do João,
+// 2026-10-22.
+function InicioVendedor() {
+  const { user } = useAuth()
+  const { data: minhasFeatures, isLoading } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: user?.role === 'vendor',
+  })
+  if (user?.role === 'vendor') {
+    if (isLoading) return null
+    if (minhasFeatures?.includes('kanban')) return <Navigate to="/vendedor/kanban" replace />
+  }
+  return <VendorDashboard />
+}
+
 export default function App() {
   const { user } = useAuth()
 
@@ -291,7 +307,7 @@ export default function App() {
           <Route path="admin/relatorios-odin" element={<AdminGuard><FeatureGuard feature="relatorios_odin"><RelatoriosOdin /></FeatureGuard></AdminGuard>} />
 
           {/* Vendor routes */}
-          <Route path="vendedor" element={<VendorDashboard />} />
+          <Route path="vendedor" element={<InicioVendedor />} />
           <Route path="vendedor/fila-hoje" element={<FilaHoje />} />
           <Route path="vendedor/pos-venda" element={<FilaPosVenda />} />
           <Route path="vendedor/kanban" element={<VendorKanban />} />
