@@ -211,7 +211,7 @@ async function vendasExtras(params: Parameters<typeof vendasSap>[0]) {
 
 // Última compra/compras por cliente vindas de Pedidos (Odin), pra posição
 // da carteira — mesma exclusão de pedido que nasceu de venda da Carteira.
-async function pedidosPorCliente(clienteIds: number[]) {
+export async function pedidosPorCliente(clienteIds: number[]) {
   if (!clienteIds.length) return []
   return db
     .select({
@@ -232,7 +232,7 @@ async function pedidosPorCliente(clienteIds: number[]) {
 
 // Data do pedido SAP vem só "YYYY-MM-DD" — meio-dia evita que a conversão
 // de fuso (UTC → Brasília) em `diasDesde` jogue pro dia anterior.
-function dataSapComoDatetime(data: string): string {
+export function dataSapComoDatetime(data: string): string {
   return `${data} 12:00:00`
 }
 

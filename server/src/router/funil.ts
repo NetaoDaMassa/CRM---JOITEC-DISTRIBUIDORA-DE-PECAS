@@ -7,6 +7,7 @@ import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString, dataFechament
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
 import { coberturaContatosVendedor, coberturaContatosEmpresa } from '../lib/coberturaContatos.js'
+import { painelDoDia } from '../lib/painelDoDia.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { SLUG_VENDA_RAPIDA } from './vendas.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
@@ -361,6 +362,17 @@ export const funilRouter = router({
       if (ctx.user.role === 'admin' && input?.todos) return coberturaContatosEmpresa(ctx.empresaId, input.mesReferencia ?? mesReferenciaAtual())
       const alvo = ctx.user.role === 'admin' && input?.vendedorId ? input.vendedorId : ctx.user.id
       return coberturaContatosVendedor(ctx.empresaId, alvo, input?.mesReferencia ?? mesReferenciaAtual())
+    }),
+
+  // "Painel do dia" do topo do Kanban (ver lib/painelDoDia.ts) — mesma
+  // regra de quem vê o quê da cobertura acima.
+  painelDoDia: protectedProcedure
+    .input(z.object({ vendedorId: z.number().optional(), todos: z.boolean().optional(), mesReferencia: z.string().optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const mes = input?.mesReferencia ?? mesReferenciaAtual()
+      if (ctx.user.role === 'admin' && input?.todos) return painelDoDia(ctx.empresaId, { todos: true }, mes)
+      const alvo = ctx.user.role === 'admin' && input?.vendedorId ? input.vendedorId : ctx.user.id
+      return painelDoDia(ctx.empresaId, { vendedorId: alvo }, mes)
     }),
 
   // Visão "Faturamento Geral" — todos os cards Fechado/Faturamento da

@@ -7,6 +7,8 @@ import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { timeAgo, hojeBrString } from '../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
+import PainelDoDia from './PainelDoDia'
+import type { FiltroPainel } from './PainelDoDia'
 import { parseValorBr, formatarValorInput } from '../lib/valorBr'
 import { useAuth } from '../contexts/AuthContext'
 import Modal from './ui/Modal'
@@ -419,18 +421,23 @@ export default function FunilBoard({
   const [ordenacao, setOrdenacao] = useState('padrao')
   const [dataInicioFiltro, setDataInicioFiltro] = useState('')
   const [dataFimFiltro, setDataFimFiltro] = useState('')
+  // Clique numa urgência do Painel do dia — mostra só aqueles cards.
+  const [filtroPainel, setFiltroPainel] = useState<FiltroPainel>(null)
+  useEffect(() => setFiltroPainel(null), [coberturaVendedorId, coberturaMes, coberturaTodos])
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
     utils.funil.funilPorVendedor.invalidate()
     utils.funil.coberturaContatos.invalidate()
+    utils.funil.painelDoDia.invalidate()
       utils.funil.funilFaturamentoGeral.invalidate()
   }
 
   const termo = busca.trim().toLowerCase()
   const termoDigitos = termo.replace(/\D/g, '')
+  const cardsBase = filtroPainel ? cards.filter((c) => filtroPainel.cardIds.has(c.funilMensalId)) : cards
   const cardsFiltrados = termo
-    ? cards.filter(
+    ? cardsBase.filter(
         (c) =>
           c.razaoSocial.toLowerCase().includes(termo) ||
           c.codigo?.toLowerCase().includes(termo) ||
@@ -443,7 +450,7 @@ export default function FunilBoard({
               c.telefonesExtras.some((t) => t.numero.replace(/\D/g, '').includes(termoDigitos)) ||
               (c.cnpj && c.cnpj.includes(termoDigitos))))
       )
-    : cards
+    : cardsBase
 
   // Filtro por período em cima de quando o card entrou na etapa atual —
   // além do mês inteiro que a página já seleciona, dá pra estreitar pra uma
@@ -516,90 +523,11 @@ export default function FunilBoard({
     sincronizando.current = false
   }
 
-  // Cobertura vem do backend (carteira inteira do vendedor, qualquer tipo de
-  // contato, CNPJ vinculado do mesmo vendedor conta) — não é mais calculada
-  // pelos cards deste mês.
-  // Atualiza sozinho a cada 10s — pedido do João, 2026-09-01: vendedor
-  // reclamando que o número "não bate" na hora (na real a conta bate com o
-  // que está registrado, só não atualizava sem dar F5).
-  const { data: cobertura } = trpc.funil.coberturaContatos.useQuery(
-    { vendedorId: coberturaVendedorId, todos: coberturaTodos, mesReferencia: coberturaMes },
-    { enabled: !!coberturaMes, refetchInterval: 10_000 },
-  )
-  const [explicacaoCoberturaAberta, setExplicacaoCoberturaAberta] = useState(false)
-  const percentualContatados = cobertura?.percentual ?? 0
-  const corCobertura = percentualContatados >= 70 ? 'bg-green-500' : percentualContatados >= 40 ? 'bg-amber-500' : 'bg-red-500'
-
   return (
     <div>
-      {!!coberturaMes && !!cobertura && cobertura.total > 0 && (
-        <div className="mb-4 bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-semibold text-dark-100">
-              📞 Cobertura de contatos este mês
-              <button
-                type="button"
-                onClick={() => setExplicacaoCoberturaAberta((v) => !v)}
-                className="ml-2 text-xs font-normal text-gold-500 hover:underline"
-              >
-                {explicacaoCoberturaAberta ? 'fechar explicação' : 'ⓘ como é feita essa conta?'}
-              </button>
-            </h3>
-            <span className="text-sm font-bold text-dark-50">{percentualContatados}%</span>
-          </div>
-          {/* Regras em lib/coberturaContatos.ts (server) — manter os dois iguais. */}
-          {explicacaoCoberturaAberta && (
-            <ul className="mb-3 space-y-1.5 rounded-xl bg-dark-900 border border-dark-700 p-3 text-xs text-dark-300 leading-relaxed list-disc pl-7">
-              <li>
-                A conta é em cima da <b className="text-dark-100">carteira inteira</b>, não só da coluna Novo: cada cliente seu precisa de
-                pelo menos <b className="text-dark-100">1 contato registrado neste mês</b> (ligação, WhatsApp, e-mail ou visita).
-              </li>
-              <li>
-                <b className="text-dark-100">Por isso "sem contato" pode ser maior que o Novo:</b> card em Negociação que veio do mês
-                passado (ou em Perdido, Fechado, Outras Linhas) também precisa de um contato novo este mês pra contar.
-              </li>
-              <li>
-                <b className="text-dark-100">Clique no botão do WhatsApp só conta depois de confirmar</b> — abra o card e clique em
-                "Confirmar" no contato.
-              </li>
-              <li>
-                <b className="text-dark-100">Não entram na conta:</b> clientes parados em Consumidor Final (repassado), Consumidor Final da
-                loja ou Faturamento que não tiveram contato no mês. Se tiverem contato, contam normal.
-              </li>
-              <li>CNPJs vinculados da sua carteira contam como 1 cliente só — contato em um vale pro outro.</li>
-            </ul>
-          )}
-          <div className="h-2 rounded-full bg-dark-700 overflow-hidden">
-            <div className={`h-full rounded-full ${corCobertura} transition-all`} style={{ width: `${percentualContatados}%` }} />
-          </div>
-          <div className="flex items-center justify-between mt-2 text-xs">
-            <span className="text-green-400 font-medium">
-              ✅ {pluralizar(cobertura.contatados, 'cliente contatado', 'clientes contatados')}
-            </span>
-            <span className={cobertura.semContato > 0 ? 'text-red-400 font-medium' : 'text-dark-500'}>
-              {cobertura.semContato > 0 ? '⚠️ ' : ''}
-              {pluralizar(cobertura.semContato, 'cliente sem contato', 'clientes sem contato')} ainda
-            </span>
-          </div>
-          {cobertura.diasUteisMes > 0 && (
-            <div className="mt-2 pt-2 border-t border-dark-700">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-dark-400">
-                  📅 Ritmo pra cobrir a carteira: {cobertura.mediaEsperadaPorDia.toFixed(1)} contato(s)/dia útil
-                  <span className="text-dark-600"> ({cobertura.total} clientes ÷ {cobertura.diasUteisMes} dias úteis no mês)</span>
-                </span>
-              </div>
-              <div className={`mt-1 text-sm font-semibold ${cobertura.naMedia ? 'text-green-400' : 'text-red-400'}`}>
-                📊 Hoje era pra estar em {cobertura.percentualIdealHoje}% — está em {cobertura.percentual}%
-              </div>
-              <div className={`text-xs ${cobertura.naMedia ? 'text-green-400' : 'text-red-400'}`}>
-                {cobertura.naMedia
-                  ? '✅ Meta do dia em dia — nenhum contato faltando'
-                  : `🎯 Faltam ${pluralizar(cobertura.faltamParaMeta, 'contato', 'contatos')} pra bater a meta de hoje`}
-              </div>
-            </div>
-          )}
-        </div>
+      {/* Painel do dia (substituiu o quadro "Cobertura de contatos" — pedido do João, 2026-10-22). */}
+      {!!coberturaMes && (
+        <PainelDoDia cards={cards} mes={coberturaMes} vendedorId={coberturaVendedorId} todos={coberturaTodos} filtro={filtroPainel} onFiltrar={setFiltroPainel} />
       )}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
