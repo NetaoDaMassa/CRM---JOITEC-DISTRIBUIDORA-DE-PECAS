@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus, MapPin, MapPinOff, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, CalendarRange, Users2, Download, RefreshCw, Search, LoaderCircle, X } from 'lucide-react'
+import { Plus, MapPin, MapPinOff, Pencil, Trash2, LogIn, LogOut, Clock, Phone, UserRound, CalendarDays, CalendarRange, Users2, Download, RefreshCw, Search, LoaderCircle, X, Sun, CalendarRange as IconeSemana, CalendarCheck, PackageCheck, FileText, Navigation, Footprints } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -11,6 +11,9 @@ import Select from '../components/ui/Select'
 import { Input } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
+import { AvatarIniciais } from '../components/ui/Visual'
+import { BotaoLegenda, CaixaNovidades, Indicador } from '../components/painel/PainelVisual'
+import { EquipeVisitas, LEGENDA_VISITAS, NOVIDADES_VISITAS, PainelRitmo, RESULTADO_VISITA, SeloSituacao, numerosDoMes, situacaoVisita } from '../components/visitas/PainelVisitas'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, mesmo padrão
 // já usado em Pedidos/Propostas/Devolução/Qualidade.
@@ -35,15 +38,6 @@ function baixarCsvVisitas(visitas: { dataVisita: string | null; nomeEmpresa: str
   a.click()
   a.remove()
   URL.revokeObjectURL(url)
-}
-
-function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-      <p className={`text-2xl font-bold break-words ${color}`}>{value}</p>
-      <p className="text-xs text-dark-400 mt-0.5">{label}</p>
-    </div>
-  )
 }
 
 const OBJETIVOS = ['Prospecção de clientes', 'Visita marketing', 'Manutenção', 'Pós venda']
@@ -97,6 +91,8 @@ export default function Visitas() {
   const temFiltroData = !!(dataDe || dataAte)
   const { data: todasParaCsv } = trpc.visitas.listar.useQuery({ vendedorId: filtro.vendedorId })
   const utils = trpc.useUtils()
+  const [novidadesVistas, setNovidadesVistas] = usePersistedState('visitas:novidadesVistas:v1', false)
+  const nums = numerosDoMes(todasParaCsv ?? [])
 
   return (
     <div className="p-6">
@@ -108,6 +104,7 @@ export default function Visitas() {
           <p className="text-dark-400 text-sm mt-0.5">Controle de visitas comerciais</p>
         </div>
         <div className="flex items-center gap-2">
+          <BotaoLegenda secoes={LEGENDA_VISITAS} aoRever={() => setNovidadesVistas(false)} />
           <button
             onClick={() => baixarCsvVisitas(todasParaCsv ?? [])}
             className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs font-medium text-dark-300 hover:bg-dark-800 transition-colors"
@@ -123,12 +120,19 @@ export default function Visitas() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5 max-w-2xl">
-        <StatCard label="Hoje" value={resumo?.hoje ?? 0} color="text-dark-50" />
-        <StatCard label="Esta semana" value={resumo?.semana ?? 0} color="text-blue-400" />
-        <StatCard label="Este mês" value={resumo?.mes ?? 0} color="text-purple-400" />
-        <StatCard label="Pedidos (mês)" value={resumo?.pedidosMes ?? 0} color="text-green-400" />
+      {!novidadesVistas && <CaixaNovidades itens={NOVIDADES_VISITAS} aoFechar={() => setNovidadesVistas(true)} />}
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2.5 mb-3">
+        <Indicador icone={Sun} valor={resumo?.hoje ?? 0} rotulo="Hoje" dica="Visitas de hoje — clique para abrir a aba Hoje" cor="#e8c440" ativo={tab === 'hoje'} onClick={() => setTab('hoje')} />
+        <Indicador icone={IconeSemana} valor={resumo?.semana ?? 0} rotulo="Esta semana" dica="Desde segunda-feira — clique para abrir a aba Semana" cor="#3987e5" ativo={tab === 'semana'} onClick={() => setTab('semana')} />
+        <Indicador icone={CalendarCheck} valor={resumo?.mes ?? 0} rotulo="Este mês" dica="Clique para ver todas" cor="#a855f7" ativo={tab === 'todas'} onClick={() => setTab('todas')} />
+        <Indicador icone={FileText} valor={nums.taxaProposta !== null ? `${nums.taxaProposta}%` : '—'} rotulo="Viraram proposta" dica={`${nums.propostas} visitas do mês com resultado Gerar Proposta ÷ visitas do mês`} cor="#c084fc" />
+        <Indicador icone={PackageCheck} valor={resumo?.pedidosMes ?? 0} rotulo="Pedidos (mês)" dica="Visitas do mês cuja proposta virou pedido" cor="#22a861" />
+        <Indicador icone={Navigation} valor={nums.taxaGps !== null ? `${nums.taxaGps}%` : '—'} rotulo="Com GPS" dica="Check-ins do mês que pegaram a localização" cor="#14b8a6" />
+        <Indicador icone={Footprints} valor={nums.agora} rotulo="Em visita agora" dica="Fizeram check-in hoje e ainda não fizeram check-out — clique para ver" cor="#22a861" onClick={() => setTab('hoje')} />
       </div>
+
+      <PainelRitmo visitas={todasParaCsv ?? []} />
 
       <div className="flex items-end gap-3 flex-wrap mb-5">
         {isAdmin && (
@@ -187,16 +191,11 @@ function AbaEquipe() {
   const { data, isLoading } = trpc.visitas.porVendedor.useQuery()
   if (isLoading) return <p className="text-dark-400 text-sm">Carregando...</p>
   return (
-    <div className="space-y-1.5 max-w-2xl">
-      <div className="flex items-center gap-2 text-xs text-dark-500 uppercase tracking-wide mb-2">
-        <Users2 size={13} /> Visitas por vendedor
+    <div>
+      <div className="flex items-center gap-2 text-xs text-dark-500 uppercase tracking-wide mb-3">
+        <Users2 size={13} /> Visitas por vendedor (desde o início) · barra roxa = viraram proposta, azul = demais
       </div>
-      {(data ?? []).map((v) => (
-        <div key={v.vendedorId} className="flex items-center justify-between px-3 py-2.5 rounded-lg border border-dark-600 bg-dark-800 text-sm">
-          <span className="text-dark-100 font-medium">{v.nome}</span>
-          <span className="text-dark-400">{v.total} visitas · {v.gerouProposta} propostas · {v.semResultado} em andamento</span>
-        </div>
-      ))}
+      <EquipeVisitas linhas={data ?? []} />
       {(!data || data.length === 0) && <p className="text-dark-500 text-sm">Nenhuma visita registrada ainda.</p>}
     </div>
   )
@@ -272,6 +271,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
   const [form, setForm] = useState<VisitaForm>(novaVisita)
   const [excluindo, setExcluindo] = useState<{ id: number; nome: string } | null>(null)
   const [busca, setBusca] = usePersistedState('visitas:abaVisitas:busca', '')
+  const [filtroResultado, setFiltroResultado] = useState<string | null>(null)
 
   const utils = trpc.useUtils()
   const { data: visitasTodas, isLoading } = trpc.visitas.listar.useQuery({ vendedorId })
@@ -297,6 +297,12 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
             .some((c) => c.toLowerCase().includes(buscaLC)),
         )
       : visitasNaData
+  // Filtro por resultado (botões coloridos) e, em Hoje/Semana, ordem do
+  // horário pra virar linha do tempo.
+  const linhaDoTempo = periodo !== 'todas'
+  const visitasExibidas = (filtroResultado === null ? visitasList : visitasList.filter((v) => (v.resultado ?? '') === filtroResultado))
+    .slice()
+    .sort((a, b) => (linhaDoTempo ? ((a.dataVisita ?? '') < (b.dataVisita ?? '') ? -1 : 1) : 0))
 
   function invalidar() { utils.visitas.listar.invalidate() }
   const criarMut = trpc.visitas.criar.useMutation({
@@ -434,10 +440,30 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
         <p className="text-dark-400 text-sm">Carregando...</p>
       ) : (
         <div className="space-y-2">
-          {periodo === 'todas' && (
-            <p className="text-xs text-dark-500 mb-1">{visitasList.length} {visitasList.length === 1 ? 'visita' : 'visitas'}</p>
-          )}
-          {(visitasList ?? []).map((v) => {
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            <span className="text-xs text-dark-500 mr-1">
+              {visitasExibidas.length} {visitasExibidas.length === 1 ? 'visita' : 'visitas'}
+            </span>
+            {Object.entries(RESULTADO_VISITA).map(([chave, r]) => {
+              const qtd = visitasList.filter((v) => (v.resultado ?? '') === chave).length
+              if (!qtd) return null
+              const ativo = filtroResultado === chave
+              return (
+                <button
+                  key={chave}
+                  type="button"
+                  onClick={() => setFiltroResultado(ativo ? null : chave)}
+                  className={`h-7 px-2.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${ativo ? 'border-transparent text-white' : 'border-dark-600 text-dark-300 hover:text-dark-100'}`}
+                  style={ativo ? { background: r.cor } : undefined}
+                >
+                  {!ativo && <span className="w-2 h-2 rounded-full" style={{ background: r.cor }} />}
+                  {r.rotulo} · {qtd}
+                </button>
+              )
+            })}
+          </div>
+          <div className={linhaDoTempo ? 'relative pl-6 space-y-2 before:absolute before:left-[9px] before:top-2 before:bottom-2 before:w-0.5 before:bg-dark-700' : 'space-y-2'}>
+          {visitasExibidas.map((v) => {
             const podeEditar = isAdmin || v.vendedorId === user?.id
             const duracaoMin = v.checkinEm && v.checkoutEm ? Math.round((new Date(v.checkoutEm.replace(' ', 'T') + 'Z').getTime() - new Date(v.checkinEm.replace(' ', 'T') + 'Z').getTime()) / 60000) : null
             // dataVisita é gravada em hora de parede de Brasília (o que o
@@ -464,16 +490,24 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
                     timeZone: 'America/Sao_Paulo',
                   })
                 : null
+            const corResultado = RESULTADO_VISITA[v.resultado ?? '']?.cor ?? '#94a3b8'
+            const nomeVisita = v.nomeEmpresa || v.clienteNome || v.cliente?.nome || 'Cliente não informado'
             return (
               <div
                 key={v.id}
                 onClick={() => abrirEdicao(v)}
-                className="bg-dark-800 rounded-xl border border-dark-600 p-4 text-sm cursor-pointer hover:border-gold-600/50 hover:shadow-lg hover:shadow-black/20 transition-all"
+                style={{ boxShadow: `inset 3px 0 0 ${corResultado}` }}
+                className="relative bg-dark-800 rounded-xl border border-dark-600 p-4 text-sm cursor-pointer hover:border-gold-600/50 hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 transition-all"
               >
+                {linhaDoTempo && (
+                  <span className="absolute -left-[22px] top-5 w-3.5 h-3.5 rounded-full border-2 border-dark-950" style={{ background: corResultado }} />
+                )}
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-dark-100 truncate">{v.nomeEmpresa || v.clienteNome || v.cliente?.nome || 'Cliente não informado'}</span>
+                      <AvatarIniciais nome={nomeVisita} tamanho={26} />
+                      <span className="font-semibold text-dark-100 truncate">{nomeVisita}</span>
+                      <SeloSituacao s={situacaoVisita(v)} />
                       <Badge className={RESULTADO_CORES[v.resultado ?? '']}>{RESULTADO_LABELS[v.resultado ?? ''] ?? v.resultado}</Badge>
                       {v.planejada && <Badge className="text-indigo-400 bg-indigo-900/20 border-indigo-700/40">Planejada</Badge>}
                       {v.convertidoParaPropostaId && (
@@ -560,6 +594,7 @@ function AbaVisitas({ periodo, vendedorId, dataDe, dataAte }: { periodo: 'hoje' 
               </div>
             )
           })}
+          </div>
           {(!visitasList || visitasList.length === 0) && (
             <p className="text-dark-500 text-sm">{buscaLC ? 'Nenhuma visita encontrada para esta busca' : 'Nenhuma visita registrada'}</p>
           )}

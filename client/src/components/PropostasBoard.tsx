@@ -9,9 +9,25 @@ import { Badge } from './ui/Badge'
 import Button from './ui/Button'
 import Modal from './ui/Modal'
 import { Input } from './ui/Input'
-import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_COLORS, PROPOSTA_STAGE_DOT_COLORS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, isOverdue, type PropostaStage } from '../lib/propostasShared'
+import { AvatarIniciais } from './ui/Visual'
+import { CabecalhoColuna, Pilula, corIdade, diasDesdeData } from './painel/PainelVisual'
+import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, isOverdue, type PropostaStage } from '../lib/propostasShared'
 
-type PropostaCard = {
+// Visual novo (pedido do João, 2026-10-22): cor por etapa, "parada há X
+// dias" no card e urgentes primeiro.
+export const COR_ETAPA_PROPOSTA: Record<string, string> = {
+  proposta: '#3987e5',
+  negociacao: '#e8c440',
+  fechado: '#22a861',
+  perdido: '#e5534b',
+  chamar_depois: '#f97316',
+  convertido: '#0ea5a4',
+}
+export const ETAPAS_ABERTAS_PROPOSTA = ['proposta', 'negociacao']
+export const DIAS_PARADA_ATENCAO = 3
+export const DIAS_PARADA_ALERTA = 7
+
+export type PropostaCard = {
   id: number
   clienteNome: string
   stage: string
@@ -134,14 +150,19 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
       </div>
       <div ref={boardRef} onScroll={handleBoardScroll} className="flex gap-4 overflow-x-auto pb-4">
         {PROPOSTA_BOARD_COLUMNS.map((stage) => {
-          const cards = propostas.filter((p) => p.stage === stage).sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
+          const cards = propostas
+            .filter((p) => p.stage === stage)
+            .sort((a, b) => Number(b.prioridade === 'urgente') - Number(a.prioridade === 'urgente') || (a.updatedAt < b.updatedAt ? 1 : -1))
+          const aberta = ETAPAS_ABERTAS_PROPOSTA.includes(stage)
+          const paradas = aberta ? cards.filter((c) => diasDesdeData(c.updatedAt) >= DIAS_PARADA_ALERTA).length : 0
           return (
             <div key={stage} className="shrink-0 w-72">
-              <div className="flex items-center gap-2 mb-3">
-                <span className={`h-2.5 w-2.5 rounded-full shrink-0 ${PROPOSTA_STAGE_DOT_COLORS[stage]}`} />
-                <span className="text-sm font-semibold text-dark-200">{PROPOSTA_STAGE_LABELS[stage]}</span>
-                <span className="text-dark-500 text-xs bg-dark-800 rounded-full px-1.5 py-0.5">{cards.length}</span>
-              </div>
+              <CabecalhoColuna
+                rotulo={PROPOSTA_STAGE_LABELS[stage]}
+                cor={COR_ETAPA_PROPOSTA[stage]}
+                quantidade={cards.length}
+                alerta={paradas ? `${paradas} parada${paradas > 1 ? 's' : ''}` : null}
+              />
               <div className="space-y-2">
                 {cards.map((p) => {
                   const pdfArquivo = p.arquivos
@@ -164,6 +185,7 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                     <div
                       key={p.id}
                       onClick={() => navigate(`${basePath}/${p.id}`)}
+                      style={{ boxShadow: `inset 3px 0 0 ${COR_ETAPA_PROPOSTA[stage]}` }}
                       className={`group bg-dark-800 border rounded-xl p-3 cursor-pointer hover:shadow-lg hover:shadow-black/20 hover:-translate-y-0.5 active:translate-y-0 transition-all duration-150
                         ${isUrgente ? 'border-l-4 border-l-red-500 border-y-dark-600 border-r-dark-600' : temAlteracao ? 'border-l-4 border-l-amber-400 border-y-dark-600 border-r-dark-600' : 'border-dark-600 hover:border-gold-600/50'}`}
                     >
@@ -208,7 +230,21 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                           <ChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors shrink-0" />
                         </div>
                       </div>
-                      <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors mb-1">{p.clienteNome}</h4>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <AvatarIniciais nome={p.clienteNome} tamanho={26} />
+                        <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors flex-1">{p.clienteNome}</h4>
+                      </div>
+                      {aberta && (() => {
+                        const dias = diasDesdeData(p.updatedAt)
+                        if (dias < DIAS_PARADA_ATENCAO) return null
+                        return (
+                          <div className="mb-1.5">
+                            <Pilula cor={corIdade(dias, DIAS_PARADA_ATENCAO, DIAS_PARADA_ALERTA)} title="Dias sem nenhuma mudança nesta proposta">
+                              ⏳ parada há {dias} dias
+                            </Pilula>
+                          </div>
+                        )
+                      })()}
 
                       {/* Ações rápidas — pegar a proposta sem abrir o detalhe */}
                       <div className="flex flex-wrap items-center gap-1.5 mb-1.5" onClick={(e) => e.stopPropagation()}>

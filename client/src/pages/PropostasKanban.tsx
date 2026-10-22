@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2, Search } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2, Search, FileClock, Zap, FileWarning, MessageSquareWarning, Hourglass, PhoneCall, Trophy, Columns3, List } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -13,6 +13,19 @@ import ProductSelector from '../components/ProductSelector'
 import PropostasBoard from '../components/PropostasBoard'
 import PropostaDetail from './PropostaDetail'
 import { PROPOSTA_STAGE_LABELS, type PropostaStage } from '../lib/propostasShared'
+import { AvisoFiltro, BotaoLegenda, CaixaNovidades, Indicador, TrocaVisao } from '../components/painel/PainelVisual'
+import {
+  LEGENDA_PROPOSTAS,
+  MotivosPerda,
+  NOVIDADES_PROPOSTAS,
+  RankingPropostas,
+  ROTULO_FILTRO_PROPOSTA,
+  TESTES_PROPOSTA,
+  TabelaPropostas,
+  conversaoMes,
+  type FiltroProposta,
+} from '../components/propostas/PainelPropostas'
+import { Esqueleto } from '../components/ui/Visual'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
 // filtro de data do Propostas.tsx no odincrm original.
@@ -65,6 +78,9 @@ export default function PropostasKanban() {
   const [dataDe, setDataDe] = usePersistedState('propostasKanban:dataDe', '')
   const [dataAte, setDataAte] = usePersistedState('propostasKanban:dataAte', '')
   const [busca, setBusca] = usePersistedState('propostasKanban:busca', '')
+  const [filtroRapido, setFiltroRapido] = usePersistedState<FiltroProposta | ''>('propostasKanban:filtroRapido', '')
+  const [modo, setModo] = usePersistedState<'quadro' | 'lista'>('propostasKanban:modo', 'quadro')
+  const [novidadesVistas, setNovidadesVistas] = usePersistedState('propostasKanban:novidadesVistas:v1', false)
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
@@ -96,6 +112,12 @@ export default function PropostasKanban() {
           (termoDigitos && p.clienteWhatsapp?.replace(/\D/g, '').includes(termoDigitos))
       )
     : propostasPorData
+
+  const listaBase = propostas ?? []
+  const contar = (f: FiltroProposta) => listaBase.filter(TESTES_PROPOSTA[f]).length
+  const alternar = (f: FiltroProposta) => setFiltroRapido(filtroRapido === f ? '' : f)
+  const visiveis = filtroRapido ? listaBase.filter(TESTES_PROPOSTA[filtroRapido]) : listaBase
+  const conv = conversaoMes(listaBase)
 
   function aplicarMes(m: string) {
     setMes(m)
@@ -172,8 +194,20 @@ export default function PropostasKanban() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <h1 className="font-heading text-2xl text-dark-50 font-bold">Propostas</h1>
-        <div className="flex items-center gap-2">
+        <div>
+          <h1 className="font-heading text-2xl text-dark-50 font-bold">Propostas</h1>
+          <p className="text-sm text-dark-400">{contar('abertas')} em aberto agora</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <TrocaVisao
+            valor={modo}
+            onChange={setModo}
+            opcoes={[
+              { valor: 'quadro', rotulo: 'Quadro', icone: Columns3 },
+              { valor: 'lista', rotulo: 'Lista', icone: List },
+            ]}
+          />
+          <BotaoLegenda secoes={LEGENDA_PROPOSTAS} aoRever={() => setNovidadesVistas(false)} />
           <Button size="sm" variant="secondary" onClick={() => abrirModal(true)} title="Registrar um negócio já fechado, sem passar pelo funil">
             <CheckCircle2 size={14} className="mr-1" /> Fechamento / Sem Proposta
           </Button>
@@ -239,9 +273,54 @@ export default function PropostasKanban() {
       </div>
 
       {isLoading ? (
-        <p className="text-dark-400 text-sm">Carregando...</p>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2.5">
+            {Array.from({ length: 7 }, (_, i) => (
+              <Esqueleto key={i} className="h-16 rounded-xl" />
+            ))}
+          </div>
+          <div className="flex gap-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <Esqueleto key={i} className="h-96 w-72 rounded-xl shrink-0" />
+            ))}
+          </div>
+        </div>
       ) : (
-        <PropostasBoard propostas={propostas ?? []} basePath={basePath} mostrarVendedor={isAdmin} />
+        <>
+          {!novidadesVistas && <CaixaNovidades itens={NOVIDADES_PROPOSTAS} aoFechar={() => setNovidadesVistas(true)} />}
+          <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-2.5 mb-3">
+            <Indicador icone={FileClock} valor={contar('abertas')} rotulo="Em aberto" dica="Em Proposta ou Negociação" cor="#3987e5" ativo={filtroRapido === 'abertas'} onClick={() => alternar('abertas')} />
+            <Indicador icone={Zap} valor={contar('urgentes')} rotulo="Urgentes" dica="Em aberto e marcadas como urgentes" cor="#e5534b" ativo={filtroRapido === 'urgentes'} onClick={() => alternar('urgentes')} />
+            <Indicador icone={FileWarning} valor={contar('sem_pdf')} rotulo="Sem PDF" dica="Em Proposta sem o PDF anexado (obrigatório para Negociação)" cor="#eab308" ativo={filtroRapido === 'sem_pdf'} onClick={() => alternar('sem_pdf')} />
+            <Indicador icone={MessageSquareWarning} valor={contar('alteracao')} rotulo="Com alteração" dica="Alguém pediu alteração" cor="#f59e0b" ativo={filtroRapido === 'alteracao'} onClick={() => alternar('alteracao')} />
+            <Indicador icone={Hourglass} valor={contar('paradas')} rotulo="Paradas" dica="Em aberto sem nenhuma mudança há 7 dias ou mais" cor="#e5534b" ativo={filtroRapido === 'paradas'} onClick={() => alternar('paradas')} />
+            <Indicador icone={PhoneCall} valor={contar('retomar')} rotulo="Retomar" dica="Em Chamar Depois com a data de retorno vencida" cor="#f97316" ativo={filtroRapido === 'retomar'} onClick={() => alternar('retomar')} />
+            <Indicador
+              icone={Trophy}
+              valor={conv.ganhas}
+              rotulo={conv.taxa !== null ? `Fechadas · ${conv.taxa}%` : 'Fechadas no mês'}
+              dica="Fechadas ou que viraram pedido este mês · % = fechadas ÷ (fechadas + perdidas) no mês"
+              cor="#22a861"
+              ativo={filtroRapido === 'fechadas_mes'}
+              onClick={() => alternar('fechadas_mes')}
+            />
+          </div>
+
+          {(isAdmin || listaBase.some((p) => p.stage === 'perdido')) && (
+            <div className={`grid gap-3 mb-3 ${isAdmin ? 'lg:grid-cols-[2fr_1fr]' : ''}`}>
+              {isAdmin && !vendedorId && <RankingPropostas lista={listaBase} />}
+              <MotivosPerda lista={listaBase} />
+            </div>
+          )}
+
+          {filtroRapido && <AvisoFiltro quantidade={visiveis.length} texto={ROTULO_FILTRO_PROPOSTA[filtroRapido]} aoLimpar={() => setFiltroRapido('')} />}
+
+          {modo === 'lista' ? (
+            <TabelaPropostas lista={visiveis} mostrarVendedor={isAdmin} aoAbrir={(pid) => navigate(`${basePath}/${pid}`)} />
+          ) : (
+            <PropostasBoard propostas={visiveis} basePath={basePath} mostrarVendedor={isAdmin} />
+          )}
+        </>
       )}
 
       <Modal open={modalAberto} onClose={() => setModalAberto(false)} title={semProposta ? 'Fechamento / Sem Proposta' : 'Nova Proposta'} size="md">

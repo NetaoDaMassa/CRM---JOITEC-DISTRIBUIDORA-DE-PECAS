@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, Download, RefreshCw, CalendarRange, X, Search } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X, Search, Package, Siren, Clock, Zap, PackageCheck, CircleCheckBig, Columns3, List, CalendarClock } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -12,6 +12,9 @@ import { Input } from '../components/ui/Input'
 import OrdensBoard from '../components/OrdensBoard'
 import OrdensDetail from './OrdensDetail'
 import { ORDER_TYPE_VALUES, ORDER_TYPE_LABELS, STAGE_LABELS, type OrderType, type Stage } from '../lib/ordensShared'
+import { AvisoFiltro, BotaoLegenda, CaixaNovidades, Indicador, TrocaVisao } from '../components/painel/PainelVisual'
+import { NOVIDADES_PEDIDOS, ROTULO_FILTRO_PEDIDO, TESTES_PEDIDO, TabelaPedidos, TrilhaPedidos, idadeMediaEmAndamento, legendaPedidos, type FiltroPedido } from '../components/ordens/PainelPedidos'
+import { Esqueleto } from '../components/ui/Visual'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
 // filtro de data de criação do Kanban.tsx no odincrm original.
@@ -54,6 +57,9 @@ export default function OrdensKanban() {
   const [dataDe, setDataDe] = usePersistedState('ordensKanban:dataDe', '')
   const [dataAte, setDataAte] = usePersistedState('ordensKanban:dataAte', '')
   const [busca, setBusca] = usePersistedState('ordensKanban:busca', '')
+  const [filtroRapido, setFiltroRapido] = usePersistedState<FiltroPedido | ''>('ordensKanban:filtroRapido', '')
+  const [modo, setModo] = usePersistedState<'quadro' | 'lista'>('ordensKanban:modo', 'quadro')
+  const [novidadesVistas, setNovidadesVistas] = usePersistedState('ordensKanban:novidadesVistas:v1', false)
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
@@ -88,6 +94,17 @@ export default function OrdensKanban() {
       )
     : ordensPorData
 
+  const listaBase = ordens ?? []
+  const contar = (f: FiltroPedido) => listaBase.filter(TESTES_PEDIDO[f]).length
+  const alternar = (f: FiltroPedido) => setFiltroRapido(filtroRapido === f ? '' : f)
+  const visiveis = filtroRapido ? listaBase.filter(TESTES_PEDIDO[filtroRapido]) : listaBase
+  const idadeMedia = idadeMediaEmAndamento(listaBase)
+  function irParaColuna(stage: string) {
+    setModo('quadro')
+    setFiltroRapido('')
+    setTimeout(() => document.getElementById(`coluna-pedido-${stage}`)?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }), 50)
+  }
+
   function aplicarMes(m: string) {
     setMes(m)
     if (m) {
@@ -121,8 +138,20 @@ export default function OrdensKanban() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <h1 className="font-heading text-2xl text-dark-50 font-bold">Pedidos</h1>
-        <div className="flex items-center gap-3">
+        <div>
+          <h1 className="font-heading text-2xl text-dark-50 font-bold">Pedidos</h1>
+          <p className="text-sm text-dark-400">{contar('andamento')} em andamento{idadeMedia !== null ? ` · criados há ${idadeMedia} dias em média` : ''}</p>
+        </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          <TrocaVisao
+            valor={modo}
+            onChange={setModo}
+            opcoes={[
+              { valor: 'quadro', rotulo: 'Quadro', icone: Columns3 },
+              { valor: 'lista', rotulo: 'Lista', icone: List },
+            ]}
+          />
+          <BotaoLegenda secoes={legendaPedidos(orderType)} aoRever={() => setNovidadesVistas(false)} />
           <div className="flex bg-dark-800 border border-dark-600 rounded-lg p-1">
             {ORDER_TYPE_VALUES.map((t) => (
               <button
@@ -202,9 +231,41 @@ export default function OrdensKanban() {
       </div>
 
       {isLoading ? (
-        <p className="text-dark-400 text-sm">Carregando...</p>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2.5">
+            {Array.from({ length: 7 }, (_, i) => (
+              <Esqueleto key={i} className="h-16 rounded-xl" />
+            ))}
+          </div>
+          <div className="flex gap-4">
+            {Array.from({ length: 4 }, (_, i) => (
+              <Esqueleto key={i} className="h-96 w-72 rounded-xl shrink-0" />
+            ))}
+          </div>
+        </div>
       ) : (
-        <OrdensBoard ordens={ordens ?? []} orderType={orderType} basePath={basePath} />
+        <>
+          {!novidadesVistas && <CaixaNovidades itens={NOVIDADES_PEDIDOS} aoFechar={() => setNovidadesVistas(true)} />}
+          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2.5 mb-3">
+            <Indicador icone={Package} valor={contar('andamento')} rotulo="Em andamento" dica="Pedidos que ainda não chegaram em Concluído" cor="#3987e5" ativo={filtroRapido === 'andamento'} onClick={() => alternar('andamento')} />
+            <Indicador icone={Siren} valor={contar('atrasados')} rotulo="Atrasados" dica="Coleta há mais de 24h ou Preparação há mais de 72h" cor="#e5534b" ativo={filtroRapido === 'atrasados'} onClick={() => alternar('atrasados')} />
+            <Indicador icone={Clock} valor={contar('atencao')} rotulo="Atenção" dica="Mais de 48h parado na mesma etapa" cor="#f97316" ativo={filtroRapido === 'atencao'} onClick={() => alternar('atencao')} />
+            <Indicador icone={Zap} valor={contar('urgentes')} rotulo="Urgentes" dica="Prioridade de despacho urgente" cor="#ec4899" ativo={filtroRapido === 'urgentes'} onClick={() => alternar('urgentes')} />
+            <Indicador icone={PackageCheck} valor={contar('prontos')} rotulo="Prontos" dica="Coleta confirmada" cor="#22a861" ativo={filtroRapido === 'prontos'} onClick={() => alternar('prontos')} />
+            <Indicador icone={CircleCheckBig} valor={contar('concluidos_mes')} rotulo="Concluídos (mês)" dica="Chegaram em Concluído ou Feedback este mês" cor="#10b981" ativo={filtroRapido === 'concluidos_mes'} onClick={() => alternar('concluidos_mes')} />
+            <Indicador icone={CalendarClock} valor={idadeMedia !== null ? `${idadeMedia}d` : '—'} rotulo="Idade média" dica="Há quantos dias, em média, os pedidos em andamento foram criados" cor="#a855f7" />
+          </div>
+
+          <TrilhaPedidos lista={listaBase} orderType={orderType} aoClicar={irParaColuna} />
+
+          {filtroRapido && <AvisoFiltro quantidade={visiveis.filter((o) => o.status === 'ativo').length} texto={ROTULO_FILTRO_PEDIDO[filtroRapido]} aoLimpar={() => setFiltroRapido('')} />}
+
+          {modo === 'lista' ? (
+            <TabelaPedidos lista={visiveis} orderType={orderType} aoAbrir={(oid) => navigate(`${basePath}/${oid}`)} />
+          ) : (
+            <OrdensBoard ordens={visiveis} orderType={orderType} basePath={basePath} />
+          )}
+        </>
       )}
 
       <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Novo Pedido" size="sm">
