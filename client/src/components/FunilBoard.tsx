@@ -5,7 +5,7 @@ import toast from 'react-hot-toast'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
-import { timeAgo } from '../lib/utils'
+import { timeAgo, hojeBrString } from '../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { parseValorBr, formatarValorInput } from '../lib/valorBr'
 import { useAuth } from '../contexts/AuthContext'
@@ -1026,6 +1026,75 @@ function ItensPedidoEditor({
   )
 }
 
+const NOMES_MES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
+
+// Trava de venda em card de mês passado (pedido do João, 2026-10-22) — ver
+// dataFechamentoDoCard no servidor. Pergunta se a venda é mesmo daquele mês;
+// se for, pede a data do pedido dentro dele; se não, manda registrar no card
+// do mês atual.
+function AvisoCardMesPassado({
+  mesReferencia,
+  escolha,
+  setEscolha,
+  data,
+  setData,
+}: {
+  mesReferencia: string
+  escolha: 'sim' | 'nao' | null
+  setEscolha: (v: 'sim' | 'nao' | null) => void
+  data: string
+  setData: (v: string) => void
+}) {
+  const [ano, mes] = mesReferencia.split('-').map(Number)
+  const nomeMes = NOMES_MES[mes - 1]
+  const nomeMesAtual = NOMES_MES[Number(hojeBrString().slice(5, 7)) - 1]
+  const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate()
+  const mm = String(mes).padStart(2, '0')
+  return (
+    <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 space-y-2">
+      <p className="text-sm font-semibold text-amber-200">
+        ⚠️ Este card é de {nomeMes}/{ano}. Essa venda é de {nomeMes}?
+      </p>
+      {escolha === null && (
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={() => setEscolha('sim')}>
+            Sim, é de {nomeMes}
+          </Button>
+          <Button type="button" size="sm" variant="secondary" onClick={() => setEscolha('nao')}>
+            Não, é de {nomeMesAtual}
+          </Button>
+        </div>
+      )}
+      {escolha === 'sim' && (
+        <div className="space-y-1">
+          <Input
+            label={`Data do pedido (dentro de ${nomeMes}) — obrigatória`}
+            type="date"
+            min={`${ano}-${mm}-01`}
+            max={`${ano}-${mm}-${ultimoDia}`}
+            value={data}
+            onChange={(e) => setData(e.target.value)}
+          />
+          <button type="button" className="text-xs text-dark-400 underline" onClick={() => setEscolha(null)}>
+            Voltar
+          </button>
+        </div>
+      )}
+      {escolha === 'nao' && (
+        <div className="space-y-1">
+          <p className="text-xs text-amber-100">
+            Então registre no card de <b>{nomeMesAtual}</b>: feche esta janela, troque o mês do Kanban para {nomeMesAtual} (no canto de cima) e abra
+            este cliente lá. Assim a venda conta no mês certo e aparece no Kanban.
+          </p>
+          <button type="button" className="text-xs text-dark-400 underline" onClick={() => setEscolha(null)}>
+            Voltar
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CardModal({
   card,
   onClose,
@@ -1080,6 +1149,16 @@ function CardModal({
   const [pdfFile, setPdfFile] = useState<File | null>(null)
   const [pdfPathEnviado, setPdfPathEnviado] = useState<string | null>(null)
   const [novaVendaAberta, setNovaVendaAberta] = useState(false)
+  const cardMesPassado = card.mesReferencia < `${hojeBrString().slice(0, 7)}-01`
+  const [escolhaMesPassado, setEscolhaMesPassado] = useState<'sim' | 'nao' | null>(null)
+  const [dataPedidoMesPassado, setDataPedidoMesPassado] = useState('')
+  function validarMesPassado(): string | null {
+    if (!cardMesPassado) return null
+    if (escolhaMesPassado === 'nao') return 'Essa venda é do mês atual — registre no card do mês atual (troque o mês do Kanban).'
+    if (escolhaMesPassado !== 'sim') return 'Responda o aviso: essa venda é do mês deste card?'
+    if (!dataPedidoMesPassado) return 'Informe a data do pedido.'
+    return null
+  }
   // Hidrata do card quando ele já está Perdido/Consumidor Final (reabrir um
   // card já classificado mostrava os campos em branco, mesmo o motivo já
   // estando salvo — parecia que "não gravou", mas só faltava ler de volta.
@@ -1340,6 +1419,8 @@ function CardModal({
     }
 
     if (etapaSelecionada === 'fechado') {
+      const erroMes = validarMesPassado()
+      if (erroMes) return toast.error(erroMes)
       if (!valorFechado) return toast.error('Informe o valor fechado.')
       if (Number.isNaN(parseValorBr(valorFechado))) return toast.error('Valor fechado inválido — use só números, ex: 1.250,50.')
       if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
@@ -1390,6 +1471,7 @@ function CardModal({
       empresaRepasse: (empresaRepasse || undefined) as any,
       motivoRepasseObservacao: motivoRepasseObs || undefined,
       clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
+      dataPedido: cardMesPassado && etapaSelecionada === 'fechado' ? dataPedidoMesPassado : undefined,
       itens: itensPedido
         .filter((i) => i.descricao.trim())
         .map((i) => ({
@@ -1422,6 +1504,8 @@ function CardModal({
   // etapa" (o card já está "Fechado" e continua), só soma mais uma venda.
   async function handleRegistrarVenda(e: React.FormEvent) {
     e.preventDefault()
+    const erroMes = validarMesPassado()
+    if (erroMes) return toast.error(erroMes)
     if (!valorFechado) return toast.error('Informe o valor da venda.')
     if (Number.isNaN(parseValorBr(valorFechado))) return toast.error('Valor inválido — use só números, ex: 1.250,50.')
     if (!pdfFile) return toast.error('Anexe o PDF do pedido/nota.')
@@ -1436,6 +1520,7 @@ function CardModal({
 
     registrarVendaMut.mutate({
       funilMensalId: card.funilMensalId,
+      dataPedido: cardMesPassado ? dataPedidoMesPassado : undefined,
       valorFechado: parseValorBr(valorFechado),
       condicaoPagamento: condicaoPagamento || undefined,
       numeroPedido: numeroPedido.trim() || undefined,
@@ -1655,6 +1740,15 @@ function CardModal({
               </Button>
             ) : (
               <form onSubmit={handleRegistrarVenda} className="space-y-2 bg-dark-900/40 border border-dark-700 rounded-2xl p-3">
+                {cardMesPassado && (
+                  <AvisoCardMesPassado
+                    mesReferencia={card.mesReferencia}
+                    escolha={escolhaMesPassado}
+                    setEscolha={setEscolhaMesPassado}
+                    data={dataPedidoMesPassado}
+                    setData={setDataPedidoMesPassado}
+                  />
+                )}
                 {card.cnpjsDisponiveis.length > 1 && (
                   <Select
                     label="Faturar em qual CNPJ?"
@@ -1985,6 +2079,15 @@ function CardModal({
 
           {etapaSelecionada === 'fechado' && card.etapa !== 'fechado' && (
             <>
+              {cardMesPassado && (
+                <AvisoCardMesPassado
+                    mesReferencia={card.mesReferencia}
+                    escolha={escolhaMesPassado}
+                    setEscolha={setEscolhaMesPassado}
+                    data={dataPedidoMesPassado}
+                    setData={setDataPedidoMesPassado}
+                  />
+              )}
               {card.cnpjsDisponiveis.length > 1 && (
                 <Select
                   label="Faturar em qual CNPJ?"

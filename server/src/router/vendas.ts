@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, sql } from 'drizzle-orm'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, itensPedido, vendas, empresas, users, caixaMovimentacoes } from '../db/schema.js'
-import { agoraSqlite, mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
+import { agoraSqlite, mesReferenciaAtual, hojeBrString, dataFechamentoDoCard } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
@@ -150,6 +150,8 @@ export const vendasRouter = router({
         tipoComprovante: z.enum(['cupom_fiscal', 'nota_fiscal']).optional(),
         pdfPedidoPath: z.string(),
         clienteIdFaturamento: z.number().optional(),
+        // Só pra card de mês passado (ver dataFechamentoDoCard): YYYY-MM-DD.
+        dataPedido: z.string().optional(),
         itens: z
           .array(
             z.object({
@@ -168,6 +170,7 @@ export const vendasRouter = router({
       if (funil.etapa !== 'fechado') {
         throw new Error('Só é possível registrar uma venda adicional em um cliente que já fechou esse mês.')
       }
+      const dataFechamento = dataFechamentoDoCard(funil.mesReferencia, input.dataPedido)
 
       // Compretec Loja Física exige número do pedido em qualquer venda, não
       // só na venda rápida — inclusive pra cliente padrão/negociado normal.
@@ -183,6 +186,7 @@ export const vendasRouter = router({
 
       const vendaResult = await db.insert(vendas).values({
         funilMensalId: funil.id,
+        dataFechamento,
         clienteId: clienteFaturamentoId,
         vendedorId: funil.vendedorId,
         mesReferencia: funil.mesReferencia,
@@ -235,7 +239,10 @@ export const vendasRouter = router({
         )
       }
 
-      await db.update(clientes).set({ dataUltimaCompra: agoraSqlite() }).where(eq(clientes.id, clienteFaturamentoId))
+      await db
+        .update(clientes)
+        .set({ dataUltimaCompra: sql`max(coalesce(${clientes.dataUltimaCompra}, ''), ${dataFechamento})` })
+        .where(eq(clientes.id, clienteFaturamentoId))
 
       return { id: vendaId }
     }),

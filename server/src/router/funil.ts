@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull, or, type SQL } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
-import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString } from '../lib/dataBr.js'
+import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString, dataFechamentoDoCard } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
 import { coberturaContatosVendedor, coberturaContatosEmpresa } from '../lib/coberturaContatos.js'
@@ -251,6 +251,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     diasSemContato: diasDesde(f.dataUltimoContato),
     qtdTentativasContato: f.qtdTentativasContato,
     dataEntradaEtapa: f.dataEntradaEtapa,
+    mesReferencia: f.mesReferencia,
     valorOrcado: f.valorOrcado,
     pdfPropostaPath: f.pdfPropostaPath,
     // Nunca iam pro card antes — reabrir um card já Perdido/Consumidor Final
@@ -386,6 +387,8 @@ export const funilRouter = router({
         pdfPedidoPath: z.string().optional(),
         pdfPropostaPath: z.string().optional(),
         clienteIdFaturamento: z.number().optional(),
+        // Só pra card de mês passado (ver dataFechamentoDoCard): YYYY-MM-DD.
+        dataPedido: z.string().optional(),
         motivoPerdaCategoria: z.enum(['estoque', 'financeiro', 'compras']).optional(),
         motivoPerdaOpcao: z.string().optional(),
         motivoPerdaItem: z.string().optional(),
@@ -512,10 +515,15 @@ export const funilRouter = router({
           await validarClienteFaturamento(funil.clienteId, clienteFaturamentoId, ctx.empresaId)
         }
 
-        await db.update(clientes).set({ dataUltimaCompra: agoraSqlite() }).where(eq(clientes.id, clienteFaturamentoId))
+        const dataFechamento = dataFechamentoDoCard(funil.mesReferencia, input.dataPedido)
+        await db
+          .update(clientes)
+          .set({ dataUltimaCompra: sql`max(coalesce(${clientes.dataUltimaCompra}, ''), ${dataFechamento})` })
+          .where(eq(clientes.id, clienteFaturamentoId))
 
         const vendaResult = await db.insert(vendas).values({
           funilMensalId: input.funilMensalId,
+          dataFechamento,
           clienteId: clienteFaturamentoId,
           vendedorId: funil.vendedorId,
           mesReferencia: funil.mesReferencia,

@@ -150,3 +150,22 @@ export function diasDesde(dataIso: string | null): number | null {
   const hoje = new Date(`${hojeKey}T00:00:00Z`)
   return Math.floor((hoje.getTime() - data.getTime()) / (1000 * 60 * 60 * 24))
 }
+
+// Trava de venda em card de mês passado (pedido do João, 2026-10-22): o
+// botão "Registrar outra venda" e o "Fechado" continuavam funcionando no
+// Kanban de um mês já encerrado, e a venda saía com a data do dia do
+// lançamento — 15 vendas de setembro do Sergio caíram em outubro assim.
+// Card do mês atual: data de hoje, como sempre. Card de mês passado: a data
+// do pedido é obrigatória e tem que ser daquele mês.
+export function dataFechamentoDoCard(mesReferenciaCard: string, dataPedido?: string | null): string {
+  if (mesReferenciaCard >= mesReferenciaAtual()) return agoraSqlite()
+  const [ano, mes] = mesReferenciaCard.split('-')
+  const rotulo = `${mes}/${ano}`
+  if (!dataPedido || !/^\d{4}-\d{2}-\d{2}$/.test(dataPedido)) {
+    throw new Error(`Este card é de ${rotulo}. Informe a data do pedido (dentro de ${rotulo}) — ou, se a venda é deste mês, registre no card do mês atual.`)
+  }
+  if (dataPedido.slice(0, 7) !== mesReferenciaCard.slice(0, 7)) {
+    throw new Error(`A data do pedido precisa ser de ${rotulo}, que é o mês deste card. Se a venda é de outro mês, registre no card daquele mês.`)
+  }
+  return `${dataPedido} ${agoraSqlite().slice(11)}`
+}
