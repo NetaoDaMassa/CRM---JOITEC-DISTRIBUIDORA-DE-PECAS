@@ -14,6 +14,8 @@ import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButto
 import { AvatarIniciais } from '../components/ui/Visual'
 import { BotaoLegenda, CaixaNovidades, Indicador } from '../components/painel/PainelVisual'
 import { EquipeVisitas, LEGENDA_VISITAS, NOVIDADES_VISITAS, PainelRitmo, RESULTADO_VISITA, SeloSituacao, numerosDoMes, situacaoVisita } from '../components/visitas/PainelVisitas'
+import AbaRoteiro from '../components/roteiro/AbaRoteiro'
+import AbaRoteirosEquipe from '../components/roteiro/AbaRoteirosEquipe'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, mesmo padrão
 // já usado em Pedidos/Propostas/Devolução/Qualidade.
@@ -58,13 +60,21 @@ const RESULTADO_CORES: Record<string, string> = {
   nao_encontrado: 'text-orange-400 bg-orange-900/20 border-orange-700/40',
 }
 
-type TabKey = 'hoje' | 'semana' | 'todas' | 'clientes' | 'equipe'
-const TAB_LABELS: Record<TabKey, string> = { hoje: 'Hoje', semana: 'Semana', todas: 'Todas', clientes: 'Clientes', equipe: 'Equipe' }
+type TabKey = 'roteiro' | 'roteiros' | 'hoje' | 'semana' | 'todas' | 'clientes' | 'equipe'
+const TAB_LABELS: Record<TabKey, string> = { roteiro: 'Meu roteiro (teste)', roteiros: 'Roteiros da equipe (teste)', hoje: 'Hoje', semana: 'Semana', todas: 'Todas', clientes: 'Clientes', equipe: 'Equipe' }
 
 export default function Visitas() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'admin'
-  const [tab, setTab] = usePersistedState<TabKey>('visitas:tab', 'hoje')
+  const [tabSalva, setTab] = usePersistedState<TabKey>('visitas:tab', 'hoje')
+  // Roteiro do dia (2026-10-22), em fase de teste: só o vendedor escolhido
+  // pelo gestor (Regras do roteiro → "Quem está no teste") vê "Meu roteiro";
+  // o gestor vê "Roteiros da equipe" no fim das abas.
+  const { data: acessoRoteiro } = trpc.roteiros.acesso.useQuery()
+  const abas: TabKey[] = isAdmin
+    ? ['hoje', 'semana', 'todas', 'clientes', 'equipe', ...(acessoRoteiro?.gestor ? (['roteiros'] as TabKey[]) : [])]
+    : [...(acessoRoteiro?.vendedor ? (['roteiro'] as TabKey[]) : []), 'hoje', 'semana', 'todas', 'clientes']
+  const tab: TabKey = abas.includes(tabSalva) ? tabSalva : abas[0]
   const [vendedorId, setVendedorId] = usePersistedState('visitas:vendedorId', '')
   const [mes, setMes] = usePersistedState('visitas:mes', '')
   const [dataDe, setDataDe] = usePersistedState('visitas:dataDe', '')
@@ -168,7 +178,7 @@ export default function Visitas() {
       </div>
 
       <div className="flex gap-1 border-b border-dark-700 mb-5 overflow-x-auto">
-        {(Object.keys(TAB_LABELS) as TabKey[]).map((t) => (
+        {abas.map((t) => (
           <button key={t} onClick={() => setTab(t)} className={`px-3 py-2 text-sm whitespace-nowrap border-b-2 transition-colors ${tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}>
             {TAB_LABELS[t]}
           </button>
@@ -178,6 +188,8 @@ export default function Visitas() {
         </Link>
       </div>
 
+      {tab === 'roteiro' && <AbaRoteiro />}
+      {tab === 'roteiros' && <AbaRoteirosEquipe />}
       {tab === 'hoje' && <AbaVisitas periodo="hoje" vendedorId={filtro.vendedorId} />}
       {tab === 'semana' && <AbaVisitas periodo="semana" vendedorId={filtro.vendedorId} />}
       {tab === 'todas' && <AbaVisitas periodo="todas" vendedorId={filtro.vendedorId} dataDe={dataDe} dataAte={dataAte} />}

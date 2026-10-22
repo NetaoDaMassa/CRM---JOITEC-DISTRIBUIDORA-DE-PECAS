@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Variante `claro:` — ajuste de cor só no modo claro (html.light). */
+@custom-variant claro (&:where(html.light, html.light *));
 
 @theme {
   /* ── Paleta principal da marca (substitui gold) ───────────────────────── */

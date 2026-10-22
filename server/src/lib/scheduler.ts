@@ -12,6 +12,7 @@ import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
 import { sincronizarStatusNotion } from './pollNotionStatus.js'
 import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoAbandonadoPoller.js'
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
+import { rodarRoteiroAgendado } from './roteiro.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -162,6 +163,12 @@ export function startScheduler() {
   }
 
   iniciarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha na inicialização:', err))
+
+  // Roteiro do dia (Odin): aprovação automática de roteiro não analisado e
+  // aviso de quem não enviou até o horário limite (ver lib/roteiro.ts).
+  cron.schedule('*/5 * * * *', () => {
+    rodarRoteiroAgendado().catch((err) => console.error('[roteiro] erro no agendador:', err))
+  })
 
   // Arquivos/Mídia → Google Drive (googleDriveSync.ts). Sem conta conectada
   // em Configurações, sai calado. A rodada tem tempo máximo e não deixa

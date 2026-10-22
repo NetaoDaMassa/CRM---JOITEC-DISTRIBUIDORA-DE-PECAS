@@ -10,6 +10,7 @@ import { db } from '../db/client.js'
 import { empresas, visitasClientes, visitas, propostas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString, inicioSemanaBrString } from '../lib/dataBr.js'
 import { notificarGestores } from '../lib/propostasGates.js'
+import { configRoteiro, participa, travaAtiva } from '../lib/roteiro.js'
 
 const SLUG_VISITAS = 'odin-compressores'
 
@@ -23,7 +24,7 @@ function assertDonoOuGestor(vendedorId: number, userId: number, role: 'admin' | 
   if (vendedorId !== userId) throw new TRPCError({ code: 'FORBIDDEN', message: 'Sem permissão' })
 }
 
-async function gerarPropostaDaVisita(visita: typeof visitas.$inferSelect, empresaId: number, userId: number) {
+export async function gerarPropostaDaVisita(visita: typeof visitas.$inferSelect, empresaId: number, userId: number) {
   const clienteNome = visita.clienteNome || (visita.clienteId ? (await db.query.visitasClientes.findFirst({ where: eq(visitasClientes.id, visita.clienteId) }))?.nome : null) || visita.nomeEmpresa || '—'
   const result = await db.insert(propostas).values({
     empresaId,
@@ -160,6 +161,15 @@ export const visitasRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaVisitas(ctx.empresaId)
+      // Trava do Roteiro do dia (pedido do João, 2026-10-22, versão rígida):
+      // vendedor externo com a trava ligada só registra visita pela tela do
+      // Roteiro ("Cheguei" numa parada aprovada) — ver router/roteiros.ts.
+      if (ctx.user.role === 'vendor') {
+        const conf = await configRoteiro(ctx.empresaId)
+        if (travaAtiva(conf, hojeBrString()) && participa(conf, ctx.user.id)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Com o Roteiro do dia ligado, a visita é registrada pela aba "Roteiro" (botão "Cheguei" na parada).' })
+        }
+      }
       const { lat, lng, ...dados } = input
       // GPS voltou a ser OPCIONAL (era obrigatório desde 2026-08-31 — revertido
       // 2026-09-02, pedido do João: "nem sempre no local certinho vai

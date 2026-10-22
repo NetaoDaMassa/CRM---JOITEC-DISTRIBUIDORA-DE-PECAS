@@ -62,6 +62,7 @@ import { propostasRouter } from './propostas.js'
 import { revendasRouter } from './revendas.js'
 import { estoqueRouter } from './estoque.js'
 import { visitasRouter } from './visitas.js'
+import { roteirosRouter } from './roteiros.js'
 import { qualidadeRouter } from './qualidade.js'
 import { configuracoesOdinRouter } from './configuracoesOdin.js'
 import { relatoriosOdinRouter } from './relatoriosOdin.js'
@@ -142,6 +143,7 @@ export const appRouter = router({
   revendas: revendasRouter,
   estoque: estoqueRouter,
   visitas: visitasRouter,
+  roteiros: roteirosRouter,
   qualidade: qualidadeRouter,
   configuracoesOdin: configuracoesOdinRouter,
   relatoriosOdin: relatoriosOdinRouter,

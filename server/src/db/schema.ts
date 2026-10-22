@@ -172,6 +172,12 @@ export const users = sqliteTable('users', {
   // (operacional, gestão, logins legados) — pedido do João, 2026-10-19, pra
   // o Dashboard Odin mostrar o trabalho de cada equipe do jeito dela.
   canalVenda: text('canal_venda', { enum: ['visitas', 'leads', 'pecas', 'nenhum'] }).notNull().default('visitas'),
+  // Ponto de partida/chegada do Roteiro do dia (vendedor externo, Odin) —
+  // casa do vendedor, pedido do João 2026-10-22. Só o próprio vendedor e o
+  // gestor enxergam (ver router/roteiros.ts).
+  casaEndereco: text('casa_endereco'),
+  casaLat: real('casa_lat'),
+  casaLng: real('casa_lng'),
   // Só o último — o histórico dia a dia de acesso fica em logAcessoUsuario.
   lastLoginAt: text('last_login_at'),
   // Presença do Chat Grupo Odin — atualizado pelo socket (chatSocket.ts) a
@@ -3133,6 +3139,14 @@ export const visitas = sqliteTable(
     propostaRevenda: text('proposta_revenda'),
     convertidoParaPropostaId: integer('convertido_para_proposta_id').references(() => propostas.id, { onDelete: 'set null' }),
     legacyVisitaId: integer('legacy_visita_id').unique(),
+    // Parada do Roteiro do dia que originou a visita (null = visita antiga,
+    // de antes do roteiro, ou registrada com a trava desligada). Uma parada
+    // de "área de prospecção" pode ter várias visitas.
+    roteiroParadaId: integer('roteiro_parada_id').references((): AnySQLiteColumn => roteiroParadas.id, { onDelete: 'set null' }),
+    // Distância em metros entre o GPS do check-in e o ponto da parada — só
+    // informativa (relatório "longe do cliente"), não bloqueia: GPS falha
+    // dentro de galpão e a localização do cliente pode ser aproximada.
+    distanciaParadaM: real('distancia_parada_m'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -3140,6 +3154,81 @@ export const visitas = sqliteTable(
     empresaVendedorIdx: index('visitas_empresa_vendedor_idx').on(t.empresaId, t.vendedorId),
   })
 )
+
+// ── Roteiro do dia (Odin Compressores, vendedores externos) ──────────────
+// Pedido do João, 2026-10-22: vendedor monta o roteiro na véspera (sai de
+// casa → paradas → volta), gestor aprova, e com a trava ligada só dá pra
+// registrar visita em parada de roteiro aprovado. Caminho calculado de
+// graça no próprio CRM (distância em linha reta, ver lib/roteiro.ts).
+export const roteiros = sqliteTable(
+  'roteiros',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id),
+    data: text('data').notNull(), // YYYY-MM-DD (dia do roteiro, Brasília)
+    status: text('status', { enum: ['rascunho', 'enviado', 'aprovado', 'devolvido'] }).notNull().default('rascunho'),
+    horaSaida: text('hora_saida').notNull().default('08:00'),
+    kmPrevisto: real('km_previsto'),
+    enviadoEm: text('enviado_em'), // UTC
+    aprovadoEm: text('aprovado_em'), // UTC
+    aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+    aprovacaoAutomatica: integer('aprovacao_automatica', { mode: 'boolean' }).notNull().default(false),
+    comentarioGestor: text('comentario_gestor'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    vendedorDataUq: unique('roteiros_vendedor_data_uq').on(t.vendedorId, t.data),
+    empresaDataIdx: index('roteiros_empresa_data_idx').on(t.empresaId, t.data),
+  })
+)
+
+export const roteiroParadas = sqliteTable(
+  'roteiro_paradas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    roteiroId: integer('roteiro_id').notNull().references(() => roteiros.id, { onDelete: 'cascade' }),
+    ordem: integer('ordem').notNull().default(0),
+    // 'cliente' = empresa específica | 'prospeccao' = área (bairro/cidade)
+    // onde o vendedor bate de porta em porta — cada empresa nova visitada
+    // ali vira uma visita ligada a esta parada.
+    tipo: text('tipo', { enum: ['cliente', 'prospeccao'] }).notNull().default('cliente'),
+    nome: text('nome').notNull(),
+    endereco: text('endereco'),
+    cidade: text('cidade'),
+    lat: real('lat'),
+    lng: real('lng'),
+    // De onde veio o ponto no mapa: GPS de visita anterior (preciso),
+    // endereço (OpenStreetMap), só a cidade (aproximado) ou marcado à mão.
+    localizacaoFonte: text('localizacao_fonte', { enum: ['gps_visita', 'endereco', 'cidade', 'manual'] }),
+    objetivo: text('objetivo').notNull(),
+    motivoSugestao: text('motivo_sugestao'), // ex. "Retorno combinado", "Proposta parada há 12 dias"
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    quantidadePrevista: integer('quantidade_prevista'), // só prospecção
+    status: text('status', { enum: ['pendente', 'visitada', 'pulada'] }).notNull().default('pendente'),
+    motivoPulo: text('motivo_pulo'),
+    // Visita extra pedida no dia (fora do roteiro aprovado) — só libera o
+    // registro depois que o gestor aprova.
+    extra: integer('extra', { mode: 'boolean' }).notNull().default(false),
+    extraStatus: text('extra_status', { enum: ['pendente', 'aprovada', 'recusada'] }),
+    extraJustificativa: text('extra_justificativa'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    roteiroIdx: index('roteiro_paradas_roteiro_idx').on(t.roteiroId),
+  })
+)
+
+export const roteirosRelations = relations(roteiros, ({ one, many }) => ({
+  vendedor: one(users, { fields: [roteiros.vendedorId], references: [users.id] }),
+  paradas: many(roteiroParadas),
+}))
+
+export const roteiroParadasRelations = relations(roteiroParadas, ({ one, many }) => ({
+  roteiro: one(roteiros, { fields: [roteiroParadas.roteiroId], references: [roteiros.id] }),
+  visitas: many(visitas),
+}))
 
 export const visitasClientesRelations = relations(visitasClientes, ({ one, many }) => ({
   empresa: one(empresas, { fields: [visitasClientes.empresaId], references: [empresas.id] }),
@@ -3152,6 +3241,7 @@ export const visitasRelations = relations(visitas, ({ one }) => ({
   vendedor: one(users, { fields: [visitas.vendedorId], references: [users.id] }),
   cliente: one(visitasClientes, { fields: [visitas.clienteId], references: [visitasClientes.id] }),
   propostaConvertida: one(propostas, { fields: [visitas.convertidoParaPropostaId], references: [propostas.id] }),
+  roteiroParada: one(roteiroParadas, { fields: [visitas.roteiroParadaId], references: [roteiroParadas.id] }),
 }))
 
 // ── Configurações (Odin Compressores, portado do odincrm "settings") ──
