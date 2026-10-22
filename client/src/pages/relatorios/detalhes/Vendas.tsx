@@ -167,7 +167,8 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
   const { data: feitos } = trpc.reports.orcamentosPorVendedor.useQuery({ ...f.periodo, granularidade })
   const { data: feitosAnt } = trpc.reports.orcamentosPorVendedor.useQuery({ ...f.anterior, granularidade: 'mes' })
   const { data: noPeriodo, isLoading: carregandoPeriodo } = trpc.reports.orcamentosNoPeriodo.useQuery(f.periodo)
-  const [aba, setAba] = useState<'periodo' | 'abertos' | 'feitos'>('periodo')
+  const { data: itensOrcados, isLoading: carregandoItens } = trpc.reports.itensMaisOrcados.useQuery(f.periodo)
+  const [aba, setAba] = useState<'periodo' | 'abertos' | 'feitos' | 'itens'>('periodo')
 
   const linhas = abertos?.linhas ?? []
   const parados = linhas.filter((l) => (l.diasEmAberto ?? 0) > 15)
@@ -228,6 +229,45 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
     { id: 'valor', rotulo: 'Valor', valor: (l) => l.valor, formato: 'moeda', somar: true },
     { id: 'situacao', rotulo: 'Situação', valor: (l) => SITUACAO[l.situacao].rotulo, render: (l) => <Etiqueta cor={SITUACAO[l.situacao].cor}>{SITUACAO[l.situacao].rotulo}</Etiqueta> },
     { id: 'origem', rotulo: 'Origem', valor: (l) => (l.origem === 'sap' ? `SAP ${l.numero ?? ''}`.trim() : 'CRM') },
+    {
+      id: 'itens',
+      rotulo: 'Itens cotados',
+      quebrar: true,
+      valor: (l) => l.itens.join(' | '),
+      render: (l) =>
+        l.itens.length ? (
+          <span className="text-xs text-dark-300" title={l.itens.join('\n')}>
+            {l.itens.slice(0, 2).join(' · ')}
+            {l.itens.length > 2 && <span className="text-dark-500"> +{l.itens.length - 2}</span>}
+          </span>
+        ) : (
+          <span className="text-dark-600">—</span>
+        ),
+    },
+  ]
+  type IO = NonNullable<typeof itensOrcados>[number]
+  const colItensOrcados: Coluna<IO>[] = [
+    { id: 'desc', rotulo: 'Produto', valor: (i) => i.descricao, render: (i) => <span className="font-medium text-dark-50">{i.descricao}</span> },
+    { id: 'cod', rotulo: 'Código SAP', valor: (i) => i.codigoItem, oculta: true },
+    { id: 'cotacoes', rotulo: 'Cotações', valor: (i) => i.cotacoes, formato: 'numero', somar: true },
+    { id: 'clientes', rotulo: 'Clientes', valor: (i) => i.clientes, formato: 'numero' },
+    { id: 'qtd', rotulo: 'Quantidade orçada', valor: (i) => i.quantidade, formato: 'numero', somar: true },
+    { id: 'valor', rotulo: 'Valor orçado', valor: (i) => i.valor, formato: 'moeda', somar: true },
+    { id: 'fechadas', rotulo: 'Fechadas', valor: (i) => i.fechadas, formato: 'numero', somar: true },
+    { id: 'canceladas', rotulo: 'Canceladas', valor: (i) => i.canceladas, formato: 'numero', somar: true },
+    { id: 'abertas', rotulo: 'Em aberto', valor: (i) => i.abertas, formato: 'numero', somar: true },
+    {
+      id: 'taxa',
+      rotulo: 'Taxa de fechamento',
+      valor: (i) => i.taxaFechamento,
+      formato: 'pct',
+      render: (i) =>
+        i.taxaFechamento == null ? (
+          <span className="text-dark-500">—</span>
+        ) : (
+          <Etiqueta cor={i.taxaFechamento >= 60 ? '#22a861' : i.taxaFechamento >= 35 ? '#f2a516' : '#e5534b'}>{pct(i.taxaFechamento)}</Etiqueta>
+        ),
+    },
   ]
   type F = (typeof porVendedor)[number]
   const colFeitos: Coluna<F>[] = [
@@ -280,16 +320,35 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
           </Secao>
         </>
       )}
-      <Abas<'periodo' | 'abertos' | 'feitos'>
+      <Abas<'periodo' | 'abertos' | 'feitos' | 'itens'>
         valor={aba}
         onChange={setAba}
         opcoes={[
           { valor: 'periodo', rotulo: 'Feitos no período', contagem: noPeriodo?.length ?? 0 },
           { valor: 'abertos', rotulo: 'Em aberto hoje', contagem: linhas.length },
           ...(simples ? [] : [{ valor: 'feitos' as const, rotulo: 'Por vendedor', contagem: porVendedor.length }]),
+          { valor: 'itens', rotulo: 'Itens mais orçados', contagem: itensOrcados?.length ?? 0 },
         ]}
       />
-      {aba === 'periodo' ? (
+      {aba === 'itens' ? (
+        <>
+          <p className="text-xs text-dark-400 -mt-2">
+            O que mais apareceu nas cotações do SAP entre {formatarDataCurta(f.inicio)} e {formatarDataCurta(f.fim)}. Fechada/cancelada é a situação da cotação inteira no SAP. A taxa de fechamento é fechadas ÷ (fechadas + canceladas); cotação em aberto ainda não conta.
+          </p>
+          <TabelaDados
+            id="orcamentos-itens"
+            linhas={itensOrcados}
+            colunas={colItensOrcados}
+            chave={(i) => i.chave}
+            buscaEm={(i) => `${i.descricao} ${i.codigoItem ?? ''}`}
+            placeholderBusca="Buscar produto ou código..."
+            nomeArquivo="itens-mais-orcados.csv"
+            ordemInicial={{ coluna: 'cotacoes', direcao: 'desc' }}
+            carregando={carregandoItens}
+          />
+          <p className="text-xs text-dark-500">Mostra os 300 itens mais orçados do período.</p>
+        </>
+      ) : aba === 'periodo' ? (
         <>
           <p className="text-xs text-dark-400 -mt-2">
             Cada orçamento feito entre {formatarDataCurta(f.inicio)} e {formatarDataCurta(f.fim)} (card que entrou em Negociação, mais as cotações do SAP). A situação é a de hoje.
@@ -299,8 +358,8 @@ export function Orcamentos({ f, simples, mostrarResumo, clientesBase }: PropsDet
             linhas={noPeriodo ?? []}
             colunas={colPeriodo}
             chave={(l) => l.chave}
-            buscaEm={(l) => `${l.razaoSocial} ${l.vendedorNome} ${l.numero ?? ''}`}
-            placeholderBusca="Buscar cliente, vendedor ou nº da cotação..."
+            buscaEm={(l) => `${l.razaoSocial} ${l.vendedorNome} ${l.numero ?? ''} ${l.itens.join(' ')}`}
+            placeholderBusca="Buscar cliente, vendedor, nº da cotação ou item..."
             nomeArquivo="orcamentos-no-periodo.csv"
             link={(l) => `${clientesBase}/${l.clienteId}`}
             ordemInicial={{ coluna: 'data', direcao: 'desc' }}

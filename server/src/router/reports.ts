@@ -19,6 +19,7 @@ import {
   sapVendasHistorico,
   sapCotacoesHistorico,
   sapItensHistorico,
+  sapCotacoesItens,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
@@ -926,6 +927,64 @@ export const reportsRouter = router({
     return [...grupos.values()].sort((a, b) => b.quantidadeTotal - a.quantidadeTotal).slice(0, 50)
   }),
 
+  // Itens das cotações do SAP (sap_cotacoes_itens, pedido do João,
+  // 2026-10-22): o que mais se orçou no período e quanto disso fechou.
+  // Agrupa pelo código do item do SAP. Situação é a da cotação inteira
+  // (o SAP não diz qual item fechou); taxa = fechadas ÷ (fechadas +
+  // canceladas), igual à ficha do cliente. Cliente conta pro vendedor atual.
+  itensMaisOrcados: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const filtros = [
+      eq(sapCotacoesItens.empresaId, ctx.empresaId),
+      eq(sapImportacoes.ativo, true),
+      between(sapCotacoesItens.dataCotacao, input.dataInicio.slice(0, 10), input.dataFim.slice(0, 10)),
+      isNull(clientes.deletedAt),
+    ]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+    if (filtroVend) filtros.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtros.push(filtroReg)
+    const linhas = await db
+      .select({
+        chave: sql<string>`coalesce(${sapCotacoesItens.codigoItem}, upper(trim(${sapCotacoesItens.descricao})))`,
+        descricao: sql<string>`max(${sapCotacoesItens.descricao})`,
+        codigoItem: sapCotacoesItens.codigoItem,
+        status: sapCotacoesItens.status,
+        cotacoes: sql<number>`count(distinct ${sapCotacoesItens.numeroCotacao})`.mapWith(Number),
+        clientes: sql<string>`group_concat(distinct ${sapCotacoesItens.clienteId})`,
+        quantidade: sql<number>`coalesce(sum(${sapCotacoesItens.quantidade}), 0)`.mapWith(Number),
+        valor: sql<number>`coalesce(sum(${sapCotacoesItens.valorTotal}), 0)`.mapWith(Number),
+      })
+      .from(sapCotacoesItens)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesItens.importacaoId))
+      .innerJoin(clientes, eq(clientes.id, sapCotacoesItens.clienteId))
+      .where(and(...filtros))
+      .groupBy(sql`1`, sapCotacoesItens.status)
+
+    type Grupo = { chave: string; codigoItem: string | null; descricao: string; cotacoes: number; clientes: Set<string>; quantidade: number; valor: number; fechadas: number; canceladas: number; abertas: number; valorFechado: number }
+    const grupos = new Map<string, Grupo>()
+    for (const l of linhas) {
+      const g = grupos.get(l.chave) ?? { chave: l.chave, codigoItem: l.codigoItem, descricao: l.descricao, cotacoes: 0, clientes: new Set<string>(), quantidade: 0, valor: 0, fechadas: 0, canceladas: 0, abertas: 0, valorFechado: 0 }
+      g.cotacoes += l.cotacoes
+      for (const c of (l.clientes ?? '').split(',')) if (c) g.clientes.add(c)
+      g.quantidade += l.quantidade
+      g.valor += l.valor
+      if (l.status === 'fechado') {
+        g.fechadas += l.cotacoes
+        g.valorFechado += l.valor
+      } else if (l.status === 'cancelado') g.canceladas += l.cotacoes
+      else g.abertas += l.cotacoes
+      grupos.set(l.chave, g)
+    }
+    return [...grupos.values()]
+      .map(({ clientes: cli, ...g }) => ({
+        ...g,
+        clientes: cli.size,
+        taxaFechamento: g.fechadas + g.canceladas ? Math.round((g.fechadas / (g.fechadas + g.canceladas)) * 1000) / 10 : null,
+      }))
+      .sort((a, b) => b.cotacoes - a.cotacoes || b.valor - a.valor)
+      .slice(0, 300)
+  }),
+
   // "Vendedor com 100 clientes, qual a quantidade média de itens que ele
   // vende por cliente" — mix de produtos por vendedor. Denominador é o
   // cliente que efetivamente COMPROU no período (não a carteira inteira de
@@ -1498,11 +1557,12 @@ export const reportsRouter = router({
       .where(and(...filtrosEventos))
 
     type Situacao = 'aberto' | 'fechado' | 'perdido' | 'outro'
-    type Linha = { chave: string; origem: 'crm' | 'sap'; data: string; numero: string | null; clienteId: number; razaoSocial: string; vendedorNome: string; valor: number; situacao: Situacao }
+    type Linha = { chave: string; origem: 'crm' | 'sap'; itens: string[]; data: string; numero: string | null; clienteId: number; razaoSocial: string; vendedorNome: string; valor: number; situacao: Situacao }
     const situacaoCrm = (etapa: string): Situacao =>
       etapa === 'negociacao' ? 'aberto' : etapa === 'fechado' || etapa === 'faturamento' ? 'fechado' : etapa === 'perdido' ? 'perdido' : 'outro'
     const linhas: Linha[] = eventos.map((e) => ({
       chave: `crm-${e.id}`,
+      itens: [],
       origem: 'crm',
       data: toLocalDateKey(toUtcISO(e.alteradoEm)),
       numero: null,
@@ -1536,8 +1596,25 @@ export const reportsRouter = router({
       .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesHistorico.importacaoId))
       .innerJoin(clientes, eq(clientes.id, sapCotacoesHistorico.clienteId))
       .where(and(...filtrosSap))
+    // Itens de cada cotação do SAP (sap_cotacoes_itens, ligados pelo nº).
+    const itensPorNumero = new Map<string, string[]>()
+    const numeros = [...new Set(sap.map((c) => c.numero))]
+    for (let i = 0; i < numeros.length; i += 900) {
+      const its = await db
+        .select({ numero: sapCotacoesItens.numeroCotacao, descricao: sapCotacoesItens.descricao, quantidade: sapCotacoesItens.quantidade })
+        .from(sapCotacoesItens)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesItens.importacaoId))
+        .where(and(eq(sapCotacoesItens.empresaId, ctx.empresaId), eq(sapImportacoes.ativo, true), inArray(sapCotacoesItens.numeroCotacao, numeros.slice(i, i + 900))))
+        .orderBy(sapCotacoesItens.linha)
+      for (const it of its) {
+        const l = itensPorNumero.get(it.numero) ?? []
+        l.push(it.quantidade != null ? `${it.quantidade.toLocaleString('pt-BR')}× ${it.descricao}` : it.descricao)
+        itensPorNumero.set(it.numero, l)
+      }
+    }
     for (const c of sap) {
       linhas.push({
+        itens: itensPorNumero.get(c.numero) ?? [],
         chave: `sap-${c.id}`,
         origem: 'sap',
         data: c.data,

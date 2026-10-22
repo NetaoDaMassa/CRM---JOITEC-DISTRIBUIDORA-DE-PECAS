@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { formatarMoeda } from '../lib/moeda'
 
@@ -17,11 +18,13 @@ const STATUS: Record<string, { rotulo: string; classe: string }> = {
 
 // Cotações/orçamentos importados do SAP (pedido do João, 2026-10-20) — só
 // consulta, igual ao Histórico de vendas (SAP) logo acima. Some se o cliente
-// não tiver nenhuma cotação em lote ligado.
+// não tiver nenhuma cotação em lote ligado. Desde 2026-10-22, clicar na
+// cotação abre os itens que foram orçados nela.
 export default function HistoricoCotacoesSapCliente({ clienteId }: { clienteId: number }) {
   const { data } = trpc.historicoSap.cotacoesDoCliente.useQuery({ clienteId })
   const [filtro, setFiltro] = useState<string | null>(null)
   const [verTodos, setVerTodos] = useState(false)
+  const [aberta, setAberta] = useState<string | null>(null)
 
   if (!data || data.total.qtd === 0) return null
 
@@ -84,22 +87,61 @@ export default function HistoricoCotacoesSapCliente({ clienteId }: { clienteId: 
         <table className="w-full text-sm">
           <thead className="text-xs text-dark-400">
             <tr>
+              <th className="w-5" />
               <th className="text-left font-normal py-1.5">Data</th>
               <th className="text-left font-normal py-1.5">Nº Cotação</th>
               <th className="text-left font-normal py-1.5">Situação</th>
+              <th className="text-right font-normal py-1.5 hidden sm:table-cell">Itens</th>
               <th className="text-right font-normal py-1.5">Valor</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-dark-700/60">
             {visiveis.map((c) => (
-              <tr key={c.id} className="text-dark-200">
-                <td className="py-1.5">{dataBr(c.dataCotacao)}</td>
-                <td className="py-1.5 font-mono">{c.numeroCotacao}</td>
-                <td className="py-1.5">
-                  <span className={`px-2 py-0.5 rounded-md text-xs ${STATUS[c.status]?.classe ?? STATUS.outro.classe}`}>{STATUS[c.status]?.rotulo ?? c.status}</span>
-                </td>
-                <td className="py-1.5 text-right font-mono">{formatarMoeda(c.valor)}</td>
-              </tr>
+              <Fragment key={c.chave}>
+                <tr className={`text-dark-200 ${c.itens.length ? 'cursor-pointer hover:bg-dark-700/40' : ''}`} onClick={() => c.itens.length && setAberta((a) => (a === c.chave ? null : c.chave))}>
+                  <td className="py-1.5 text-dark-500">{c.itens.length > 0 && (aberta === c.chave ? <ChevronDown size={14} /> : <ChevronRight size={14} />)}</td>
+                  <td className="py-1.5">{dataBr(c.dataCotacao)}</td>
+                  <td className="py-1.5 font-mono">{c.numeroCotacao}</td>
+                  <td className="py-1.5">
+                    <span className={`px-2 py-0.5 rounded-md text-xs ${STATUS[c.status]?.classe ?? STATUS.outro.classe}`}>{STATUS[c.status]?.rotulo ?? c.status}</span>
+                  </td>
+                  <td className="py-1.5 text-right text-xs text-dark-400 hidden sm:table-cell">{c.itens.length || '—'}</td>
+                  <td className="py-1.5 text-right font-mono">{formatarMoeda(c.valor)}</td>
+                </tr>
+                {aberta === c.chave && (
+                  <tr>
+                    <td />
+                    <td colSpan={5} className="pb-3">
+                      <div className="rounded-lg bg-dark-900/60 border border-dark-700 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead className="text-dark-500">
+                            <tr>
+                              <th className="text-left font-normal px-3 py-1.5">Item</th>
+                              <th className="text-right font-normal px-3 py-1.5">Qtd</th>
+                              <th className="text-right font-normal px-3 py-1.5">Preço un.</th>
+                              <th className="text-right font-normal px-3 py-1.5">Total</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-dark-700/60 text-dark-200">
+                            {c.itens.map((i, idx) => (
+                              <tr key={idx}>
+                                <td className="px-3 py-1.5">
+                                  {i.descricao}
+                                  {i.codigoItem && <span className="ml-1.5 text-dark-500 font-mono">{i.codigoItem}</span>}
+                                </td>
+                                <td className="px-3 py-1.5 text-right font-mono">{i.quantidade?.toLocaleString('pt-BR') ?? '—'}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{i.valorUnitario != null ? formatarMoeda(i.valorUnitario) : '—'}</td>
+                                <td className="px-3 py-1.5 text-right font-mono">{i.valorTotal != null ? formatarMoeda(i.valorTotal) : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                        <p className="px-3 py-1.5 text-[11px] text-dark-500 border-t border-dark-700">O valor da cotação no SAP inclui impostos, por isso pode ser maior que a soma dos itens.</p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>

@@ -3860,8 +3860,9 @@ export const sapImportacoes = sqliteTable('sap_importacoes', {
   dataInicio: text('data_inicio'),
   dataFim: text('data_fim'),
   // 'vendas' (sap_vendas_historico), 'cotacoes' (sap_cotacoes_historico,
-  // migração 0120) ou 'itens' (sap_itens_historico, migração 0123).
-  tipo: text('tipo', { enum: ['vendas', 'cotacoes', 'itens'] }).notNull().default('vendas'),
+  // migração 0120), 'itens' (sap_itens_historico, migração 0123) ou
+  // 'cotacoes_itens' (sap_cotacoes_itens, migração 0124).
+  tipo: text('tipo', { enum: ['vendas', 'cotacoes', 'itens', 'cotacoes_itens'] }).notNull().default('vendas'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
@@ -3947,5 +3948,45 @@ export const sapItensHistorico = sqliteTable(
     empresaDataIdx: index('idx_sap_itens_historico_empresa_data').on(t.empresaId, t.dataNota),
     importacaoIdx: index('idx_sap_itens_historico_importacao').on(t.importacaoId),
     empresaNotaIdx: index('idx_sap_itens_historico_nota').on(t.empresaId, t.numeroNota),
+  })
+)
+
+// Itens de cada COTAÇÃO do SAP (pedido do João, 2026-10-22) — o "o quê" foi
+// orçado. Ligado à cotação pelo nº (empresa + numeroCotacao), não por id:
+// os cabeçalhos (sap_cotacoes_historico) só cobrem abr–jul, porque de
+// agosto em diante o orçamento oficial é o card do CRM; os itens vêm do
+// período todo e trazem data/status/cliente próprios pra se virarem sozinhos.
+// Cotação da filial Joitec com qualquer item PPR é da Odin Tubos (a Joitec
+// cotava PPR antes da separação) — ver importSapCotacoesItens.ts.
+export const sapCotacoesItens = sqliteTable(
+  'sap_cotacoes_itens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    importacaoId: integer('importacao_id').notNull().references(() => sapImportacoes.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    codigoCliente: text('codigo_cliente'),
+    numeroCotacao: text('numero_cotacao').notNull(),
+    // YYYY-MM-DD
+    dataCotacao: text('data_cotacao').notNull(),
+    status: text('status', { enum: ['aberto', 'fechado', 'cancelado', 'outro'] }).notNull(),
+    // Valor total da cotação no SAP (com impostos) — repetido em cada linha.
+    valorCotacao: real('valor_cotacao'),
+    linha: integer('linha'),
+    codigoItem: text('codigo_item'),
+    descricao: text('descricao').notNull(),
+    quantidade: real('quantidade'),
+    valorUnitario: real('valor_unitario'),
+    valorTotal: real('valor_total'),
+    // Filial do SAP de onde veio (ex.: "joitec distribuidora" numa cotação
+    // de PPR que caiu na Odin Tubos).
+    filialSap: text('filial_sap'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('idx_sap_cotacoes_itens_cliente').on(t.clienteId, t.dataCotacao),
+    empresaDataIdx: index('idx_sap_cotacoes_itens_empresa_data').on(t.empresaId, t.dataCotacao),
+    importacaoIdx: index('idx_sap_cotacoes_itens_importacao').on(t.importacaoId),
+    empresaNumeroIdx: index('idx_sap_cotacoes_itens_numero').on(t.empresaId, t.numeroCotacao),
   })
 )
