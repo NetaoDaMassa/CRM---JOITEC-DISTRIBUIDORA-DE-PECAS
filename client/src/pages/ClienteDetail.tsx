@@ -16,6 +16,8 @@ import HistoricoSapCliente from '../components/HistoricoSapCliente'
 import HistoricoCotacoesSapCliente from '../components/HistoricoCotacoesSapCliente'
 import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 import { parseValorBr } from '../lib/valorBr'
+import ResumoCliente, { EtiquetasCliente } from '../components/ResumoCliente'
+import { AvatarIniciais, Esqueleto } from '../components/ui/Visual'
 
 function formatarDataSimples(iso: string | null): string {
   if (!iso) return '—'
@@ -571,14 +573,27 @@ export default function ClienteDetail() {
     })
   }
 
-  if (isLoading) return <div className="p-6 text-dark-400">Carregando...</div>
+  if (isLoading)
+    return (
+      <div className="p-4 md:p-6 max-w-6xl space-y-4">
+        <Esqueleto className="h-24 rounded-2xl" />
+        <Esqueleto className="h-40 rounded-2xl" />
+        <div className="grid lg:grid-cols-[420px_1fr] gap-4">
+          <Esqueleto className="h-96 rounded-2xl" />
+          <Esqueleto className="h-96 rounded-2xl" />
+        </div>
+      </div>
+    )
   if (!cliente) return <div className="p-6 text-dark-400">Cliente não encontrado.</div>
 
   return (
-    <div className="p-6 max-w-xl space-y-4">
-      <div>
-        <h1 className="font-heading text-xl text-dark-50 flex items-center gap-2">
+    <div className="p-4 md:p-6 max-w-6xl space-y-4">
+      <div className="flex items-start gap-4 bg-dark-800 border border-dark-600 rounded-2xl p-4 md:p-5">
+        <AvatarIniciais nome={cliente.razaoSocial} tamanho={56} />
+        <div className="min-w-0 flex-1">
+        <h1 className="font-heading text-xl md:text-2xl font-bold text-dark-50 flex items-center gap-2 flex-wrap">
           {cliente.razaoSocial}
+          <EtiquetasCliente clienteId={cliente.id} />
           {cliente.classificacaoComercial && (
             <Badge className={`text-[11px] ${CLASSIFICACAO_COR[cliente.classificacaoComercial]}`}>
               {CLASSIFICACAO_LABEL[cliente.classificacaoComercial]}
@@ -599,7 +614,13 @@ export default function ClienteDetail() {
           />
           <ConversarSobreIssoButton tipoOrigem="cliente" idOrigem={cliente.id} titulo={`Cliente — ${cliente.razaoSocial}`} />
         </div>
+        </div>
       </div>
+
+      <ResumoCliente clienteId={cliente.id} />
+
+      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] gap-4 items-start">
+      <div className="space-y-4 min-w-0">
 
       {ehOdinCompressores && <MaquinasCliente clienteId={cliente.id} />}
 
@@ -701,11 +722,15 @@ export default function ClienteDetail() {
       </form>
 
       <ClientesVinculados clienteId={cliente.id} basePath={basePath} />
+      </div>
 
+      <div className="space-y-4 min-w-0">
       <HistoricoSapCliente clienteId={cliente.id} />
       <HistoricoCotacoesSapCliente clienteId={cliente.id} />
 
       <HistoricoCliente clienteId={cliente.id} />
+      </div>
+      </div>
 
       {user?.role === 'admin' && (
         <div className="bg-dark-800 border border-red-900/40 rounded-2xl p-5">

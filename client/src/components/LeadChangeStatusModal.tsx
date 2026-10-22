@@ -5,6 +5,7 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
+import { dispararConfete } from './ui/Visual'
 import {
   LEAD_STATUS_VALUES,
   LEAD_STATUS_LABELS,
@@ -53,7 +54,8 @@ export default function LeadChangeStatusModal({
   const [finalConsumerReason, setFinalConsumerReason] = useState('')
 
   const mut = trpc.leads.changeStatus.useMutation({
-    onSuccess() {
+    onSuccess(_r, vars) {
+      if (vars.status === 'ganho') dispararConfete()
       toast.success('Etapa atualizada')
       utils.leads.get.invalidate({ id: leadId })
       utils.leads.list.invalidate()

@@ -30,13 +30,14 @@ export default function Modal({ open, onClose, title, children, size = 'md' }: M
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm animate-[popup-fade-in_150ms_ease-out]"
         onClick={onClose}
       />
       <div
         className={`
           relative w-full ${SIZES[size]} bg-dark-800 border border-dark-600
           rounded-2xl shadow-2xl shadow-black/50 max-h-[90vh] flex flex-col
+          animate-[modal-entrada_180ms_cubic-bezier(.2,.8,.2,1)]
         `}
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-dark-600 shrink-0">

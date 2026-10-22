@@ -8,6 +8,7 @@ import { BarraFiltros, useFiltrosRelatorio } from '../../components/relatorios/f
 import { baseRelatorios, relatoriosPermitidos, RELATORIOS_DETALHADOS } from '../../components/relatorios/catalogo'
 import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
 import BotaoExportar from '../../components/relatorios/BotaoExportar'
+import BotaoApresentacao from '../../components/relatorios/BotaoApresentacao'
 import AdminReports from '../admin/Reports'
 import { ClientesParados, CurvaAbc, Positivacao } from './detalhes/Carteira'
 import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/Vendas'
@@ -97,7 +98,10 @@ export default function DetalheRelatorio() {
             </div>
           </div>
           <div className="flex items-center gap-4 flex-wrap">
-            <BotaoExportar relatorio={slug} />
+            <div className="flex items-center gap-2">
+              <BotaoApresentacao />
+              <BotaoExportar relatorio={slug} />
+            </div>
             <label className="flex items-center gap-2.5 text-sm text-dark-200 cursor-pointer select-none">
               Mostrar resumo
               <button

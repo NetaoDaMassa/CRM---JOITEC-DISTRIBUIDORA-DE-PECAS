@@ -185,3 +185,61 @@ h1, h2, h3 {
     margin: 12mm 10mm;
   }
 }
+
+/* ── Design novo (teste) ───────────────────────────────────────────────── */
+@keyframes aceno {
+  0%, 60%, 100% { transform: rotate(0deg); }
+  10%, 30% { transform: rotate(14deg); }
+  20% { transform: rotate(-8deg); }
+  40% { transform: rotate(-4deg); }
+  50% { transform: rotate(10deg); }
+}
+
+/* Cor de destaque por empresa (design novo, teste) — o Layout põe
+   data-empresa no <html>. Joitec segue o azul claro padrão (acima). */
+html[data-empresa="odin-tubos"] {
+  --color-gold-50:  #eef4ff;
+  --color-gold-100: #d9e6ff;
+  --color-gold-200: #b3ccff;
+  --color-gold-300: #7fa8f7;
+  --color-gold-400: #4c84ee;
+  --color-gold-500: #2f68d8;
+  --color-gold-600: #1f4fb0;
+  --color-gold-700: #1a408c;
+  --color-gold-800: #15326b;
+  --color-gold-900: #0f234a;
+}
+html[data-empresa="odin-compressores"] {
+  --color-gold-50:  #ecfbfa;
+  --color-gold-100: #cff4f1;
+  --color-gold-200: #a0e8e2;
+  --color-gold-300: #5fd3cb;
+  --color-gold-400: #22bdb3;
+  --color-gold-500: #0ea39a;
+  --color-gold-600: #0b7f79;
+  --color-gold-700: #0b6561;
+  --color-gold-800: #0b4e4b;
+  --color-gold-900: #083634;
+}
+@keyframes sino {
+  0%, 80%, 100% { transform: rotate(0deg); }
+  84% { transform: rotate(14deg); }
+  88% { transform: rotate(-12deg); }
+  92% { transform: rotate(8deg); }
+  96% { transform: rotate(-4deg); }
+}
+
+/* Modo apresentação dos relatórios (design novo, teste) */
+html.modo-apresentacao aside,
+html.modo-apresentacao main > header,
+html.modo-apresentacao nav.fixed {
+  display: none !important;
+}
+html.modo-apresentacao main {
+  zoom: 1.2;
+  padding-bottom: 0 !important;
+}
+@keyframes modal-entrada {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, asc, count, desc, eq, inArray, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas, sapImportacoes, sapItensHistorico } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas, sapImportacoes, sapItensHistorico, sapVendasHistorico } from '../db/schema.js'
 import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
@@ -151,6 +151,85 @@ export async function buildHistoricoCliente(clienteId: number) {
 }
 
 export const clientesRouter = router({
+  // Resumo visual do topo da ficha (design novo, teste 2026-10-22): compras
+  // mês a mês (CRM + SAP), total do ano, ticket, último contato e etiquetas.
+  resumoVisual: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+    const cliente = await db.query.clientes.findFirst({
+      where: and(eq(clientes.id, input.id), eq(clientes.empresaId, ctx.empresaId)),
+      columns: { id: true, vendedorAtualId: true, createdAt: true, dataUltimaCompra: true },
+    })
+    if (!cliente) throw new Error('Cliente não encontrado')
+    if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
+
+    const compras: { data: string; valor: number }[] = []
+    const vendasCrm = await db
+      .select({ data: vendas.dataFechamento, valor: vendas.valorFechado })
+      .from(vendas)
+      .where(and(eq(vendas.clienteId, cliente.id), isNull(vendas.deletedAt)))
+    for (const v of vendasCrm) compras.push({ data: v.data.slice(0, 10), valor: v.valor })
+    const vendasSap = await db
+      .select({ data: sapVendasHistorico.dataPedido, valor: sapVendasHistorico.valor })
+      .from(sapVendasHistorico)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapVendasHistorico.importacaoId))
+      .where(and(eq(sapVendasHistorico.clienteId, cliente.id), eq(sapImportacoes.ativo, true)))
+    for (const v of vendasSap) compras.push({ data: String(v.data).slice(0, 10), valor: v.valor })
+
+    const hoje = new Date(Date.now() - 3 * 3600000)
+    const meses: { mes: string; rotulo: string; valor: number }[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(Date.UTC(hoje.getUTCFullYear(), hoje.getUTCMonth() - i, 1))
+      const mes = d.toISOString().slice(0, 7)
+      meses.push({ mes, rotulo: d.toLocaleDateString('pt-BR', { month: 'short', timeZone: 'UTC' }).replace('.', ''), valor: 0 })
+    }
+    const porMes = new Map(meses.map((m) => [m.mes, m]))
+    for (const c of compras) {
+      const m = porMes.get(c.data.slice(0, 7))
+      if (m) m.valor += c.valor
+    }
+    const ano = String(hoje.getUTCFullYear())
+    const doAno = compras.filter((c) => c.data.startsWith(ano))
+    const totalAno = doAno.reduce((s, c) => s + c.valor, 0)
+    const ultimaCompra = [cliente.dataUltimaCompra?.slice(0, 10), ...compras.map((c) => c.data)].filter((d): d is string => !!d).sort().pop() ?? null
+
+    const funis = await db.query.funilMensal.findMany({
+      where: and(eq(funilMensal.clienteId, cliente.id), isNull(funilMensal.deletedAt)),
+      columns: { dataUltimoContato: true },
+    })
+    const ultimoContato = funis.map((f) => f.dataUltimoContato).filter((d): d is string => !!d).sort().pop() ?? null
+
+    const [entrada] = cliente.vendedorAtualId
+      ? await db
+          .select({ desde: sql<string | null>`max(${carteiraHistorico.createdAt})` })
+          .from(carteiraHistorico)
+          .where(and(eq(carteiraHistorico.clienteId, cliente.id), eq(carteiraHistorico.vendedorId, cliente.vendedorAtualId)))
+      : [{ desde: null }]
+    const naCarteiraDesde = entrada?.desde ?? cliente.createdAt
+
+    const dias = (d: string | null) => (d ? Math.floor((Date.now() - new Date(`${d.slice(0, 10)}T12:00:00Z`).getTime()) / 86400000) : null)
+    const diasSemComprar = dias(ultimaCompra)
+    const ultimos4 = meses.slice(-4).filter((m) => m.valor > 0).length
+    const etiquetas: { texto: string; cor: string }[] = []
+    if (ultimos4 >= 3) etiquetas.push({ texto: '⭐ Cliente ideal', cor: '#e8c440' })
+    if (diasSemComprar === null) etiquetas.push({ texto: 'Nunca comprou', cor: '#9aa5b1' })
+    else if (diasSemComprar <= 90) etiquetas.push({ texto: 'Ativo', cor: '#4cb860' })
+    else if (diasSemComprar <= 180) etiquetas.push({ texto: 'Esfriando', cor: '#e8a33a' })
+    else etiquetas.push({ texto: 'Inativo', cor: '#e5534b' })
+    if ((dias(naCarteiraDesde) ?? 99) <= 30) etiquetas.push({ texto: 'Novo na carteira', cor: '#3a86d6' })
+
+    return {
+      meses,
+      totalAno,
+      comprasAno: doAno.length,
+      ticketMedio: doAno.length ? totalAno / doAno.length : 0,
+      ultimaCompra,
+      diasSemComprar,
+      ultimoContato,
+      diasSemContato: dias(ultimoContato),
+      naCarteiraDesde,
+      etiquetas,
+    }
+  }),
+
   cnpjLookup: protectedProcedure.input(z.object({ cnpj: z.string() })).query(async ({ input }) => {
     if (!cnpjValido(input.cnpj)) throw new Error('CNPJ inválido')
     const dados = await buscarCnpj(input.cnpj)

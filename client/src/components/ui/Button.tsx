@@ -8,7 +8,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const VARIANTS = {
-  primary: 'bg-gold-600 hover:bg-gold-500 text-dark-950 font-semibold border border-gold-500',
+  primary: 'bg-gold-600 hover:bg-gold-500 text-dark-950 font-semibold border border-gold-500 shadow-sm shadow-gold-900/40 hover:shadow-md hover:shadow-gold-900/40',
   secondary: 'bg-dark-700 hover:bg-dark-600 text-dark-100 border border-dark-600',
   danger: 'bg-red-900/50 hover:bg-red-800/60 text-red-300 border border-red-800/50',
   ghost: 'hover:bg-dark-800 text-dark-200 border border-transparent',
@@ -36,8 +36,8 @@ export default function Button({
       disabled={disabled || loading}
       className={`
         inline-flex items-center justify-center gap-2 font-medium
-        transition-all duration-150 cursor-pointer
-        disabled:opacity-50 disabled:cursor-not-allowed
+        transition-all duration-150 cursor-pointer active:scale-[0.97]
+        disabled:opacity-50 disabled:active:scale-100 disabled:cursor-not-allowed
         ${VARIANTS[variant]} ${SIZES[size]} ${className}
       `}
     >

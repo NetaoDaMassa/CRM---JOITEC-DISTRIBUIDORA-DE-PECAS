@@ -571,6 +571,19 @@ export const painelRouter = router({
       .sort((a, b) => (b.dias ?? 0) - (a.dias ?? 0))
       .slice(0, 5)
 
+    // Tela inicial nova (teste de design, 2026-10-22): "quem ligar hoje" =
+    // clientes da carteira há 3+ dias sem contato (ou nunca contatados), e
+    // orçamentos esperando resposta = cards do mês em Negociação.
+    const paraLigarHoje = carteira.filter((c) => {
+      const funil = c.funis[0]
+      const dias = funil ? diasDesde(funil.dataUltimoContato ?? funil.dataEntradaEtapa) : null
+      return dias === null || dias >= 3
+    }).length
+    const [orcAguardando] = await db
+      .select({ qtd: sql<number>`count(*)`.mapWith(Number), valor: sql<number>`coalesce(sum(${funilMensal.valorOrcado}), 0)`.mapWith(Number) })
+      .from(funilMensal)
+      .where(and(eq(funilMensal.vendedorId, vendedorId), eq(funilMensal.mesReferencia, mesAtual), eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt)))
+
     const vendasHojeValorNum = vendasHojeValor ?? 0
 
     return {
@@ -594,6 +607,9 @@ export const painelRouter = router({
       historico,
       clientesSemContato,
       sequenciaDiasVendendo,
+      paraLigarHoje,
+      totalCarteira: carteira.length,
+      orcamentosAguardando: { quantidade: orcAguardando?.qtd ?? 0, valor: orcAguardando?.valor ?? 0 },
     }
   }),
 })

@@ -1,10 +1,11 @@
 import { Link } from 'react-router-dom'
-import { CartesianGrid, LabelList, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { useAuth } from '../../contexts/AuthContext'
 import { trpc } from '../../lib/trpc'
 import { formatarPercentual } from '../../lib/utils'
 import { hojeBrString } from '../../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
+import { AnelProgresso, Esqueleto, EsqueletoCards, primeiroNome, saudacao } from '../../components/ui/Visual'
 
 // Mesma paleta validada (skill de dataviz) já usada no Painel de TV — azul
 // neutro pra vendas, âmbar pra contatos/ligações, verde de status só quando
@@ -43,21 +44,33 @@ function BarraProgresso({ percentual, destaque }: { percentual: number; destaque
   )
 }
 
-// Mesma barra, mas com um traço marcando onde a meta "deveria" estar hoje
-// (proporcional aos dias úteis já passados no mês) — deixa visual a
-// diferença entre ritmo ideal e ritmo real, não só um número solto.
-function BarraProgressoComMarcador({ percentual, ideal, destaque }: { percentual: number; ideal: number; destaque: boolean }) {
+function AcaoHoje({ to, icone, cor, titulo, valor, detalhe }: { to: string; icone: string; cor: string; titulo: string; valor: number; detalhe: string }) {
   return (
-    <div className="relative w-full bg-dark-700 rounded-full h-2 mt-1.5">
-      <div
-        className="h-2 rounded-full transition-all"
-        style={{ width: `${Math.min(100, percentual)}%`, backgroundColor: destaque ? COR_META_BATIDA : COR_ABAIXO }}
-      />
-      <div
-        className="absolute top-0 h-2 w-0.5 bg-dark-50"
-        style={{ left: `${Math.min(100, ideal)}%` }}
-        title={`Ideal pra hoje: ${ideal}%`}
-      />
+    <Link
+      to={to}
+      className="group flex items-center gap-3 rounded-2xl border border-dark-600 bg-dark-800 p-3.5 hover:border-dark-500 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/20 transition-all"
+    >
+      <span className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ background: `${cor}22` }}>
+        {icone}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs text-dark-400">{titulo}</span>
+        <span className="block text-xs text-dark-500 truncate">{detalhe}</span>
+      </span>
+      <span className="text-2xl font-bold" style={{ color: cor }}>
+        {valor}
+      </span>
+      <span className="text-dark-500 group-hover:text-dark-200 group-hover:translate-x-0.5 transition-all">›</span>
+    </Link>
+  )
+}
+
+function MiniStat({ rotulo, valor, detalhe }: { rotulo: string; valor: React.ReactNode; detalhe?: string }) {
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 hover:border-dark-500 transition-colors">
+      <p className="text-xs text-dark-400">{rotulo}</p>
+      <p className="text-2xl font-bold text-dark-50 mt-0.5">{valor}</p>
+      {detalhe && <p className="text-sm text-green-400">{detalhe}</p>}
     </div>
   )
 }
@@ -77,101 +90,117 @@ export default function VendorDashboard() {
   const vendasFaltantes =
     data && data.vendasMes.ticketMedio > 0 && faltaFaturamento > 0 ? Math.ceil(faltaFaturamento / data.vendasMes.ticketMedio) : null
 
-  return (
-    <div className="p-6 space-y-6 max-w-5xl">
-      <div className="flex items-center gap-3">
-        <div>
-          <h1 className="font-heading text-xl text-dark-50">Olá, {user?.name}</h1>
-          <p className="text-dark-400 text-sm">Sua produção do mês, num relance.</p>
+  const pctMeta = data?.percentualMetaFaturamento ?? 0
+  const pctIdeal = data?.percentualIdealHoje ?? 0
+  const noRitmo = pctMeta >= pctIdeal
+  const corMeta = pctMeta >= 100 ? COR_META_BATIDA : noRitmo ? COR_VENDAS : COR_ABAIXO
+  const compromissosAbertos = (compromissosHoje ?? []).filter((c) => !c.concluido)
+  const dataExtenso = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Sao_Paulo' })
+
+  if (!data) {
+    return (
+      <div className="p-4 md:p-6 space-y-6 max-w-6xl">
+        <Esqueleto className="h-16 w-72" />
+        <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
+          <Esqueleto className="h-56 rounded-2xl" />
+          <div className="grid gap-3">
+            <EsqueletoCards quantidade={3} className="h-[66px]" />
+          </div>
         </div>
-        {!!data?.sequenciaDiasVendendo && data.sequenciaDiasVendendo >= 2 && (
-          <span className="text-sm font-bold text-amber-400 bg-amber-900/20 px-3 py-1.5 rounded-full">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <EsqueletoCards quantidade={4} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-4 md:p-6 space-y-6 max-w-6xl">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wider text-dark-500 first-letter:uppercase">{dataExtenso}</p>
+          <h1 className="font-heading text-2xl md:text-3xl font-bold text-dark-50 mt-0.5">
+            {saudacao()}, {primeiroNome(user?.name)} <span className="inline-block origin-[70%_70%] animate-[aceno_1.8s_ease-in-out_1]">👋</span>
+          </h1>
+          <p className="text-dark-400 text-sm mt-0.5">Aqui está o que importa hoje.</p>
+        </div>
+        {!!data.sequenciaDiasVendendo && data.sequenciaDiasVendendo >= 2 && (
+          <span className="text-sm font-bold text-amber-300 bg-gradient-to-r from-amber-500/20 to-orange-500/10 border border-amber-500/30 px-3 py-1.5 rounded-full">
             🔥 {data.sequenciaDiasVendendo} dias seguidos vendendo
           </span>
         )}
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-xs text-dark-400">Vendas hoje</p>
-          <p className="text-2xl font-bold text-dark-50">{data?.vendasHoje.quantidade ?? 0}</p>
-          <p className="text-sm text-green-400">{formatarMoeda(data?.vendasHoje.valor ?? 0)}</p>
+      <div className="grid grid-cols-1 lg:grid-cols-[1.3fr_1fr] gap-4">
+        <div
+          className="relative overflow-hidden rounded-2xl border border-dark-600 bg-dark-800 p-5 flex flex-col sm:flex-row items-center gap-6"
+          style={{ backgroundImage: `radial-gradient(120% 90% at 0% 0%, ${corMeta}1f, transparent 60%)` }}
+        >
+          <AnelProgresso percentual={pctMeta} marcador={pctIdeal} cor={corMeta}>
+            <span className="text-3xl font-bold text-dark-50 leading-none">{formatarPercentual(pctMeta)}%</span>
+            <span className="text-[10px] uppercase tracking-wider text-dark-400 mt-1">da meta</span>
+          </AnelProgresso>
+          <div className="min-w-0 flex-1 text-center sm:text-left">
+            <p className="text-sm font-semibold text-dark-100">Meta do mês</p>
+            <p className="text-2xl font-bold text-dark-50 mt-1">{formatarMoeda(data.vendasMes.valor)}</p>
+            <p className="text-xs text-dark-400">de {formatarMoeda(data.metaFaturamento ?? 0)}</p>
+            <span
+              className={`inline-flex items-center gap-1.5 mt-3 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                pctMeta >= 100 ? 'bg-green-500/15 text-green-400' : noRitmo ? 'bg-sky-500/15 text-sky-300' : 'bg-red-500/15 text-red-300'
+              }`}
+            >
+              {pctMeta >= 100 ? '🏆 Meta batida!' : noRitmo ? '✅ No ritmo' : `⚠️ Abaixo do ritmo · ideal hoje ${formatarPercentual(pctIdeal)}%`}
+            </span>
+            {vendasFaltantes !== null && (
+              <p className="text-xs text-gold-300 mt-2">
+                Faltam ~{vendasFaltantes} venda{vendasFaltantes > 1 ? 's' : ''} do seu ticket médio
+              </p>
+            )}
+          </div>
         </div>
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-xs text-dark-400">Vendas no mês</p>
-          <p className="text-2xl font-bold text-dark-50">{data?.vendasMes.quantidade ?? 0}</p>
-          <p className="text-sm text-green-400">{formatarMoeda(data?.vendasMes.valor ?? 0)}</p>
-        </div>
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-xs text-dark-400">Ticket médio (mês)</p>
-          <p className="text-2xl font-bold text-dark-50">{formatarMoeda(data?.vendasMes.ticketMedio ?? 0)}</p>
-        </div>
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-xs text-dark-400">Ranking do time</p>
-          <p className="text-2xl font-bold text-gold-400">
-            {data?.posicaoRanking ?? '—'}
-            <span className="text-sm text-dark-400 font-normal">/{data?.totalVendedores ?? 0}</span>
-          </p>
+
+        <div className="grid gap-3">
+          <AcaoHoje
+            to="/vendedor/fila-hoje"
+            icone="📞"
+            cor="#3987e5"
+            titulo="Quem ligar hoje"
+            valor={data.paraLigarHoje}
+            detalhe={`clientes há 3+ dias sem contato · de ${data.totalCarteira}`}
+          />
+          <AcaoHoje
+            to="/vendedor/kanban"
+            icone="💬"
+            cor="#e8a33a"
+            titulo="Orçamentos esperando resposta"
+            valor={data.orcamentosAguardando.quantidade}
+            detalhe={data.orcamentosAguardando.valor ? `${formatarMoeda(data.orcamentosAguardando.valor)} em negociação` : 'em Negociação no Kanban'}
+          />
+          <AcaoHoje
+            to="/vendedor/calendario"
+            icone="🗓️"
+            cor="#8b5cf6"
+            titulo="Compromissos de hoje"
+            valor={compromissosAbertos.length}
+            detalhe={compromissosAbertos[0] ? `Próximo: ${compromissosAbertos[0].titulo}` : 'Nada pendente pra hoje'}
+          />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className={`rounded-2xl p-5 border-2 ${(data?.percentualMetaFaturamento ?? 0) >= 100 ? 'border-green-500 bg-green-900/10' : 'border-dark-600 bg-dark-800'}`}>
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-semibold text-dark-100">🎯 Meta mensal de faturamento</p>
-            {(data?.percentualMetaFaturamento ?? 0) >= 100 ? (
-              <span className="text-xs font-bold text-green-400 bg-green-900/30 px-2 py-1 rounded-full">✅ BATENDO</span>
-            ) : (
-              <span className="text-xs font-bold text-amber-400 bg-amber-900/20 px-2 py-1 rounded-full">EM ANDAMENTO</span>
-            )}
-          </div>
-          <p className="text-3xl font-bold text-dark-50 mt-1">{formatarPercentual(data?.percentualMetaFaturamento)}%</p>
-          <BarraProgresso percentual={data?.percentualMetaFaturamento ?? 0} destaque={(data?.percentualMetaFaturamento ?? 0) >= 100} />
-          <p className="text-xs text-dark-500 mt-1.5">
-            {formatarMoeda(data?.vendasMes.valor ?? 0)} de {formatarMoeda(data?.metaFaturamento ?? 0)} no mês
-          </p>
-          {vendasFaltantes !== null && (
-            <p className="text-xs text-gold-300 mt-1">
-              Faltam ~{vendasFaltantes} venda{vendasFaltantes > 1 ? 's' : ''} (do seu ticket médio) pra bater a meta
-            </p>
-          )}
-        </div>
-
-        <div
-          className={`rounded-2xl p-5 border-2 ${
-            (data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? 'border-green-500 bg-green-900/10' : 'border-red-500/60 bg-red-900/10'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-sm font-semibold text-dark-100">📅 Ritmo do mês</p>
-            {(data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? (
-              <span className="text-xs font-bold text-green-400 bg-green-900/30 px-2 py-1 rounded-full">✅ NO RITMO</span>
-            ) : (
-              <span className="text-xs font-bold text-red-400 bg-red-900/20 px-2 py-1 rounded-full">❌ ABAIXO DO RITMO</span>
-            )}
-          </div>
-          <div className="flex items-baseline gap-5 mt-1">
-            <div>
-              <p
-                className={`text-3xl font-bold ${
-                  (data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0) ? 'text-dark-50' : 'text-red-400'
-                }`}
-              >
-                {formatarPercentual(data?.percentualMetaFaturamento)}%
-              </p>
-              <p className="text-[10px] text-dark-500 uppercase tracking-wide">você está em</p>
-            </div>
-            <div>
-              <p className="text-xl font-bold text-dark-400">{formatarPercentual(data?.percentualIdealHoje)}%</p>
-              <p className="text-[10px] text-dark-500 uppercase tracking-wide">ideal pra hoje</p>
-            </div>
-          </div>
-          <BarraProgressoComMarcador
-            percentual={data?.percentualMetaFaturamento ?? 0}
-            ideal={data?.percentualIdealHoje ?? 0}
-            destaque={(data?.percentualMetaFaturamento ?? 0) >= (data?.percentualIdealHoje ?? 0)}
-          />
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <MiniStat rotulo="Vendas hoje" valor={String(data.vendasHoje.quantidade)} detalhe={formatarMoeda(data.vendasHoje.valor)} />
+        <MiniStat rotulo="Vendas no mês" valor={String(data.vendasMes.quantidade)} detalhe={formatarMoeda(data.vendasMes.valor)} />
+        <MiniStat rotulo="Ticket médio" valor={formatarMoeda(data.vendasMes.ticketMedio)} />
+        <MiniStat
+          rotulo="Ranking do time"
+          valor={
+            <>
+              {data.posicaoRanking === 1 ? '🥇 ' : data.posicaoRanking === 2 ? '🥈 ' : data.posicaoRanking === 3 ? '🥉 ' : ''}
+              {data.posicaoRanking ?? '—'}
+              <span className="text-sm text-dark-400 font-normal">/{data.totalVendedores}</span>
+            </>
+          }
+        />
       </div>
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
@@ -193,29 +222,41 @@ export default function VendorDashboard() {
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
           <h2 className="text-sm font-semibold text-dark-100 mb-3">📈 Suas vendas (últimos 14 dias)</h2>
           <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={data?.historico ?? []} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={data?.historico ?? []} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="grad-vendas" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={COR_VENDAS} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={COR_VENDAS} stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
               <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
               <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-              <Line type="monotone" dataKey="vendas" name="Vendas" stroke={COR_VENDAS} strokeWidth={2} dot={{ r: 2 }}>
+              <Area type="monotone" dataKey="vendas" name="Vendas" stroke={COR_VENDAS} strokeWidth={2.5} fill="url(#grad-vendas)" dot={{ r: 2.5, strokeWidth: 0, fill: COR_VENDAS }} activeDot={{ r: 5 }}>
                 <LabelList dataKey="vendas" position="top" fill="#898781" fontSize={10} />
-              </Line>
-            </LineChart>
+              </Area>
+            </AreaChart>
           </ResponsiveContainer>
         </div>
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
           <h2 className="text-sm font-semibold text-dark-100 mb-3">📞 Suas ligações (últimos 14 dias)</h2>
           <ResponsiveContainer width="100%" height={180}>
-            <LineChart data={data?.historico ?? []} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
+            <AreaChart data={data?.historico ?? []} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id="grad-contatos" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={COR_CONTATOS} stopOpacity={0.35} />
+                  <stop offset="100%" stopColor={COR_CONTATOS} stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#2a3644" vertical={false} />
               <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
               <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-              <Line type="monotone" dataKey="contatos" name="Contatos" stroke={COR_CONTATOS} strokeWidth={2} dot={{ r: 2 }}>
+              <Area type="monotone" dataKey="contatos" name="Contatos" stroke={COR_CONTATOS} strokeWidth={2.5} fill="url(#grad-contatos)" dot={{ r: 2.5, strokeWidth: 0, fill: COR_CONTATOS }} activeDot={{ r: 5 }}>
                 <LabelList dataKey="contatos" position="top" fill="#898781" fontSize={10} />
-              </Line>
-            </LineChart>
+              </Area>
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </div>

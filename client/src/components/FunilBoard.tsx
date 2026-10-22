@@ -23,6 +23,26 @@ import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMar
 import HistoricoCliente from './HistoricoCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
+import { AvatarIniciais, dispararConfete } from './ui/Visual'
+
+// Design novo (teste): cor de cada etapa no topo da coluna e faixa de
+// urgência na lateral do card (verde/amarelo/vermelho pelos dias sem contato).
+const COR_ETAPA: Record<string, string> = {
+  novo: '#8fa8bf',
+  abordagem: '#2f9fd8',
+  interessado: '#8b5cf6',
+  negociacao: '#e8a33a',
+  fechado: '#22a861',
+  faturamento: '#0ea5a4',
+  perdido: '#e5534b',
+  sem_contato: '#6580a0',
+}
+function corFaixaUrgencia(dias: number | null): string {
+  if (dias === null) return '#6580a0'
+  if (dias >= 7) return '#e5534b'
+  if (dias >= 3) return '#e8a33a'
+  return '#22a861'
+}
 
 const ETAPAS = [
   { value: 'novo', label: 'Novo' },
@@ -131,11 +151,6 @@ function formatarProximoCompromisso(dataHora: string): { texto: string; atrasado
 
 function pluralizar(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`
-}
-
-function iniciais(nome: string): string {
-  const partes = nome.trim().split(/\s+/)
-  return partes.length > 1 ? (partes[0][0] + partes[1][0]).toUpperCase() : nome.slice(0, 2).toUpperCase()
 }
 
 // Cor do "dias sem contato" segue o mesmo critério de urgência do alerta
@@ -618,9 +633,16 @@ export default function FunilBoard({
           const cardsVisiveis = colCards.length > limiteColuna ? colCards.slice(0, limiteColuna) : colCards
           return (
             <div key={etapa.value} className="shrink-0 w-72">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-sm font-semibold text-dark-200">{etapa.label}</span>
-                <span className="text-dark-500 text-xs">{colCards.length}</span>
+              <div
+                className="flex items-center gap-2 mb-3 rounded-xl bg-dark-800/70 border border-dark-700 px-3 py-2 border-t-[3px]"
+                style={{ borderTopColor: COR_ETAPA[etapa.value] ?? '#6580a0' }}
+              >
+                <span className="text-sm font-semibold text-dark-100">{etapa.label}</span>
+                <span className="text-[11px] font-semibold text-dark-300 bg-dark-700 rounded-full px-2 py-0.5">{colCards.length}</span>
+                {(() => {
+                  const total = colCards.reduce((soma, c) => soma + (c.valorFechadoTotal > 0 ? c.valorFechadoTotal : (c.valorOrcado ?? 0)), 0)
+                  return total > 0 ? <span className="ml-auto text-[11px] font-medium text-dark-400">{formatarMoeda(total)}</span> : null
+                })()}
               </div>
               {etapa.value === 'fechado' && permitirVendaRapida && (
                 <Button size="sm" className="w-full mb-2" onClick={() => setVendaRapidaAberta(true)}>
@@ -636,12 +658,11 @@ export default function FunilBoard({
                     <div
                       key={card.funilMensalId}
                       onClick={() => setCardAbertoId(card.funilMensalId)}
-                      className="bg-dark-800 border border-dark-600 rounded-xl p-3 cursor-pointer hover:border-gold-600/50 transition-all"
+                      className="bg-dark-800 border border-dark-600 border-l-4 rounded-xl p-3 cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 transition-all"
+                      style={{ borderLeftColor: corFaixaUrgencia(card.diasSemContato) }}
                     >
                       <div className="flex items-start gap-2 mb-1">
-                        <div className="w-7 h-7 rounded-full bg-dark-700 text-dark-300 text-xs font-bold flex items-center justify-center shrink-0">
-                          {iniciais(card.razaoSocial)}
-                        </div>
+                        <AvatarIniciais nome={card.razaoSocial} tamanho={30} />
                         <div className="pt-1">
                           <p className="text-sm font-medium text-dark-100 leading-tight">{nomeComPedido(card)}</p>
                           {nomeVendedor && nomeVendedor(card.vendedorId) && (
@@ -716,7 +737,11 @@ export default function FunilBoard({
                       )}
                       <div className="flex items-center justify-between mt-2">
                         <div>
-                          {card.valorOrcado != null && <p className="text-xs text-dark-400">Orçado: {formatarMoeda(card.valorOrcado)}</p>}
+                          {card.valorOrcado != null && (
+                            <p className="inline-block text-xs font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded-md px-1.5 py-0.5">
+                              Orçado {formatarMoeda(card.valorOrcado)}
+                            </p>
+                          )}
                           {card.valorFechadoTotal > 0 && (
                             <p className="text-xs text-green-400">
                               Fechado: {formatarMoeda(card.valorFechadoTotal)}
@@ -1077,7 +1102,8 @@ function CardModal({
   })
 
   const moverMut = trpc.funil.moverEtapa.useMutation({
-    onSuccess() {
+    onSuccess(_r, vars) {
+      if (vars.etapa === 'fechado') dispararConfete()
       invalidarTudo()
       onChanged()
     },

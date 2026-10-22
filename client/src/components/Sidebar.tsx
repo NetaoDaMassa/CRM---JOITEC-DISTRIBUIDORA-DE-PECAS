@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
@@ -13,6 +13,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { useTheme } from '../contexts/ThemeContext'
 import { trpc } from '../lib/trpc'
 import { relatoriosPermitidos } from './relatorios/catalogo'
+import { publicarMenu } from '../lib/menuAtual'
 
 // Ícones disponíveis pra montar um grupo em "Grupos da Sidebar" — nome
 // salvo como texto no banco (sidebarGroups.icone), mapeado pro componente
@@ -487,6 +488,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     user?.role === 'admin' && itemPorTo.has('/admin/relatorios')
       ? relatoriosPermitidos(user, minhasFeatures).map((r) => ({ to: `/admin/relatorios/${r.slug}`, label: r.curto, icon: r.icone }))
       : []
+
+  useEffect(() => {
+    publicarMenu([...todosItensVisiveis, ...itensDetalhados.map((i) => ({ ...i, grupo: 'Relatórios' }))])
+  })
 
   // Grupos configurados em "Grupos da Sidebar" — globais, valem pra todo
   // mundo (não só quem configurou). Um grupo só aparece se sobrar pelo

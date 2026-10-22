@@ -11,12 +11,12 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5183,
+    port: Number(process.env.VITE_PORT ?? 5183),
     proxy: {
-      '/trpc': 'http://localhost:3011',
-      '/upload': 'http://localhost:3011',
-      '/uploads': 'http://localhost:3011',
-      '/chat-socket': { target: 'http://localhost:3011', ws: true },
+      '/trpc': `http://localhost:${process.env.API_PORT ?? 3011}`,
+      '/upload': `http://localhost:${process.env.API_PORT ?? 3011}`,
+      '/uploads': `http://localhost:${process.env.API_PORT ?? 3011}`,
+      '/chat-socket': { target: `http://localhost:${process.env.API_PORT ?? 3011}`, ws: true },
     },
   },
 })

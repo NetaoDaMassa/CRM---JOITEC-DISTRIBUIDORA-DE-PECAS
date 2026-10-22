@@ -9,6 +9,7 @@ import Button from '../../components/ui/Button'
 import AvatarMeta from '../../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../../lib/useCelebrarMeta'
 import CelebracaoPopup from '../../components/ui/CelebracaoPopup'
+import { primeiroNome, saudacao } from '../../components/ui/Visual'
 
 const COR_VENDAS = '#3987e5'
 const COR_CONTATOS = '#c2691a'
@@ -63,7 +64,9 @@ export default function AdminDashboard() {
   return (
     <div className="p-6 space-y-6 max-w-5xl">
       <div>
-        <h1 className="font-heading text-xl text-dark-50">Olá, {user?.name}</h1>
+        <h1 className="font-heading text-2xl md:text-3xl font-bold text-dark-50">
+          {saudacao()}, {primeiroNome(user?.name)} <span className="inline-block origin-[70%_70%] animate-[aceno_1.8s_ease-in-out_1]">👋</span>
+        </h1>
         <p className="text-dark-400 text-sm">Visão geral da produção da Joitec, num relance.</p>
       </div>
 

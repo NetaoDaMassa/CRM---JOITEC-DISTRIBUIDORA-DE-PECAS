@@ -7,6 +7,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { BarraFiltros, formatarDataCurta, useFiltrosRelatorio } from '../../components/relatorios/filtros'
 import type { Filtros } from '../../components/relatorios/filtros'
 import BotaoExportar from '../../components/relatorios/BotaoExportar'
+import BotaoApresentacao from '../../components/relatorios/BotaoApresentacao'
 import { BarraSegmentada, KpiCard, Medidor, MiniNumero, OrigemVendas, Ranking, Secao, moeda, numero, pct } from '../../components/relatorios/blocos'
 import { contarCategorias, ehAtivado } from '../../components/relatorios/atividade'
 import { baseRelatorios, relatoriosPermitidos } from '../../components/relatorios/catalogo'
@@ -319,7 +320,10 @@ export default function ResumoRelatorios() {
             {!ehAdmin ? ' · só os seus clientes' : ''}
           </p>
         </div>
-        <BotaoExportar relatorio="resumo" />
+        <div className="flex items-center gap-2">
+          <BotaoApresentacao />
+          <BotaoExportar relatorio="resumo" />
+        </div>
       </div>
       <BarraFiltros f={f} />
       <ExplicacaoMetricas chave="resumo" />
