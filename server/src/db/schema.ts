@@ -86,6 +86,11 @@ export const sidebarGroups = sqliteTable('sidebar_groups', {
   icone: text('icone').notNull(),
   // Hex (#rrggbb) escolhido em Grupos da Sidebar — null = cor automática.
   cor: text('cor'),
+  // null = grupo do layout padrão (todas as empresas). Com empresa = layout
+  // exclusivo dela: se a empresa tem pelo menos um grupo próprio, a sidebar
+  // dela usa SÓ os próprios (pedido do João, 2026-10-23, pra Odin
+  // Compressores ter uma sidebar só dela).
+  empresaId: integer('empresa_id').references(() => empresas.id, { onDelete: 'cascade' }),
   ordem: integer('ordem').notNull().default(0),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
