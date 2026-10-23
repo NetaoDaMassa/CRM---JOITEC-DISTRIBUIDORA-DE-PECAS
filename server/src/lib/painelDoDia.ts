@@ -64,14 +64,14 @@ export async function painelDoDia(empresaId: number, alvo: { vendedorId?: number
   const cobertura = alvo.todos ? await coberturaContatosEmpresa(empresaId, mes) : await coberturaContatosVendedor(empresaId, ids[0], mes)
 
   // ── Faturamento x meta ────────────────────────────────────────────────
-  // Mesma conta do Dashboard/Painel de TV: vendas do mês dos cards do
-  // vendedor (funil_mensal.vendedorId).
+  // Mesma conta do Dashboard/Painel de TV: vendas do mês de quem vendeu
+  // (vendas.vendedorId — transferência de carteira não tira a venda dele).
   const vendasDoMes = async (m: string) => {
     const [r] = await db
       .select({ qtd: count(), valor: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
       .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
-      .where(and(inArray(funilMensal.vendedorId, ids), eq(vendas.mesReferencia, m), isNull(vendas.deletedAt)))
+      .where(and(inArray(vendas.vendedorId, ids), eq(vendas.mesReferencia, m), isNull(vendas.deletedAt)))
     return { qtd: r?.qtd ?? 0, valor: r?.valor ?? 0 }
   }
   const perdidosDoMes = async (m: string) => {
@@ -113,7 +113,7 @@ export async function painelDoDia(empresaId: number, alvo: { vendedorId?: number
       .select({ dia: sql<string>`substr(${vendas.dataFechamento}, 1, 10)` })
       .from(vendas)
       .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
-      .where(and(inArray(funilMensal.vendedorId, ids), gte(vendas.dataFechamento, `${mes.slice(0, 7)}-01 00:00:00`), isNull(vendas.deletedAt)))
+      .where(and(inArray(vendas.vendedorId, ids), gte(vendas.dataFechamento, `${mes.slice(0, 7)}-01 00:00:00`), isNull(vendas.deletedAt)))
       .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
     sequencia = sequenciaDiasVendendo(new Set(dias.map((d) => d.dia)), mes)
   }

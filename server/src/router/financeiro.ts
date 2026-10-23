@@ -180,7 +180,7 @@ export const financeiroRouter = router({
               columns: { id: true },
             })
             const vendedorIdsResto = vendedoresResto.map((v) => v.id)
-            const filtroResto = vendedorIdsResto.length ? inArray(funilMensal.vendedorId, vendedorIdsResto) : sql`0`
+            const filtroResto = vendedorIdsResto.length ? inArray(vendas.vendedorId, vendedorIdsResto) : sql`0`
 
             const [{ qtd: qtdHojeResto, valor: valHojeResto }] = await db
               .select({ qtd: count(), valor: sum(vendas.valorFechado).mapWith(Number) })
@@ -204,9 +204,8 @@ export const financeiroRouter = router({
             columns: { id: true },
           })
           const vendedorIds = vendedores.map((v) => v.id)
-          // Mesmo motivo do painel.ts: funil_mensal.vendedorId (não
-          // vendas.vendedorId) é quem reflete transferência de carteira.
-          const filtroVendedor = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
+          // Venda conta pra quem vendeu (vendas.vendedorId) — ver painel.ts.
+          const filtroVendedor = vendedorIds.length ? inArray(vendas.vendedorId, vendedorIds) : sql`0`
 
           const [{ vendasHojeQtd: qtdHoje, vendasHojeValor: valHoje }] = await db
             .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })

@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, inArray, isNull, like } from 'drizzle-orm'
 import { router, adminProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, users, logAuditoria } from '../db/schema.js'
+import { clientes, carteiraHistorico, compromissos, funilMensal, users, logAuditoria } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
@@ -53,6 +53,16 @@ export async function transferirCliente(
   } else {
     await db.insert(funilMensal).values({ clienteId, vendedorId: novoVendedorId, mesReferencia: mesAtual })
   }
+
+  // Agenda em aberto do cliente vai junto — senão o retorno marcado pelo
+  // vendedor antigo some da agenda de quem recebeu (pedido do João,
+  // 2026-10-23: "todo histórico tem que ficar com quem recebeu"). Contatos e
+  // vendas já ficam visíveis na ficha/card; a venda continua contando na
+  // meta de quem vendeu (vendas.vendedorId).
+  await db
+    .update(compromissos)
+    .set({ vendedorId: novoVendedorId })
+    .where(and(eq(compromissos.clienteId, clienteId), eq(compromissos.concluido, false), isNull(compromissos.deletedAt)))
 
   await registrarAuditoria({
     tabela: 'clientes',

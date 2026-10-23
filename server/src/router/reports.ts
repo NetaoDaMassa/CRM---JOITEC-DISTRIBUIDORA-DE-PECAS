@@ -554,11 +554,10 @@ export const reportsRouter = router({
   vendas: protectedProcedure.input(periodoInput.extend({ apenasMarketing: z.boolean().optional() })).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
-    // Idem curvaAbc: filtra por funil_mensal.vendedorId (quem fechou o
-    // negócio de verdade, sempre em dia), não por vendas.vendedorId (fica
-    // preso ao vendedor de quando a venda foi criada, mesmo que o cliente
-    // tenha sido transferido de carteira depois).
-    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, funilMensal.vendedorId)
+    // Venda conta pra quem vendeu (vendas.vendedorId), não pro dono atual do
+    // card — transferência de carteira não tira a venda de quem fechou.
+    // Decisão do João, 2026-10-23 (antes era funil_mensal.vendedorId).
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, vendasTable.vendedorId)
     if (filtroVend) filtros.push(filtroVend)
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
@@ -572,7 +571,7 @@ export const reportsRouter = router({
       .from(vendasTable)
       .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
       .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
-      .innerJoin(users, eq(users.id, funilMensal.vendedorId))
+      .innerJoin(users, eq(users.id, vendasTable.vendedorId))
       .where(and(...filtros))
 
     const sap = await vendasExtras({
@@ -613,7 +612,7 @@ export const reportsRouter = router({
   vendasPorDia: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
-    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, funilMensal.vendedorId)
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, vendasTable.vendedorId)
     if (filtroVend) filtros.push(filtroVend)
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
@@ -621,14 +620,14 @@ export const reportsRouter = router({
     const linhas = await db
       .select({
         data: sql<string>`date(${vendasTable.dataFechamento})`,
-        vendedorId: funilMensal.vendedorId,
+        vendedorId: vendasTable.vendedorId,
         nome: users.name,
         valorFechado: vendasTable.valorFechado,
       })
       .from(vendasTable)
       .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
       .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
-      .innerJoin(users, eq(users.id, funilMensal.vendedorId))
+      .innerJoin(users, eq(users.id, vendasTable.vendedorId))
       .where(and(...filtros))
 
     const mapa = new Map<string, { data: string; vendedorId: number; nome: string; quantidade: number; valorTotal: number }>()

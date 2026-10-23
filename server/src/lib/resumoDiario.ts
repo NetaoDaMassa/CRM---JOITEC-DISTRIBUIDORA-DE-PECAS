@@ -71,7 +71,7 @@ async function executarResumoDiarioParaEmpresa(empresaId: number, forcar: boolea
       .select({ vendasHoje: count(), valorHoje: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
       .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
-      .where(and(eq(funilMensal.vendedorId, v.id), between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt)))
+      .where(and(eq(vendas.vendedorId, v.id), between(vendas.dataFechamento, inicioHoje, fimHoje), isNull(vendas.deletedAt)))
 
     const [{ ligacoesHoje }] = await db
       .select({ ligacoesHoje: count() })
@@ -89,7 +89,7 @@ async function executarResumoDiarioParaEmpresa(empresaId: number, forcar: boolea
       .select({ valorFechadoMes: sum(vendas.valorFechado).mapWith(Number) })
       .from(vendas)
       .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
-      .where(and(eq(funilMensal.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
+      .where(and(eq(vendas.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
 
     const meta = metaPorVendedor.get(v.id)
     const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null
