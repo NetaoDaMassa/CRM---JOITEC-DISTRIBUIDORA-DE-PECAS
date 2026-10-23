@@ -107,7 +107,109 @@ async function calcularFaturamentoOrdensOdin(empresaId: number, mesAtual: string
   }
 }
 
+// Faturamento de um card num mês passado (`mesRef` YYYY-MM-01), opcionalmente
+// só até o dia `ateDia` (YYYY-MM-DD) — usado no histórico e no "mesmo dia do
+// mês passado" do Painel Financeiro de TV (pedido do João, 2026-10-23).
+// Mesmas fontes do painelResumo: Aton, Pedidos da Odin ou vendas locais.
+async function faturamentoCardNoMes(card: (typeof CARDS_PAINEL)[number], mesRef: string, ateDia?: string): Promise<number> {
+  const [ano, mes] = mesRef.split('-').map(Number)
+  const ultimoDia = `${mesRef.slice(0, 8)}${String(new Date(Date.UTC(ano, mes, 0)).getUTCDate()).padStart(2, '0')}`
+  const fim = ateDia && ateDia < ultimoDia ? ateDia : ultimoDia
+
+  if (card.origemExterna === 'aton') {
+    const token = await getConfigTexto(chaveTokenAton(card.cardKey))
+    if (!token) return 0
+    const descontoPct = await getConfigNumero(chaveDescontoAton(card.cardKey), 0)
+    const r = await buscarVendasAtonComCache(token, mesRef, fim)
+    return (r?.valor ?? 0) * (1 - descontoPct / 100)
+  }
+
+  let total = 0
+  let empresaIdsLocais = card.empresaIds
+  if (card.somaOrdensOdin) {
+    const EMPRESA_ID_ODIN_COMPRESSORES = 4
+    const faturaveis = await buscarOrdensFaturadas(EMPRESA_ID_ODIN_COMPRESSORES)
+    for (const o of faturaveis) {
+      const d = o.dataRef.slice(0, 10)
+      if (d >= mesRef && d <= fim) total += o.valor
+    }
+    empresaIdsLocais = card.empresaIds.filter((id) => id !== EMPRESA_ID_ODIN_COMPRESSORES)
+  }
+  if (empresaIdsLocais.length) {
+    const vendedores = await db.query.users.findMany({ where: inArray(users.empresaId, empresaIdsLocais), columns: { id: true } })
+    const ids = vendedores.map((v) => v.id)
+    if (ids.length) {
+      const [{ valor }] = await db
+        .select({ valor: sum(vendas.valorFechado).mapWith(Number) })
+        .from(vendas)
+        .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+        .where(and(eq(vendas.mesReferencia, mesRef), isNull(vendas.deletedAt), inArray(vendas.vendedorId, ids), sql`${vendas.dataFechamento} <= ${`${fim} 23:59:59`}`))
+      total += valor ?? 0
+    }
+  }
+  return total
+}
+
+function mesesAntes(mesRef: string, n: number): string {
+  const [ano, mes] = mesRef.split('-').map(Number)
+  const d = new Date(Date.UTC(ano, mes - 1 - n, 1))
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-01`
+}
+
+const pctDe = (valor: number, meta: number) => (meta ? Math.round((valor / meta) * 1000) / 10 : 0)
+
+// Histórico muda pouco — guarda 30 min pra TV (que consulta a cada poucos
+// minutos) não refazer 6 meses × 6 cards de conta (e chamadas à Aton) toda vez.
+let cacheHistorico: { chave: string; expiraEm: number; dados: unknown } | null = null
+
 export const financeiroRouter = router({
+  // % da meta batida nos 5 meses anteriores + "até o mesmo dia do mês
+  // passado", por card e do grupo. A meta usada é a atual de cada empresa
+  // (`meta_faturamento_empresa_<id>`) — o CRM não guarda a meta de empresa
+  // mês a mês. Mês sem nenhum faturamento vem null (empresa ainda não
+  // lançava no CRM), pra TV mostrar "—" em vez de 0%.
+  painelHistorico: featureProcedure('painel_financeiro').query(async () => {
+    const hoje = hojeBrString()
+    const mesAtual = mesReferenciaAtual()
+    const chave = `${hoje}`
+    if (cacheHistorico && cacheHistorico.chave === chave && cacheHistorico.expiraEm > Date.now()) return cacheHistorico.dados as typeof dados
+
+    const meses = [5, 4, 3, 2, 1].map((n) => mesesAntes(mesAtual, n))
+    const mesPassado = meses[meses.length - 1]
+    const mesmoDiaMesPassado = `${mesPassado.slice(0, 8)}${hoje.slice(8, 10)}`
+
+    const cards = await Promise.all(
+      CARDS_PAINEL.map(async (card) => {
+        const meta = (await Promise.all(card.empresaIds.map((id) => getConfigNumero(`meta_faturamento_empresa_${id}`, 0)))).reduce((s, v) => s + v, 0)
+        const valores = await Promise.all(meses.map((m) => faturamentoCardNoMes(card, m)))
+        const ateMesmoDia = await faturamentoCardNoMes(card, mesPassado, mesmoDiaMesPassado)
+        return {
+          cardKey: card.cardKey,
+          meta,
+          valores,
+          ateMesmoDia,
+          meses: meses.map((m, i) => ({ mes: m, percentualMeta: valores[i] > 0 && meta ? pctDe(valores[i], meta) : null })),
+          percentualMesmoDiaMesPassado: valores[valores.length - 1] > 0 && meta ? pctDe(ateMesmoDia, meta) : null,
+        }
+      })
+    )
+
+    const metaGrupo = cards.reduce((s, c) => s + c.meta, 0)
+    const dados = {
+      meses,
+      cards: cards.map(({ cardKey, meses, percentualMesmoDiaMesPassado }) => ({ cardKey, meses, percentualMesmoDiaMesPassado })),
+      grupo: {
+        meses: meses.map((m, i) => {
+          const v = cards.reduce((s, c) => s + c.valores[i], 0)
+          return { mes: m, percentualMeta: v > 0 && metaGrupo ? pctDe(v, metaGrupo) : null }
+        }),
+        percentualMesmoDiaMesPassado: metaGrupo ? pctDe(cards.reduce((s, c) => s + c.ateMesmoDia, 0), metaGrupo) : null,
+      },
+    }
+    cacheHistorico = { chave, expiraEm: Date.now() + 30 * 60 * 1000, dados }
+    return dados
+  }),
+
   // Leitura liberada pra admin com a feature 'painel_financeiro' (ex: conta
   // dedicada "PainelTv" numa TV da loja) — cadastro de inadimplência
   // (abaixo) segue a mesma regra agora; tokens Aton e credenciais OdinCrm
@@ -226,7 +328,11 @@ export const financeiroRouter = router({
           const [{ valor: valorNegociacao }] = await db
             .select({ valor: sum(funilMensal.valorOrcado).mapWith(Number) })
             .from(funilMensal)
-            .where(and(eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt), filtroVendedor))
+            // Pipeline segue o dono do card (funil_mensal.vendedorId) — essa
+            // consulta não tem `vendas` no FROM, então não pode usar
+            // filtroVendedor (dava "no such column vendas.vendedor_id" e
+            // derrubava o painel inteiro).
+            .where(and(eq(funilMensal.etapa, 'negociacao'), isNull(funilMensal.deletedAt), vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`))
           valorEmNegociacao = valorNegociacao ?? 0
         }
 
