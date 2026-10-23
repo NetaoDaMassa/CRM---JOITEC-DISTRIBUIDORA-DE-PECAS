@@ -85,6 +85,7 @@ import ControleQualidade from './pages/ControleQualidade'
 import ConfiguracoesOdin from './pages/ConfiguracoesOdin'
 import RelatoriosOdin from './pages/RelatoriosOdin'
 import DashboardOdin from './pages/DashboardOdin'
+import ResultadosOdin from './pages/ResultadosOdin'
 import CalendarioOdin from './pages/CalendarioOdin'
 import DevolucaoSolicitar from './pages/DevolucaoSolicitar'
 import DevolucaoAcompanhar from './pages/DevolucaoAcompanhar'
@@ -293,6 +294,7 @@ export default function App() {
           <Route path="admin/devolucoes-relatorios" element={<AdminGuard><FeatureGuard feature="devolucoes"><DevolucaoRelatorios /></FeatureGuard></AdminGuard>} />
           <Route path="admin/devolucoes-ecommerce" element={<AdminGuard><FeatureGuard feature="devolucoes_ecommerce"><DevolucaoEcommerce /></FeatureGuard></AdminGuard>} />
           <Route path="admin/dashboard-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><DashboardOdin /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/resultados-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><ResultadosOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/calendario-odin" element={<AdminGuard><FeatureGuard feature="dashboard_odin"><CalendarioOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ordens/:id?" element={<AdminGuard><FeatureGuard feature="pedidos_odin"><OrdensKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/garantias/:id?" element={<AdminGuard><FeatureGuard feature="garantias_odin"><GarantiasKanban /></FeatureGuard></AdminGuard>} />
@@ -334,6 +336,7 @@ export default function App() {
           <Route path="vendedor/devolucoes-relatorios" element={<DevolucaoRelatorios />} />
           <Route path="vendedor/devolucoes-ecommerce" element={<DevolucaoEcommerce />} />
           <Route path="vendedor/dashboard-odin" element={<DashboardOdin />} />
+          <Route path="vendedor/resultados-odin" element={<ResultadosOdin />} />
           <Route path="vendedor/calendario-odin" element={<CalendarioOdin />} />
           <Route path="vendedor/ordens/:id?" element={<OrdensKanban />} />
           <Route path="vendedor/garantias/:id?" element={<GarantiasKanban />} />

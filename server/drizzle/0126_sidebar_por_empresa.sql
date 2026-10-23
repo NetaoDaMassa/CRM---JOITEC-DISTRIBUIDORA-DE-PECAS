@@ -1,0 +1,1 @@
+ALTER TABLE `sidebar_groups` ADD `empresa_id` integer REFERENCES empresas(id);
