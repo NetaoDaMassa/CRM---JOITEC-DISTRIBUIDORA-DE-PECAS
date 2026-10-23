@@ -14,7 +14,6 @@ import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, users, propostas, propostaArquivos, ordens, ordemPosVenda, ordemDetalhes, ordemFaturamento, estoqueMaquinas, visitas } from '../db/schema.js'
 import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
-import { maquinasPorModelo, pecasRecompra, propostasPerdasPrazos, visitasPorRegiao } from '../lib/relatoriosOdinNovos.js'
 
 const SLUG_RELATORIOS = 'odin-compressores'
 
@@ -26,23 +25,6 @@ async function assertEmpresa(empresaId: number) {
 const filtroData = z.object({ dataDe: z.string().optional(), dataAte: z.string().optional(), vendedorId: z.number().optional() }).optional()
 
 export const relatoriosOdinRouter = router({
-  // Relatórios só da Odin pedidos em 2026-10-23 — ver lib/relatoriosOdinNovos.ts.
-  visitasRegiao: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
-    await assertEmpresa(ctx.empresaId)
-    return visitasPorRegiao(ctx.empresaId, input ?? {})
-  }),
-  propostasPerdas: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
-    await assertEmpresa(ctx.empresaId)
-    return propostasPerdasPrazos(ctx.empresaId, input ?? {})
-  }),
-  maquinasModelo: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
-    await assertEmpresa(ctx.empresaId)
-    return maquinasPorModelo(ctx.empresaId, input ?? {})
-  }),
-  pecasRecompra: adminProcedure.input(filtroData).query(async ({ ctx, input }) => {
-    await assertEmpresa(ctx.empresaId)
-    return pecasRecompra(ctx.empresaId, input ?? {})
-  }),
   // Aba "Pedidos em Processo" — portado da aba padrão (primeira) de
   // Relatorios.tsx do odincrm original: KPIs + tabela linha-a-linha dos
   // pedidos que batem com o filtro (não só contagem agregada, como as

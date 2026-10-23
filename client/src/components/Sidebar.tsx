@@ -105,10 +105,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
-  // Resultado por frente (externos/leads/peças) — pedido do João, 2026-10-23.
-  { to: '/admin/resultados-odin', label: 'Resultados Odin', icon: TrendingUp, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
-  // Era "Dashboard Odin" — é o controle operacional de pedidos/propostas/expedição.
-  { to: '/admin/dashboard-odin', label: 'Controle de Pedidos', icon: Gauge, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
+  { to: '/admin/dashboard-odin', label: 'Dashboard Odin', icon: Gauge, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/admin/calendario-odin', label: 'Calendário Odin', icon: CalendarRange, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/admin/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/admin/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
@@ -195,10 +192,7 @@ export const VENDOR_LINKS = [
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, end: true, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
-  // Resultado por frente (externos/leads/peças) — pedido do João, 2026-10-23.
-  { to: '/vendedor/resultados-odin', label: 'Resultados Odin', icon: TrendingUp, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
-  // Era "Dashboard Odin" — é o controle operacional de pedidos/propostas/expedição.
-  { to: '/vendedor/dashboard-odin', label: 'Controle de Pedidos', icon: Gauge, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
+  { to: '/vendedor/dashboard-odin', label: 'Dashboard Odin', icon: Gauge, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/vendedor/calendario-odin', label: 'Calendário Odin', icon: CalendarRange, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   { to: '/vendedor/propostas', label: 'Propostas', icon: FileText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'propostas_odin' },
   { to: '/vendedor/ordens', label: 'Pedidos', icon: Package, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pedidos_odin' },
@@ -502,12 +496,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     publicarMenu([...todosItensVisiveis, ...itensDetalhados.map((i) => ({ ...i, grupo: 'Relatórios' }))])
   })
 
-  // Grupos configurados em "Grupos da Sidebar" — valem pra todo mundo (não
-  // só quem configurou). Empresa com sidebar própria usa só os grupos dela;
-  // as outras usam o layout padrão (2026-10-23). Um grupo só aparece se
-  // sobrar pelo menos 1 item visível pro usuário/empresa atual dentro dele.
-  const { data: dadosGrupos } = trpc.sidebarGrupos.listar.useQuery({ empresaId: empresaAtiva?.id ?? null }, { enabled: !!user })
-  const grupos = dadosGrupos?.grupos
+  // Grupos configurados em "Grupos da Sidebar" — globais, valem pra todo
+  // mundo (não só quem configurou). Um grupo só aparece se sobrar pelo
+  // menos 1 item visível pro usuário/empresa atual dentro dele.
+  const { data: grupos } = trpc.sidebarGrupos.listar.useQuery(undefined, { enabled: !!user })
   const idsAgrupados = new Set(grupos?.flatMap((g) => g.itens) ?? [])
 
   // Só na Odin Compressores: a pasta CARTEIRA entra DENTRO da pasta ODIN
@@ -518,8 +510,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   // empresas; a junção é só na hora de desenhar. Achadas pelo nome.
   const grupoOdin = grupos?.find((g) => g.nome.trim().toUpperCase() === 'ODIN COMPRESSORES')
   const grupoCarteira = grupos?.find((g) => g.nome.trim().toUpperCase() === 'CARTEIRA')
-  // Só no layout padrão — com sidebar própria, a Odin já organiza do jeito dela.
-  const juntarCarteiraNaOdin = !dadosGrupos?.exclusiva && empresaAtiva?.slug === SO_ODIN_COMPRESSORES && !!grupoOdin && !!grupoCarteira
+  const juntarCarteiraNaOdin = empresaAtiva?.slug === SO_ODIN_COMPRESSORES && !!grupoOdin && !!grupoCarteira
   const gruposExibidos = juntarCarteiraNaOdin ? grupos?.filter((g) => g.id !== grupoCarteira!.id) : grupos
   const itensSoltos = todosItensVisiveis.filter((item) => !idsAgrupados.has(item.to))
   const grupoDosRelatorios = gruposExibidos?.find((g) => g.itens.includes('/admin/relatorios'))?.id

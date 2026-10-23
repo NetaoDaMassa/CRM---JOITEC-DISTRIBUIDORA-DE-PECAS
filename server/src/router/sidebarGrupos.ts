@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { eq, isNull } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { sidebarGroups, sidebarGroupItems } from '../db/schema.js'
@@ -20,47 +20,21 @@ const linkToSchema = z.string().min(1)
 // null = sem cor escolhida (Sidebar.tsx usa a paleta automática).
 const corSchema = z.string().regex(/^#[0-9a-fA-F]{6}$/).nullable()
 
-async function gruposDoEscopo(empresaId: number | null) {
-  const grupos = await db.query.sidebarGroups.findMany({
-    where: empresaId ? eq(sidebarGroups.empresaId, empresaId) : isNull(sidebarGroups.empresaId),
-    with: { itens: { orderBy: (i, { asc }) => [asc(i.ordem)] } },
-    orderBy: (g, { asc }) => [asc(g.ordem)],
-  })
-  return grupos.map((g) => ({ id: g.id, nome: g.nome, icone: g.icone, cor: g.cor, itens: g.itens.map((i) => i.linkTo) }))
-}
-
 export const sidebarGruposRouter = router({
   // Todo mundo lê — é o que monta a sidebar de qualquer usuário (admin ou
-  // vendedor), não só do superAdmin que configura. Empresa com layout
-  // próprio (grupos com empresa_id dela) usa só os próprios; senão, o padrão.
-  // `empresaId` no input é só pra chave do cache mudar ao trocar de empresa —
-  // quem manda é ctx.empresaId.
-  listar: protectedProcedure.input(z.object({ empresaId: z.number().nullable().optional() }).optional()).query(async ({ ctx }) => {
-    const proprios = await gruposDoEscopo(ctx.empresaId)
-    const exclusiva = proprios.length > 0
-    return { exclusiva, grupos: exclusiva ? proprios : await gruposDoEscopo(null) }
-  }),
-
-  // Tela Grupos da Sidebar: grupos de um escopo (null = padrão).
-  listarEscopo: superAdminProcedure.input(z.object({ empresaId: z.number().nullable() })).query(async ({ input }) => gruposDoEscopo(input.empresaId)),
-
-  // Começa o layout exclusivo de uma empresa como cópia do padrão (só se ela
-  // ainda não tem nenhum grupo próprio).
-  copiarPadrao: superAdminProcedure.input(z.object({ empresaId: z.number() })).mutation(async ({ input }) => {
-    if ((await gruposDoEscopo(input.empresaId)).length) throw new Error('Essa empresa já tem uma sidebar própria.')
-    const padrao = await gruposDoEscopo(null)
-    for (const [ordem, g] of padrao.entries()) {
-      const r = await db.insert(sidebarGroups).values({ nome: g.nome, icone: g.icone, cor: g.cor, ordem, empresaId: input.empresaId })
-      const id = Number(r.lastInsertRowid)
-      if (g.itens.length) await db.insert(sidebarGroupItems).values(g.itens.map((linkTo, idx) => ({ groupId: id, linkTo, ordem: idx })))
-    }
-    return { copiados: padrao.length }
-  }),
-
-  // Volta a empresa pro layout padrão (apaga só os grupos próprios dela).
-  removerExclusiva: superAdminProcedure.input(z.object({ empresaId: z.number() })).mutation(async ({ input }) => {
-    await db.delete(sidebarGroups).where(eq(sidebarGroups.empresaId, input.empresaId))
-    return { success: true }
+  // vendedor), não só do superAdmin que configura.
+  listar: protectedProcedure.query(async () => {
+    const grupos = await db.query.sidebarGroups.findMany({
+      with: { itens: { orderBy: (i, { asc }) => [asc(i.ordem)] } },
+      orderBy: (g, { asc }) => [asc(g.ordem)],
+    })
+    return grupos.map((g) => ({
+      id: g.id,
+      nome: g.nome,
+      icone: g.icone,
+      cor: g.cor,
+      itens: g.itens.map((i) => i.linkTo),
+    }))
   }),
 
   criar: superAdminProcedure
@@ -70,21 +44,16 @@ export const sidebarGruposRouter = router({
         icone: z.string().min(1),
         cor: corSchema.optional(),
         itens: z.array(linkToSchema),
-        // null/ausente = layout padrão.
-        empresaId: z.number().nullable().optional(),
       })
     )
     .mutation(async ({ input }) => {
       // Novo grupo entra no fim da lista, não empatado em ordem=0 com todo
       // mundo — senão a ordem exibida vira "o que o SQLite devolver" em vez
       // do que o superAdmin de fato organizou.
-      const existentes = await db.query.sidebarGroups.findMany({
-        where: input.empresaId ? eq(sidebarGroups.empresaId, input.empresaId) : isNull(sidebarGroups.empresaId),
-        columns: { ordem: true },
-      })
+      const existentes = await db.query.sidebarGroups.findMany({ columns: { ordem: true } })
       const proximaOrdem = existentes.length ? Math.max(...existentes.map((g) => g.ordem)) + 1 : 0
 
-      const result = await db.insert(sidebarGroups).values({ nome: input.nome, icone: input.icone, cor: input.cor ?? null, ordem: proximaOrdem, empresaId: input.empresaId ?? null })
+      const result = await db.insert(sidebarGroups).values({ nome: input.nome, icone: input.icone, cor: input.cor ?? null, ordem: proximaOrdem })
       const id = Number(result.lastInsertRowid)
       if (input.itens.length > 0) {
         await db.insert(sidebarGroupItems).values(input.itens.map((linkTo, idx) => ({ groupId: id, linkTo, ordem: idx })))

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { RelatorioMaquinasModelo, RelatorioPecasRecompra, RelatorioPropostasPerdas, RelatorioVisitasRegiao } from '../components/odin/RelatoriosOdinNovos'
 import { Link } from 'react-router-dom'
 import { BarChart3, Download, RefreshCw, Search, Package, Clock, CheckCircle2, XCircle, CalendarRange, Info, ChevronLeft, ChevronRight, ChevronDown, MapPin, PenLine, FileText, Handshake } from 'lucide-react'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
@@ -50,42 +49,18 @@ type RouterOutputs = inferRouterOutputs<AppRouter>
 type MarketingData = RouterOutputs['relatoriosOdin']['marketing']
 type Filtro = { dataDe?: string; dataAte?: string; vendedorId?: number }
 
-type TabKey =
-  | 'semanal'
-  | 'pedidos'
-  | 'propostas'
-  | 'pipeline'
-  | 'posVenda'
-  | 'faturamento'
-  | 'maquinas'
-  | 'marketing'
-  | 'visitasRegiao'
-  | 'propostasPerdas'
-  | 'maquinasModelo'
-  | 'pecasRecompra'
+type TabKey = 'semanal' | 'pedidos' | 'propostas' | 'pipeline' | 'posVenda' | 'faturamento' | 'maquinas' | 'marketing'
 const TAB_LABELS: Record<TabKey, string> = {
   semanal: 'Semanal por Vendedor',
   pedidos: 'Pedidos em Processo',
   marketing: 'Marketing & Propostas',
   posVenda: 'Pós-Venda',
-  maquinas: 'Estoque de Máquinas',
+  maquinas: 'Máquinas',
   pipeline: 'Pipeline',
   propostas: 'Propostas',
   faturamento: 'Faturamento',
-  visitasRegiao: 'Visitas por Região',
-  propostasPerdas: 'Perdas e Prazos',
-  maquinasModelo: 'Máquinas por Modelo',
-  pecasRecompra: 'Recompra da Carteira',
 }
-// Abas agrupadas por assunto/frente — pedido do João, 2026-10-23 (antes
-// era uma fila só de 8 abas, sem ordem clara).
-const GRUPOS_ABAS: { titulo: string; abas: TabKey[] }[] = [
-  { titulo: 'Externos', abas: ['semanal', 'visitasRegiao'] },
-  { titulo: 'Propostas', abas: ['propostasPerdas', 'propostas', 'pipeline', 'marketing'] },
-  { titulo: 'Máquinas', abas: ['maquinasModelo', 'maquinas'] },
-  { titulo: 'Peças', abas: ['pecasRecompra'] },
-  { titulo: 'Pedidos e faturamento', abas: ['pedidos', 'faturamento', 'posVenda'] },
-]
+const TAB_ORDEM: TabKey[] = ['semanal', 'pedidos', 'marketing', 'posVenda', 'maquinas', 'pipeline', 'propostas', 'faturamento']
 
 // Cartão de indicador — ícone num quadrado colorido + valor + rótulo,
 // mesmo padrão do KpiCard de Relatorios.tsx no odincrm original.
@@ -155,8 +130,8 @@ function money(v: number) {
   return formatarMoedaBr(v)
 }
 
-const TABS_COM_FILTRO_DATA: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing', 'visitasRegiao', 'propostasPerdas', 'maquinasModelo']
-const TABS_COM_FILTRO_VENDEDOR: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing', 'visitasRegiao', 'propostasPerdas', 'maquinasModelo', 'pecasRecompra']
+const TABS_COM_FILTRO_DATA: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing']
+const TABS_COM_FILTRO_VENDEDOR: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing']
 
 export default function RelatoriosOdin() {
   const [tab, setTab] = usePersistedState<TabKey>('relatoriosOdin:tab', 'pedidos')
@@ -185,7 +160,7 @@ export default function RelatoriosOdin() {
   return (
     <div className="p-6">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-        <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-2"><BarChart3 size={22} /> Relatórios Odin</h1>
+        <h1 className="font-heading text-2xl text-dark-50 font-bold flex items-center gap-2"><BarChart3 size={22} /> Relatórios</h1>
         <div className="flex items-center gap-3">
           <button
             onClick={() => utils.relatoriosOdin.invalidate()}
@@ -197,24 +172,17 @@ export default function RelatoriosOdin() {
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-5">
-        {GRUPOS_ABAS.map((g) => (
-          <div key={g.titulo} className="rounded-xl bg-dark-800 border border-dark-600 p-1.5">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-dark-500 px-2 pb-1">{g.titulo}</p>
-            <div className="flex gap-1 flex-wrap">
-              {g.abas.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors whitespace-nowrap ${
-                    tab === t ? 'bg-gold-600 text-dark-950' : 'text-dark-400 hover:text-dark-200 hover:bg-dark-700'
-                  }`}
-                >
-                  {TAB_LABELS[t]}
-                </button>
-              ))}
-            </div>
-          </div>
+      <div className="flex gap-1 rounded-xl bg-dark-800 border border-dark-600 p-1 w-fit flex-wrap mb-5">
+        {TAB_ORDEM.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap ${
+              tab === t ? 'bg-gold-600 text-dark-950' : 'text-dark-400 hover:text-dark-200'
+            }`}
+          >
+            {TAB_LABELS[t]}
+          </button>
         ))}
       </div>
 
@@ -262,10 +230,6 @@ export default function RelatoriosOdin() {
       {tab === 'faturamento' && <RelatorioFaturamento filtro={filtro} />}
       {tab === 'maquinas' && <RelatorioMaquinas />}
       {tab === 'marketing' && <RelatorioMarketing filtro={filtro} />}
-      {tab === 'visitasRegiao' && <RelatorioVisitasRegiao filtro={filtro} />}
-      {tab === 'propostasPerdas' && <RelatorioPropostasPerdas filtro={filtro} />}
-      {tab === 'maquinasModelo' && <RelatorioMaquinasModelo filtro={filtro} />}
-      {tab === 'pecasRecompra' && <RelatorioPecasRecompra filtro={filtro} />}
     </div>
   )
 }

@@ -13,9 +13,6 @@ import { router, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas, users, leads, vendas, registroContato, funilMensal } from '../db/schema.js'
 import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
-import { montarPainelTvOdin } from '../lib/painelTvOdin.js'
-import { resultadosOdin, totaisResultadosOdin } from '../lib/resultadosOdin.js'
-import { controlePedidosOdin } from '../lib/controlePedidosOdin.js'
 
 const SLUG_DASHBOARD = 'odin-compressores'
 
@@ -284,36 +281,6 @@ export const dashboardOdinRouter = router({
   // subconjunto de pedidos que já entrou na etapa Faturamento (ou além) —
   // mesma regra do Painel Financeiro, ver lib/faturamentoOdin.ts — e mede o
   // operacional (financeiro/logística), não a performance do vendedor.
-  // Controle de Pedidos (tela operacional) — ver lib/controlePedidosOdin.ts.
-  // Vendedor vê só os pedidos dele.
-  controlePedidos: adminOrFeatureProcedure('dashboard_odin')
-    .input(z.object({ dataDe: z.string(), dataAte: z.string(), vendedorId: z.number().optional() }))
-    .query(async ({ ctx, input }) => {
-      await assertEmpresa(ctx.empresaId)
-      const isAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
-      return controlePedidosOdin(ctx.empresaId, input.dataDe, input.dataAte, isAdmin ? input.vendedorId : ctx.user.id)
-    }),
-  // "Resultados Odin" — resultado por frente (externos/leads/peças) no
-  // período, com totais do período anterior pra comparação. Vendedor só
-  // recebe os próprios números. Ver lib/resultadosOdin.ts.
-  resultados: adminOrFeatureProcedure('dashboard_odin')
-    .input(z.object({ dataDe: z.string(), dataAte: z.string(), anteriorDe: z.string(), anteriorAte: z.string() }))
-    .query(async ({ ctx, input }) => {
-      await assertEmpresa(ctx.empresaId)
-      const somente = ctx.user.role === 'admin' || ctx.user.superAdmin ? undefined : ctx.user.id
-      const [atual, anterior] = await Promise.all([
-        resultadosOdin(ctx.empresaId, input.dataDe, input.dataAte, somente),
-        totaisResultadosOdin(ctx.empresaId, input.anteriorDe, input.anteriorAte, somente),
-      ])
-      const eu = somente ? await db.query.users.findFirst({ where: eq(users.id, ctx.user.id), columns: { canalVenda: true } }) : null
-      return { ...atual, anterior, minhaFrente: eu?.canalVenda ?? null }
-    }),
-  // Painel de TV 75" por equipe (externos / leads / peças) — ver
-  // lib/painelTvOdin.ts. Pedido do João, 2026-10-23.
-  painelTvEquipes: adminOrFeatureProcedure('painel_tv_odin').query(async ({ ctx }) => {
-    await assertEmpresa(ctx.empresaId)
-    return montarPainelTvOdin(ctx.empresaId)
-  }),
   painelTv: adminOrFeatureProcedure('painel_tv_odin').query(async ({ ctx }) => {
     await assertEmpresa(ctx.empresaId)
 

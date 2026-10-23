@@ -7,7 +7,6 @@ import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import { ADMIN_LINKS, VENDOR_LINKS, NOMES_ICONES_GRUPO, PALETA_GRUPOS } from '../../components/Sidebar'
 import { textoContem } from '../../lib/utils'
-import { usePersistedState } from '../../lib/usePersistedState'
 
 function moverNaLista<T>(lista: T[], indice: number, direcao: -1 | 1): T[] {
   const novoIndice = indice + direcao
@@ -57,35 +56,7 @@ export default function SidebarGrupos() {
   const [buscaItens, setBuscaItens] = useState('')
 
   const utils = trpc.useUtils()
-  // Qual sidebar está sendo editada: padrão (todas as empresas) ou a
-  // exclusiva de uma empresa (pedido do João, 2026-10-23 — Odin Compressores).
-  const [escopo, setEscopo] = usePersistedState<number | null>('sidebarGrupos:escopo', null)
-  const { data: empresas } = trpc.empresas.list.useQuery()
-  const { data: grupos, isLoading } = trpc.sidebarGrupos.listarEscopo.useQuery({ empresaId: escopo })
-  const nomeEscopo = escopo == null ? 'Padrão (todas as empresas)' : (empresas?.find((e) => e.id === escopo)?.nome ?? 'Empresa')
-  const copiarMut = trpc.sidebarGrupos.copiarPadrao.useMutation({
-    onSuccess(r) {
-      toast.success(`Sidebar própria criada a partir do padrão (${r.copiados} grupos) — agora é só ajustar`)
-      utils.sidebarGrupos.invalidate()
-      setSelecionadoId(null)
-    },
-    onError(err) {
-      toast.error(err.message)
-    },
-  })
-  const removerMut = trpc.sidebarGrupos.removerExclusiva.useMutation({
-    onSuccess() {
-      toast.success('A empresa voltou a usar a sidebar padrão')
-      utils.sidebarGrupos.invalidate()
-      setSelecionadoId(null)
-    },
-    onError(err) {
-      toast.error(err.message)
-    },
-  })
-  useEffect(() => {
-    setSelecionadoId(null)
-  }, [escopo])
+  const { data: grupos, isLoading } = trpc.sidebarGrupos.listar.useQuery()
 
   useEffect(() => {
     if (selecionadoId === null && grupos?.length) setSelecionadoId(grupos[0].id)
@@ -103,7 +74,7 @@ export default function SidebarGrupos() {
   const criarMut = trpc.sidebarGrupos.criar.useMutation({
     onSuccess(data) {
       toast.success('Grupo criado')
-      utils.sidebarGrupos.invalidate()
+      utils.sidebarGrupos.listar.invalidate()
       setSelecionadoId(data.id)
     },
     onError(err) {
@@ -114,7 +85,7 @@ export default function SidebarGrupos() {
   const atualizarMut = trpc.sidebarGrupos.atualizar.useMutation({
     onSuccess() {
       toast.success('Grupo salvo')
-      utils.sidebarGrupos.invalidate()
+      utils.sidebarGrupos.listar.invalidate()
     },
     onError(err) {
       toast.error(err.message)
@@ -124,7 +95,7 @@ export default function SidebarGrupos() {
   const excluirMut = trpc.sidebarGrupos.excluir.useMutation({
     onSuccess() {
       toast.success('Grupo excluído')
-      utils.sidebarGrupos.invalidate()
+      utils.sidebarGrupos.listar.invalidate()
       setSelecionadoId(null)
     },
     onError(err) {
@@ -134,11 +105,11 @@ export default function SidebarGrupos() {
 
   const reordenarMut = trpc.sidebarGrupos.reordenarGrupos.useMutation({
     onSuccess() {
-      utils.sidebarGrupos.invalidate()
+      utils.sidebarGrupos.listar.invalidate()
     },
     onError(err) {
       toast.error(err.message)
-      utils.sidebarGrupos.invalidate()
+      utils.sidebarGrupos.listar.invalidate()
     },
   })
 
@@ -166,7 +137,7 @@ export default function SidebarGrupos() {
     const nome = form.nome.trim()
     if (!nome) return toast.error('Dê um nome pro grupo.')
     if (selecionadoId === 'novo') {
-      criarMut.mutate({ nome, icone: form.icone, cor: form.cor, itens: form.itens as never, empresaId: escopo })
+      criarMut.mutate({ nome, icone: form.icone, cor: form.cor, itens: form.itens as never })
     } else if (typeof selecionadoId === 'number') {
       atualizarMut.mutate({ id: selecionadoId, nome, icone: form.icone, cor: form.cor, itens: form.itens as never })
     }
@@ -180,48 +151,6 @@ export default function SidebarGrupos() {
           Junte itens do menu em grupos que abrem/fecham (ex: "Marketing" com Leads, Kanban de Leads, Solicitar Arte) — deixa o menu mais
           enxuto pra todo mundo. Item fora de qualquer grupo continua aparecendo solto, igual sempre.
         </p>
-      </div>
-
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
-        <div className="flex items-end gap-3 flex-wrap">
-          <div className="w-72">
-            <Select
-              label="Qual sidebar você está organizando"
-              value={escopo == null ? '' : String(escopo)}
-              onChange={(e) => setEscopo(e.target.value ? Number(e.target.value) : null)}
-              options={[{ value: '', label: 'Padrão (todas as empresas)' }, ...(empresas ?? []).map((e) => ({ value: String(e.id), label: e.nome }))]}
-            />
-          </div>
-          {escopo != null && !!grupos?.length && (
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={removerMut.isPending}
-              onClick={() => {
-                if (window.confirm(`Apagar a sidebar própria de ${nomeEscopo} e voltar pra padrão?`)) removerMut.mutate({ empresaId: escopo })
-              }}
-            >
-              Voltar pra sidebar padrão
-            </Button>
-          )}
-        </div>
-        <p className="text-xs text-dark-400">
-          {escopo == null
-            ? 'A padrão vale pra toda empresa que não tem sidebar própria.'
-            : grupos?.length
-              ? `${nomeEscopo} usa a sidebar própria abaixo — mudanças aqui não afetam as outras empresas.`
-              : `${nomeEscopo} ainda usa a sidebar padrão.`}
-        </p>
-        {escopo != null && !isLoading && !grupos?.length && (
-          <div className="flex gap-2 flex-wrap">
-            <Button size="sm" disabled={copiarMut.isPending} onClick={() => copiarMut.mutate({ empresaId: escopo })}>
-              Criar sidebar própria (começando pela padrão)
-            </Button>
-            <Button size="sm" variant="secondary" onClick={() => setSelecionadoId('novo')}>
-              Começar do zero
-            </Button>
-          </div>
-        )}
       </div>
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
