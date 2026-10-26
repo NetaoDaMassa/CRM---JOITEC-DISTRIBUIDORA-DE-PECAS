@@ -88,24 +88,26 @@ type DemandaPainel = {
   estagio: { id: number; nome: string }
 }
 
-// Palco 1920×1080 escalado pra caber no espaço disponível (TV de qualquer
-// resolução ou janela de notebook).
+// Palco de no mínimo 1920×1080 escalado pra caber no espaço disponível (TV
+// de qualquer resolução ou janela de notebook). Quando a tela não é 16:9 o
+// palco estica no lado que sobra, em vez de deixar faixas pretas.
 function usePalco() {
   const ref = useRef<HTMLDivElement>(null)
-  const [escala, setEscala] = useState(0.5)
+  const [palco, setPalco] = useState({ escala: 0.5, largura: 1920, altura: 1080 })
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
     const atualizar = () => {
       const r = el.getBoundingClientRect()
-      setEscala(Math.min(r.width / 1920, r.height / 1080) || 0.5)
+      const escala = Math.min(r.width / 1920, r.height / 1080) || 0.5
+      setPalco({ escala, largura: Math.round(r.width / escala) || 1920, altura: Math.round(r.height / escala) || 1080 })
     }
     atualizar()
     const obs = new ResizeObserver(atualizar)
     obs.observe(el)
     return () => obs.disconnect()
   }, [])
-  return { ref, escala }
+  return { ref, ...palco }
 }
 
 function Logo({ card, tamanho = 54 }: { card: { nome: string; slugLogo: string }; tamanho?: number }) {
@@ -165,7 +167,7 @@ function Cabecalho({ titulo, sub, relogio, onConfig }: { titulo: string; sub: st
       </div>
       <div className="ml-auto text-right">
         <p className="text-[52px] font-semibold tabular-nums leading-none">{relogio.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
-        <p className="text-[20px] text-dark-400 capitalize mt-1">{relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
+        <p className="text-[20px] text-dark-400 first-letter:uppercase mt-1">{relogio.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</p>
       </div>
       <button onClick={onConfig} className="text-dark-600 hover:text-dark-300 transition-colors p-2 rounded-lg hover:bg-dark-800 self-start" title="Configurar carrossel">
         <Settings size={26} />
@@ -177,13 +179,14 @@ function Cabecalho({ titulo, sub, relogio, onConfig }: { titulo: string; sub: st
 // ── Tela 1: grupo ──────────────────────────────────────────────────────
 function GraficoMeses({ meses, atual }: { meses: MesHist[]; atual: { mes: string; percentualMeta: number } }) {
   const dados = [...meses, atual]
-  const W = 760, H = 330, base = 280, topo = 30, max = Math.max(120, ...dados.map((d) => d.percentualMeta ?? 0) ) + 5
-  const bw = 78, g = (W - bw * dados.length) / dados.length
+  const W = 600, H = 470, base = 420, topo = 44, max = Math.max(100, ...dados.map((d) => d.percentualMeta ?? 0)) * 1.08
+  const bw = 66, g = (W - bw * dados.length) / dados.length
   const y = (v: number) => base - (v / max) * (base - topo)
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" role="img" aria-label="% da meta batida pelo grupo mês a mês">
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-full" preserveAspectRatio="xMidYMax meet" role="img" aria-label="% da meta batida pelo grupo mês a mês">
       <line x1={0} x2={W} y1={base} y2={base} stroke="var(--color-dark-700)" strokeWidth={2} />
       <line x1={0} x2={W} y1={y(100)} y2={y(100)} stroke="var(--color-dark-300)" strokeWidth={2} strokeDasharray="10 8" />
+      <text x={W} y={y(100) - 10} textAnchor="end" fontSize={20} fill="var(--color-dark-400)">meta 100%</text>
       {dados.map((d, i) => {
         const x = g / 2 + i * (bw + g)
         const parcial = i === dados.length - 1
@@ -225,11 +228,15 @@ function TelaGrupo({ data, hist }: { data: ResumoData; hist: Historico | undefin
             {noRitmo ? <Selo tipo="bom">🎯 No ritmo{dif > 0 ? ` · ${dif} pontos acima` : ''}</Selo> : <Selo tipo="ruim">⏳ {Math.abs(dif)} pontos abaixo do ritmo</Selo>}
           </div>
         </div>
-        <Barra percentual={c.percentualMeta} ideal={c.percentualIdealHoje} altura={40} />
-        <div className="flex justify-between text-[22px] text-dark-400">
-          <span>0%</span>
-          <span>▏ ideal hoje <b className="text-dark-50">{pct(c.percentualIdealHoje)}</b> · {c.diasUteisAteHoje} de {c.diasUteisMes} dias úteis</span>
-          <span>meta <b className="text-dark-50">100%</b></span>
+        <div>
+          <Barra percentual={c.percentualMeta} ideal={c.percentualIdealHoje} altura={40} />
+          <div className="relative h-[34px] mt-[26px] text-[22px] text-dark-400 whitespace-nowrap">
+            <span className="absolute left-0">0%</span>
+            <span className="absolute -translate-x-1/2" style={{ left: `${Math.min(84, Math.max(12, c.percentualIdealHoje))}%` }}>
+              ideal <b className="text-dark-50">{pct(c.percentualIdealHoje)}</b>
+            </span>
+            <span className="absolute right-0">meta <b className="text-dark-50">100%</b></span>
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-[18px]">
           <div className="bg-dark-700/60 rounded-2xl px-5 py-[18px]">
@@ -252,16 +259,17 @@ function TelaGrupo({ data, hist }: { data: ResumoData; hist: Historico | undefin
 
       <div className="grid grid-cols-2 gap-[26px]">
         <div className="bg-dark-800 rounded-[20px] px-7 py-6">
-          <Rotulo>Mês passado, mesmo dia</Rotulo>
+          <Rotulo className="whitespace-nowrap">Mês passado</Rotulo>
           <p className="text-[72px] font-bold tabular-nums leading-none mt-2.5">{hist?.grupo.percentualMesmoDiaMesPassado != null ? pct(hist.grupo.percentualMesmoDiaMesPassado) : '—'}</p>
-          <div className="mt-2.5">
+          <p className="text-[20px] text-dark-400 mt-2.5 whitespace-nowrap">no mesmo dia</p>
+          <div className="mt-1">
             <VsMesPassado atual={c.percentualMeta} passado={hist?.grupo.percentualMesmoDiaMesPassado ?? null} tamanho={24} />
             <span className="text-[20px] text-dark-400"> agora</span>
           </div>
         </div>
         <div className="bg-dark-800 rounded-[20px] px-7 py-6">
           <Rotulo>Inadimplência total</Rotulo>
-          <p className="text-[52px] font-bold tabular-nums leading-none mt-2.5 text-red-400 whitespace-nowrap">{formatarMoeda(c.inadimplenciaTotal)}</p>
+          <p className="font-bold tabular-nums leading-none mt-2.5 text-red-400 whitespace-nowrap" style={{ fontSize: tamanhoValor(formatarMoeda(c.inadimplenciaTotal)) }}>{formatarMoeda(c.inadimplenciaTotal)}</p>
           <p className="text-[20px] text-dark-400 mt-2.5">
             <b className="text-dark-50">{clientesAtraso}</b> clientes em atraso
           </p>
@@ -271,12 +279,17 @@ function TelaGrupo({ data, hist }: { data: ResumoData; hist: Historico | undefin
       <div className="bg-dark-800 rounded-[20px] px-7 py-6 grid grid-rows-[auto_minmax(0,1fr)] gap-2.5 min-h-0">
         <div className="flex justify-between items-baseline">
           <Rotulo>% da meta por mês · grupo</Rotulo>
-          <span className="text-[19px] text-dark-400 whitespace-nowrap">— — meta 100% · * até hoje</span>
+          <span className="text-[19px] text-dark-400 whitespace-nowrap">* até hoje</span>
         </div>
         {hist ? <GraficoMeses meses={hist.grupo.meses} atual={{ mes: hist.meses.length ? mesSeguinte(hist.meses[hist.meses.length - 1]) : '', percentualMeta: c.percentualMeta }} /> : <p className="text-[20px] text-dark-500">Carregando meses anteriores...</p>}
       </div>
     </div>
   )
+}
+
+// Encolhe a fonte de valores em R$ compridos pra não vazar da caixa.
+function tamanhoValor(texto: string): number {
+  return texto.length <= 10 ? 52 : texto.length <= 12 ? 44 : 38
 }
 
 function mesSeguinte(mesRef: string): string {
@@ -286,22 +299,6 @@ function mesSeguinte(mesRef: string): string {
 }
 
 // ── Tela 2: empresas ───────────────────────────────────────────────────
-function Tendencia({ meses, atual }: { meses: MesHist[]; atual: number }) {
-  const vals = [...meses.map((m) => m.percentualMeta), atual]
-  const W = 150, H = 44
-  const pts = vals.map((v, i) => (v == null ? null : ([i * (W / (vals.length - 1)), H - 4 - ((Math.min(Math.max(v, 30), 120) - 30) / 90) * (H - 8)] as const)))
-  const ok = pts.filter((p): p is readonly [number, number] => !!p)
-  if (ok.length < 2) return null
-  const d = ok.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ')
-  const ultimo = ok[ok.length - 1]
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width={W} height={H} aria-label="Tendência dos últimos meses">
-      <path d={d} fill="none" stroke="var(--color-gold-400)" strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={ultimo[0]} cy={ultimo[1]} r={5} fill="var(--color-gold-400)" stroke="var(--color-dark-800)" strokeWidth={2} />
-    </svg>
-  )
-}
-
 function InadimplenciaEditor({ card, onClose }: { card: Card; onClose: () => void }) {
   const utils = trpc.useUtils()
   const [valor, setValor] = useState(String(card.inadimplencia.valorTotal || ''))
@@ -337,22 +334,25 @@ function CardEmpresa({ card, ideal, hist, editando, onEditar, onFecharEdicao }: 
   const noRitmo = meta >= ideal
   const extra =
     card.devolucoesMes !== null
-      ? { valor: String(card.devolucoesMes.quantidade), rotulo: `devoluções (${card.devolucoesMes.comRecurso} c/ rec.)` }
+      ? { valor: String(card.devolucoesMes.quantidade), detalhe: `${card.devolucoesMes.comRecurso} c/ recurso`, rotulo: 'devoluções' }
       : card.valorAFaturar !== null
-        ? { valor: card.metaFaturamento ? pct((card.valorAFaturar / card.metaFaturamento) * 100) : '—', rotulo: `da meta a faturar` }
+        ? { valor: card.metaFaturamento ? pct((card.valorAFaturar / card.metaFaturamento) * 100) : '—', detalhe: 'da meta', rotulo: 'a faturar' }
         : card.valorEmNegociacao !== null
-          ? { valor: card.metaFaturamento ? pct((card.valorEmNegociacao / card.metaFaturamento) * 100) : '—', rotulo: 'da meta em negociação' }
+          ? { valor: card.metaFaturamento ? pct((card.valorEmNegociacao / card.metaFaturamento) * 100) : '—', detalhe: 'da meta', rotulo: 'em negociação' }
           : null
   const inad = card.inadimplencia
+  const semToken = card.origemExterna === 'aton' && !card.tokenConfigurado
 
   return (
-    <div className="bg-dark-800 rounded-[20px] px-6 py-5 grid grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-3 min-w-0">
-      <div className="flex items-center gap-3.5 min-w-0">
+    <div className="bg-dark-800 rounded-[20px] px-6 py-5 grid grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-3 min-w-0 min-h-0">
+      <div className="flex items-center gap-3.5 min-w-0 h-[60px]">
         <Logo card={card} />
-        <p className="text-[24px] font-semibold truncate flex-1 min-w-0">{card.nome}</p>
+        <div className="flex-1 min-w-0">
+          <p className={`text-[23px] font-semibold leading-tight ${semToken ? 'truncate' : 'line-clamp-2'}`}>{card.nome}</p>
+          {semToken && <p className="text-[15px] text-red-400 font-semibold truncate">⚠️ Token Aton não configurado — vendas zeradas</p>}
+        </div>
         {noRitmo ? <Selo tipo="bom">🎯 No ritmo</Selo> : <Selo tipo="ruim">⏳ Abaixo</Selo>}
       </div>
-      {card.origemExterna === 'aton' && !card.tokenConfigurado && <p className="text-[16px] text-red-400 font-semibold -mt-1">⚠️ Token Aton ERP não configurado — vendas zeradas</p>}
       <div className="flex items-end gap-5">
         <p className={`text-[84px] font-bold tabular-nums leading-none ${noRitmo ? 'text-green-400' : 'text-red-400'}`}>{pct(meta)}</p>
         <div className="pb-2 text-[20px] text-dark-400 whitespace-nowrap">
@@ -368,16 +368,18 @@ function CardEmpresa({ card, ideal, hist, editando, onEditar, onFecharEdicao }: 
       <div className="grid grid-cols-3 gap-2.5 border-t border-dark-700 pt-3">
         <div>
           <p className="text-[36px] font-bold tabular-nums leading-none">{card.vendasHoje.quantidade}</p>
-          <p className="text-[16px] text-dark-400 uppercase tracking-wide mt-1">vendas hoje</p>
+          <p className="text-[17px] text-dark-400 uppercase tracking-wide whitespace-nowrap mt-1.5">vendas hoje</p>
         </div>
         <div>
           <p className="text-[36px] font-bold tabular-nums leading-none">{card.vendasMes.quantidade}</p>
-          <p className="text-[16px] text-dark-400 uppercase tracking-wide mt-1">vendas no mês</p>
+          <p className="text-[17px] text-dark-400 uppercase tracking-wide whitespace-nowrap mt-1.5">vendas no mês</p>
         </div>
         {extra && (
           <div>
-            <p className="text-[36px] font-bold tabular-nums leading-none">{extra.valor}</p>
-            <p className="text-[16px] text-dark-400 uppercase tracking-wide mt-1">{extra.rotulo}</p>
+            <p className="text-[36px] font-bold tabular-nums leading-none whitespace-nowrap">
+              {extra.valor} <span className="text-[18px] font-semibold text-dark-400">{extra.detalhe}</span>
+            </p>
+            <p className="text-[17px] text-dark-400 uppercase tracking-wide whitespace-nowrap mt-1.5">{extra.rotulo}</p>
           </div>
         )}
       </div>
@@ -385,23 +387,22 @@ function CardEmpresa({ card, ideal, hist, editando, onEditar, onFecharEdicao }: 
         {editando ? (
           <InadimplenciaEditor card={card} onClose={onFecharEdicao} />
         ) : (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-h-[62px]">
             <div className="min-w-0 flex-1">
               {inad.valorTotal > 0 || inad.quantidadeClientes > 0 ? (
                 <>
                   <p className="text-[15px] font-semibold uppercase tracking-[0.06em] text-red-400">Inadimplência</p>
-                  <p className="text-[17px] text-dark-400">
-                    <b className="text-[30px] text-red-400 tabular-nums">{formatarMoeda(inad.valorTotal)}</b> · <b className="text-dark-50">{inad.quantidadeClientes}</b> clientes
+                  <p className="text-[18px] text-dark-400 whitespace-nowrap">
+                    <b className="text-[32px] text-red-400 tabular-nums">{formatarMoeda(inad.valorTotal)}</b> · <b className="text-dark-50">{inad.quantidadeClientes}</b> clientes
                   </p>
                 </>
               ) : (
-                <p className="text-[17px] text-green-400">✓ nenhum cliente em atraso</p>
+                <p className="text-[19px] text-green-400">✓ nenhum cliente em atraso</p>
               )}
             </div>
             <button onClick={onEditar} className="text-dark-500 hover:text-gold-400 text-[18px] px-2 py-1 rounded-lg hover:bg-dark-700 transition-colors" title="Editar inadimplência">
               ✏️
             </button>
-            {hist && <Tendencia meses={hist.meses} atual={meta} />}
           </div>
         )}
       </div>
@@ -443,7 +444,14 @@ function prazoDemanda(dataLimite: string | null, hoje: string): { tipo: 'bom' | 
 
 function TelaDemandas({ demandas, hoje }: { demandas: DemandaPainel[] | undefined; hoje: string }) {
   if (!demandas) return <p className="text-[24px] text-dark-500">Carregando...</p>
-  if (!demandas.length) return <p className="text-[28px] text-dark-400">Nenhuma demanda financeira pendente no momento. ✓</p>
+  if (!demandas.length)
+    return (
+      <div className="bg-dark-800 rounded-[20px] grid place-items-center content-center gap-4 text-center">
+        <p className="text-[120px] leading-none text-green-400">✓</p>
+        <p className="text-[44px] font-bold text-dark-50">Nenhuma demanda financeira pendente</p>
+        <p className="text-[24px] text-dark-400">Quando alguém marcar uma demanda para aparecer no painel, ela aparece aqui.</p>
+      </div>
+    )
   const lista = demandas.map((d) => ({ d, prazo: prazoDemanda(d.dataLimite, hoje) })).sort((a, b) => a.prazo.ordem - b.prazo.ordem)
   const MAX = 9
   return (
@@ -485,17 +493,17 @@ function TelaMeses({ data, hist }: { data: ResumoData; hist: Historico | undefin
   ]
   const Celula = ({ v, parcial }: { v: number | null; parcial?: boolean }) =>
     v == null ? (
-      <div className="rounded-xl h-[78px] grid place-items-center bg-dark-800/60 text-dark-500 text-[22px]">—</div>
+      <div className="rounded-xl h-full max-h-[110px] self-center grid place-items-center bg-dark-800/60 text-dark-500 text-[22px]">—</div>
     ) : (
-      <div className={`relative rounded-xl h-[78px] grid place-items-center font-bold tabular-nums text-[34px] ${v >= 100 ? 'text-dark-950' : 'text-dark-50'} ${parcial ? 'outline-2 outline-dashed outline-dark-400 -outline-offset-2' : ''}`} style={{ background: corCelula(v) }}>
+      <div className={`relative rounded-xl h-full max-h-[110px] self-center grid place-items-center font-bold tabular-nums text-[34px] ${v >= 100 ? 'text-dark-950' : 'text-dark-50'} ${parcial ? 'outline-2 outline-dashed outline-dark-400 -outline-offset-2' : ''}`} style={{ background: corCelula(v) }}>
         {pct(v)}
         {v >= 100 && !parcial && <span className="absolute bottom-1.5 text-[14px] font-semibold">✓ meta</span>}
       </div>
     )
   return (
     <div className="grid grid-rows-[minmax(0,1fr)_auto] gap-[22px] min-h-0">
-      <div className="bg-dark-800 rounded-[20px] px-7 py-5">
-        <div className="grid grid-cols-[430px_repeat(6,1fr)_140px] gap-x-2 gap-y-1.5 content-start">
+      <div className="bg-dark-800 rounded-[20px] px-7 py-5 min-h-0">
+        <div className="grid grid-cols-[430px_repeat(6,1fr)_140px] gap-x-2 gap-y-2 h-full" style={{ gridTemplateRows: `auto repeat(${linhas.length}, minmax(0, 1fr))` }}>
           <p className="text-[19px] font-semibold uppercase tracking-[0.06em] text-dark-400 pb-1.5">Empresa</p>
           {[...hist.meses, mesAtual].map((m, i) => (
             <p key={m} className="text-[19px] font-semibold uppercase tracking-[0.06em] text-dark-400 text-center pb-1.5">
@@ -510,7 +518,7 @@ function TelaMeses({ data, hist }: { data: ResumoData; hist: Historico | undefin
             return [
               <div key={`${l.chave}-n`} className={`flex items-center gap-3 min-w-0 text-[23px] font-semibold ${l.card ? '' : 'text-gold-400'}`}>
                 {l.card && <Logo card={l.card} tamanho={44} />}
-                <span className="truncate">{l.nome}</span>
+                <span className="line-clamp-2 leading-tight">{l.nome}</span>
               </div>,
               ...l.meses.map((m) => <Celula key={`${l.chave}-${m.mes}`} v={m.percentualMeta} />),
               <Celula key={`${l.chave}-atual`} v={l.atual} parcial />,
@@ -580,12 +588,12 @@ export default function PainelFinanceiro() {
     return () => clearInterval(id)
   }, [slides.length, duracaoSlideMs, autoplay, slideAtual])
 
-  const { ref, escala } = usePalco()
+  const { ref, escala, largura, altura } = usePalco()
   const slide = slides[slideAtual]
 
   return (
     <div ref={ref} className="fixed inset-0 bg-dark-950 text-dark-50 overflow-hidden">
-      <div className="absolute left-1/2 top-1/2 w-[1920px] h-[1080px] origin-center" style={{ transform: `translate(-50%, -50%) scale(${escala})` }}>
+      <div className="absolute left-1/2 top-1/2 origin-center" style={{ width: largura, height: altura, transform: `translate(-50%, -50%) scale(${escala})` }}>
         <div className="absolute inset-0 px-14 pt-10 pb-[60px] grid grid-rows-[auto_minmax(0,1fr)] gap-[26px]">
           <Cabecalho titulo={slide.cabecalho} sub={slide.sub} relogio={relogio} onConfig={() => setConfigAberta(true)} />
           {data ? slide.render() : <p className="text-[24px] text-dark-500">Carregando...</p>}
