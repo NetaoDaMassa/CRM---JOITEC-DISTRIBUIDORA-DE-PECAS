@@ -151,13 +151,39 @@ function FeatureGuard({ feature, children }: { feature: string | string[]; child
 // o antigo "Meu Painel" repetia o Painel do dia e os Relatórios. Quem não
 // tem o Kanban liberado continua caindo no Meu Painel. Pedido do João,
 // 2026-10-22.
+// Odin Compressores não usa o Dashboard padrão (ele soma só as vendas do
+// Kanban e ignora pedidos de máquina — mostrava a meta da empresa errada):
+// a tela inicial lá é o Resultados Odin. Pedido do João, 2026-10-26.
+function useEhOdinCompressores() {
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  return { carregando: !empresas, odin: empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores' }
+}
+
+function InicioAdmin() {
+  const { user } = useAuth()
+  const { carregando, odin } = useEhOdinCompressores()
+  const { data: minhasFeatures, isLoading } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
+    enabled: user?.role === 'admin' && !user.superAdmin,
+  })
+  if (carregando || (!user?.superAdmin && isLoading)) return null
+  if (odin && (user?.superAdmin || minhasFeatures?.includes('dashboard_odin'))) return <Navigate to="/admin/resultados-odin" replace />
+  return (
+    <FeatureGuard feature="dashboard">
+      <AdminDashboard />
+    </FeatureGuard>
+  )
+}
+
 function InicioVendedor() {
   const { user } = useAuth()
+  const { carregando, odin } = useEhOdinCompressores()
   const { data: minhasFeatures, isLoading } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: user?.role === 'vendor',
   })
   if (user?.role === 'vendor') {
-    if (isLoading) return null
+    if (isLoading || carregando) return null
+    if (odin && minhasFeatures?.includes('dashboard_odin')) return <Navigate to="/vendedor/resultados-odin" replace />
     if (minhasFeatures?.includes('kanban')) return <Navigate to="/vendedor/kanban" replace />
   }
   return <VendorDashboard />
@@ -233,7 +259,7 @@ export default function App() {
           }
         >
           {/* Admin routes */}
-          <Route path="admin" element={<AdminGuard><FeatureGuard feature="dashboard"><AdminDashboard /></FeatureGuard></AdminGuard>} />
+          <Route path="admin" element={<AdminGuard><InicioAdmin /></AdminGuard>} />
           <Route path="admin/kanban" element={<AdminGuard><FeatureGuard feature="kanban"><AdminKanban /></FeatureGuard></AdminGuard>} />
           <Route path="admin/demandas" element={<AdminGuard><FeatureGuard feature="demandas"><Demandas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/calendario" element={<AdminGuard><FeatureGuard feature="agenda"><AdminCalendario /></FeatureGuard></AdminGuard>} />

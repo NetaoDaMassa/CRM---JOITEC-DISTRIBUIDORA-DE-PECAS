@@ -436,7 +436,11 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       (user?.superAdmin || FEATURES_SEMPRE_LIBERADAS.has(l.feature) || !!minhasFeatures?.includes(l.feature)) &&
       // "Meu Painel" sai do menu de quem tem Kanban — o Painel do dia do
       // Kanban substitui ele (ver InicioVendedor em App.tsx).
-      !(user?.role === 'vendor' && l.to === '/vendedor' && minhasFeatures?.includes('kanban'))
+      !(user?.role === 'vendor' && l.to === '/vendedor' && minhasFeatures?.includes('kanban')) &&
+      // Odin Compressores: Dashboard padrão sai do menu — a tela inicial lá é
+      // o Resultados Odin (ver InicioAdmin/InicioVendedor em App.tsx).
+      !(empresaAtiva?.slug === SO_ODIN_COMPRESSORES && l.to === '/admin') &&
+      !(empresaAtiva?.slug === SO_ODIN_COMPRESSORES && l.to === '/vendedor' && minhasFeatures?.includes('dashboard_odin'))
     )
   })
 
