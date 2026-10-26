@@ -47,7 +47,15 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
   const mes = mesReferencia ?? mesReferenciaAtual()
 
   const funis = await db.query.funilMensal.findMany({
-    where: and(filtroFunil, eq(funilMensal.mesReferencia, mes), isNull(funilMensal.deletedAt)),
+    // Cliente excluído (lixeira) não aparece no Kanban — a exclusão só marca
+    // clientes.deletedAt e deixa o card do mês; sem isso o card ficava
+    // "fantasma" e qualquer ação nele dava "Cliente não encontrado".
+    where: and(
+      filtroFunil,
+      eq(funilMensal.mesReferencia, mes),
+      isNull(funilMensal.deletedAt),
+      sql`${funilMensal.clienteId} NOT IN (SELECT id FROM clientes WHERE deleted_at IS NOT NULL)`
+    ),
     with: {
       cliente: {
         columns: {
