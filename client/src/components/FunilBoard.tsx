@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Paperclip } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -90,6 +90,29 @@ const FORMAS_PAGAMENTO = [
   { value: 'Boleto', label: 'Boleto' },
   { value: 'Outro', label: 'Outro' },
 ]
+
+// Coluna "Consumidor Final" (venda de balcão da Compretec Loja Física): cada
+// venda rápida vira um card ali, sem contato nenhum — o que importa é o DIA
+// da venda. A coluna fica em ordem de data (mais recente em cima) e separada
+// por dia com a soma, pra dar pra ver o que foi vendido em cada dia (pedido
+// do João, 2026-10-26).
+const ETAPA_VENDA_BALCAO = 'consumidor_final_loja'
+
+function dataVendaCard(card: Card): string {
+  return card.vendas[0]?.dataFechamento ?? card.dataEntradaEtapa
+}
+
+const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+
+function rotuloDiaVenda(dia: string): string {
+  const hoje = hojeBrString()
+  const ontem = new Date(`${hoje}T12:00:00Z`)
+  ontem.setUTCDate(ontem.getUTCDate() - 1)
+  const ddmm = `${dia.slice(8, 10)}/${dia.slice(5, 7)}`
+  if (dia === hoje) return `Hoje · ${ddmm}`
+  if (dia === ontem.toISOString().slice(0, 10)) return `Ontem · ${ddmm}`
+  return `${DIAS_SEMANA[new Date(`${dia}T12:00:00Z`).getUTCDay()]} · ${ddmm}`
+}
 
 // Quantos contatos foram registrados desde que o card entrou na etapa atual
 // (não é o total do mês) — é o número que importa pra decidir se já é hora
@@ -466,7 +489,8 @@ export default function FunilBoard({
   // janela de dias específica (ex: "quem mudou de etapa essa semana").
   const cardsNoPeriodo = dataInicioFiltro || dataFimFiltro
     ? cardsFiltrados.filter((c) => {
-        const dataCard = c.dataEntradaEtapa.slice(0, 10)
+        // Venda de balcão: filtra pelo dia da venda (data do pedido).
+        const dataCard = (c.etapa === ETAPA_VENDA_BALCAO ? dataVendaCard(c) : c.dataEntradaEtapa).slice(0, 10)
         if (dataInicioFiltro && dataCard < dataInicioFiltro) return false
         if (dataFimFiltro && dataCard > dataFimFiltro) return false
         return true
@@ -600,7 +624,19 @@ export default function FunilBoard({
 
       <div ref={boardRef} onScroll={sincronizarDoBoard} className="flex gap-4 overflow-x-auto pb-4">
         {etapasVisiveis.map((etapa) => {
+          const ehBalcao = etapa.value === ETAPA_VENDA_BALCAO
           const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value)
+          if (ehBalcao && ordenacao === 'padrao') colCards.sort((a, b) => dataVendaCard(b).localeCompare(dataVendaCard(a)))
+          const resumoDia = new Map<string, { qtd: number; total: number }>()
+          if (ehBalcao) {
+            for (const c of colCards) {
+              const dia = dataVendaCard(c).slice(0, 10)
+              const r = resumoDia.get(dia) ?? { qtd: 0, total: 0 }
+              r.qtd += 1
+              r.total += c.valorFechadoTotal
+              resumoDia.set(dia, r)
+            }
+          }
           const limiteColuna = limitePorColuna ? (extrasPorColuna[etapa.value] ?? 0) + limitePorColuna : Infinity
           const cardsVisiveis = colCards.length > limiteColuna ? colCards.slice(0, limiteColuna) : colCards
           return (
@@ -616,7 +652,7 @@ export default function FunilBoard({
                   // da coluna. Outras colunas: soma do valor orçado. Nunca
                   // mistura os dois (antes um card fechado sem venda somava o
                   // orçado, e um card com venda fora do Fechado somava a venda).
-                  const ehVenda = etapa.value === 'fechado' || etapa.value === 'faturamento'
+                  const ehVenda = etapa.value === 'fechado' || etapa.value === 'faturamento' || ehBalcao
                   const comValor = colCards.filter((c) => (ehVenda ? c.valorFechadoTotal > 0 : c.valorOrcado != null && c.valorOrcado > 0))
                   const total = comValor.reduce((soma, c) => soma + (ehVenda ? c.valorFechadoTotal : (c.valorOrcado ?? 0)), 0)
                   if (total <= 0) return null
@@ -637,17 +673,28 @@ export default function FunilBoard({
                 </Button>
               )}
               <div className="space-y-2">
-                {cardsVisiveis.map((card) => {
+                {cardsVisiveis.map((card, i) => {
                   const ultimoContato = card.contatos[0]
                   const pendente = !!ultimoContato && !ultimoContato.resultado
                   const sugestao = sugestaoProximoPasso(card)
+                  const diaVenda = ehBalcao ? dataVendaCard(card).slice(0, 10) : ''
+                  const novoDia = ehBalcao && ordenacao === 'padrao' && (i === 0 || dataVendaCard(cardsVisiveis[i - 1]).slice(0, 10) !== diaVenda)
+                  const vendaBalcao = ehBalcao ? card.vendas[0] : undefined
                   return (
+                    <Fragment key={card.funilMensalId}>
+                    {novoDia && (
+                      <div className="flex items-baseline justify-between gap-2 px-1 pt-2 pb-0.5 border-b border-dark-700">
+                        <span className="text-xs font-semibold text-cyan-300 capitalize">{rotuloDiaVenda(diaVenda)}</span>
+                        <span className="text-[11px] text-dark-400">
+                          {pluralizar(resumoDia.get(diaVenda)?.qtd ?? 0, 'venda', 'vendas')} · {formatarMoeda(resumoDia.get(diaVenda)?.total ?? 0)}
+                        </span>
+                      </div>
+                    )}
                     <div
-                      key={card.funilMensalId}
                       onClick={() => setCardAbertoId(card.funilMensalId)}
                       className="bg-dark-800 border border-dark-600 border-l-4 rounded-xl p-3 cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 transition-all"
-                      style={{ borderLeftColor: corFaixaUrgencia(card.diasSemContato) }}
-                      title={textoFaixaUrgencia(card.diasSemContato)}
+                      style={{ borderLeftColor: ehBalcao ? (COR_ETAPA[ETAPA_VENDA_BALCAO] ?? '#22d3ee') : corFaixaUrgencia(card.diasSemContato) }}
+                      title={ehBalcao ? undefined : textoFaixaUrgencia(card.diasSemContato)}
                     >
                       <div className="flex items-start gap-2 mb-1">
                         <AvatarIniciais nome={card.razaoSocial} tamanho={30} />
@@ -712,11 +759,21 @@ export default function FunilBoard({
                         </div>
                       )}
 
-                      <p className={`text-xs ${corUrgencia(card.diasSemContato)}`}>
-                        {card.diasSemContato === null ? 'Nunca contatado' : `${card.diasSemContato} dia(s) sem contato`}
-                      </p>
-                      <p className="text-xs text-dark-100 font-medium">{pluralizar(card.qtdTentativasContato, 'contato', 'contatos')} no mês</p>
-                      <p className="text-xs text-dark-500">{pluralizar(tentativasNaEtapaAtual(card), 'tentativa', 'tentativas')} nesta etapa</p>
+                      {ehBalcao ? (
+                        <p className="text-xs text-cyan-300">
+                          🧾 Venda em {diaVenda.slice(8, 10)}/{diaVenda.slice(5, 7)}
+                          {vendaBalcao && ` às ${vendaBalcao.dataFechamento.slice(11, 16)}`}
+                          {vendaBalcao?.condicaoPagamento && ` · ${vendaBalcao.condicaoPagamento}`}
+                        </p>
+                      ) : (
+                        <>
+                          <p className={`text-xs ${corUrgencia(card.diasSemContato)}`}>
+                            {card.diasSemContato === null ? 'Nunca contatado' : `${card.diasSemContato} dia(s) sem contato`}
+                          </p>
+                          <p className="text-xs text-dark-100 font-medium">{pluralizar(card.qtdTentativasContato, 'contato', 'contatos')} no mês</p>
+                          <p className="text-xs text-dark-500">{pluralizar(tentativasNaEtapaAtual(card), 'tentativa', 'tentativas')} nesta etapa</p>
+                        </>
+                      )}
                       {sugestao && (
                         <p className="text-xs text-gold-300 bg-gold-900/10 border border-gold-700/30 rounded-lg px-2 py-1 mt-2">{sugestao}</p>
                       )}
@@ -764,6 +821,7 @@ export default function FunilBoard({
                         />
                       </div>
                     </div>
+                    </Fragment>
                   )
                 })}
                 {colCards.length > cardsVisiveis.length && (
