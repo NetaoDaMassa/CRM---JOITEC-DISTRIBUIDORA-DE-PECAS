@@ -151,7 +151,7 @@ export function MotivosPerda({ lista }: { lista: PropostaCard[] }) {
 type Coluna = 'cliente' | 'etapa' | 'vendedor' | 'parada' | 'criado'
 
 export function TabelaPropostas({ lista, mostrarVendedor, aoAbrir }: { lista: PropostaCard[]; mostrarVendedor: boolean; aoAbrir: (id: number) => void }) {
-  const [ordem, setOrdem] = useState<{ col: Coluna; desc: boolean }>({ col: 'parada', desc: true })
+  const [ordem, setOrdem] = useState<{ col: Coluna; desc: boolean }>({ col: 'criado', desc: true })
   const ordemEtapa = Object.keys(COR_ETAPA_PROPOSTA)
   const valor = (p: PropostaCard, c: Coluna): string | number =>
     c === 'cliente' ? p.clienteNome.toLowerCase() : c === 'etapa' ? ordemEtapa.indexOf(p.stage) : c === 'vendedor' ? (p.vendedor?.name ?? '') : c === 'parada' ? diasDesdeData(p.updatedAt) : p.createdAt
@@ -249,7 +249,7 @@ export const NOVIDADES_PROPOSTAS: Novidade[] = [
   { emoji: '🔢', titulo: 'Números clicáveis', texto: 'Em aberto, urgentes, sem PDF, com alteração, paradas, para retomar e fechadas no mês. Clique para ver só essas no quadro.' },
   { emoji: '🎨', titulo: 'Cor por etapa', texto: 'Cada coluna e cada card têm a cor da etapa. O topo da coluna avisa quantas estão paradas.' },
   { emoji: '⏳', titulo: 'Parada há X dias', texto: `Proposta ou Negociação sem nenhuma mudança: amarelo a partir de ${DIAS_PARADA_ATENCAO} dias, vermelho a partir de ${DIAS_PARADA_ALERTA}.` },
-  { emoji: '⚡', titulo: 'Urgentes primeiro', texto: 'Dentro de cada coluna, as urgentes ficam no topo.' },
+  { emoji: '🆕', titulo: 'Mais recentes primeiro', texto: 'Dentro de cada coluna, as propostas criadas por último ficam no topo.' },
   { emoji: '🏆', titulo: 'Ranking do mês', texto: 'Quantas cada vendedor fechou no mês, quantas tem em aberto e a % de conversão.' },
   { emoji: '👎', titulo: 'Por que perdemos', texto: 'Os motivos de perda que mais se repetem, para saber onde agir.' },
   { emoji: '📋', titulo: 'Modo lista', texto: 'Troque o quadro por uma tabela que ordena por qualquer coluna e baixa em planilha.' },

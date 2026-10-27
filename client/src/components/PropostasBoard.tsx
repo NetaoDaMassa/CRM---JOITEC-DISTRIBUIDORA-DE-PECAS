@@ -14,7 +14,8 @@ import { CabecalhoColuna, Pilula, corIdade, diasDesdeData } from './painel/Paine
 import { PROPOSTA_BOARD_COLUMNS, PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, isOverdue, type PropostaStage } from '../lib/propostasShared'
 
 // Visual novo (pedido do João, 2026-10-22): cor por etapa, "parada há X
-// dias" no card e urgentes primeiro.
+// dias" no card. Ordem da coluna: mais recentes (criação) primeiro — pedido
+// do João (2026-10-27), antes era urgentes + último mexido e as novas se perdiam.
 export const COR_ETAPA_PROPOSTA: Record<string, string> = {
   proposta: '#3987e5',
   negociacao: '#e8c440',
@@ -152,7 +153,7 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
         {PROPOSTA_BOARD_COLUMNS.map((stage) => {
           const cards = propostas
             .filter((p) => p.stage === stage)
-            .sort((a, b) => Number(b.prioridade === 'urgente') - Number(a.prioridade === 'urgente') || (a.updatedAt < b.updatedAt ? 1 : -1))
+            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id - a.id))
           const aberta = ETAPAS_ABERTAS_PROPOSTA.includes(stage)
           const paradas = aberta ? cards.filter((c) => diasDesdeData(c.updatedAt) >= DIAS_PARADA_ALERTA).length : 0
           return (
