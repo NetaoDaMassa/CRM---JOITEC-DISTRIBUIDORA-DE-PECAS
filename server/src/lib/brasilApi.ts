@@ -16,6 +16,11 @@ export interface CnpjLookupResult {
   bairro: string | null
   cep: string | null
   email: string | null
+  // Usados no enriquecimento do lead da Meta (2026-10-27).
+  nomeFantasia: string | null
+  atividade: string | null
+  dataAbertura: string | null
+  porte: string | null
 }
 
 // BrasilAPI: gratuita, sem chave, dados públicos da Receita Federal. Não traz
@@ -44,6 +49,10 @@ export async function buscarCnpj(cnpj: string): Promise<CnpjLookupResult | null>
     bairro?: string
     cep?: string
     email?: string
+    nome_fantasia?: string
+    cnae_fiscal_descricao?: string
+    data_inicio_atividade?: string
+    porte?: string
   }
   return {
     razaoSocial: data.razao_social ?? '',
@@ -57,5 +66,9 @@ export async function buscarCnpj(cnpj: string): Promise<CnpjLookupResult | null>
     bairro: data.bairro || null,
     cep: data.cep || null,
     email: data.email || null,
+    nomeFantasia: data.nome_fantasia || null,
+    atividade: data.cnae_fiscal_descricao || null,
+    dataAbertura: data.data_inicio_atividade || null,
+    porte: data.porte || null,
   }
 }

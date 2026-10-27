@@ -57,6 +57,8 @@ type LeadCard = {
   convertidoParaPropostaId?: number | null
   reassignedFrom?: { name: string; type: 'rodizio' | 'transferencia'; at: string; stage: string | null } | null
   observations?: string | null
+  // Resposta "qual compressor possui atualmente?" do formulário da Meta.
+  compressorAtual?: string | null
   attachments?: { id: number; filename: string; mimeType: string; originalName: string }[]
 }
 
@@ -436,6 +438,12 @@ export default function LeadKanbanBoard({
                           <Building2 size={11} className="shrink-0" />
                           <span className="truncate min-w-0 flex-1">{lead.company}</span>
                         </div>
+                      )}
+
+                      {lead.compressorAtual && (
+                        <p className="text-xs text-gold-300 mb-1.5 truncate" title={`Compressor que possui hoje: ${lead.compressorAtual}`}>
+                          🔧 Tem hoje: {lead.compressorAtual}
+                        </p>
                       )}
 
                       <div className="flex items-center justify-between mb-2">

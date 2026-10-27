@@ -2,7 +2,7 @@ import express from 'express'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { empresas, leadTrackingVisitors, leadTrackingEvents } from '../db/schema.js'
-import { findOrCreateLeadFromTracking } from '../lib/leadsTrackingService.js'
+import { findOrCreateLeadFromTracking, type MetaDadosLead } from '../lib/leadsTrackingService.js'
 
 // Rota pública — chamada pelo tracker.js embutido nos sites do grupo (Joitec,
 // Odin Tubos, Odin Compressores), fora do /trpc porque não há sessão
@@ -21,6 +21,34 @@ const EVENT_TYPES = ['page_view', 'click', 'form_submit', 'ebook_download', 'blo
 type EventType = (typeof EVENT_TYPES)[number]
 
 const IDENTIFYING_EVENTS: EventType[] = ['form_submit', 'ebook_download', 'blog_signup', 'meta_ads_lead']
+
+// Só aceita texto (corta tamanho) — vem de uma rota pública.
+function texto(v: unknown, max = 300): string | undefined {
+  if (typeof v !== 'string' && typeof v !== 'number') return undefined
+  const t = String(v).trim()
+  return t ? t.slice(0, max) : undefined
+}
+
+function lerMetaDados(bruto: unknown): MetaDadosLead | undefined {
+  if (!bruto || typeof bruto !== 'object') return undefined
+  const m = bruto as Record<string, unknown>
+  const respostas: Record<string, string> = {}
+  if (m.respostas && typeof m.respostas === 'object') {
+    for (const [pergunta, resposta] of Object.entries(m.respostas as Record<string, unknown>).slice(0, 40)) {
+      const r = texto(resposta, 1000)
+      if (r) respostas[pergunta.slice(0, 200)] = r
+    }
+  }
+  return {
+    campanha: texto(m.campanha),
+    conjunto: texto(m.conjunto),
+    anuncio: texto(m.anuncio),
+    formulario: texto(m.formulario),
+    plataforma: texto(m.plataforma, 40),
+    preenchidoEm: texto(m.preenchidoEm, 60),
+    respostas,
+  }
+}
 
 trackingRouter.post('/events', async (req, res) => {
   const {
@@ -94,6 +122,18 @@ trackingRouter.post('/events', async (req, res) => {
     // manda esses campos, então ficam undefined pros eventos normais.
     const company = typeof metadata.company === 'string' ? metadata.company : undefined
     const message = typeof metadata.message === 'string' ? metadata.message : undefined
+    // Script novo do Meta Ads (2026-10-27): cidade, CNPJ e o bloco `meta`
+    // (campanha/conjunto/anúncio/formulário/plataforma + todas as respostas
+    // do formulário). O script antigo mandava o CNPJ em `company` — se
+    // `company` tiver 14 dígitos, trata como CNPJ também.
+    const city = typeof metadata.city === 'string' ? metadata.city : undefined
+    const cnpj =
+      typeof metadata.cnpj === 'string'
+        ? metadata.cnpj
+        : company && company.replace(/\D/g, '').length === 14
+          ? company
+          : undefined
+    const metaDados = eventType === 'meta_ads_lead' ? lerMetaDados(metadata.meta) : undefined
 
     if (IDENTIFYING_EVENTS.includes(eventType) && phone) {
       const matchedLeadId = await findOrCreateLeadFromTracking({
@@ -104,7 +144,10 @@ trackingRouter.post('/events', async (req, res) => {
         company,
         observations: message,
         source: eventType,
-        utmCampaign: existingVisitor?.utmCampaign ?? utmCampaign ?? undefined,
+        utmCampaign: existingVisitor?.utmCampaign ?? utmCampaign ?? metaDados?.campanha ?? undefined,
+        city,
+        cnpj,
+        metaDados,
       })
       if (matchedLeadId && matchedLeadId !== leadId) {
         await db.update(leadTrackingVisitors).set({ leadId: matchedLeadId }).where(eq(leadTrackingVisitors.id, visitorId))

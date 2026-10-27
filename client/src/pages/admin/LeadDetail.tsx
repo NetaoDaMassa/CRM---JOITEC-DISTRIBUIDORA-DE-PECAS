@@ -485,6 +485,8 @@ export default function LeadDetail() {
         )}
       </div>
 
+      <DadosMetaEReceita metaDados={lead.metaDados} dadosReceita={lead.dadosReceita} cnpj={lead.cnpj} compressorAtual={lead.compressorAtual} />
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 flex flex-col justify-center">
           <p className="text-[10px] text-dark-500 uppercase tracking-wide">Tentativas na etapa atual</p>
@@ -907,5 +909,169 @@ function SaleValuesModal({ lead, open, onClose }: { lead: any; open: boolean; on
         </div>
       </form>
     </Modal>
+  )
+}
+
+// Lead do formulário da Meta: tudo que a pessoa respondeu + de qual
+// campanha/anúncio veio, e a consulta do CNPJ na Receita (feita sozinha
+// quando informa CNPJ). Pedido do João, 2026-10-27.
+type MetaDadosLead = {
+  campanha?: string
+  conjunto?: string
+  anuncio?: string
+  formulario?: string
+  plataforma?: string
+  preenchidoEm?: string
+  respostas?: Record<string, string>
+}
+type DadosReceita = {
+  razaoSocial: string
+  nomeFantasia?: string | null
+  atividade?: string | null
+  situacao: string
+  dataAbertura?: string | null
+  porte?: string | null
+  municipio: string
+  uf: string
+  logradouro: string | null
+  numero: string | null
+  complemento: string | null
+  bairro: string | null
+  cep: string | null
+  telefone: string | null
+  email: string | null
+}
+
+function lerJson<T>(texto: string | null): T | null {
+  if (!texto) return null
+  try {
+    return JSON.parse(texto) as T
+  } catch {
+    return null
+  }
+}
+
+const PLATAFORMA_LABEL: Record<string, string> = { fb: 'Facebook', ig: 'Instagram', facebook: 'Facebook', instagram: 'Instagram' }
+
+// "qual_compressor_possui_atualmente?" -> "Qual compressor possui atualmente?"
+const NOMES_CAMPOS_META: Record<string, string> = { city: 'Cidade', state: 'Estado', company_name: 'Empresa', job_title: 'Cargo', zip_code: 'CEP' }
+
+function nomePergunta(chave: string): string {
+  if (NOMES_CAMPOS_META[chave.toLowerCase()]) return NOMES_CAMPOS_META[chave.toLowerCase()]
+  const t = chave.replace(/_/g, ' ').trim()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
+function DadosMetaEReceita({
+  metaDados,
+  dadosReceita,
+  cnpj,
+  compressorAtual,
+}: {
+  metaDados: string | null
+  dadosReceita: string | null
+  cnpj: string | null
+  compressorAtual: string | null
+}) {
+  const meta = lerJson<MetaDadosLead>(metaDados)
+  const receita = lerJson<DadosReceita>(dadosReceita)
+  if (!meta && !receita && !cnpj && !compressorAtual) return null
+  // A do compressor já aparece em destaque em cima.
+  const respostas = Object.entries(meta?.respostas ?? {}).filter(([p]) => !(compressorAtual && p.toLowerCase().includes('compressor')))
+  const origem = [
+    meta?.plataforma && (PLATAFORMA_LABEL[meta.plataforma.toLowerCase()] ?? meta.plataforma),
+    meta?.campanha && `Campanha: ${meta.campanha}`,
+    meta?.conjunto && `Conjunto: ${meta.conjunto}`,
+    meta?.anuncio && `Anúncio: ${meta.anuncio}`,
+    meta?.formulario && `Formulário: ${meta.formulario}`,
+  ].filter(Boolean) as string[]
+  const endereco = receita
+    ? [
+        [receita.logradouro, receita.numero].filter(Boolean).join(', '),
+        receita.complemento,
+        receita.bairro,
+        receita.municipio && `${receita.municipio}/${receita.uf}`,
+        receita.cep && `CEP ${receita.cep}`,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : ''
+  const cnpjFormatado = cnpj && cnpj.length === 14 ? cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : cnpj
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {(meta || compressorAtual) && (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-sm font-semibold text-dark-100 mb-3">Do formulário da Meta</p>
+          {compressorAtual && (
+            <div className="mb-3 rounded-lg bg-gold-900/20 border border-gold-600/40 px-3 py-2">
+              <p className="text-[10px] text-gold-400 uppercase tracking-wide">Compressor que possui hoje</p>
+              <p className="text-sm font-semibold text-gold-200 mt-0.5">{compressorAtual}</p>
+            </div>
+          )}
+          {respostas.length > 0 && (
+            <div className="space-y-2">
+              {respostas.map(([pergunta, resposta]) => (
+                <div key={pergunta}>
+                  <p className="text-[10px] text-dark-500 uppercase tracking-wide">{nomePergunta(pergunta)}</p>
+                  <p className="text-sm text-dark-200">{resposta}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {(origem.length > 0 || meta?.preenchidoEm) && (
+            <div className="mt-3 pt-3 border-t border-dark-700 text-xs text-dark-400 space-y-0.5">
+              {origem.map((o) => (
+                <p key={o}>{o}</p>
+              ))}
+              {meta?.preenchidoEm && <p>Preenchido em: {meta.preenchidoEm}</p>}
+            </div>
+          )}
+        </div>
+      )}
+      {(receita || cnpj) && (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <p className="text-sm font-semibold text-dark-100 mb-3">Dados da Receita (CNPJ)</p>
+          {cnpjFormatado && <p className="text-xs text-dark-400 mb-2">CNPJ {cnpjFormatado}</p>}
+          {!receita ? (
+            <p className="text-sm text-dark-400">Consultando a Receita… (ou CNPJ não encontrado)</p>
+          ) : (
+            <div className="space-y-2 text-sm">
+              <div>
+                <p className="text-[10px] text-dark-500 uppercase tracking-wide">Razão social</p>
+                <p className="text-dark-200">{receita.razaoSocial}</p>
+                {receita.nomeFantasia && <p className="text-xs text-dark-400">Fantasia: {receita.nomeFantasia}</p>}
+              </div>
+              {receita.atividade && (
+                <div>
+                  <p className="text-[10px] text-dark-500 uppercase tracking-wide">Atividade principal</p>
+                  <p className="text-dark-200">{receita.atividade}</p>
+                </div>
+              )}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                <span className={receita.situacao.toUpperCase() === 'ATIVA' ? 'text-green-400' : 'text-red-400'}>Situação: {receita.situacao || '—'}</span>
+                {receita.dataAbertura && (
+                  <span className="text-dark-400">
+                    Aberta em {receita.dataAbertura.slice(8, 10)}/{receita.dataAbertura.slice(5, 7)}/{receita.dataAbertura.slice(0, 4)}
+                  </span>
+                )}
+                {receita.porte && <span className="text-dark-400">Porte: {receita.porte}</span>}
+              </div>
+              {endereco && (
+                <div>
+                  <p className="text-[10px] text-dark-500 uppercase tracking-wide">Endereço</p>
+                  <p className="text-dark-200">{endereco}</p>
+                </div>
+              )}
+              {(receita.telefone || receita.email) && (
+                <p className="text-xs text-dark-400">
+                  Na Receita: {[receita.telefone, receita.email?.toLowerCase()].filter(Boolean).join(' · ')}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }

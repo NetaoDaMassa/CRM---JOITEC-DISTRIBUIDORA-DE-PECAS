@@ -2,6 +2,20 @@ import { and, eq, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, leadHistory, notifications, leadCampaigns } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD } from './leadsRoundRobin.js'
+import { buscarCnpj } from './brasilApi.js'
+import { cnpjValido, limparCnpj } from './cnpj.js'
+
+// O que o Apps Script da planilha do Meta Ads manda além de nome/telefone/
+// e-mail (ver routes/tracking.ts). Pedido do João, 2026-10-27.
+export interface MetaDadosLead {
+  campanha?: string
+  conjunto?: string
+  anuncio?: string
+  formulario?: string
+  plataforma?: string
+  preenchidoEm?: string
+  respostas?: Record<string, string>
+}
 
 interface FindOrCreateLeadFromTrackingInput {
   empresaId: number
@@ -12,6 +26,44 @@ interface FindOrCreateLeadFromTrackingInput {
   observations?: string
   source: string
   utmCampaign?: string
+  city?: string
+  cnpj?: string
+  metaDados?: MetaDadosLead
+}
+
+// Resposta da pergunta "qual compressor possui atualmente?" (o nome da coluna
+// na planilha muda conforme o texto da pergunta, então procura por
+// "compressor" no nome da pergunta).
+function acharCompressorAtual(respostas: Record<string, string> | undefined): string | null {
+  if (!respostas) return null
+  const chave = Object.keys(respostas).find((k) => k.toLowerCase().includes('compressor'))
+  const valor = chave ? respostas[chave]?.trim() : ''
+  return valor ? valor.slice(0, 500) : null
+}
+
+// Consulta o CNPJ na Receita (BrasilAPI) e guarda no lead — roda depois de
+// responder o Apps Script (não segura a planilha esperando a BrasilAPI).
+// Preenche empresa/cidade só se estiverem vazias ou se a "empresa" for só o
+// próprio CNPJ digitado.
+export async function enriquecerLeadComReceita(leadId: number): Promise<void> {
+  const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
+  if (!lead?.cnpj || lead.dadosReceita) return
+  try {
+    const dados = await buscarCnpj(lead.cnpj)
+    if (!dados || !dados.razaoSocial) return
+    const empresaEhCnpj = !lead.company || limparCnpj(lead.company) === lead.cnpj
+    await db
+      .update(leads)
+      .set({
+        dadosReceita: JSON.stringify(dados),
+        company: empresaEhCnpj ? dados.nomeFantasia || dados.razaoSocial : lead.company,
+        city: lead.city || (dados.municipio ? `${dados.municipio}${dados.uf ? `/${dados.uf}` : ''}` : null),
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(leads.id, leadId))
+  } catch (err) {
+    console.error('[leads/receita]', leadId, err)
+  }
 }
 
 // Casa o utm_campaign do anúncio com o nome de uma campanha já cadastrada
@@ -50,7 +102,10 @@ export function parseTelefone(phoneRaw: string): { ddd: number; phone: string } 
 export async function findOrCreateLeadFromTracking(
   input: FindOrCreateLeadFromTrackingInput
 ): Promise<number | null> {
-  const { empresaId, email, name, company, observations, source, utmCampaign } = input
+  const { empresaId, email, name, company, observations, source, utmCampaign, metaDados } = input
+  const cnpjLimpo = input.cnpj ? limparCnpj(input.cnpj) : ''
+  const cnpj = cnpjLimpo && cnpjValido(cnpjLimpo) ? cnpjLimpo : null
+  const compressorAtual = acharCompressorAtual(metaDados?.respostas)
 
   const parsed = parseTelefone(input.phone)
   if (!parsed) return null
@@ -59,7 +114,23 @@ export async function findOrCreateLeadFromTracking(
   const existing = await db.query.leads.findFirst({
     where: and(eq(leads.empresaId, empresaId), eq(leads.phone, phone), isNull(leads.deletedAt)),
   })
-  if (existing) return existing.id
+  if (existing) {
+    // Mesma pessoa preenchendo de novo (ou lead antigo de antes de existir
+    // isso): completa o que estiver faltando, nunca sobrescreve.
+    if (metaDados && (!existing.metaDados || (cnpj && !existing.cnpj) || (compressorAtual && !existing.compressorAtual))) {
+      await db
+        .update(leads)
+        .set({
+          metaDados: existing.metaDados ?? JSON.stringify(metaDados),
+          cnpj: existing.cnpj ?? cnpj,
+          compressorAtual: existing.compressorAtual ?? compressorAtual,
+          city: existing.city ?? (input.city?.trim() || null),
+        })
+        .where(eq(leads.id, existing.id))
+      if (cnpj && !existing.dadosReceita) void enriquecerLeadComReceita(existing.id)
+    }
+    return existing.id
+  }
 
   const vendorId = await getVendorByDDD(ddd, empresaId)
   const regionId = await getRegionIdByDDD(ddd, empresaId)
@@ -73,6 +144,10 @@ export async function findOrCreateLeadFromTracking(
     email: email || null,
     company: company?.trim() || null,
     observations: observations?.trim() || null,
+    city: input.city?.trim() || null,
+    cnpj,
+    compressorAtual,
+    metaDados: metaDados ? JSON.stringify(metaDados) : null,
     source,
     vendorId,
     regionId,
@@ -99,6 +174,8 @@ export async function findOrCreateLeadFromTracking(
       message: `${name?.trim() || 'Um novo lead'} foi distribuído para você agora (origem: ${source}).`,
     })
   }
+
+  if (cnpj) void enriquecerLeadComReceita(leadId)
 
   return leadId
 }

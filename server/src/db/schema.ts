@@ -1482,6 +1482,18 @@ export const leads = sqliteTable(
     igUserId: text('ig_user_id'),
     igUsername: text('ig_username'),
     igTriggerText: text('ig_trigger_text'),
+    // Lead do formulário da Meta (Instant Forms) — o Apps Script da planilha
+    // manda tudo que a pessoa respondeu + de qual campanha/conjunto/anúncio/
+    // formulário/plataforma veio. JSON: { campanha, conjunto, anuncio,
+    // formulario, plataforma, preenchidoEm, respostas: { pergunta: resposta } }.
+    // `compressorAtual` é a resposta de "qual compressor possui atualmente?"
+    // tirada dali pra aparecer em destaque. `dadosReceita` = consulta do CNPJ
+    // na Receita (BrasilAPI) feita sozinha quando o lead informa CNPJ.
+    // Pedido do João, 2026-10-27.
+    metaDados: text('meta_dados'),
+    cnpj: text('cnpj'),
+    dadosReceita: text('dados_receita'),
+    compressorAtual: text('compressor_atual'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
     assignedAt: text('assigned_at'),
