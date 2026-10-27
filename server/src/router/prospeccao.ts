@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, users, prospeccaoRegistros } from '../db/schema.js'
+import { clientes, carteiraHistorico, funilMensal, users, prospeccaoRegistros, vendas } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { CANAL_ORIGEM_VALUES } from '../lib/canalOrigem.js'
@@ -27,7 +27,13 @@ export const prospeccaoRouter = router({
         eq(clientes.empresaId, ctx.empresaId),
         eq(clientes.vendedorAtualId, vendedorId),
         eq(clientes.emProspeccao, true),
-        isNull(clientes.deletedAt)
+        isNull(clientes.deletedAt),
+        // Cliente de venda de balcão (Compretec Loja Física) também nasce com
+        // emProspeccao=true pra não virar carteira (18f0d6e) — mas não é
+        // prospect: já comprou. Sem isso ele aparecia aqui e o "Descartar"
+        // apagava o cliente junto com a venda (João, 2026-10-27: 71
+        // descartados de uma vez e as vendas sumiram do Kanban).
+        sql`NOT EXISTS (SELECT 1 FROM vendas v WHERE v.cliente_id = ${clientes.id} AND v.deleted_at IS NULL)`
       ),
       orderBy: [desc(clientes.createdAt)],
       with: { telefonesExtras: { orderBy: (t, { asc }) => [asc(t.id)] } },
@@ -108,6 +114,8 @@ export const prospeccaoRouter = router({
     if (!cliente) throw new Error('Prospect não encontrado')
     if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
     if (!cliente.emProspeccao) throw new Error('Só é possível descartar prospects que ainda não foram enviados pra carteira.')
+    const temVenda = await db.query.vendas.findFirst({ where: and(eq(vendas.clienteId, input.id), isNull(vendas.deletedAt)), columns: { id: true } })
+    if (temVenda) throw new Error('Esse cliente já tem venda registrada (ex.: venda de balcão) — não é um prospect, não dá pra descartar.')
     // `emProspeccao` sozinho não é confiável — uma ferramenta de carteira
     // (ex: redistribuição em massa) pode atribuir vendedor a um prospect sem
     // mexer nessa flag, deixando ele com histórico de carteira mas ainda
