@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, Download, RefreshCw, CalendarRange, X, Search, Package, Siren, Clock, Zap, PackageCheck, CircleCheckBig, Columns3, List, CalendarClock } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X, Search, Package, Siren, Clock, Zap, PackageCheck, CircleCheckBig, Columns3, List, CalendarClock, Ban } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -15,6 +15,7 @@ import { ORDER_TYPE_VALUES, ORDER_TYPE_LABELS, STAGE_LABELS, type OrderType, typ
 import { AvisoFiltro, BotaoLegenda, CaixaNovidades, Indicador, TrocaVisao } from '../components/painel/PainelVisual'
 import { NOVIDADES_PEDIDOS, ROTULO_FILTRO_PEDIDO, TESTES_PEDIDO, TabelaPedidos, TrilhaPedidos, idadeMediaEmAndamento, legendaPedidos, type FiltroPedido } from '../components/ordens/PainelPedidos'
 import { Esqueleto } from '../components/ui/Visual'
+import { formatDateTime } from '../lib/utils'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
 // filtro de data de criação do Kanban.tsx no odincrm original.
@@ -60,6 +61,7 @@ export default function OrdensKanban() {
   const [filtroRapido, setFiltroRapido] = usePersistedState<FiltroPedido | ''>('ordensKanban:filtroRapido', '')
   const [modo, setModo] = usePersistedState<'quadro' | 'lista'>('ordensKanban:modo', 'quadro')
   const [novidadesVistas, setNovidadesVistas] = usePersistedState('ordensKanban:novidadesVistas:v1', false)
+  const [verCancelados, setVerCancelados] = useState(false)
 
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: isAdmin })
@@ -99,6 +101,9 @@ export default function OrdensKanban() {
   const alternar = (f: FiltroPedido) => setFiltroRapido(filtroRapido === f ? '' : f)
   const visiveis = filtroRapido ? listaBase.filter(TESTES_PEDIDO[filtroRapido]) : listaBase
   const idadeMedia = idadeMediaEmAndamento(listaBase)
+  // Cancelados somem do quadro e da lista — "Ver cancelados" mostra eles com
+  // o motivo, respeitando busca/datas/vendedor. Pedido do João, 2026-10-27.
+  const cancelados = listaBase.filter((o) => o.status === 'cancelado').sort((a, b) => ((b.canceladoEm ?? b.updatedAt) > (a.canceladoEm ?? a.updatedAt) ? 1 : -1))
   function irParaColuna(stage: string) {
     setModo('quadro')
     setFiltroRapido('')
@@ -216,6 +221,13 @@ export default function OrdensKanban() {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setVerCancelados(true)}
+            title="Pedidos cancelados (não aparecem no quadro nem na lista)"
+            className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs font-medium text-dark-300 hover:bg-dark-800 transition-colors"
+          >
+            <Ban size={13} className="text-red-400" /> Ver cancelados{cancelados.length > 0 ? ` (${cancelados.length})` : ''}
+          </button>
+          <button
             onClick={() => baixarCsvPedidos(ordens ?? [])}
             className="flex items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs font-medium text-dark-300 hover:bg-dark-800 transition-colors"
           >
@@ -300,6 +312,48 @@ export default function OrdensKanban() {
           >
             Criar pedido
           </Button>
+        </div>
+      </Modal>
+
+      <Modal open={verCancelados} onClose={() => setVerCancelados(false)} title={`Pedidos cancelados — ${ORDER_TYPE_LABELS[orderType]}`} size="xl">
+        <div className="p-5">
+          <p className="text-xs text-dark-400 mb-3">
+            {cancelados.length} cancelado(s){temFiltroData || termo || vendedorId ? ' com os filtros aplicados na tela' : ''}. Não entram no quadro, na TV, nos resultados nem no faturamento. Clique para abrir o pedido.
+          </p>
+          {cancelados.length === 0 ? (
+            <p className="text-sm text-dark-400 text-center py-8">Nenhum pedido cancelado.</p>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-dark-700">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-dark-800 text-xs text-dark-400">
+                  <tr>
+                    <th className="text-left font-medium py-2 px-3">Pedido</th>
+                    <th className="text-left font-medium py-2 px-3">Cliente</th>
+                    <th className="text-left font-medium py-2 px-3">Vendedor</th>
+                    <th className="text-left font-medium py-2 px-3">Parou em</th>
+                    <th className="text-left font-medium py-2 px-3">Cancelado em</th>
+                    <th className="text-left font-medium py-2 px-3">Motivo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cancelados.map((o) => (
+                    <tr
+                      key={o.id}
+                      onClick={() => { setVerCancelados(false); navigate(`${basePath}/${o.id}`) }}
+                      className="border-t border-dark-700 hover:bg-dark-800/60 cursor-pointer align-top"
+                    >
+                      <td className="py-2 px-3 whitespace-nowrap text-dark-100">{o.detalhes?.numeroPedido || `#${o.id}`}</td>
+                      <td className="py-2 px-3 text-dark-100">{o.cliente?.razaoSocial ?? '—'}</td>
+                      <td className="py-2 px-3 text-dark-300 whitespace-nowrap">{o.vendedor?.name ?? '—'}</td>
+                      <td className="py-2 px-3 text-dark-300 whitespace-nowrap">{STAGE_LABELS[o.stage as Stage] ?? o.stage}</td>
+                      <td className="py-2 px-3 text-dark-300 whitespace-nowrap">{formatDateTime(o.canceladoEm ?? o.updatedAt)}</td>
+                      <td className="py-2 px-3 text-red-300">{o.cancelMotivo || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </Modal>
 
