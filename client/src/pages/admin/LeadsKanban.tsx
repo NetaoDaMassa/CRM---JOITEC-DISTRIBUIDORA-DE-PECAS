@@ -84,7 +84,9 @@ export default function LeadsKanban() {
     vendorId: verTudo && vendorId ? Number(vendorId) : undefined,
     search: search || undefined,
     page: 1,
-    pageSize: 500,
+    // Era 500: com 700+ leads na empresa, o admin via só os 500 mais novos e os
+    // antigos ainda em aberto sumiam do quadro (João, 2026-10-27).
+    pageSize: 10000,
   })
 
   const todos = data?.data ?? []
