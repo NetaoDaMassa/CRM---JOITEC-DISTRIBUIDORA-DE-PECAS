@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -63,6 +63,7 @@ export const FEATURES_GUIA_FINANCEIRO = [
   'liberacao_credito',
   'solicitacao_credito',
   'requisicao_posto',
+  'controle_suframa',
   'cartao_credito_relatorio',
   'faturamento_geral',
   'painel_financeiro',
@@ -151,6 +152,9 @@ export const ADMIN_LINKS = [
   // Financeiro/Compras precisa da visão do grupo inteiro. Pedido do João,
   // 2026-09-15.
   { to: '/admin/requisicao-posto', label: 'Requisição Posto', icon: Fuel, feature: 'requisicao_posto' },
+  // Controle SUFRAMA (Financeiro): PIN de cada nota de cliente da Zona Franca,
+  // cross-empresa. Pedido do João, 2026-10-28.
+  { to: '/admin/controle-suframa', label: 'Controle SUFRAMA', icon: KeyRound, feature: 'controle_suframa' },
   // Hub simples com atalhos pros painéis/telas "gerais do grupo" (Compras,
   // Painel Financeiro, relatórios etc.) — começa enxuto, pra ir ganhando
   // mais conteúdo conforme o João for definindo o que entra. Pedido do

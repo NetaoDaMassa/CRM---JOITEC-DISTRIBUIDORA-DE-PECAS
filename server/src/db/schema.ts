@@ -4106,3 +4106,58 @@ export const sapCotacoesItens = sqliteTable(
     empresaNumeroIdx: index('idx_sap_cotacoes_itens_numero').on(t.empresaId, t.numeroCotacao),
   })
 )
+
+// Controle SUFRAMA (Financeiro) — cada nota fiscal vendida pra cliente da
+// Zona Franca precisa do PIN da SUFRAMA (internação da mercadoria); o
+// Financeiro acompanha nota a nota: PIN solicitado → aguardando confirmação
+// de recebimento → OK. Antes era um documento Word. Cross-empresa (as notas
+// saem de Joitec e Odin Tubos, ver CNPJ dentro da chave). Pedido do João,
+// 2026-10-28.
+export const suframaClientes = sqliteTable('suframa_clientes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  // Vínculo opcional com o cadastro do CRM (achado pelo código) — o
+  // código/nome/telefone ficam copiados aqui pra não depender dele.
+  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+  codigo: text('codigo').notNull(),
+  nome: text('nome'),
+  telefone: text('telefone'),
+  naoPrecisaPin: integer('nao_precisa_pin', { mode: 'boolean' }).notNull().default(false),
+  observacao: text('observacao'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  deletedAt: text('deleted_at'),
+})
+
+export const suframaNotas = sqliteTable(
+  'suframa_notas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    suframaClienteId: integer('suframa_cliente_id').notNull().references(() => suframaClientes.id, { onDelete: 'cascade' }),
+    // Chave de acesso da NF-e (44 dígitos) — número da nota, mês de emissão
+    // e CNPJ do emitente são tirados dela (ver lib/chaveNfe.ts).
+    chave: text('chave').notNull(),
+    numeroNota: text('numero_nota').notNull(),
+    mesEmissao: text('mes_emissao').notNull(), // YYYY-MM
+    cnpjEmitente: text('cnpj_emitente').notNull(),
+    pin: text('pin'),
+    status: text('status', { enum: ['pin_solicitado', 'aguardando', 'ok'] }).notNull().default('pin_solicitado'),
+    observacao: text('observacao'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => ({
+    chaveIdx: unique('suframa_notas_chave_unq').on(t.chave),
+    clienteIdx: index('idx_suframa_notas_cliente').on(t.suframaClienteId),
+  })
+)
+
+// Histórico de cada nota (mudança de status/PIN/observação, com quem e quando).
+export const suframaNotaEventos = sqliteTable('suframa_nota_eventos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  notaId: integer('nota_id').notNull().references(() => suframaNotas.id, { onDelete: 'cascade' }),
+  descricao: text('descricao').notNull(),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})

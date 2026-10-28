@@ -28,6 +28,7 @@ import { liberacaoCreditoRouter } from './liberacaoCredito.js'
 import { solicitacaoCreditoRouter } from './solicitacaoCredito.js'
 import { chatRouter } from './chat.js'
 import { cartaoRouter } from './cartao.js'
+import { suframaRouter } from './suframa.js'
 import { instagramRouter } from './instagram.js'
 import { financeiroRouter } from './financeiro.js'
 import { vinculosRouter } from './vinculos.js'
@@ -106,6 +107,7 @@ export const appRouter = router({
   aprovacoes: aprovacoesRouter,
   design: designRouter,
   requisicaoPosto: requisicaoPostoRouter,
+  suframa: suframaRouter,
   liberacaoCredito: liberacaoCreditoRouter,
   solicitacaoCredito: solicitacaoCreditoRouter,
   chat: chatRouter,

@@ -59,6 +59,7 @@ import VendorCalendario from './pages/vendor/Calendario'
 import FilaHoje from './pages/vendor/FilaHoje'
 import SolicitarDesign from './pages/vendor/SolicitarDesign'
 import RequisicaoPosto from './pages/admin/RequisicaoPosto'
+import ControleSuframa from './pages/admin/ControleSuframa'
 import GrupoOdin from './pages/admin/GrupoOdin'
 import LiberacaoCredito from './pages/admin/LiberacaoCredito'
 import SolicitacaoCreditoAdmin from './pages/admin/SolicitacaoCredito'
@@ -305,6 +306,7 @@ export default function App() {
           <Route path="admin/arquivos" element={<AdminGuard><FeatureGuard feature="arquivos"><MarketingArquivos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/controle-suframa" element={<AdminGuard><FeatureGuard feature="controle_suframa"><ControleSuframa /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitacao-credito" element={<AdminGuard><FeatureGuard feature="solicitacao_credito"><SolicitacaoCreditoAdmin /></FeatureGuard></AdminGuard>} />
