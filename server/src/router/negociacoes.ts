@@ -4,6 +4,7 @@ import { router, featureProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { cobrancasRegistro, clientesCartorio, clientesRc, clientes, empresas, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
+import { DIAS_REGUA, diaDaReguaEm, enviarVencidasAoCartorio, gravarDiasCobrados, lerDiasCobrados, reguaDoVencimento } from '../lib/reguaCobranca.js'
 
 async function validarCliente(clienteId: number, empresaId: number) {
   const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, clienteId), eq(clientes.empresaId, empresaId)) })
@@ -17,6 +18,9 @@ export const negociacoesRouter = router({
   cobrancasListar: featureProcedure('negociacoes')
     .input(z.object({ dataDe: z.string().optional(), dataAte: z.string().optional() }).optional())
     .query(async ({ ctx, input }) => {
+      // Garante que quem já passou do 5º dia útil apareça como Cartório
+      // mesmo antes do agendador rodar.
+      await enviarVencidasAoCartorio(ctx.empresaId)
       const condicoes = [eq(clientes.empresaId, ctx.empresaId)]
       if (input?.dataDe) condicoes.push(gte(cobrancasRegistro.dataVencimento, input.dataDe))
       if (input?.dataAte) condicoes.push(lte(cobrancasRegistro.dataVencimento, input.dataAte))
@@ -29,6 +33,8 @@ export const negociacoesRouter = router({
           valor: cobrancasRegistro.valor,
           dataVencimento: cobrancasRegistro.dataVencimento,
           status: cobrancasRegistro.status,
+          diasCobrados: cobrancasRegistro.diasCobrados,
+          cartorioAutoEm: cobrancasRegistro.cartorioAutoEm,
           createdAt: cobrancasRegistro.createdAt,
           clienteId: clientes.id,
           clienteNome: clientes.razaoSocial,
@@ -38,7 +44,31 @@ export const negociacoesRouter = router({
         .innerJoin(clientes, eq(cobrancasRegistro.clienteId, clientes.id))
         .where(and(...condicoes))
         .orderBy(desc(cobrancasRegistro.createdAt))
-      return linhas.map((l) => ({ ...l, cliente: { id: l.clienteId, razaoSocial: l.clienteNome } }))
+      const hoje = hojeBrString()
+      return linhas.map((l) => {
+        const regua = reguaDoVencimento(l.dataVencimento)
+        const cobrados = lerDiasCobrados(l.diasCobrados)
+        return {
+          ...l,
+          cliente: { id: l.clienteId, razaoSocial: l.clienteNome },
+          regua: regua && {
+            dias: regua.dias.map((d) => ({ ...d, cobrado: cobrados.includes(d.dia), passou: d.data < hoje, hoje: d.data === hoje })),
+            cartorioEm: regua.cartorioEm,
+          },
+        }
+      })
+    }),
+
+  // Liga/desliga um dia da régua (1..5) — clique na bolinha da tabela.
+  cobrancaMarcarDia: featureProcedure('negociacoes')
+    .input(z.object({ id: z.number(), dia: z.number().int().min(1).max(DIAS_REGUA) }))
+    .mutation(async ({ ctx, input }) => {
+      const registro = await db.query.cobrancasRegistro.findFirst({ where: eq(cobrancasRegistro.id, input.id), with: { cliente: true } })
+      if (!registro || registro.cliente.empresaId !== ctx.empresaId) throw new Error('Registro não encontrado')
+      const dias = lerDiasCobrados(registro.diasCobrados)
+      const novos = dias.includes(input.dia) ? dias.filter((d) => d !== input.dia) : [...dias, input.dia]
+      await db.update(cobrancasRegistro).set({ diasCobrados: gravarDiasCobrados(novos) }).where(eq(cobrancasRegistro.id, input.id))
+      return { success: true }
     }),
 
   cobrancaCriar: featureProcedure('negociacoes')
@@ -53,12 +83,15 @@ export const negociacoesRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await validarCliente(input.clienteId, ctx.empresaId)
+      // Lançou a cobrança num dos dias da régua → esse dia já fica marcado.
+      const diaHoje = diaDaReguaEm(input.dataVencimento || null, hojeBrString())
       await db.insert(cobrancasRegistro).values({
         clienteId: input.clienteId,
         canal: input.canal,
         retornoCliente: input.retornoCliente.trim(),
         valor: input.valor ?? null,
         dataVencimento: input.dataVencimento || null,
+        diasCobrados: diaHoje ? String(diaHoje) : null,
         registradoPorId: ctx.user.id,
       })
       return { success: true }
@@ -80,6 +113,7 @@ export const negociacoesRouter = router({
           clienteId: registro.clienteId,
           valor: registro.valor,
           enviadoEm: hojeBrString(),
+          cobrancaId: registro.id,
           criadoPorId: ctx.user.id,
         })
       }
@@ -112,9 +146,11 @@ export const negociacoesRouter = router({
         updatedAt: clientesCartorio.updatedAt,
         clienteId: clientes.id,
         clienteNome: clientes.razaoSocial,
+        dataVencimento: cobrancasRegistro.dataVencimento,
       })
       .from(clientesCartorio)
       .innerJoin(clientes, eq(clientesCartorio.clienteId, clientes.id))
+      .leftJoin(cobrancasRegistro, eq(clientesCartorio.cobrancaId, cobrancasRegistro.id))
       .where(eq(clientes.empresaId, ctx.empresaId))
       .orderBy(desc(clientesCartorio.updatedAt))
     return linhas.map((l) => ({ ...l, cliente: { id: l.clienteId, razaoSocial: l.clienteNome } }))
@@ -135,7 +171,7 @@ export const negociacoesRouter = router({
     }),
 
   cartorioAtualizarStatus: featureProcedure('negociacoes')
-    .input(z.object({ id: z.number(), status: z.enum(['aguardando', 'voltou_cobrar', 'cobranca_feita']) }))
+    .input(z.object({ id: z.number(), status: z.enum(['aguardando', 'avisado', 'voltou_cobrar', 'cobranca_feita']) }))
     .mutation(async ({ ctx, input }) => {
       const registro = await db.query.clientesCartorio.findFirst({ where: eq(clientesCartorio.id, input.id), with: { cliente: true } })
       if (!registro || registro.cliente.empresaId !== ctx.empresaId) throw new Error('Registro não encontrado')

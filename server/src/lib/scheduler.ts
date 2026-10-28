@@ -13,6 +13,7 @@ import { sincronizarStatusNotion } from './pollNotionStatus.js'
 import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoAbandonadoPoller.js'
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
+import { enviarVencidasAoCartorio } from './reguaCobranca.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -168,6 +169,14 @@ export function startScheduler() {
   // aviso de quem não enviou até o horário limite (ver lib/roteiro.ts).
   cron.schedule('*/5 * * * *', () => {
     rodarRoteiroAgendado().catch((err) => console.error('[roteiro] erro no agendador:', err))
+  })
+
+  // Negociações: cobrança pendente no 6º dia útil após o vencimento vai
+  // sozinha pro Cartório (lib/reguaCobranca.ts). A tela também roda ao abrir.
+  cron.schedule('5 * * * *', () => {
+    enviarVencidasAoCartorio()
+      .then((n) => n && console.log(`[regua-cobranca] ${n} cobrança(s) enviada(s) ao cartório`))
+      .catch((err) => console.error('[regua-cobranca] erro:', err))
   })
 
   // Arquivos/Mídia → Google Drive (googleDriveSync.ts). Sem conta conectada

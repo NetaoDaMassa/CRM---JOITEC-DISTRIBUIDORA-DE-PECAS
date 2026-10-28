@@ -42,6 +42,7 @@ type Aba = (typeof ABAS)[number]['id']
 
 const STATUS_CARTORIO = [
   { value: 'aguardando', label: 'Aguardando cartório', cor: 'text-dark-400 bg-dark-700/40 border-dark-600' },
+  { value: 'avisado', label: 'Cliente avisado', cor: 'text-amber-400 bg-amber-900/20 border-amber-700/40' },
   { value: 'voltou_cobrar', label: 'Voltou — cobrar', cor: 'text-red-400 bg-red-900/20 border-red-700/40' },
   { value: 'cobranca_feita', label: 'Cobrança feita', cor: 'text-green-400 bg-green-900/20 border-green-700/40' },
 ]
@@ -87,6 +88,10 @@ function AbaCobrancas() {
     onSuccess: () => utils.negociacoes.cobrancasListar.invalidate(),
     onError: (e) => toast.error(e.message),
   })
+  const diaMut = trpc.negociacoes.cobrancaMarcarDia.useMutation({
+    onSuccess: () => utils.negociacoes.cobrancasListar.invalidate(),
+    onError: (e) => toast.error(e.message),
+  })
   const statusMut = trpc.negociacoes.cobrancaMarcarStatus.useMutation({
     onSuccess: () => {
       toast.success('Status atualizado')
@@ -107,6 +112,7 @@ function AbaCobrancas() {
           { chave: 'valor', rotulo: 'Valor' },
           { chave: 'vencimento', rotulo: 'Vencimento' },
           { chave: 'status', rotulo: 'Status' },
+          { chave: 'dias', rotulo: 'Dias cobrados' },
           { chave: 'retorno', rotulo: 'Retorno do cliente' },
         ],
         data.map((c) => ({
@@ -116,6 +122,7 @@ function AbaCobrancas() {
           valor: c.valor ?? '',
           vencimento: c.dataVencimento ? formatarData(c.dataVencimento) : '',
           status: STATUS_COBRANCA.find((s) => s.value === c.status)?.label ?? c.status,
+          dias: c.regua?.dias.filter((d) => d.cobrado).map((d) => d.dia).join(', ') ?? '',
           retorno: c.retornoCliente,
         }))
       )
@@ -150,6 +157,9 @@ function AbaCobrancas() {
                 <th className="px-4 py-3 font-medium">Vencimento</th>
                 <th className="px-4 py-3 font-medium">Canal</th>
                 <th className="px-4 py-3 font-medium">Retorno do cliente</th>
+                <th className="px-4 py-3 font-medium" title="Dias úteis depois do vencimento. Clique no número para marcar ou desmarcar.">
+                  Cobrado (dias)
+                </th>
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium"></th>
               </tr>
@@ -171,6 +181,14 @@ function AbaCobrancas() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-dark-300">{c.retornoCliente}</td>
+                    <td className="px-4 py-3">
+                      <ReguaDias
+                        regua={c.regua}
+                        status={c.status}
+                        automatico={!!c.cartorioAutoEm}
+                        onAlternar={(dia) => diaMut.mutate({ id: c.id, dia })}
+                      />
+                    </td>
                     <td className="px-4 py-3">
                       <select
                         value={c.status}
@@ -196,7 +214,7 @@ function AbaCobrancas() {
               })}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-8 text-center text-dark-500">
+                  <td colSpan={8} className="px-4 py-8 text-center text-dark-500">
                     Nenhuma cobrança registrada ainda.
                   </td>
                 </tr>
@@ -205,7 +223,53 @@ function AbaCobrancas() {
           </table>
         </div>
       </div>
+      <p className="text-xs text-dark-500 mt-2">
+        Cobrado (dias): dias úteis depois do vencimento. Verde = cliente cobrado naquele dia, branco = não cobrado. Clique no
+        número para marcar. No 6º dia útil, se ainda estiver pendente, a cobrança vai sozinha para o Cartório.
+      </p>
       <CobrancaModal open={modalAberto} onClose={() => setModalAberto(false)} />
+    </div>
+  )
+}
+
+type Regua = {
+  dias: { dia: number; data: string; cobrado: boolean; passou: boolean; hoje: boolean }[]
+  cartorioEm: string
+} | null
+
+// Bolinhas 1..5 da régua de cobrança — verde = cobrado, branco = não.
+// Contorno dourado = hoje. Pedido do João, 2026-10-28.
+function ReguaDias({
+  regua,
+  status,
+  automatico,
+  onAlternar,
+}: {
+  regua: Regua
+  status: string
+  automatico: boolean
+  onAlternar: (dia: number) => void
+}) {
+  if (!regua) return <span className="text-xs text-dark-600" title="Sem vencimento informado">—</span>
+  return (
+    <div className="min-w-[150px]">
+      <div className="flex gap-1">
+        {regua.dias.map((d) => (
+          <button
+            key={d.dia}
+            type="button"
+            onClick={() => onAlternar(d.dia)}
+            title={`Dia ${d.dia} · ${formatarData(d.data)} — ${d.cobrado ? 'cobrado' : 'não cobrado'} (clique para ${d.cobrado ? 'desmarcar' : 'marcar'})`}
+            className={`w-6 h-6 rounded-full text-[11px] font-bold border transition-colors ${
+              d.cobrado ? 'bg-green-500 border-green-400 text-white' : 'bg-white border-dark-300 text-dark-700 hover:bg-green-100'
+            } ${d.hoje ? 'ring-2 ring-gold-500 ring-offset-1 ring-offset-dark-800' : ''}`}
+          >
+            {d.dia}
+          </button>
+        ))}
+      </div>
+      {status === 'pendente' && <p className="text-[10px] text-dark-500 mt-1">Cartório em {formatarData(regua.cartorioEm)}</p>}
+      {status === 'cartorio' && automatico && <p className="text-[10px] text-orange-400 mt-1">Foi ao cartório automaticamente</p>}
     </div>
   )
 }
@@ -216,6 +280,8 @@ type LinhaStatus = {
   enviadoEm: string
   status: string
   parcelas?: number | null
+  observacoes?: string | null
+  dataVencimento?: string | null
   cliente: { id: number; razaoSocial: string }
 }
 type StatusOpcao = { value: string; label: string; cor: string }
@@ -238,6 +304,7 @@ function TabelaStatus({
   acoesExtras,
   mostrarParcelas,
   onAtualizarParcelas,
+  mostrarDetalhes,
 }: {
   titulo: string
   rotuloEnviado: string
@@ -254,6 +321,9 @@ function TabelaStatus({
   acoesExtras?: React.ReactNode
   mostrarParcelas?: boolean
   onAtualizarParcelas?: (id: number, parcelas: number | null) => void
+  // Vencimento/observação embaixo do nome (Cartório — mostra quando veio
+  // da Cobrança do dia, inclusive o envio automático).
+  mostrarDetalhes?: boolean
 }) {
   const [modalAberto, setModalAberto] = useState(false)
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
@@ -331,7 +401,11 @@ function TabelaStatus({
                       <input type="checkbox" checked={selecionados.has(r.id)} onChange={() => alternar(r.id)} />
                     </td>
                   )}
-                  <td className="px-4 py-3 text-dark-100 font-medium">{r.cliente.razaoSocial}</td>
+                  <td className="px-4 py-3 text-dark-100 font-medium">
+                    {r.cliente.razaoSocial}
+                    {mostrarDetalhes && r.dataVencimento && <p className="text-[10px] text-dark-500 font-normal">Vencimento {formatarData(r.dataVencimento)}</p>}
+                    {mostrarDetalhes && r.observacoes && <p className="text-[10px] text-dark-500 font-normal">{r.observacoes}</p>}
+                  </td>
                   <td className="px-4 py-3 text-dark-400 font-mono">{formatarMoeda(r.valor)}</td>
                   <td className="px-4 py-3 text-dark-400 font-mono">{formatarData(r.enviadoEm)}</td>
                   {mostrarParcelas && (
@@ -464,6 +538,7 @@ function AbaCartorio() {
       rotuloEnviado="Enviado ao cartório"
       statusConfig={STATUS_CARTORIO}
       dados={data}
+      mostrarDetalhes
       criando={criarMut.isPending}
       onExportar={() => exportarNegociacaoCsv('cartorio.csv', 'Enviado ao cartório', STATUS_CARTORIO, data)}
       onCriar={(input, aoTerminar) =>
@@ -478,7 +553,7 @@ function AbaCartorio() {
       }
       onAtualizarStatus={(id, status) =>
         atualizarStatusMut.mutate(
-          { id, status: status as 'aguardando' | 'voltou_cobrar' | 'cobranca_feita' },
+          { id, status: status as 'aguardando' | 'avisado' | 'voltou_cobrar' | 'cobranca_feita' },
           { onSuccess: invalidar, onError: (err) => toast.error(err.message) }
         )
       }

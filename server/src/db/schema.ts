@@ -1133,6 +1133,12 @@ export const cobrancasRegistro = sqliteTable('cobrancas_registro', {
   valor: real('valor'),
   dataVencimento: text('data_vencimento'),
   status: text('status', { enum: ['pendente', 'pago', 'cartorio', 'rc'] }).notNull().default('pendente'),
+  // Régua de cobrança (pedido do João, 2026-10-28): em quais dos 5 dias
+  // úteis depois do vencimento o cliente foi cobrado — lista "1,3,4".
+  // No 6º dia útil, ainda pendente, vai sozinha pro Cartório e grava
+  // `cartorioAutoEm` (pra não mandar de novo se alguém voltar pra pendente).
+  diasCobrados: text('dias_cobrados'),
+  cartorioAutoEm: text('cartorio_auto_em'),
   registradoPorId: integer('registrado_por_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
@@ -1142,7 +1148,10 @@ export const clientesCartorio = sqliteTable('clientes_cartorio', {
   clienteId: integer('cliente_id').notNull().references(() => clientes.id),
   valor: real('valor'),
   enviadoEm: text('enviado_em').notNull(),
-  status: text('status', { enum: ['aguardando', 'voltou_cobrar', 'cobranca_feita'] }).notNull().default('aguardando'),
+  // 'avisado' = cliente já foi avisado de que o título foi pro cartório.
+  status: text('status', { enum: ['aguardando', 'avisado', 'voltou_cobrar', 'cobranca_feita'] }).notNull().default('aguardando'),
+  // Cobrança de origem (Cobrança do dia → Cartório, manual ou automático).
+  cobrancaId: integer('cobranca_id'),
   observacoes: text('observacoes'),
   criadoPorId: integer('criado_por_id').notNull().references(() => users.id),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
