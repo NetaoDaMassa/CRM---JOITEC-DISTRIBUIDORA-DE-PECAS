@@ -4176,14 +4176,16 @@ export const sapItensHistorico = sqliteTable(
 //   - 'titulo_antigo': título do sistema anterior lançado no SAP na
 //     implantação (lançamento manual de 31/03, "EFETIV. PEDIDO VENDA");
 //   - 'devolucao': nota de devolução em aberto (crédito do cliente, valor
-//     negativo).
+//     negativo);
+//   - 'adiantamento': fatura de adiantamento em aberto (cobrança antes da
+//     entrega — ex.: Omega R$ 7.000 desde 30/06).
 export const sapTitulosAbertos = sqliteTable(
   'sap_titulos_abertos',
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     codigoCliente: text('codigo_cliente').notNull(),
     nomeCliente: text('nome_cliente'),
-    tipo: text('tipo', { enum: ['nota', 'titulo_antigo', 'devolucao'] }).notNull(),
+    tipo: text('tipo', { enum: ['nota', 'titulo_antigo', 'devolucao', 'adiantamento'] }).notNull(),
     // Nº da nota (DocNum), do lançamento (JdtNum) ou da devolução.
     documento: text('documento').notNull(),
     parcela: text('parcela'),

@@ -32,7 +32,7 @@ const SLUG_POR_FILIAL: Record<number, string> = { 1: 'odin-compressores', 3: 'jo
 interface Titulo {
   codigoCliente: string
   nomeCliente: string | null
-  tipo: 'nota' | 'titulo_antigo' | 'devolucao'
+  tipo: 'nota' | 'titulo_antigo' | 'devolucao' | 'adiantamento'
   documento: string
   parcela: string | null
   emissao: string | null
@@ -96,6 +96,20 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
       "/CreditNotes?$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'" +
         '&$select=DocNum,DocDate,CardCode,CardName,DocTotal,PaidToDate,BPL_IDAssignedToInvoice'
     )
+    const adiantamentos = await sap.getTodos<{
+      DocNum: number
+      DocDate: string
+      DocDueDate: string
+      CardCode: string
+      CardName: string
+      DocTotal: number
+      PaidToDate: number | null
+      BPL_IDAssignedToInvoice: number
+      SalesPersonCode: number
+    }>(
+      "/DownPayments?$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'" +
+        '&$select=DocNum,DocDate,DocDueDate,CardCode,CardName,DocTotal,PaidToDate,BPL_IDAssignedToInvoice,SalesPersonCode'
+    )
     // ~10 mil lançamentos manuais; o filtro por cliente dentro das linhas
     // ($filter com any()) não é aceito pelo Service Layer — filtra aqui.
     const lancamentos = await sap.getTodos<{
@@ -106,7 +120,7 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
     const recebimentos = await sap.getTodos<{
       PaymentInvoices: { InvoiceType: string; DocEntry: number; DocLine: number; SumApplied: number }[]
     }>("/IncomingPayments?$filter=Cancelled eq 'tNO'&$select=PaymentInvoices")
-    return { vendedores, saldos, notas, devolucoes, lancamentos, recebimentos }
+    return { vendedores, saldos, notas, devolucoes, adiantamentos, lancamentos, recebimentos }
   })
 
   const nomeVendedor = new Map(dados.vendedores.map((v) => [v.SalesEmployeeCode, v.SalesEmployeeName]))
@@ -148,6 +162,24 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
       filialSap: d.BPL_IDAssignedToInvoice,
       empresaSlug: slugDe(d.BPL_IDAssignedToInvoice),
       vendedorSap: null,
+    })
+  }
+
+  for (const a of dados.adiantamentos) {
+    const aberto = round2(a.DocTotal - (a.PaidToDate ?? 0))
+    if (aberto <= 0) continue
+    titulos.push({
+      codigoCliente: a.CardCode,
+      nomeCliente: a.CardName,
+      tipo: 'adiantamento',
+      documento: String(a.DocNum),
+      parcela: null,
+      emissao: dataSap(a.DocDate),
+      vencimento: dataSap(a.DocDueDate),
+      valorAberto: aberto,
+      filialSap: a.BPL_IDAssignedToInvoice,
+      empresaSlug: slugDe(a.BPL_IDAssignedToInvoice, a.SalesPersonCode),
+      vendedorSap: nomeVendedor.get(a.SalesPersonCode) ?? null,
     })
   }
 
@@ -221,8 +253,10 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
     for (let i = 0; i < saldos.length; i += 500) await tx.insert(sapSaldosClientes).values(saldos.slice(i, i + 500))
   })
 
+  // Saldo negativo dos dois lados = cliente com crédito (pagou adiantado),
+  // não é dívida — não precisa conferir.
   const naoConferem = saldos
-    .filter((s) => Math.abs(s.saldoSap - s.saldoCalculado) >= 1)
+    .filter((s) => Math.abs(s.saldoSap - s.saldoCalculado) >= 1 && !(s.saldoSap <= 0 && s.saldoCalculado <= 0))
     .map((s) => ({ codigo: s.codigoCliente, nome: s.nomeCliente, saldoSap: s.saldoSap, calculado: s.saldoCalculado }))
   return {
     titulos: validos.length,

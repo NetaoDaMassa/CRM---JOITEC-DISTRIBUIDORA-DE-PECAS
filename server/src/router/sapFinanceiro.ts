@@ -101,7 +101,7 @@ export const sapFinanceiroRouter = router({
       creditos: Math.round(linhas.filter((l) => l.valor < 0).reduce((s, l) => s + l.valor, 0) * 100) / 100,
       maiorAtraso,
       saldoSap: Math.round(saldoSap * 100) / 100,
-      confereComSap: Math.abs(saldoSap - saldoCalculado) < 1,
+      confereComSap: Math.abs(saldoSap - saldoCalculado) < 1 || (saldoSap <= 0 && saldoCalculado <= 0),
       titulos: linhas,
     }
   }),

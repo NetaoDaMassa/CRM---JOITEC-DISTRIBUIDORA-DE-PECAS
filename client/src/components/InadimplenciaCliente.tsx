@@ -21,7 +21,7 @@ const EMPRESA: Record<string, string> = {
   'joitec-automacao': 'Odin Automação',
 }
 
-const TIPO: Record<string, string> = { nota: 'Nota', titulo_antigo: 'Título antigo', devolucao: 'Devolução' }
+const TIPO: Record<string, string> = { nota: 'Nota', titulo_antigo: 'Título antigo', devolucao: 'Devolução', adiantamento: 'Fatura de adiantamento' }
 
 function corAtraso(dias: number): string {
   if (dias > 90) return 'bg-red-900/30 text-red-300'
