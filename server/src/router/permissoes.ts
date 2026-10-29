@@ -158,6 +158,9 @@ export const FEATURES_ADMIN = [
   // padrão de 'painel_financeiro'. Grupo Odin — hub de atalhos gerais.
   // Ambos 2026-09-15.
   'requisicao_posto',
+  // Controle SUFRAMA (Financeiro) — sem isso o save de Permissões descartava
+  // a caixinha em silêncio (só entra o que está nesta lista). 2026-10-29.
+  'controle_suframa',
   'grupo_odin',
   // Liberação de Crédito — cross-empresa igual as duas acima. Pedido do
   // João, 2026-09-24: registro de liberações feitas pelo Financeiro (hoje a
