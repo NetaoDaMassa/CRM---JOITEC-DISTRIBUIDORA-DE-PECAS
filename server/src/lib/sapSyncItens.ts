@@ -60,6 +60,8 @@ interface NotaSap {
   CardName: string
   SalesPersonCode: number
   BPL_IDAssignedToInvoice: number
+  DocTotal: number
+  DownPaymentAmount: number | null
   Cancelled?: string
   CancelStatus?: string
   DocumentLines: { ItemCode: string | null; ItemDescription: string | null; Quantity: number; Price: number; LineTotal: number }[]
@@ -132,7 +134,7 @@ export async function sincronizarItensSap(opts: {
 
   const notas = await comSessaoSap((sap) =>
     sap.getTodos<NotaSap>(
-      `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,Cancelled,CancelStatus,DocumentLines` +
+      `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,DocTotal,DownPaymentAmount,Cancelled,CancelStatus,DocumentLines` +
         `&$filter=DocDate ge '${de}' and DocDate le '${ate}'&$orderby=DocEntry`,
       200
     )
@@ -201,6 +203,8 @@ export async function sincronizarItensSap(opts: {
         quantidade: l.Quantity,
         valorUnitario: l.Price,
         valorTotal: l.LineTotal,
+        // Nota paga por adiantamento vem com DocTotal 0 — o valor está no adiantamento.
+        valorTotalNota: (n.DocTotal ?? 0) + (n.DownPaymentAmount ?? 0) || null,
       })
     }
     paraGravar.set(slug, linhas)

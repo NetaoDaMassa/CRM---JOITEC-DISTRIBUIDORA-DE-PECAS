@@ -183,6 +183,7 @@ export const historicoSapRouter = router({
         quantidade: sapItensHistorico.quantidade,
         valorUnitario: sapItensHistorico.valorUnitario,
         valorTotal: sapItensHistorico.valorTotal,
+        valorTotalNota: sapItensHistorico.valorTotalNota,
       })
       .from(sapItensHistorico)
       .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
@@ -196,10 +197,13 @@ export const historicoSapRouter = router({
           .orderBy(asc(itensPedido.id))
       : []
 
-    const notas = new Map<string, { numero: string; data: string; soma: number; itens: ItemVenda[] }>()
+    // `total` = total da nota com impostos/frete (só nas notas puxadas do
+    // SAP ao vivo); sem ele, compara pela soma das linhas como antes.
+    const notas = new Map<string, { numero: string; data: string; soma: number; total: number | null; itens: ItemVenda[] }>()
     for (const l of linhasNotas) {
-      const n = notas.get(l.numeroNota) ?? { numero: l.numeroNota, data: l.data, soma: 0, itens: [] }
+      const n = notas.get(l.numeroNota) ?? { numero: l.numeroNota, data: l.data, soma: 0, total: null, itens: [] }
       n.soma += l.valorTotal ?? 0
+      if (l.valorTotalNota) n.total = l.valorTotalNota
       n.itens.push({ codigoItem: l.codigoItem, descricao: l.descricao, quantidade: l.quantidade, valorUnitario: l.valorUnitario, valorTotal: l.valorTotal })
       notas.set(l.numeroNota, n)
     }
@@ -215,7 +219,7 @@ export const historicoSapRouter = router({
         if (usadas.has(n.numero)) continue
         const d = diasEntre(data, n.data)
         if (d < janela[0] || d > janela[1]) continue
-        const dif = valor > 0 ? Math.abs(n.soma - valor) / valor : Infinity
+        const dif = valor > 0 ? Math.abs((n.total ?? n.soma) - valor) / valor : Infinity
         if (dif <= 0.15 && (!melhor || dif < melhor.dif)) melhor = { n, dif }
       }
       if (melhor?.n) usadas.add(melhor.n.numero)

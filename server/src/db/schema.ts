@@ -4152,6 +4152,11 @@ export const sapItensHistorico = sqliteTable(
     quantidade: real('quantidade'),
     valorUnitario: real('valor_unitario'),
     valorTotal: real('valor_total'),
+    // Total da NOTA com impostos/frete (DocTotal + adiantamento) — só nas
+    // linhas que vieram direto do SAP (Service Layer); planilha não tinha.
+    // É o que bate com o valor da venda no CRM (a soma das linhas não tem
+    // IPI/ST/frete), usado pra ligar venda ↔ nota na ficha.
+    valorTotalNota: real('valor_total_nota'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (t) => ({

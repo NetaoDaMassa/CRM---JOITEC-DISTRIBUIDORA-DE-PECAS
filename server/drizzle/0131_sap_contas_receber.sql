@@ -23,3 +23,5 @@ CREATE TABLE `sap_saldos_clientes` (
 	`saldo_calculado` real NOT NULL,
 	`atualizado_em` text DEFAULT (datetime('now')) NOT NULL
 );
+--> statement-breakpoint
+ALTER TABLE `sap_itens_historico` ADD `valor_total_nota` real;
