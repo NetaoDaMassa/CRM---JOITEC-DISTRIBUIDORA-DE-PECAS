@@ -7,6 +7,7 @@ import type { AppRouter } from '@server/router/index'
 import { Input, Textarea } from '../../components/ui/Input'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
+import ComoUsar from '../../components/ui/ComoUsar'
 
 // Controle SUFRAMA (Financeiro) — PIN de cada nota fiscal de cliente da Zona
 // Franca, nota a nota. Substitui o documento Word "SUFRAMA" (os dados dele
@@ -348,6 +349,22 @@ export default function ControleSuframa() {
           <Plus size={16} className="mr-1" /> Novo cliente
         </Button>
       </div>
+
+      <ComoUsar
+        chave="controle_suframa"
+        passos={[
+          <>Cliente novo? Clique em <b>Novo cliente</b>, digite o <b>código</b> (ex.: C001855) e clique em <b>Buscar no CRM</b> — nome e telefone vêm sozinhos. Se o cliente não precisa de PIN, marque <b>“Este cliente não precisa de PIN”</b>.</>,
+          <>Para cada nota vendida, clique em <b>+ Nota</b> no cliente e <b>cole a chave de acesso da NF-e</b> (os 44 números da DANFE). O número da nota, o mês e a empresa que emitiu (Joitec ou Odin Tubos) aparecem sozinhos — confira e clique em <b>Adicionar nota</b>.</>,
+          <>Quando pedir o PIN no Simnac, deixe o status em <b>PIN solicitado</b>. Recebeu o número do PIN? Digite no campo <b>PIN</b> da nota (salva quando você clica fora do campo).</>,
+          <>Depois de consultar no Simnac, troque o status: <b>Aguardando conf. de receb.</b> enquanto o cliente não confirmar o recebimento, e <b>OK</b> quando estiver tudo certo.</>,
+        ]}
+        dicas={[
+          <>Botão de copiar ao lado do status: copia a chave da nota para colar no Simnac.</>,
+          <>Botão de relógio: mostra o histórico da nota (quem mudou o quê e quando).</>,
+          <>Clique nos números do topo (PIN solicitado / Aguardando / OK) para ver só as notas daquele status; use a busca ou o filtro de mês para achar uma nota.</>,
+          <>A mesma chave não entra duas vezes — se aparecer aviso de nota já cadastrada, ela já está em algum cliente (use a busca).</>,
+        ]}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {cartoes.map((k) => (

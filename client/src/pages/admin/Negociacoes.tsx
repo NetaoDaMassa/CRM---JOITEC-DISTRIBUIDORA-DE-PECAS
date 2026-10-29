@@ -10,6 +10,7 @@ import { Badge } from '../../components/ui/Badge'
 import { Input, Textarea } from '../../components/ui/Input'
 import Modal from '../../components/ui/Modal'
 import CobrancaModal from '../../components/CobrancaModal'
+import ComoUsar from '../../components/ui/ComoUsar'
 import NegociacaoStatusModal from '../../components/NegociacaoStatusModal'
 import { paraCsv, baixarCsv } from '../../lib/csv'
 
@@ -133,6 +134,22 @@ function AbaCobrancas() {
 
   return (
     <div>
+      <ComoUsar
+        chave="negociacoes_cobranca"
+        titulo="Como preencher a Cobrança do dia"
+        passos={[
+          <>Clique em <b>+ Nova cobrança</b> e escolha o <b>cliente</b>.</>,
+          <>Preencha o <b>valor</b> e, principalmente, a <b>data de vencimento</b> do boleto/parcela — é ela que liga a régua de cobrança (sem vencimento a régua fica “—”).</>,
+          <>Escolha o <b>canal</b> (WhatsApp, ligação ou e-mail) e escreva <b>o que o cliente respondeu</b> (ex.: “paga até sexta”).</>,
+          <>Na coluna <b>Cobrado (dias)</b> aparecem as bolinhas <b>1 a 5</b> = os 5 dias úteis depois do vencimento. Cada dia que você cobrar o cliente, <b>clique no número</b>: fica <span className="text-green-400 font-semibold">verde</span> (cobrado). Clicou errado? Clique de novo que desmarca. A bolinha com contorno dourado é <b>hoje</b>.</>,
+          <>Quando o cliente pagar, troque o <b>Status</b> para <b>Pago</b>.</>,
+        ]}
+        dicas={[
+          <>Se você lançar a cobrança num dos dias 1 a 5, o dia de hoje já entra marcado sozinho.</>,
+          <>No <b>6º dia útil</b>, se o status ainda estiver <b>Pendente</b>, a cobrança vai <b>sozinha para o Cartório</b> (aparece embaixo da régua a data: “Cartório em …”). Dias úteis = segunda a sexta, sem feriado.</>,
+          <>Para não ir ao cartório, troque o status antes desse dia (Pago, ou Enviado à RC).</>,
+        ]}
+      />
       <div className="flex items-end justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-end gap-3">
           <Input label="Vencimento de" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
@@ -533,6 +550,18 @@ function AbaCartorio() {
   if (!data) return <p className="text-dark-500">Carregando...</p>
 
   return (
+    <>
+    <ComoUsar
+      chave="negociacoes_cartorio"
+      titulo="Como funciona o Cartório"
+      passos={[
+        <>As cobranças que ficaram <b>Pendentes até o 6º dia útil</b> depois do vencimento entram aqui <b>sozinhas</b> — embaixo do nome aparece o vencimento e a origem. Você também pode lançar à mão em <b>+ Novo</b>.</>,
+        <>Status <b>Aguardando cartório</b>: ainda não foi feito nada.</>,
+        <>Avisou o cliente que vai para o cartório? Troque para <b>Cliente avisado</b>.</>,
+        <>O cartório devolveu e precisa cobrar de novo? <b>Voltou — cobrar</b>.</>,
+        <>Resolvido? <b>Cobrança feita</b>.</>,
+      ]}
+    />
     <TabelaStatus
       titulo="Cliente no Cartório"
       rotuloEnviado="Enviado ao cartório"
@@ -559,6 +588,7 @@ function AbaCartorio() {
       }
       onExcluir={(id) => excluirMut.mutate({ id }, { onSuccess: invalidar, onError: (err) => toast.error(err.message) })}
     />
+    </>
   )
 }
 
