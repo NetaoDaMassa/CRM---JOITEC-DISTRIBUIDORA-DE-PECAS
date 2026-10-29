@@ -2,8 +2,8 @@ import { z } from 'zod'
 import { and, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, sapSaldosClientes, sapTitulosAbertos } from '../db/schema.js'
-import { getConfigNumero } from '../lib/configuracoes.js'
+import { clientes, empresas, sapSaldosClientes, sapTitulosAbertos } from '../db/schema.js'
+import { getConfigNumero, getConfigTexto } from '../lib/configuracoes.js'
 import { hojeBrString } from '../lib/dataBr.js'
 
 // Quem está devendo, segundo o SAP (lib/sapContasReceber.ts) — pedido do
@@ -21,10 +21,20 @@ async function carenciaDias(): Promise<number> {
   return getConfigNumero('sap_inadimplencia_carencia_dias', 5)
 }
 
+// Em quais empresas do CRM o aviso aparece (`sap_inadimplencia_empresas`,
+// slugs separados por vírgula) — João começou só com Joitec e Odin Tubos
+// (2026-10-29). Mostra TODOS os valores, inclusive os títulos antigos.
+async function inadimplenciaLigada(empresaId: number): Promise<boolean> {
+  const lista = ((await getConfigTexto('sap_inadimplencia_empresas')) ?? 'joitec,odin-tubos').split(',').map((s) => s.trim())
+  const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
+  return !!e && lista.includes(e.slug)
+}
+
 export const sapFinanceiroRouter = router({
   // Clientes da empresa ativa com título vencido além da carência →
   // { clienteId, vencido, maiorAtraso }. O vendedor só recebe os dele.
   inadimplentes: protectedProcedure.query(async ({ ctx }) => {
+    if (!(await inadimplenciaLigada(ctx.empresaId))) return []
     const hoje = hojeBrString()
     const carencia = await carenciaDias()
     const porCodigo = await db
@@ -58,6 +68,7 @@ export const sapFinanceiroRouter = router({
   // Ficha / card aberto: todos os títulos em aberto do cliente (vencidos e a
   // vencer), em todas as empresas do grupo.
   doCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
+    if (!(await inadimplenciaLigada(ctx.empresaId))) return null
     const cliente = await db.query.clientes.findFirst({
       where: and(eq(clientes.id, input.clienteId), isNull(clientes.deletedAt), eq(clientes.empresaId, ctx.empresaId)),
       columns: { id: true, codigo: true, codigoAntigo: true, vendedorAtualId: true },
