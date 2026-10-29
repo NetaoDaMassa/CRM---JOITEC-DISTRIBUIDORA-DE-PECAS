@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Paperclip } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -23,6 +23,7 @@ import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
 import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
+import InadimplenciaCliente from './InadimplenciaCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
 import { AvatarIniciais, dispararConfete } from './ui/Visual'
@@ -434,6 +435,9 @@ export default function FunilBoard({
 }) {
   const { user, empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
+  // Clientes devendo no SAP (InadimplenciaCliente) → etiqueta vermelha no card.
+  const { data: inadimplentes } = trpc.sapFinanceiro.inadimplentes.useQuery(undefined, { staleTime: 5 * 60_000 })
+  const devendo = useMemo(() => new Map((inadimplentes ?? []).map((d) => [d.clienteId, d])), [inadimplentes])
   const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
   const [classificacaoFiltro, setClassificacaoFiltro] = useState<'' | 'revenda' | 'consumidor_final'>('')
   const etapasVisiveis = apenasEtapas
@@ -715,6 +719,14 @@ export default function FunilBoard({
                           </Badge>
                         )}
                       </div>
+                      {devendo.has(card.clienteId) && (
+                        <p
+                          className="text-xs font-semibold text-red-300 bg-red-900/20 border border-red-700/40 rounded-lg px-2 py-1 mb-2"
+                          title="Títulos vencidos no SAP — abra o card para ver as parcelas"
+                        >
+                          ⚠ {formatarMoeda(devendo.get(card.clienteId)!.vencido)} vencido · {devendo.get(card.clienteId)!.maiorAtraso}d
+                        </p>
+                      )}
                       {card.proximoCompromisso && (() => {
                         const cp = formatarProximoCompromisso(card.proximoCompromisso.dataHora)
                         return (
@@ -1645,6 +1657,7 @@ function CardModal({
             {sugestaoProximoPasso(card)}
           </div>
         )}
+        <InadimplenciaCliente clienteId={card.clienteId} compacto />
         <ClienteInfoEditavel card={card} />
 
         <div>

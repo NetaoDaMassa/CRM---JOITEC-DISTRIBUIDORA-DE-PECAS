@@ -4162,6 +4162,51 @@ export const sapItensHistorico = sqliteTable(
   })
 )
 
+// Contas a receber em aberto no SAP (pedido do João, 2026-10-29) — foto
+// refeita a cada sincronização (lib/sapContasReceber.ts), pra mostrar ao
+// vendedor no card do Kanban e na ficha que o cliente está devendo. Ligado
+// ao cliente pelo código do SAP (CardCode = clientes.codigo), não por id: o
+// mesmo cliente existe em mais de uma empresa do CRM e a dívida é do grupo.
+//   - 'nota': parcela de nota fiscal de venda;
+//   - 'titulo_antigo': título do sistema anterior lançado no SAP na
+//     implantação (lançamento manual de 31/03, "EFETIV. PEDIDO VENDA");
+//   - 'devolucao': nota de devolução em aberto (crédito do cliente, valor
+//     negativo).
+export const sapTitulosAbertos = sqliteTable(
+  'sap_titulos_abertos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    codigoCliente: text('codigo_cliente').notNull(),
+    nomeCliente: text('nome_cliente'),
+    tipo: text('tipo', { enum: ['nota', 'titulo_antigo', 'devolucao'] }).notNull(),
+    // Nº da nota (DocNum), do lançamento (JdtNum) ou da devolução.
+    documento: text('documento').notNull(),
+    parcela: text('parcela'),
+    // YYYY-MM-DD
+    emissao: text('emissao'),
+    vencimento: text('vencimento'),
+    valorAberto: real('valor_aberto').notNull(),
+    filialSap: integer('filial_sap'),
+    empresaSlug: text('empresa_slug'),
+    vendedorSap: text('vendedor_sap'),
+    atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('idx_sap_titulos_abertos_cliente').on(t.codigoCliente, t.vencimento),
+  })
+)
+
+// Saldo do cliente segundo o próprio SAP (CurrentAccountBalance) x soma dos
+// títulos acima — conferência: se não bater, a tela avisa em vez de mostrar
+// um número que o financeiro não reconhece.
+export const sapSaldosClientes = sqliteTable('sap_saldos_clientes', {
+  codigoCliente: text('codigo_cliente').primaryKey(),
+  nomeCliente: text('nome_cliente'),
+  saldoSap: real('saldo_sap').notNull(),
+  saldoCalculado: real('saldo_calculado').notNull(),
+  atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+})
+
 // Itens de cada COTAÇÃO do SAP (pedido do João, 2026-10-22) — o "o quê" foi
 // orçado. Ligado à cotação pelo nº (empresa + numeroCotacao), não por id:
 // os cabeçalhos (sap_cotacoes_historico) só cobrem abr–jul, porque de
