@@ -580,6 +580,10 @@ export const maquinasCliente = sqliteTable('maquinas_cliente', {
   consumidorFinalNome: text('consumidor_final_nome'),
   consumidorFinalTelefone: text('consumidor_final_telefone'),
   observacoes: text('observacoes'),
+  // Cliente antigo: a 1ª preventiva já foi feita antes do sistema — os itens
+  // sem leitura somem do cartão em vez de pedir "Registrar primeira
+  // preventiva" (João, 2026-10-29).
+  preventivaDesconsiderada: integer('preventiva_desconsiderada', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
@@ -2575,6 +2579,9 @@ export const ordemRastreio = sqliteTable('ordem_rastreio', {
   codigoRastreio: text('codigo_rastreio'),
   linkRastreio: text('link_rastreio'),
   observacoes: text('observacoes'),
+  // Peça: previsão de chegada ao cliente, marcada na etapa Concluído e
+  // mostrada no Calendário (João, 2026-10-29).
+  previsaoChegada: text('previsao_chegada'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
@@ -2600,6 +2607,93 @@ export const ordemPosVenda = sqliteTable('ordem_pos_venda', {
   dataRecebimentoMercadoria: text('data_recebimento_mercadoria'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Pós-venda de máquina (Odin Compressores) — pedido do João, 2026-10-29.
+// Uma pesquisa por pedido: o link público (/pesquisa/<token>, sem login) vai
+// pro cliente junto com o PDF de cuidados/preventiva/garantia; a própria
+// equipe também pode registrar a resposta (ex.: pesquisa feita por
+// telefone). Respondida, o pedido vai sozinho pra "Concluído"
+// (lib/posVendaOdin.ts). Notas 1 a 5.
+export const posVendaPesquisas = sqliteTable('pos_venda_pesquisas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  ordemId: integer('ordem_id').notNull().unique().references(() => ordens.id, { onDelete: 'cascade' }),
+  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+  token: text('token').notNull().unique(),
+  // Quem é avaliado — preenchido pela equipe na etapa (transportadora já
+  // vem da Coleta/Rastreio).
+  transportadora: text('transportadora'),
+  tecnicoNome: text('tecnico_nome'),
+  enviadoEm: text('enviado_em'),
+  enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+  respondidoEm: text('respondido_em'),
+  // 'cliente' = respondeu pelo link | 'equipe' = alguém da Odin lançou
+  respondidoVia: text('respondido_via', { enum: ['cliente', 'equipe'] }),
+  respondidoPor: integer('respondido_por').references(() => users.id, { onDelete: 'set null' }),
+  notaOdin: integer('nota_odin'),
+  notaTransportadora: integer('nota_transportadora'),
+  notaTecnico: integer('nota_tecnico'),
+  atendeu: text('atendeu', { enum: ['sim', 'parcial', 'nao'] }),
+  comentario: text('comentario'),
+  querContato: integer('quer_contato', { mode: 'boolean' }).notNull().default(false),
+  // Resposta que pede atenção (nota baixa, "não atendeu", quer contato) —
+  // fica aberta até alguém da equipe registrar o que foi feito.
+  acompanhamentoResolvidoEm: text('acompanhamento_resolvido_em'),
+  acompanhamentoResolvidoPor: integer('acompanhamento_resolvido_por').references(() => users.id, { onDelete: 'set null' }),
+  acompanhamentoObs: text('acompanhamento_obs'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// PDF padrão do Pós-venda (cuidados, plano de preventiva, garantia), subido
+// pela Odin em Config. Odin. `modelo` vazio = vale pra qualquer máquina;
+// preenchido = só pros pedidos com máquina daquele modelo (comparação por
+// "contém", sem diferenciar maiúscula).
+export const posVendaDocumentos = sqliteTable('pos_venda_documentos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  titulo: text('titulo').notNull(),
+  modelo: text('modelo'),
+  nomeOriginal: text('nome_original').notNull(),
+  nomeArmazenado: text('nome_armazenado').notNull(),
+  ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Agendamentos de peças (coluna "Agendamentos" do Kanban, entre Novo e
+// Abordagem, só Odin Compressores). Nasce sozinho quando um pedido de
+// máquina chega em "Concluído" — NF, modelos/séries e revenda vêm do
+// pedido — e vai pro vendedor de peças configurado (Bruna). Não é um card
+// do funil_mensal: o cliente pode estar na carteira de outro vendedor.
+export const agendamentosPecas = sqliteTable('agendamentos_pecas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  ordemId: integer('ordem_id').unique().references(() => ordens.id, { onDelete: 'set null' }),
+  clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+  vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+  revendaId: integer('revenda_id').references(() => revendas.id, { onDelete: 'set null' }),
+  status: text('status', { enum: ['aberto', 'concluido', 'cancelado'] }).notNull().default('aberto'),
+  proximoContato: text('proximo_contato'), // YYYY-MM-DD
+  observacoes: text('observacoes'),
+  // Como terminou: 'venda' (vendeu peça), 'revenda' (encaminhado pra
+  // revenda), 'sem_interesse', 'outro'.
+  resultado: text('resultado', { enum: ['venda', 'revenda', 'sem_interesse', 'outro'] }),
+  concluidoEm: text('concluido_em'),
+  concluidoPor: integer('concluido_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const agendamentoPecasContatos = sqliteTable('agendamento_pecas_contatos', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  agendamentoId: integer('agendamento_id').notNull().references(() => agendamentosPecas.id, { onDelete: 'cascade' }),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  tipo: text('tipo', { enum: ['whatsapp', 'ligacao', 'email', 'visita', 'outro'] }).notNull().default('whatsapp'),
+  observacao: text('observacao').notNull(),
+  encaminhamento: text('encaminhamento'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
 // Log genérico append-only (não é diff estruturado, exceto pra
@@ -2656,6 +2750,7 @@ export const ordensRelations = relations(ordens, ({ one, many }) => ({
   posVenda: one(ordemPosVenda, { fields: [ordens.id], references: [ordemPosVenda.ordemId] }),
   historico: many(ordemHistorico),
   anexos: many(ordemAnexos),
+  pesquisaPosVenda: one(posVendaPesquisas, { fields: [ordens.id], references: [posVendaPesquisas.ordemId] }),
 }))
 
 export const ordemAprovacaoFreteRelations = relations(ordemAprovacaoFrete, ({ one }) => ({
@@ -4161,3 +4256,21 @@ export const suframaNotaEventos = sqliteTable('suframa_nota_eventos', {
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
+
+export const posVendaPesquisasRelations = relations(posVendaPesquisas, ({ one }) => ({
+  ordem: one(ordens, { fields: [posVendaPesquisas.ordemId], references: [ordens.id] }),
+  cliente: one(clientes, { fields: [posVendaPesquisas.clienteId], references: [clientes.id] }),
+}))
+
+export const agendamentosPecasRelations = relations(agendamentosPecas, ({ one, many }) => ({
+  ordem: one(ordens, { fields: [agendamentosPecas.ordemId], references: [ordens.id] }),
+  cliente: one(clientes, { fields: [agendamentosPecas.clienteId], references: [clientes.id] }),
+  vendedor: one(users, { fields: [agendamentosPecas.vendedorId], references: [users.id] }),
+  revenda: one(revendas, { fields: [agendamentosPecas.revendaId], references: [revendas.id] }),
+  contatos: many(agendamentoPecasContatos),
+}))
+
+export const agendamentoPecasContatosRelations = relations(agendamentoPecasContatos, ({ one }) => ({
+  agendamento: one(agendamentosPecas, { fields: [agendamentoPecasContatos.agendamentoId], references: [agendamentosPecas.id] }),
+  user: one(users, { fields: [agendamentoPecasContatos.userId], references: [users.id] }),
+}))

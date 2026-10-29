@@ -17,7 +17,7 @@ async function assertEmpresa(empresaId: number) {
   if (empresa?.slug !== SLUG) throw new TRPCError({ code: 'FORBIDDEN', message: 'Módulo disponível só pra Odin Compressores' })
 }
 
-export type EventoTipo = 'coleta' | 'faturamento' | 'financeiro' | 'preparacao' | 'pos_venda' | 'proposta_chamar_depois' | 'visita' | 'visita_retorno'
+export type EventoTipo = 'coleta' | 'faturamento' | 'financeiro' | 'preparacao' | 'pos_venda' | 'proposta_chamar_depois' | 'visita' | 'visita_retorno' | 'chegada_peca'
 
 const input = z.object({ dataDe: z.string(), dataAte: z.string(), vendedorId: z.number().optional() })
 
@@ -32,7 +32,7 @@ export const calendarioOdinRouter = router({
     if (vendedorId) condOrdens.push(eq(ordens.vendedorId, vendedorId))
     const todasOrdens = await db.query.ordens.findMany({
       where: and(...condOrdens),
-      columns: { id: true, status: true },
+      columns: { id: true, status: true, orderType: true, stage: true },
       with: {
         cliente: { columns: { razaoSocial: true } },
         coleta: { columns: { dataColeta: true, confirmado: true } },
@@ -40,6 +40,7 @@ export const calendarioOdinRouter = router({
         liberacaoFinanceira: { columns: { dataPagamentoPrevista: true, aprovado: true } },
         preparacao: { columns: { dataEntradaEstoque: true, aprovadoGestor: true } },
         posVenda: { columns: { dataLembrete: true } },
+        rastreio: { columns: { previsaoChegada: true } },
       },
     })
 
@@ -59,6 +60,11 @@ export const calendarioOdinRouter = router({
       }
       if (o.preparacao?.dataEntradaEstoque) {
         eventos.push({ id: `preparacao-${o.id}`, tipo: 'preparacao', data: o.preparacao.dataEntradaEstoque, titulo: `Preparação #${o.id} — ${nome}`, concluido: !!o.preparacao.aprovadoGestor, atrasado: !o.preparacao.aprovadoGestor && o.preparacao.dataEntradaEstoque < hoje, link: `/admin/ordens/${o.id}` })
+      }
+      if (o.orderType === 'peca' && o.rastreio?.previsaoChegada) {
+        // Atrasada = passou a data e o pedido ainda não foi concluído.
+        const chegou = o.stage === 'concluido'
+        eventos.push({ id: `chegada-${o.id}`, tipo: 'chegada_peca', data: o.rastreio.previsaoChegada, titulo: `Chegada de peças #${o.id} — ${nome}`, concluido: chegou, atrasado: !chegou && o.rastreio.previsaoChegada < hoje, link: `/admin/ordens/${o.id}` })
       }
       if (o.posVenda?.dataLembrete) {
         eventos.push({ id: `pos_venda-${o.id}`, tipo: 'pos_venda', data: o.posVenda.dataLembrete, titulo: `Lembrete Pós-Venda #${o.id} — ${nome}`, concluido: o.posVenda.dataLembrete < hoje, atrasado: false, link: `/admin/ordens/${o.id}` })

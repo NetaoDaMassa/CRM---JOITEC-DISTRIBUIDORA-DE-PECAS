@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { RelatorioMaquinasModelo, RelatorioPecasRecompra, RelatorioPropostasPerdas, RelatorioVisitasRegiao } from '../components/odin/RelatoriosOdinNovos'
+import { RelatorioAgendamentosPecas, RelatorioSatisfacao } from '../components/posVenda/RelatoriosPosVenda'
 import { Link } from 'react-router-dom'
 import { BarChart3, Download, RefreshCw, Search, Package, Clock, CheckCircle2, XCircle, CalendarRange, Info, ChevronLeft, ChevronRight, ChevronDown, MapPin, PenLine, FileText, Handshake } from 'lucide-react'
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts'
@@ -63,11 +64,13 @@ type TabKey =
   | 'propostasPerdas'
   | 'maquinasModelo'
   | 'pecasRecompra'
+  | 'satisfacao'
+  | 'agendamentosPecas'
 const TAB_LABELS: Record<TabKey, string> = {
   semanal: 'Semanal por Vendedor',
   pedidos: 'Pedidos em Processo',
   marketing: 'Marketing & Propostas',
-  posVenda: 'Pós-Venda',
+  posVenda: 'Pós-Venda (NPS)',
   maquinas: 'Estoque de Máquinas',
   pipeline: 'Pipeline',
   propostas: 'Propostas',
@@ -76,6 +79,8 @@ const TAB_LABELS: Record<TabKey, string> = {
   propostasPerdas: 'Perdas e Prazos',
   maquinasModelo: 'Máquinas por Modelo',
   pecasRecompra: 'Recompra da Carteira',
+  satisfacao: 'Satisfação dos Clientes',
+  agendamentosPecas: 'Agendamentos de Peças',
 }
 // Abas agrupadas por assunto/frente — pedido do João, 2026-10-23 (antes
 // era uma fila só de 8 abas, sem ordem clara).
@@ -85,6 +90,7 @@ const GRUPOS_ABAS: { titulo: string; abas: TabKey[] }[] = [
   { titulo: 'Máquinas', abas: ['maquinasModelo', 'maquinas'] },
   { titulo: 'Peças', abas: ['pecasRecompra'] },
   { titulo: 'Pedidos e faturamento', abas: ['pedidos', 'faturamento', 'posVenda'] },
+  { titulo: 'Pós-venda', abas: ['satisfacao', 'agendamentosPecas'] },
 ]
 
 // Cartão de indicador — ícone num quadrado colorido + valor + rótulo,
@@ -155,7 +161,7 @@ function money(v: number) {
   return formatarMoedaBr(v)
 }
 
-const TABS_COM_FILTRO_DATA: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing', 'visitasRegiao', 'propostasPerdas', 'maquinasModelo']
+const TABS_COM_FILTRO_DATA: TabKey[] = ['satisfacao', 'agendamentosPecas', 'pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing', 'visitasRegiao', 'propostasPerdas', 'maquinasModelo']
 const TABS_COM_FILTRO_VENDEDOR: TabKey[] = ['pedidos', 'propostas', 'pipeline', 'faturamento', 'posVenda', 'marketing', 'visitasRegiao', 'propostasPerdas', 'maquinasModelo', 'pecasRecompra']
 
 export default function RelatoriosOdin() {
@@ -266,6 +272,8 @@ export default function RelatoriosOdin() {
       {tab === 'propostasPerdas' && <RelatorioPropostasPerdas filtro={filtro} />}
       {tab === 'maquinasModelo' && <RelatorioMaquinasModelo filtro={filtro} />}
       {tab === 'pecasRecompra' && <RelatorioPecasRecompra filtro={filtro} />}
+      {tab === 'satisfacao' && <RelatorioSatisfacao filtro={filtro} />}
+      {tab === 'agendamentosPecas' && <RelatorioAgendamentosPecas filtro={filtro} />}
     </div>
   )
 }

@@ -188,6 +188,15 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
     },
   })
 
+  const preventivaMut = trpc.maquinas.desconsiderarPreventiva.useMutation({
+    onSuccess(_r, v) {
+      toast.success(v.desconsiderar ? '1ª preventiva desconsiderada' : 'Voltou a acompanhar a 1ª preventiva')
+      invalidar()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
   const removerMut = trpc.maquinas.remover.useMutation({
     onSuccess() {
       toast.success('Máquina removida')
@@ -310,9 +319,29 @@ function MaquinasCliente({ clienteId }: { clienteId: number }) {
                   Nenhum item de manutenção configurado ainda — cadastre em Configurações.
                 </p>
               )}
-              {m.itensStatus.map((item) => (
-                <ItemManutencaoStatus key={item.itemId} maquinaId={m.id} item={item} />
-              ))}
+              {m.itensStatus
+                .filter((item) => !(m.preventivaDesconsiderada && item.semLeitura))
+                .map((item) => (
+                  <ItemManutencaoStatus key={item.itemId} maquinaId={m.id} item={item} />
+                ))}
+              {m.preventivaDesconsiderada ? (
+                <p className="text-xs text-dark-500 mt-1">
+                  1ª preventiva desconsiderada — já foi feita (cliente antigo).{' '}
+                  <button className="text-blue-400 hover:underline" disabled={preventivaMut.isPending} onClick={() => preventivaMut.mutate({ id: m.id, desconsiderar: false })}>
+                    Voltar a acompanhar
+                  </button>
+                </p>
+              ) : (
+                m.itensStatus.some((item) => item.semLeitura) && (
+                  <button
+                    className="text-xs text-dark-400 hover:text-dark-200 underline mt-1"
+                    disabled={preventivaMut.isPending}
+                    onClick={() => preventivaMut.mutate({ id: m.id, desconsiderar: true })}
+                  >
+                    Desconsiderar 1ª preventiva (já foi feita — cliente antigo)
+                  </button>
+                )
+              )}
             </div>
           </div>
         ))}

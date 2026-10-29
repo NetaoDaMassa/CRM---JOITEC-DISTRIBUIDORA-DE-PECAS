@@ -19,10 +19,12 @@ import {
   ordemConferencia,
   ordemColeta,
   ordemFaturamento,
+  posVendaPesquisas,
 } from '../db/schema.js'
+import { criarAgendamentoDaOrdem } from './posVendaOdin.js'
 import { registrarAuditoria } from './auditoria.js'
 import { agoraSqlite } from './dataBr.js'
-import { getStageSequence, getNextStage, STAGE_LABELS, CONFIRMATION_RESET_ORDER, type Stage, type OrderType } from './ordensStages.js'
+import { getStageSequence, getNextStage, rotuloEtapa, CONFIRMATION_RESET_ORDER, type Stage, type OrderType } from './ordensStages.js'
 
 type OrdemRow = typeof ordens.$inferSelect
 
@@ -72,6 +74,15 @@ async function checkColetaConfirmada(ordem: OrdemRow): Promise<GateResult> {
   return { ok: true }
 }
 
+// Só sai do Pós-venda depois de mandar a pesquisa ao cliente (máquina leva
+// também o PDF) — ou de a equipe registrar a resposta. Vale pra peça desde
+// 2026-10-29.
+async function checkPosVendaEnviado(ordem: OrdemRow): Promise<GateResult> {
+  const p = await db.query.posVendaPesquisas.findFirst({ where: eq(posVendaPesquisas.ordemId, ordem.id) })
+  if (!p?.enviadoEm && !p?.respondidoEm) return { ok: false, motivo: 'Envie a pesquisa de satisfação ao cliente (aba Pós-venda) antes de concluir' }
+  return { ok: true }
+}
+
 const GATES: Partial<Record<Stage, (ordem: OrdemRow) => Promise<GateResult>>> = {
   pedido: checkLiberacaoFinanceiraAprovada,
   cotacao_frete: checkAnexoStagePedidoExiste,
@@ -79,6 +90,7 @@ const GATES: Partial<Record<Stage, (ordem: OrdemRow) => Promise<GateResult>>> = 
   faturamento: checkFreteAprovadoEFinalizado,
   coleta: checkConferenciaConfirmada,
   rastreio: checkColetaConfirmada,
+  concluido: checkPosVendaEnviado,
 }
 
 async function inserirHistorico(params: {
@@ -95,7 +107,7 @@ async function inserirHistorico(params: {
   await db.insert(ordemHistorico).values({ ordemId, userId, ...rest })
 }
 
-export async function avancarEtapaPedido(params: { ordemId: number; empresaId: number; userId: number }): Promise<OrdemRow> {
+export async function avancarEtapaPedido(params: { ordemId: number; empresaId: number; userId: number; semAgendamento?: boolean }): Promise<OrdemRow> {
   const { ordemId, empresaId, userId } = params
   const ordem = await db.query.ordens.findFirst({ where: and(eq(ordens.id, ordemId), eq(ordens.empresaId, empresaId)) })
   if (!ordem) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
@@ -125,7 +137,7 @@ export async function avancarEtapaPedido(params: { ordemId: number; empresaId: n
     fieldName: 'stage',
     oldValue: ordem.stage,
     newValue: proximo,
-    description: `Avançou de "${STAGE_LABELS[ordem.stage as Stage] ?? ordem.stage}" para "${STAGE_LABELS[proximo]}"`,
+    description: `Avançou de "${rotuloEtapa(ordem.stage, ordem.orderType as OrderType)}" para "${rotuloEtapa(proximo, ordem.orderType as OrderType)}"`,
     stage: proximo,
   })
   await registrarAuditoria({
@@ -137,6 +149,8 @@ export async function avancarEtapaPedido(params: { ordemId: number; empresaId: n
     valorNovo: proximo,
     alteradoPor: userId,
   })
+
+  if (proximo === 'concluido' && ordem.orderType === 'maquina' && !params.semAgendamento) await criarAgendamentoDaOrdem(ordemId)
 
   return { ...ordem, stage: proximo, versao: ordem.versao + 1 }
 }
@@ -190,7 +204,7 @@ export async function moverEtapaPedido(params: { ordemId: number; empresaId: num
     fieldName: 'stage',
     oldValue: ordem.stage,
     newValue: novaEtapa,
-    description: `Etapa alterada manualmente de "${STAGE_LABELS[ordem.stage as Stage] ?? ordem.stage}" para "${STAGE_LABELS[novaEtapa as Stage] ?? novaEtapa}"`,
+    description: `Etapa alterada manualmente de "${rotuloEtapa(ordem.stage, ordem.orderType as OrderType)}" para "${rotuloEtapa(novaEtapa, ordem.orderType as OrderType)}"`,
     stage: novaEtapa,
   })
   await registrarAuditoria({
@@ -202,6 +216,8 @@ export async function moverEtapaPedido(params: { ordemId: number; empresaId: num
     valorNovo: novaEtapa,
     alteradoPor: userId,
   })
+
+  if (novaEtapa === 'concluido' && ordem.orderType === 'maquina') await criarAgendamentoDaOrdem(ordemId)
 
   return { ...ordem, stage: novaEtapa, versao: ordem.versao + 1 }
 }

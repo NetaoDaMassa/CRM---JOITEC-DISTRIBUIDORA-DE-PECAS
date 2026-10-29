@@ -19,11 +19,18 @@ export const STAGE_SEQUENCE_MAQUINA = [
   'coleta',
   'rastreio',
   'qualidade',
-  'concluido',
+  // Pós-venda vem ANTES de Concluído pra máquina (pedido do João,
+  // 2026-10-29): envia o PDF de cuidados/preventiva/garantia + pesquisa de
+  // satisfação; respondida a pesquisa, o pedido vai sozinho pra Concluído,
+  // que encerra o fluxo e abre o Agendamento de peças (lib/posVendaOdin.ts).
   'pos_venda',
+  'concluido',
 ] as const
 
-export const STAGE_SEQUENCE_PECA = ['pedido', 'preparacao', 'frete_finalizado', 'faturamento', 'coleta', 'rastreio', 'concluido', 'pos_venda'] as const
+// Peça também passou a terminar em Concluído (João, 2026-10-29): o antigo
+// "Concluído" (previsão de chegada) + "Feedback/Finalizado" viraram uma
+// etapa só de Pós-venda, antes do Concluído.
+export const STAGE_SEQUENCE_PECA = ['pedido', 'preparacao', 'frete_finalizado', 'faturamento', 'coleta', 'rastreio', 'pos_venda', 'concluido'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_MAQUINA)[number] | (typeof STAGE_SEQUENCE_PECA)[number]
 
@@ -40,7 +47,20 @@ export const STAGE_LABELS: Record<Stage, string> = {
   rastreio: 'Rastreio',
   qualidade: 'Qualidade',
   concluido: 'Concluído',
-  pos_venda: 'Feedback/Finalizado',
+  pos_venda: 'Pós-venda',
+}
+
+// Rótulo da etapa por tipo de pedido — hoje igual pros dois (peça deixou de
+// ter o "Feedback/Finalizado"), mantido pra não espalhar STAGE_LABELS.
+export function rotuloEtapa(stage: string, orderType: OrderType): string {
+  void orderType
+  return STAGE_LABELS[stage as Stage] ?? stage
+}
+
+// Última etapa de cada fluxo — o pedido "terminou" quando chega nela.
+export function etapaFinal(orderType: OrderType): Stage {
+  void orderType
+  return 'concluido'
 }
 
 export function getStageSequence(orderType: OrderType): readonly Stage[] {

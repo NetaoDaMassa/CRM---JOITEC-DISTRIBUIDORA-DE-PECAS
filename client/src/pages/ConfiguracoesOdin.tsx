@@ -5,9 +5,10 @@ import { trpc } from '../lib/trpc'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { Input } from '../components/ui/Input'
+import AbaPosVenda from '../components/posVenda/AbaConfigPosVenda'
 
-type TabKey = 'condicoes' | 'transportadoras' | 'emails'
-const TAB_LABELS: Record<TabKey, string> = { condicoes: 'Condições de Pagamento', transportadoras: 'Transportadoras', emails: 'Modelos de E-mail' }
+type TabKey = 'condicoes' | 'transportadoras' | 'emails' | 'posVenda'
+const TAB_LABELS: Record<TabKey, string> = { condicoes: 'Condições de Pagamento', transportadoras: 'Transportadoras', emails: 'Modelos de E-mail', posVenda: 'Pós-venda' }
 
 export default function ConfiguracoesOdin() {
   const [tab, setTab] = useState<TabKey>('condicoes')
@@ -24,6 +25,7 @@ export default function ConfiguracoesOdin() {
       {tab === 'condicoes' && <AbaCondicoes />}
       {tab === 'transportadoras' && <AbaTransportadoras />}
       {tab === 'emails' && <AbaEmails />}
+      {tab === 'posVenda' && <AbaPosVenda />}
     </div>
   )
 }

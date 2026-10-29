@@ -13,7 +13,8 @@ import type { Novidade, SecaoLegenda } from '../painel/PainelVisual'
 
 export type FiltroPedido = 'andamento' | 'atrasados' | 'atencao' | 'urgentes' | 'prontos' | 'concluidos_mes'
 
-const ETAPAS_FIM = ['concluido', 'pos_venda']
+// Máquina e peça terminam em Concluído (Pós-venda vem antes) — 2026-10-29.
+const ETAPAS_FIM = ['concluido']
 const ativo = (o: OrdemCard) => o.status === 'ativo'
 const emAndamento = (o: OrdemCard) => ativo(o) && !ETAPAS_FIM.includes(o.stage)
 

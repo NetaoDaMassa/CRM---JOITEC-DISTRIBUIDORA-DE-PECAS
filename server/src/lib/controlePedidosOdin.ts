@@ -12,12 +12,14 @@
 //    > 72h = vermelho; qualquer etapa > 48h = laranja.
 //  - No período: entraram, faturados (mesma regra do Painel Financeiro,
 //    lib/faturamentoOdin.ts), concluídos, cancelados e ciclo médio.
-import { and, desc, eq, gte, inArray, lt, ne } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lt, ne, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { ordemDetalhes, ordemHistorico, ordens, users } from '../db/schema.js'
 import { buscarOrdensFaturadas } from './faturamentoOdin.js'
 
-const ETAPA_FINAL = 'pos_venda'
+// Fim do fluxo: máquina termina em "Concluído" (Pós-venda vem antes desde
+// 2026-10-29); peça também, desde o mesmo dia.
+const NAO_TERMINOU = sql`${ordens.stage} <> 'concluido'`
 const ETAPAS_EXPEDICAO = ['coleta', 'rastreio']
 
 const utcParaMs = (s: string) => new Date(s.replace(' ', 'T') + (s.includes('Z') ? '' : 'Z')).getTime()
@@ -36,7 +38,7 @@ export async function controlePedidosOdin(empresaId: number, de: string, ate: st
   const doVendedor = vendedorId ? [eq(ordens.vendedorId, vendedorId)] : []
 
   const ativos = await db.query.ordens.findMany({
-    where: and(eq(ordens.empresaId, empresaId), eq(ordens.status, 'ativo'), ne(ordens.stage, ETAPA_FINAL), ...doVendedor),
+    where: and(eq(ordens.empresaId, empresaId), eq(ordens.status, 'ativo'), NAO_TERMINOU, ...doVendedor),
     columns: { id: true, stage: true, orderType: true, createdAt: true, pausadoEm: true, pausadoMotivo: true },
     with: { cliente: { columns: { razaoSocial: true } }, vendedor: { columns: { name: true } } },
   })

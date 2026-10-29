@@ -14,6 +14,7 @@ import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, users, propostas, propostaArquivos, ordens, ordemPosVenda, ordemDetalhes, ordemFaturamento, estoqueMaquinas, visitas } from '../db/schema.js'
 import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
+import { etapaFinal, type OrderType } from '../lib/ordensStages.js'
 import { maquinasPorModelo, pecasRecompra, propostasPerdasPrazos, visitasPorRegiao } from '../lib/relatoriosOdinNovos.js'
 
 const SLUG_RELATORIOS = 'odin-compressores'
@@ -67,7 +68,7 @@ export const relatoriosOdinRouter = router({
       let completed = 0
       let cancelled = 0
       const rows = pedidos.map((p) => {
-        const estaConcluido = p.stage === 'pos_venda' || p.status === 'concluido'
+        const estaConcluido = p.stage === etapaFinal(p.orderType as OrderType) || p.status === 'concluido'
         if (p.status === 'cancelado') cancelled++
         else if (estaConcluido) completed++
         else active++

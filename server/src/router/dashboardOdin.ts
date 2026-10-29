@@ -16,6 +16,7 @@ import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
 import { montarPainelTvOdin } from '../lib/painelTvOdin.js'
 import { resultadosOdin, totaisResultadosOdin } from '../lib/resultadosOdin.js'
 import { controlePedidosOdin } from '../lib/controlePedidosOdin.js'
+import { etapaFinal, type OrderType } from '../lib/ordensStages.js'
 
 const SLUG_DASHBOARD = 'odin-compressores'
 
@@ -60,7 +61,7 @@ export const dashboardOdinRouter = router({
     for (const o of todasOrdens) {
       byStage[o.stage] = (byStage[o.stage] ?? 0) + 1
       if (o.status === 'cancelado') cancelled++
-      else if (o.stage === 'pos_venda') completed++
+      else if (o.stage === etapaFinal(o.orderType as OrderType)) completed++
       else active++
     }
 
@@ -77,7 +78,7 @@ export const dashboardOdinRouter = router({
     // Relatórios Odin).
     const pedidosLista = todasOrdens.map((o) => {
       const cicloHoras =
-        o.stage === 'pos_venda'
+        o.stage === etapaFinal(o.orderType as OrderType)
           ? Math.round(((new Date(o.updatedAt.replace(' ', 'T') + 'Z').getTime() - new Date(o.createdAt.replace(' ', 'T') + 'Z').getTime()) / 3_600_000) * 10) / 10
           : null
       return {
@@ -214,7 +215,7 @@ export const dashboardOdinRouter = router({
 
     // Alertas — pedidos ativos parados demais na etapa atual.
     const alertas = todasOrdens
-      .filter((o) => o.status === 'ativo' && o.stage !== 'pos_venda')
+      .filter((o) => o.status === 'ativo' && o.stage !== etapaFinal(o.orderType as OrderType))
       .map((o) => ({ ordemId: o.id, stage: o.stage, clienteNome: o.cliente?.razaoSocial ?? '—', nivel: nivelAlerta(o.stage, o.updatedAt) }))
       .filter((a): a is typeof a & { nivel: 'vermelho' | 'laranja' } => a.nivel !== null)
       .sort((a, b) => (a.nivel === b.nivel ? 0 : a.nivel === 'vermelho' ? -1 : 1))
@@ -244,7 +245,7 @@ export const dashboardOdinRouter = router({
         const linha = mapa.get(o.vendedorId)!
         linha.total++
         if (o.status === 'cancelado') linha.cancelled++
-        else if (o.stage === 'pos_venda') linha.completed++
+        else if (o.stage === etapaFinal(o.orderType as OrderType)) linha.completed++
         else linha.active++
       }
       porVendedor = Array.from(mapa.values()).sort((a, b) => b.total - a.total)

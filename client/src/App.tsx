@@ -70,6 +70,7 @@ import GuiaFinanceiro from './pages/admin/GuiaFinanceiro'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import Chat from './pages/Chat'
 import FilaPosVenda from './pages/FilaPosVenda'
+import PesquisaPosVenda from './pages/PesquisaPosVenda'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
@@ -203,6 +204,8 @@ export default function App() {
             compartilhado com o cliente de fora. */}
         <Route path="/devolucao/solicitacao" element={<DevolucaoSolicitar />} />
         <Route path="/devolucao/acompanhar" element={<DevolucaoAcompanhar />} />
+        {/* Pesquisa de satisfação do Pós-venda (Odin) — link mandado pro cliente. */}
+        <Route path="/pesquisa/:token" element={<PesquisaPosVenda />} />
         <Route
           path="/painel-tv"
           element={

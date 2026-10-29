@@ -242,6 +242,17 @@ export const maquinasRouter = router({
       return { success: true }
     }),
 
+  // Cliente antigo — 1ª preventiva já feita, não pedir de novo (ou desfazer).
+  desconsiderarPreventiva: protectedProcedure
+    .input(z.object({ id: z.number(), desconsiderar: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      const maquina = await db.query.maquinasCliente.findFirst({ where: eq(maquinasCliente.id, input.id) })
+      if (!maquina) throw new Error('Máquina não encontrada')
+      await validarAcessoCliente(maquina.clienteId, ctx.user.id, ctx.user.role === 'admin', ctx.empresaId)
+      await db.update(maquinasCliente).set({ preventivaDesconsiderada: input.desconsiderar, updatedAt: agoraSqlite() }).where(eq(maquinasCliente.id, input.id))
+      return { success: true }
+    }),
+
   // Troca feita agora — zera a referência (peça nova instalada hoje).
   marcarTrocaItem: protectedProcedure
     .input(z.object({ maquinaId: z.number(), itemId: z.number() }))

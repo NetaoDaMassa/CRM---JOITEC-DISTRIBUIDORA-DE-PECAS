@@ -15,7 +15,7 @@ import { usePersistedState } from '../lib/usePersistedState'
 import Select from '../components/ui/Select'
 import { Carregando, KpiCard, Secao, moeda, numero } from '../components/relatorios/blocos'
 import { PRESETS, datasDoPreset, formatarDataCurta, type Preset } from '../components/relatorios/filtros'
-import { PRIORIDADE_CONFIG, STAGE_COLORS, STAGE_DOT_COLORS, STAGE_LABELS, STAGE_SEQUENCE_MAQUINA, STAGE_SEQUENCE_PECA, type Stage } from '../lib/ordensShared'
+import { PRIORIDADE_CONFIG, STAGE_COLORS, STAGE_DOT_COLORS, STAGE_LABELS, STAGE_SEQUENCE_MAQUINA, STAGE_SEQUENCE_PECA, etapaFinal, type Stage } from '../lib/ordensShared'
 
 type Dados = inferRouterOutputs<AppRouter>['dashboardOdin']['controlePedidos']
 type Pedido = Dados['agora']['lista'][number]
@@ -67,7 +67,7 @@ function Esteira({
       </p>
       <div className="flex flex-wrap gap-y-2 gap-x-2">
         {etapas
-          .filter((e) => e !== 'pos_venda')
+          .filter((e) => e !== etapaFinal(tipo))
           .map((e, i) => {
             const naEtapa = pedidos.filter((p) => p.stage === e)
             const parados = naEtapa.filter((p) => p.alerta === 'vermelho').length

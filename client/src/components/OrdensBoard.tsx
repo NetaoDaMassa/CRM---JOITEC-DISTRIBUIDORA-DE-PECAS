@@ -6,7 +6,7 @@ import { timeAgo, formatDateTime } from '../lib/utils'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { Badge } from './ui/Badge'
-import { getStageSequence, STAGE_LABELS, STAGE_COLORS, PRIORIDADE_CONFIG, type OrderType, type Stage } from '../lib/ordensShared'
+import { getStageSequence, rotuloEtapa, STAGE_COLORS, PRIORIDADE_CONFIG, type OrderType, type Stage } from '../lib/ordensShared'
 import { AvatarIniciais } from './ui/Visual'
 import { CabecalhoColuna } from './painel/PainelVisual'
 
@@ -110,7 +110,7 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
           const corEtapa = COR_ETAPA_PEDIDO[stage] ?? '#94a3b8'
           return (
             <div key={stage} id={`coluna-pedido-${stage}`} className="shrink-0 w-72 scroll-mt-4">
-              <CabecalhoColuna rotulo={STAGE_LABELS[stage as Stage]} cor={corEtapa} quantidade={cards.length} alerta={atrasados ? `${atrasados} atrasado${atrasados > 1 ? 's' : ''}` : null} />
+              <CabecalhoColuna rotulo={rotuloEtapa(stage, orderType)} cor={corEtapa} quantidade={cards.length} alerta={atrasados ? `${atrasados} atrasado${atrasados > 1 ? 's' : ''}` : null} />
               <div className="space-y-2">
                 {cards.map((ordem) => {
                   const alerta = nivelAlerta(ordem)
@@ -234,9 +234,9 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                             onClick={() => moverMut.mutate({ id: ordem.id, novaEtapa: etapaAnterior })}
                             disabled={moverMut.isPending}
                             className="flex items-center gap-1 text-[11px] font-semibold text-dark-400 hover:text-dark-200 transition-colors disabled:opacity-50"
-                            title={`Voltar para "${STAGE_LABELS[etapaAnterior]}"`}
+                            title={`Voltar para "${rotuloEtapa(etapaAnterior, orderType)}"`}
                           >
-                            <ArrowLeft size={11} /> Voltar pra "{STAGE_LABELS[etapaAnterior]}"
+                            <ArrowLeft size={11} /> Voltar pra "{rotuloEtapa(etapaAnterior, orderType)}"
                           </button>
                         </div>
                       )}

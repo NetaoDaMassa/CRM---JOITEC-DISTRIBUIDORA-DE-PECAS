@@ -16,6 +16,8 @@ import EtapaColeta from './EtapaColeta'
 import EtapaRastreio from './EtapaRastreio'
 import EtapaQualidade from './EtapaQualidade'
 import EtapaPosVenda from './EtapaPosVenda'
+import EtapaPosVendaMaquina from './EtapaPosVendaMaquina'
+import EtapaConcluidoMaquina from './EtapaConcluidoMaquina'
 
 export type OrdemParaEtapa = {
   id: number
@@ -94,18 +96,41 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
     case 'qualidade':
       return <EtapaQualidade ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} clienteNome={clienteNome} clienteEmail={clienteEmail} />
     case 'concluido':
-      return <p className="text-sm text-dark-400 text-center py-6">✅ Venda concluída! Avance para registrar o Feedback/Finalizado.</p>
+      if (orderType === 'maquina') return <EtapaConcluidoMaquina ordemId={ordemId} />
+      return <p className="text-sm text-dark-400 text-center py-6">✅ Pedido concluído — fluxo da peça encerrado.</p>
     case 'pos_venda':
+      if (orderType === 'maquina') {
+        return (
+          <EtapaPosVendaMaquina
+            ordemId={ordemId}
+            isAdmin={isAdmin}
+            readonly={readonly}
+            clienteNome={clienteNome}
+            clienteWhatsapp={clienteWhatsapp}
+            clienteRevendaId={ordem.cliente?.revendaId}
+          />
+        )
+      }
+      // Peça: previsão de chegada + a mesma pesquisa de satisfação da
+      // máquina (sem PDF/técnico) + os dados antigos embaixo — o NPS deu
+      // lugar à pesquisa (João, 2026-10-29).
       return (
-        <EtapaPosVenda
-          ordemId={ordemId}
-          isAdmin={isAdmin}
-          readonly={readonly}
-          orderType={orderType}
-          clienteNome={clienteNome}
-          clienteWhatsapp={clienteWhatsapp}
-          clienteRevendaId={ordem.cliente?.revendaId}
-        />
+        <div className="space-y-6">
+          <EtapaPosVendaMaquina ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} clienteNome={clienteNome} clienteWhatsapp={clienteWhatsapp} />
+          <div className="border-t border-dark-700 pt-4">
+            <p className="text-xs font-semibold text-dark-500 uppercase tracking-wide mb-3">Outros dados</p>
+            <EtapaPosVenda
+              ordemId={ordemId}
+              isAdmin={isAdmin}
+              readonly={readonly}
+              orderType={orderType}
+              clienteNome={clienteNome}
+              clienteWhatsapp={clienteWhatsapp}
+              clienteRevendaId={ordem.cliente?.revendaId}
+              semNps
+            />
+          </div>
+        </div>
       )
     default:
       return null

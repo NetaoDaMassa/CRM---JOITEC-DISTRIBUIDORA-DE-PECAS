@@ -263,6 +263,17 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'NPS médio', texto: 'Nota média (0 a 10) que o cliente deu pra "quanto recomendaria a empresa". Só conta quem respondeu a nota.' },
     { termo: 'Com lembrete pendente', texto: 'Pós-vendas com data de lembrete marcada pra voltar a falar com o cliente.' },
   ],
+  'odin-satisfacao': [
+    { termo: 'Pesquisas enviadas', texto: 'Pedidos de máquina em que a equipe mandou o PDF + link da pesquisa ao cliente (etapa Pós-venda), pela data do envio.' },
+    { termo: 'Respondidas', texto: 'Respostas recebidas no período — pelo link (cliente) ou lançadas pela equipe. O % é de quantas das enviadas no período já voltaram.' },
+    { termo: 'Notas', texto: 'De 1 (muito insatisfeito) a 5 (muito satisfeito), para a Odin, a transportadora/entrega e o técnico que fez a partida. Média só de quem respondeu.' },
+    { termo: 'Precisam de acompanhamento', texto: 'Respostas com alguma nota 1 ou 2, "Não, preciso de suporte" ou pedido de contato, que ainda não tiveram o acompanhamento registrado no pedido. Aparecem na lista mesmo fora do período, até alguém resolver.' },
+  ],
+  'odin-agendamentosPecas': [
+    { termo: 'Agendamento', texto: 'Criado sozinho quando um pedido de máquina chega em "Concluído". Fica na coluna "Agendamentos" do Kanban de quem recebe (Config. Odin → Pós-venda).' },
+    { termo: 'Atrasados', texto: 'Em aberto com a data do próximo contato já passada.' },
+    { termo: 'Concluídos', texto: 'Agendamentos fechados no período, separados pelo resultado (vendeu peça, foi para a revenda, sem interesse, outro).' },
+  ],
   'odin-maquinas': [{ termo: 'Total em estoque cadastrado', texto: 'Máquinas cadastradas no estoque, divididas por status e porte (pequeno/grande). Não usa filtro de data.' }],
   'odin-pipeline': [{ termo: 'Total de pedidos', texto: 'Pedidos do período, divididos pela etapa em que estão agora, pelo status e por tipo (máquina ou peça).' }],
   'odin-propostas': [

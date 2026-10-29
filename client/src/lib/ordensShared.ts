@@ -22,11 +22,15 @@ export const STAGE_SEQUENCE_MAQUINA = [
   'coleta',
   'rastreio',
   'qualidade',
-  'concluido',
+  // Máquina: Pós-venda antes de Concluído (2026-10-29) — ver server/src/lib/ordensStages.ts.
   'pos_venda',
+  'concluido',
 ] as const
 
-export const STAGE_SEQUENCE_PECA = ['pedido', 'preparacao', 'frete_finalizado', 'faturamento', 'coleta', 'rastreio', 'concluido', 'pos_venda'] as const
+// Peça também passou a terminar em Concluído (João, 2026-10-29): o antigo
+// "Concluído" (previsão de chegada) + "Feedback/Finalizado" viraram uma
+// etapa só de Pós-venda, antes do Concluído.
+export const STAGE_SEQUENCE_PECA = ['pedido', 'preparacao', 'frete_finalizado', 'faturamento', 'coleta', 'rastreio', 'pos_venda', 'concluido'] as const
 
 export type Stage = (typeof STAGE_SEQUENCE_MAQUINA)[number] | (typeof STAGE_SEQUENCE_PECA)[number]
 
@@ -46,7 +50,18 @@ export const STAGE_LABELS: Record<Stage, string> = {
   rastreio: 'Rastreio',
   qualidade: 'Qualidade',
   concluido: 'Concluído',
-  pos_venda: 'Feedback/Finalizado',
+  pos_venda: 'Pós-venda',
+}
+
+// Peça continua chamando a etapa de "Feedback/Finalizado".
+export function rotuloEtapa(stage: string, orderType: OrderType): string {
+  void orderType
+  return STAGE_LABELS[stage as Stage] ?? stage
+}
+
+export function etapaFinal(orderType: OrderType): Stage {
+  void orderType
+  return 'concluido'
 }
 
 export function getStageSequence(orderType: OrderType): readonly Stage[] {

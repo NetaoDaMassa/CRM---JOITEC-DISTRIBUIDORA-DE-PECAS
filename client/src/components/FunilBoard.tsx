@@ -26,6 +26,7 @@ import HistoricoCliente from './HistoricoCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
 import { AvatarIniciais, dispararConfete } from './ui/Visual'
+import ColunaAgendamentosPecas from './agendamentos/ColunaAgendamentosPecas'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
 // urgência na lateral do card (verde/amarelo/vermelho pelos dias sem contato).
@@ -640,7 +641,8 @@ export default function FunilBoard({
           const limiteColuna = limitePorColuna ? (extrasPorColuna[etapa.value] ?? 0) + limitePorColuna : Infinity
           const cardsVisiveis = colCards.length > limiteColuna ? colCards.slice(0, limiteColuna) : colCards
           return (
-            <div key={etapa.value} className="shrink-0 w-72">
+            <Fragment key={etapa.value}>
+            <div className="shrink-0 w-72">
               <div
                 className="flex items-center gap-2 mb-3 rounded-xl bg-dark-800/70 border border-dark-700 px-3 py-2 border-t-[3px]"
                 style={{ borderTopColor: COR_ETAPA[etapa.value] ?? '#6580a0' }}
@@ -840,6 +842,11 @@ export default function FunilBoard({
                 )}
               </div>
             </div>
+            {/* Agendamentos de peças (Odin Compressores) — entre Novo e Abordagem, pedido do João 2026-10-29. */}
+            {etapa.value === 'novo' && ehOdinCompressores && !apenasEtapas && (
+              <ColunaAgendamentosPecas vendedorId={coberturaVendedorId} todos={coberturaTodos} busca={termo} />
+            )}
+            </Fragment>
           )
         })}
       </div>

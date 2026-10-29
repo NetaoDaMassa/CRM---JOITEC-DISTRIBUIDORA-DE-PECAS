@@ -15,6 +15,7 @@ export default function EtapaPosVenda({
   clienteNome,
   clienteWhatsapp,
   clienteRevendaId,
+  semNps,
 }: {
   ordemId: number
   isAdmin: boolean
@@ -23,6 +24,8 @@ export default function EtapaPosVenda({
   clienteNome?: string | null
   clienteWhatsapp?: string | null
   clienteRevendaId?: number | null
+  // Máquina: NPS/feedback deram lugar à pesquisa de satisfação (EtapaPosVendaMaquina).
+  semNps?: boolean
 }) {
   const { data, isLoading } = trpc.ordens.pos.obterPosVenda.useQuery({ ordemId })
   const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { retry: false })
@@ -38,6 +41,7 @@ export default function EtapaPosVenda({
       clienteNome={clienteNome}
       clienteWhatsapp={clienteWhatsapp}
       clienteRevendaId={clienteRevendaId}
+      semNps={semNps}
     />
   )
 }
@@ -51,11 +55,13 @@ function EtapaPosVendaForm({
   clienteNome,
   clienteWhatsapp,
   clienteRevendaId,
+  semNps,
 }: {
   ordemId: number
   isAdmin: boolean
   readonly: boolean
   orderType: OrderType
+  semNps?: boolean
   data: {
     feedbackCliente: string | null
     npsScore: number | null
@@ -131,6 +137,7 @@ function EtapaPosVendaForm({
 
       <Input label="Data da primeira preventiva" type="date" defaultValue={primeiraPreventiva} onChange={(e) => setPrimeiraPreventiva(e.target.value)} disabled={!podeEditar} />
 
+      {!semNps && (<>
       <div>
         <label className="text-xs text-dark-400 mb-2 block">Nota NPS</label>
         <div className="flex flex-wrap gap-1.5">
@@ -150,6 +157,7 @@ function EtapaPosVendaForm({
       </div>
 
       <Textarea label="Feedback do cliente" defaultValue={feedback} onChange={(e) => setFeedback(e.target.value)} disabled={!podeEditar} />
+      </>)}
 
       <div className="p-3 rounded-lg border border-dark-700 space-y-2">
         <p className="text-xs font-semibold text-dark-400">Lembrete no Calendário</p>
@@ -177,7 +185,7 @@ function EtapaPosVendaForm({
             })
           }
         >
-          Salvar Pós Venda
+          {semNps ? 'Salvar dados' : 'Salvar Pós Venda'}
         </Button>
       )}
     </div>
