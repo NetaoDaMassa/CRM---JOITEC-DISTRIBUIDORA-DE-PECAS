@@ -17,6 +17,12 @@ services:
       # Opcional — extração de itens do PDF do pedido via IA. Se vazio, o recurso
       # de extração automática fica desabilitado (o resto do CRM funciona normal).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # SAP Business One (Service Layer, só leitura) — URL/banco/usuário/senha
+      # no .env do servidor. Sem isso a integração fica desligada sozinha.
+      SAP_SL_URL: ${SAP_SL_URL:-}
+      SAP_SL_COMPANYDB: ${SAP_SL_COMPANYDB:-}
+      SAP_SL_USER: ${SAP_SL_USER:-}
+      SAP_SL_PASSWORD: ${SAP_SL_PASSWORD:-}
       # Opcional — integração GoTo Connect (registro automático de ligações).
       # Se vazio, o botão "Conectar com a GoTo" em Configurações fica
       # indisponível, mas o resto do CRM funciona normal.
