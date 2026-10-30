@@ -4,6 +4,7 @@ import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import {
   clientes,
+  empresas,
   funilMensal,
   itensPedido,
   logAuditoria,
@@ -17,6 +18,7 @@ import {
 } from '../db/schema.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
+import { SLUG_COMPRESSORES } from '../lib/sapCompressores.js'
 
 // Histórico de vendas do SAP (só consulta) — ver sapImportacoes em schema.ts.
 
@@ -269,6 +271,18 @@ export const historicoSapRouter = router({
         itens: n?.itens ?? pdf,
       })
     }
+    // Odin Compressores (carteira da Bruna, lib/sapCompressores.ts): a ficha
+    // mostra TUDO que o cliente comprou (decisão do João, 2026-10-30) — nota
+    // do SAP que não casou com venda nenhuma (máquina vendida por externo,
+    // que lá vira Pedido/ordem) entra como linha própria. Só na ficha: não
+    // soma em relatório nenhum.
+    const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+    if (empresa?.slug === SLUG_COMPRESSORES) {
+      for (const n of notas.values()) {
+        if (usadas.has(n.numero)) continue
+        linhas.push({ chave: `nota-${n.numero}`, origem: 'sap', data: n.data, numeroPedido: null, numeroNota: n.numero, valor: n.total ?? n.soma, vendedorNome: null, condicaoPagamento: null, pdfPedidoPath: null, itensDe: 'nota', itens: n.itens })
+      }
+    }
     linhas.sort((a, b) => b.data.localeCompare(a.data) || b.chave.localeCompare(a.chave))
 
     const total = linhas.reduce((s, l) => s + l.valor, 0)
@@ -283,7 +297,7 @@ export const historicoSapRouter = router({
       linhas,
       total,
       qtd: linhas.length,
-      qtdSap: pedidosSap.length,
+      qtdSap: linhas.filter((l) => l.origem === 'sap').length,
       qtdCrm: vendasCrm.length,
       ticketMedio: linhas.length ? total / linhas.length : 0,
       ultimaCompra: linhas[0]?.data ?? null,

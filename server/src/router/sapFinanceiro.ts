@@ -5,6 +5,7 @@ import { db } from '../db/client.js'
 import { clientes, empresas, sapSaldosClientes, sapTitulosAbertos, users } from '../db/schema.js'
 import { getConfigNumero, getConfigTexto } from '../lib/configuracoes.js'
 import { hojeBrString } from '../lib/dataBr.js'
+import { SLUG_COMPRESSORES, codigosSapCompressores } from '../lib/sapCompressores.js'
 
 // Quem está devendo, segundo o SAP (lib/sapContasReceber.ts) — pedido do
 // João, 2026-10-29: o vendedor vê no card do Kanban e na ficha. Só aviso, não
@@ -23,11 +24,21 @@ async function carenciaDias(): Promise<number> {
 
 // Em quais empresas do CRM o aviso aparece (`sap_inadimplencia_empresas`,
 // slugs separados por vírgula) — João começou só com Joitec e Odin Tubos
-// (2026-10-29). Mostra TODOS os valores, inclusive os títulos antigos.
+// (2026-10-29); em 2026-10-30 entrou a Odin Compressores, só com a carteira
+// da Bruna. Mostra TODOS os valores, inclusive os títulos antigos.
 async function inadimplenciaLigada(empresaId: number): Promise<boolean> {
-  const lista = ((await getConfigTexto('sap_inadimplencia_empresas')) ?? 'joitec,odin-tubos').split(',').map((s) => s.trim())
+  const lista = ((await getConfigTexto('sap_inadimplencia_empresas')) ?? `joitec,odin-tubos,${SLUG_COMPRESSORES}`).split(',').map((s) => s.trim())
   const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
   return !!e && lista.includes(e.slug)
+}
+
+// Odin Compressores: o código do CRM é do sistema antigo — a ligação com o
+// código do SAP vem de lib/sapCompressores.ts, e só existe pros clientes da
+// carteira da Bruna (os outros não aparecem). null = outra empresa (vale o
+// próprio código/código antigo do cadastro).
+async function codigosCompressores(empresaId: number): Promise<Map<number, string[]> | null> {
+  const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
+  return e?.slug === SLUG_COMPRESSORES ? codigosSapCompressores() : null
 }
 
 export const sapFinanceiroRouter = router({
@@ -43,7 +54,8 @@ export const sapFinanceiroRouter = router({
       .where(and(gt(sapTitulosAbertos.valorAberto, 0), inArray(sapTitulosAbertos.tipo, ['nota', 'titulo_antigo', 'adiantamento'])))
     const codigos = [...new Set(titulos.map((t) => t.codigoCliente))]
     const vendedorId = ctx.user.role === 'admin' ? input.vendedorId : ctx.user.id
-    const lista = codigos.length
+    const compressores = await codigosCompressores(ctx.empresaId)
+    const lista = (compressores ? compressores.size : codigos.length)
       ? await db
           .select({
             id: clientes.id,
@@ -58,12 +70,12 @@ export const sapFinanceiroRouter = router({
             and(
               eq(clientes.empresaId, ctx.empresaId),
               isNull(clientes.deletedAt),
-              inArray(clientes.codigo, codigos),
+              compressores ? inArray(clientes.id, [...compressores.keys()]) : inArray(clientes.codigo, codigos),
               vendedorId ? eq(clientes.vendedorAtualId, vendedorId) : undefined
             )
           )
       : []
-    const porCodigo = new Map(lista.map((c) => [c.codigo, c]))
+    const porCodigo = new Map(lista.flatMap((c) => (compressores?.get(c.id) ?? [c.codigo]).map((k) => [k, c] as const)))
     const [{ atualizadoEm } = { atualizadoEm: null }] = await db
       .select({ atualizadoEm: sql<string | null>`max(${sapSaldosClientes.atualizadoEm})` })
       .from(sapSaldosClientes)
@@ -109,18 +121,22 @@ export const sapFinanceiroRouter = router({
     const devedores = porCodigo.filter((d) => diasEntre(d.maisAntigo, hoje) > carencia)
     if (!devedores.length) return []
     const codigos = devedores.map((d) => d.codigo)
+    const compressores = await codigosCompressores(ctx.empresaId)
+    if (compressores && !compressores.size) return []
     const lista = await db.query.clientes.findMany({
       where: and(
         eq(clientes.empresaId, ctx.empresaId),
         isNull(clientes.deletedAt),
-        or(inArray(clientes.codigo, codigos), inArray(clientes.codigoAntigo, codigos)),
+        compressores ? inArray(clientes.id, [...compressores.keys()]) : or(inArray(clientes.codigo, codigos), inArray(clientes.codigoAntigo, codigos)),
         ctx.user.role === 'admin' ? undefined : eq(clientes.vendedorAtualId, ctx.user.id)
       ),
       columns: { id: true, codigo: true, codigoAntigo: true },
     })
     const porCod = new Map(devedores.map((d) => [d.codigo, d]))
     return lista.flatMap((c) => {
-      const d = porCod.get(c.codigo) ?? (c.codigoAntigo ? porCod.get(c.codigoAntigo) : undefined)
+      const d = compressores
+        ? (compressores.get(c.id) ?? []).map((k) => porCod.get(k)).find(Boolean)
+        : (porCod.get(c.codigo) ?? (c.codigoAntigo ? porCod.get(c.codigoAntigo) : undefined))
       return d ? [{ clienteId: c.id, vencido: Math.round(d.vencido * 100) / 100, maiorAtraso: diasEntre(d.maisAntigo, hoje) }] : []
     })
   }),
@@ -135,7 +151,9 @@ export const sapFinanceiroRouter = router({
     })
     if (!cliente) throw new Error('Cliente não encontrado')
     if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
-    const codigos = [cliente.codigo, cliente.codigoAntigo].filter((c): c is string => !!c)
+    const compressores = await codigosCompressores(ctx.empresaId)
+    const codigos = compressores ? (compressores.get(cliente.id) ?? []) : [cliente.codigo, cliente.codigoAntigo].filter((c): c is string => !!c)
+    if (!codigos.length) return null
     const [titulos, saldos, carencia] = await Promise.all([
       db.select().from(sapTitulosAbertos).where(inArray(sapTitulosAbertos.codigoCliente, codigos)),
       db.select().from(sapSaldosClientes).where(inArray(sapSaldosClientes.codigoCliente, codigos)),

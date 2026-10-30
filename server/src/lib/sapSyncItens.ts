@@ -6,6 +6,7 @@ import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
+import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap } from './sapCompressores.js'
 
 // Itens das notas de venda puxados DIRETO do SAP (Service Layer) — passo 2
 // da integração, pedido do João, 2026-10-29. Faz o mesmo papel da planilha
@@ -32,9 +33,9 @@ const CHAVE_VENDEDORES_AUTOMACAO = 'sap_vendedores_automacao'
 const DIAS_SOBREPOSICAO = 3
 
 // Filial do SAP (BPL_IDAssignedToInvoice) → empresa do CRM. Odin
-// Compressores (filial 1) fica de fora por enquanto: os códigos de cliente
-// do CRM dela vieram do sistema antigo e não batem com o SAP (precisa casar
-// por CNPJ — próximo passo). Compretec (filial 5) está desativada no SAP.
+// Compressores (filial 1) entra só com os clientes da carteira da Bruna,
+// casados por código ou CNPJ (lib/sapCompressores.ts). Compretec (filial 5)
+// está desativada no SAP.
 const SLUG_POR_FILIAL: Record<number, string> = { 3: 'joitec', 4: 'odin-tubos' }
 // A Odin Automação vende pelo CNPJ da Joitec (filial 3): o que separa é o
 // vendedor da nota. Códigos do SAP: 86 PAMELA CRISTINA - AUTOMAÇÃO,
@@ -74,6 +75,8 @@ export interface SyncItensResultado {
   outraFilial: number
   jaImportadas: number
   empresaDesligada: number
+  // Nota da Odin Compressores de cliente fora da carteira da Bruna.
+  foraDaCarteira: number
   porEmpresa: Record<string, { notas: number; linhas: number; valor: number; clientes: number }>
   naoEncontradas: { empresa: string; codigo: string; nome: string; nota: string; valor: number }[]
   canceladasRemovidas: { nota: string; linhas: number }[]
@@ -85,8 +88,12 @@ export async function sincronizarItensSap(opts: {
   usuarioId: number
   de?: string
   ate?: string
+  // Carga avulsa de uma empresa só (ex.: o histórico desde abril da carteira
+  // da Bruna, scripts/sincronizarItensSap.ts --so-compressores) — não mexe
+  // nas outras nem na data da última sincronização.
+  soEmpresa?: string
 }): Promise<SyncItensResultado> {
-  const slugs = [...Object.values(SLUG_POR_FILIAL), SLUG_AUTOMACAO]
+  const slugs = [...Object.values(SLUG_POR_FILIAL), SLUG_AUTOMACAO, SLUG_COMPRESSORES]
   const listaEmpresas = await db.query.empresas.findMany({ where: inArray(empresas.slug, slugs) })
   const empresaPorSlug = new Map(listaEmpresas.map((e) => [e.slug, e]))
 
@@ -132,13 +139,20 @@ export async function sincronizarItensSap(opts: {
     clientesPorSlug.set(e.slug, { exato, semZero })
   }
 
-  const notas = await comSessaoSap((sap) =>
-    sap.getTodos<NotaSap>(
+  const { notas, compressores } = await comSessaoSap(async (sap) => {
+    const notas = await sap.getTodos<NotaSap>(
       `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,DocTotal,DownPaymentAmount,Cancelled,CancelStatus,DocumentLines` +
-        `&$filter=DocDate ge '${de}' and DocDate le '${ate}'&$orderby=DocEntry`,
+        `&$filter=DocDate ge '${de}' and DocDate le '${ate}'${opts.soEmpresa === SLUG_COMPRESSORES ? ` and BPL_IDAssignedToInvoice eq ${FILIAL_COMPRESSORES}` : ''}&$orderby=DocEntry`,
       200
     )
-  )
+    const compressores = empresaPorSlug.has(SLUG_COMPRESSORES)
+      ? await clientesCompressoresPorCodigoSap(
+          sap,
+          notas.filter((n) => n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES).map((n) => n.CardCode)
+        )
+      : new Map()
+    return { notas, compressores }
+  })
 
   const resultado: SyncItensResultado = {
     periodo: { de, ate },
@@ -147,6 +161,7 @@ export async function sincronizarItensSap(opts: {
     outraFilial: 0,
     jaImportadas: 0,
     empresaDesligada: 0,
+    foraDaCarteira: 0,
     porEmpresa: {},
     naoEncontradas: [],
     canceladasRemovidas: [],
@@ -162,14 +177,19 @@ export async function sincronizarItensSap(opts: {
       if (n.Cancelled === 'tYES') notasCanceladas.push(nota)
       continue
     }
-    const slugFilial = SLUG_POR_FILIAL[n.BPL_IDAssignedToInvoice]
+    const daCarteira = n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES ? compressores.get(n.CardCode) : undefined
+    if (n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && !daCarteira && empresaPorSlug.has(SLUG_COMPRESSORES)) {
+      resultado.foraDaCarteira++
+      continue
+    }
+    const slugFilial = daCarteira ? SLUG_COMPRESSORES : SLUG_POR_FILIAL[n.BPL_IDAssignedToInvoice]
     if (!slugFilial) {
       resultado.outraFilial++
       continue
     }
     const slug = slugFilial === 'joitec' && codigosAutomacao.has(n.SalesPersonCode) ? SLUG_AUTOMACAO : slugFilial
     const empresa = empresaPorSlug.get(slug)
-    if (!empresa) {
+    if (!empresa || (opts.soEmpresa && slug !== opts.soEmpresa)) {
       resultado.outraFilial++
       continue
     }
@@ -184,7 +204,7 @@ export async function sincronizarItensSap(opts: {
     const valorNota = n.DocumentLines.reduce((s, l) => s + (l.LineTotal ?? 0), 0)
     const codigo = limparCodigo(n.CardCode ?? '')
     const mapa = clientesPorSlug.get(slug)!
-    const clienteId = mapa.exato.get(codigo) ?? mapa.semZero.get(semZerosEsquerda(codigo))
+    const clienteId = daCarteira?.id ?? mapa.exato.get(codigo) ?? mapa.semZero.get(semZerosEsquerda(codigo))
     if (!clienteId) {
       resultado.naoEncontradas.push({ empresa: empresa.nome, codigo, nome: n.CardName, nota, valor: valorNota })
       continue
@@ -281,7 +301,7 @@ export async function sincronizarItensSap(opts: {
       .set({ totalLinhas: Number(t.linhas), importadas: Number(t.linhas), valorTotal: Number(t.valor), dataInicio: t.de, dataFim: t.ate })
       .where(eq(sapImportacoes.id, loteId))
   }
-  await setConfig(CHAVE_ULTIMA_DATA, ate)
+  if (!opts.soEmpresa) await setConfig(CHAVE_ULTIMA_DATA, ate)
   resultado.gravado = true
   return resultado
 }

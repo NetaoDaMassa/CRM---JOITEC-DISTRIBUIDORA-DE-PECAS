@@ -1,19 +1,23 @@
 import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, funilMensal, itensPedido, users, vendas } from '../db/schema.js'
+import { clientes, empresas, funilMensal, itensPedido, ordemDetalhes, ordens, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
 import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { criarOrdemPecaSeOdinCompressores } from './vendaParaOrdemPeca.js'
+import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
 
 // Venda automática a partir do pedido do SAP (pedido do João, 2026-10-30).
 // O comparativo de 29/10 mostrou SAP R$ 173 mil × CRM R$ 85 mil na Joitec:
 // os vendedores fazem o pedido no SAP e não registram no Kanban. Regras
 // combinadas com o João:
 //   - só pedidos a partir de `sap_vendas_auto_desde` ("daqui pra frente");
-//   - Joitec, Odin Tubos e Odin Automação (Odin Compressores tem Pedidos);
+//   - Joitec, Odin Tubos e Odin Automação; da Odin Compressores, só os
+//     pedidos da Bruna pra clientes da carteira dela (lib/sapCompressores.ts —
+//     o resto de lá é Pedido/ordem);
 //   - a venda conta pro vendedor DONO DO CLIENTE no CRM (o do card do mês);
 //   - venda pra empresa do grupo (Comprefer etc.) não entra.
 // Contra duplicidade:
@@ -104,7 +108,11 @@ export async function vendaJaVeioDoSap(clienteId: number, valor: number): Promis
 // `opts.docEntries`: só esses pedidos (botões "Criar venda"/"Trazer para cá" da
 // Conferência SAP × CRM). `opts.ignorarVendaId`: finge que essa venda não está
 // ligada ao pedido (a de outra empresa, que só sai depois que a nova entrou).
-export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: number[]; ignorarVendaId?: number } = {}): Promise<SyncVendasResultado | null> {
+// `opts.soFilial`: só os pedidos dessa filial do SAP (carga avulsa da carteira
+// da Bruna — script --so-compressores — sem mexer de novo nas outras).
+export async function sincronizarVendasSap(
+  opts: { desde?: string; docEntries?: number[]; ignorarVendaId?: number; soFilial?: number } = {}
+): Promise<SyncVendasResultado | null> {
   const desdeConfig = await getConfigTexto('sap_vendas_auto_desde')
   if (!desdeConfig && !opts.desde) return null
   const hoje = hojeBrString()
@@ -115,13 +123,15 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
   const grupo = new Set(((await getConfigTexto('sap_receber_ignorar_clientes')) ?? GRUPO_PADRAO).split(',').map((s) => s.trim().toUpperCase()))
   const automacao = await vendedoresAutomacaoSap()
   const odinTubos = await vendedoresOdinTubosSap()
-  const lista = await db.query.empresas.findMany({ where: inArray(empresas.slug, ['joitec', 'odin-tubos', 'joitec-automacao']) })
+  const vendedoresCompressores = await vendedoresSapCompressores()
+  const lista = await db.query.empresas.findMany({ where: inArray(empresas.slug, ['joitec', 'odin-tubos', 'joitec-automacao', SLUG_COMPRESSORES]) })
   const empresaPorSlug = new Map(lista.map((e) => [e.slug, e]))
   const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true), columns: { id: true } })
 
-  const { pedidos, condicoes, notas } = await comSessaoSap(async (sap) => {
+  const { pedidos, condicoes, notas, compressores } = await comSessaoSap(async (sap) => {
     const pedidos = await sap.getTodos<PedidoSap>(
-      `/Orders?$filter=DocDate ge '${desde}' and (BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4)` +
+      `/Orders?$filter=DocDate ge '${desde}' and ` +
+        (opts.soFilial ? `BPL_IDAssignedToInvoice eq ${opts.soFilial}` : `(BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4 or BPL_IDAssignedToInvoice eq ${FILIAL_COMPRESSORES})`) +
         (opts.docEntries?.length ? ` and (${opts.docEntries.map((e) => `DocEntry eq ${e}`).join(' or ')})` : '') +
         '&$select=DocEntry,DocNum,DocDate,DocTime,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice,PaymentGroupCode,Cancelled,DocumentLines',
       100
@@ -129,9 +139,17 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
     // Pedidos escolhidos (botão da Conferência): só as notas desses clientes —
     // o mês inteiro de notas com linhas demora.
     const soClientes = opts.docEntries?.length ? [...new Set(pedidos.map((p) => p.CardCode))] : []
-    const filtroClientes = soClientes.length ? ` and (${soClientes.map((c) => `CardCode eq '${c.replace(/'/g, "''")}'`).join(' or ')})` : ''
+    const filtroClientes =
+      (soClientes.length ? ` and (${soClientes.map((c) => `CardCode eq '${c.replace(/'/g, "''")}'`).join(' or ')})` : '') +
+      (opts.soFilial ? ` and BPL_IDAssignedToInvoice eq ${opts.soFilial}` : '')
     return {
       pedidos,
+      compressores: empresaPorSlug.has(SLUG_COMPRESSORES)
+        ? await clientesCompressoresPorCodigoSap(
+            sap,
+            pedidos.filter((p) => p.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && vendedoresCompressores.has(p.SalesPersonCode)).map((p) => p.CardCode)
+          )
+        : new Map(),
       condicoes: new Map(
         (await sap.getTodos<{ GroupNumber: number; PaymentTermsGroupName: string }>('/PaymentTermsTypes?$select=GroupNumber,PaymentTermsGroupName')).map((c) => [
           c.GroupNumber,
@@ -203,6 +221,8 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
     if (p.Cancelled === 'tYES') {
       if (ja?.criadaPeloSap) {
         await db.update(vendas).set({ deletedAt: agoraSqlite() }).where(eq(vendas.id, ja.id))
+        // Odin Compressores: o Pedido (ordem) que nasceu dessa venda cai junto.
+        if (ja.convertidoParaOrdemId) await db.update(ordens).set({ status: 'cancelado' }).where(eq(ordens.id, ja.convertidoParaOrdemId))
         await registrarAuditoria({ tabela: 'vendas', registroId: ja.id, acao: 'excluir', valorNovo: `pedido ${p.DocNum} cancelado no SAP`, alteradoPor: autor?.id ?? null })
         r.canceladas++
       }
@@ -214,6 +234,7 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
       // pedido 8889 estava R$ 12.309 no SAP × R$ 9.462 no CRM).
       if (Math.abs(ja.valorFechado - p.DocTotal) > 0.009) {
         await db.update(vendas).set({ valorFechado: p.DocTotal }).where(eq(vendas.id, ja.id))
+        await acertarValorDoPedidoOdin(ja.convertidoParaOrdemId, p.DocTotal)
         await registrarAuditoria({
           tabela: 'vendas',
           registroId: ja.id,
@@ -228,12 +249,22 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
       continue
     }
 
-    const slug = slugDoPedidoSap(p.BPL_IDAssignedToInvoice, p.SalesPersonCode, automacao, odinTubos)
+    // Odin Compressores: só pedido da Bruna pra cliente da carteira dela.
+    const daCarteira =
+      p.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && vendedoresCompressores.has(p.SalesPersonCode) ? compressores.get(p.CardCode) : undefined
+    if (p.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && !daCarteira) {
+      if (vendedoresCompressores.has(p.SalesPersonCode))
+        r.semCliente.push({ pedido: p.DocNum, codigo: limparCodigo(p.CardCode), nome: p.CardName, empresa: 'Odin Compressores (fora da carteira da Bruna)' })
+      continue
+    }
+    const slug = daCarteira ? SLUG_COMPRESSORES : slugDoPedidoSap(p.BPL_IDAssignedToInvoice, p.SalesPersonCode, automacao, odinTubos)
     const empresa = slug ? empresaPorSlug.get(slug) : undefined
     if (!empresa) continue
 
     const codigo = limparCodigo(p.CardCode)
-    const cadastros = equivalentes(empresa.id, codigo, p.CardName)
+    const cadastros = daCarteira
+      ? (todos.filter((c) => c.id === daCarteira.id) as Cli[])
+      : equivalentes(empresa.id, codigo, p.CardName)
     if (!cadastros.length) {
       r.semCliente.push({ pedido: p.DocNum, codigo, nome: p.CardName, empresa: empresa.nome })
       continue
@@ -293,6 +324,7 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
         .update(vendas)
         .set({ pedidoSapEntry: p.DocEntry, numeroPedido: manual.numeroPedido ?? String(p.DocNum), valorFechado: p.DocTotal })
         .where(eq(vendas.id, manual.id))
+      await acertarValorDoPedidoOdin(manual.convertidoParaOrdemId, p.DocTotal)
       const temItens = await db.select({ id: itensPedido.id }).from(itensPedido).where(and(eq(itensPedido.vendaId, manual.id), isNull(itensPedido.deletedAt))).limit(1)
       if (!temItens.length) await gravarItens(manual.id, manual.clienteId, p)
       r.ligadas++
@@ -338,6 +370,21 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
     })
     const vendaId = Number(res.lastInsertRowid)
     await gravarItens(vendaId, cliente.id, p)
+    // Odin Compressores: toda venda da carteira da Bruna vira Pedido de peça
+    // (lib/vendaParaOrdemPeca.ts), igual ao registro manual. Na carga avulsa
+    // de período passado (--desde) não: o pedido já saiu, entraria no começo
+    // do fluxo de Preparação à toa.
+    if (daCarteira && !opts.desde) {
+      await criarOrdemPecaSeOdinCompressores({
+        empresaId: empresa.id,
+        vendaId,
+        clienteId: cliente.id,
+        vendedorId: card.vendedorId,
+        criadoPorId: autor?.id ?? card.vendedorId,
+        valorFechado: p.DocTotal,
+        numeroPedido: String(p.DocNum),
+      })
+    }
     await db
       .update(clientes)
       .set({ dataUltimaCompra: sql`max(coalesce(${clientes.dataUltimaCompra}, ''), ${dataFechamento})` })
@@ -362,6 +409,12 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
     }
   }
   return r
+}
+
+// Venda da Bruna que já virou Pedido (ordem): o valor do Pedido acompanha o
+// do SAP (é o que soma no faturamento da Odin Compressores).
+async function acertarValorDoPedidoOdin(ordemId: number | null, valor: number) {
+  if (ordemId) await db.update(ordemDetalhes).set({ valorPedido: valor }).where(eq(ordemDetalhes.ordemId, ordemId))
 }
 
 async function gravarItens(vendaId: number, clienteId: number, p: PedidoSap) {

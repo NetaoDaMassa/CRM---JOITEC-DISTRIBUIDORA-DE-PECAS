@@ -4,6 +4,7 @@
 //   node dist/scripts/sincronizarItensSap.js                                  → prévia (nada gravado)
 //   ... --de 2026-10-18 --ate 2026-10-29                                     → período manual
 //   ... --confirmar                                                          → grava
+//   ... --so-compressores --de 2026-04-01                                    → só a carteira da Bruna (Odin Compressores)
 //
 // Desligar uma empresa / voltar atrás: importarSap.js --lotes e
 // --desligar <id> no lote "SAP automático (Service Layer)".
@@ -26,13 +27,15 @@ async function main() {
   const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true) })
   if (!autor) throw new Error('Nenhum superAdmin encontrado')
 
-  const r = await sincronizarItensSap({ confirmar, usuarioId: autor.id, de, ate })
+  const soEmpresa = args.includes('--so-compressores') ? 'odin-compressores' : undefined
+  const r = await sincronizarItensSap({ confirmar, usuarioId: autor.id, de, ate, soEmpresa })
 
   console.log(`\n=== ITENS DAS NOTAS — SAP AO VIVO ${r.gravado ? 'GRAVADO' : 'PRÉVIA (nada gravado)'} ===`)
   console.log(`Período:                    ${dataBr(r.periodo.de)} a ${dataBr(r.periodo.ate)}`)
   console.log(`Notas no SAP no período:    ${r.notasNoSap}`)
   console.log(`  canceladas:               ${r.canceladas} (ignoradas)`)
-  console.log(`  outra filial:             ${r.outraFilial} (Odin Compressores fica pra depois)`)
+  console.log(`  outra filial:             ${r.outraFilial}`)
+  console.log(`  Odin Compressores fora da carteira da Bruna: ${r.foraDaCarteira}`)
   console.log(`  já estavam no CRM:        ${r.jaImportadas}`)
   if (r.empresaDesligada) console.log(`  empresa desligada:        ${r.empresaDesligada}`)
   for (const [nome, e] of Object.entries(r.porEmpresa)) {

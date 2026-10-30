@@ -4,11 +4,13 @@
 //   node dist/scripts/sincronizarVendasSap.js             → roda agora e mostra o resultado
 //   node dist/scripts/sincronizarVendasSap.js --desligar  → para de criar vendas
 //   node dist/scripts/sincronizarVendasSap.js --desde 2026-10-01 → carga avulsa de um período passado
+//   ... --desde 2026-10-01 --so-compressores → só os pedidos da Bruna (Odin Compressores, lib/sapCompressores.ts)
 import { sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { apagarConfig, setConfig, getConfigTexto } from '../lib/configuracoes.js'
 import { hojeBrString } from '../lib/dataBr.js'
 import { sincronizarVendasSap } from '../lib/sapVendasAuto.js'
+import { FILIAL_COMPRESSORES } from '../lib/sapCompressores.js'
 
 
 async function main() {
@@ -29,7 +31,7 @@ async function main() {
   if (desdeAvulso && !/^\d{4}-\d{2}-\d{2}$/.test(desdeAvulso)) throw new Error('--desde no formato AAAA-MM-DD')
   const desde = await getConfigTexto('sap_vendas_auto_desde')
   if (!desde && !desdeAvulso) return console.log('Venda automática desligada (use --ligar).')
-  const r = await sincronizarVendasSap({ desde: desdeAvulso })
+  const r = await sincronizarVendasSap({ desde: desdeAvulso, soFilial: process.argv.includes('--so-compressores') ? FILIAL_COMPRESSORES : undefined })
   if (!r) return
   console.log(`\n=== VENDAS DO SAP → CRM (pedidos desde ${r.desde.split('-').reverse().join('/')}) ===`)
   console.log(`Pedidos no SAP:            ${r.pedidosNoSap}`)

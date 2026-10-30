@@ -1,8 +1,9 @@
 import { db } from '../db/client.js'
 import { sapSaldosClientes, sapTitulosAbertos } from '../db/schema.js'
-import { getConfigTexto } from './configuracoes.js'
+import { getConfigTexto, setConfig } from './configuracoes.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
+import { CHAVE_CODIGOS_COMPRESSORES, clientesCompressoresPorCodigoSap } from './sapCompressores.js'
 
 // Contas a receber em aberto, direto do SAP — pedido do João, 2026-10-29:
 // mostrar ao vendedor (card do Kanban e ficha) que o cliente está devendo.
@@ -69,8 +70,13 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
     const vendedores = await sap.getTodos<{ SalesEmployeeCode: number; SalesEmployeeName: string }>(
       '/SalesPersons?$select=SalesEmployeeCode,SalesEmployeeName'
     )
-    const saldos = await sap.getTodos<{ CardCode: string; CardName: string; CurrentAccountBalance: number }>(
-      "/BusinessPartners?$filter=CardType eq 'cCustomer' and CurrentAccountBalance ne 0&$select=CardCode,CardName,CurrentAccountBalance"
+    const saldos = await sap.getTodos<{
+      CardCode: string
+      CardName: string
+      CurrentAccountBalance: number
+      BPFiscalTaxIDCollection?: { TaxId0: string | null; TaxId4: string | null }[]
+    }>(
+      "/BusinessPartners?$filter=CardType eq 'cCustomer' and CurrentAccountBalance ne 0&$select=CardCode,CardName,CurrentAccountBalance,BPFiscalTaxIDCollection"
     )
     const notas = await sap.getTodos<{
       DocNum: number
@@ -121,7 +127,14 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
     const recebimentos = await sap.getTodos<{
       PaymentInvoices: { InvoiceType: string; DocEntry: number; DocLine: number; SumApplied: number }[]
     }>("/IncomingPayments?$filter=Cancelled eq 'tNO'&$select=PaymentInvoices")
-    return { vendedores, saldos, notas, devolucoes, adiantamentos, lancamentos, recebimentos }
+    // Carteira da Bruna (Odin Compressores): código do SAP de cada cliente
+    // dela, pelo código ou pelo CNPJ (lib/sapCompressores.ts).
+    const compressores = await clientesCompressoresPorCodigoSap(
+      sap,
+      saldos.map((s) => s.CardCode),
+      new Map(saldos.map((s) => [s.CardCode, (s.BPFiscalTaxIDCollection ?? []).flatMap((t) => [t.TaxId0 ?? '', t.TaxId4 ?? ''])]))
+    )
+    return { vendedores, saldos, notas, devolucoes, adiantamentos, lancamentos, recebimentos, compressores }
   })
 
   const nomeVendedor = new Map(dados.vendedores.map((v) => [v.SalesEmployeeCode, v.SalesEmployeeName]))
@@ -254,6 +267,8 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
     for (let i = 0; i < validos.length; i += 500) await tx.insert(sapTitulosAbertos).values(validos.slice(i, i + 500))
     for (let i = 0; i < saldos.length; i += 500) await tx.insert(sapSaldosClientes).values(saldos.slice(i, i + 500))
   })
+
+  await setConfig(CHAVE_CODIGOS_COMPRESSORES, JSON.stringify(Object.fromEntries([...dados.compressores].map(([codigo, c]) => [codigo, c.id]))))
 
   // Saldo negativo dos dois lados = cliente com crédito (pagou adiantado),
   // não é dívida — não precisa conferir.

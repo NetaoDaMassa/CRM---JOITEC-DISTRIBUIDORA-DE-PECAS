@@ -67,7 +67,7 @@ export async function buildHistoricoCliente(clienteId: number) {
     : []
   const itens = [
     ...itensCrm
-      .filter((i) => !dentroDaCobertura(cobertura, i.createdAt))
+      .filter((i) => !dentroDaCobertura(cobertura, i.createdAt, clienteId))
       .map((i) => ({ ...i, pedido: `crm-${i.vendaId}`, origem: 'crm' as const, numeroNota: null as string | null })),
     // id negativo: não colide com o id do itens_pedido na lista da tela.
     ...itensSap.map((i) => ({ ...i, id: -i.id, createdAt: i.dataNota, pedido: `sap-${i.numeroNota}`, origem: 'sap' as const })),

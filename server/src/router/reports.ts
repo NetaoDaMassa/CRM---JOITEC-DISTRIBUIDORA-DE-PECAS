@@ -978,6 +978,7 @@ export const reportsRouter = router({
     const crm = await db
       .select({
         descricao: itensPedido.descricao,
+        clienteId: itensPedido.clienteId,
         criadoEm: itensPedido.createdAt,
         quantidade: itensPedido.quantidade,
         valorTotal: itensPedido.valorTotal,
@@ -1013,7 +1014,7 @@ export const reportsRouter = router({
       g.valorTotal += valor
       grupos.set(chaveItem(descricao), g)
     }
-    for (const i of crm) if (!dentroDaCobertura(cobertura, i.criadoEm)) somar(i.descricao, i.quantidade ?? 0, i.valorTotal ?? 0)
+    for (const i of crm) if (!dentroDaCobertura(cobertura, i.criadoEm, i.clienteId)) somar(i.descricao, i.quantidade ?? 0, i.valorTotal ?? 0)
     for (const i of sap) somar(i.descricao, i.quantidadeTotal ?? 0, i.valorTotal ?? 0)
     return [...grupos.values()].sort((a, b) => b.quantidadeTotal - a.quantidadeTotal).slice(0, 50)
   }),
@@ -1146,7 +1147,7 @@ export const reportsRouter = router({
       v.totalQuantidade += quantidade
       porVendedor.set(vendedorId, v)
     }
-    for (const l of crm) if (!dentroDaCobertura(cobertura, l.dataFechamento)) somar(l.vendedorId, l.nome, l.clienteId, l.linhas, l.quantidade)
+    for (const l of crm) if (!dentroDaCobertura(cobertura, l.dataFechamento, l.clienteId)) somar(l.vendedorId, l.nome, l.clienteId, l.linhas, l.quantidade)
     for (const l of sap) if (l.vendedorId) somar(l.vendedorId, l.nome, l.clienteId, l.linhas, l.quantidade)
 
     return [...porVendedor.values()].map(({ clientes: cli, ...l }) => {
