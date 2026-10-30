@@ -4,12 +4,17 @@
 //   node dist/scripts/sincronizarVendasSap.js             → roda agora e mostra o resultado
 //   node dist/scripts/sincronizarVendasSap.js --desligar  → para de criar vendas
 //   node dist/scripts/sincronizarVendasSap.js --desde 2026-10-01 → carga avulsa de um período passado
+import { sql } from 'drizzle-orm'
+import { db } from '../db/client.js'
 import { apagarConfig, setConfig, getConfigTexto } from '../lib/configuracoes.js'
 import { hojeBrString } from '../lib/dataBr.js'
 import { sincronizarVendasSap } from '../lib/sapVendasAuto.js'
 
 
 async function main() {
+  // Roda fora do processo do servidor: espera até 30 s se o banco estiver
+  // ocupado (o servidor gravando), em vez de falhar com SQLITE_BUSY.
+  await db.run(sql`PRAGMA busy_timeout = 30000`)
   if (process.argv.includes('--desligar')) {
     await apagarConfig('sap_vendas_auto_desde')
     console.log('Venda automática DESLIGADA.')
