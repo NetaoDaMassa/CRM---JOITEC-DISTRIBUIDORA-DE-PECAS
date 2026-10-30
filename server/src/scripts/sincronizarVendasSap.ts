@@ -3,6 +3,7 @@
 //   node dist/scripts/sincronizarVendasSap.js --ligar      → começa a partir de HOJE ("daqui pra frente")
 //   node dist/scripts/sincronizarVendasSap.js             → roda agora e mostra o resultado
 //   node dist/scripts/sincronizarVendasSap.js --desligar  → para de criar vendas
+//   node dist/scripts/sincronizarVendasSap.js --desde 2026-10-01 → carga avulsa de um período passado
 import { apagarConfig, setConfig, getConfigTexto } from '../lib/configuracoes.js'
 import { hojeBrString } from '../lib/dataBr.js'
 import { sincronizarVendasSap } from '../lib/sapVendasAuto.js'
@@ -18,9 +19,12 @@ async function main() {
     await setConfig('sap_vendas_auto_desde', hojeBrString())
     console.log(`Venda automática LIGADA a partir de ${hojeBrString()}.`)
   }
+  const i = process.argv.indexOf('--desde')
+  const desdeAvulso = i > 0 ? process.argv[i + 1] : undefined
+  if (desdeAvulso && !/^\d{4}-\d{2}-\d{2}$/.test(desdeAvulso)) throw new Error('--desde no formato AAAA-MM-DD')
   const desde = await getConfigTexto('sap_vendas_auto_desde')
-  if (!desde) return console.log('Venda automática desligada (use --ligar).')
-  const r = await sincronizarVendasSap()
+  if (!desde && !desdeAvulso) return console.log('Venda automática desligada (use --ligar).')
+  const r = await sincronizarVendasSap({ desde: desdeAvulso })
   if (!r) return
   console.log(`\n=== VENDAS DO SAP → CRM (pedidos desde ${r.desde.split('-').reverse().join('/')}) ===`)
   console.log(`Pedidos no SAP:            ${r.pedidosNoSap}`)

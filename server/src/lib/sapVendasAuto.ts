@@ -72,13 +72,15 @@ export async function vendaJaVeioDoSap(clienteId: number, valor: number): Promis
   return igual ? { numeroPedido: igual.numeroPedido } : null
 }
 
-export async function sincronizarVendasSap(): Promise<SyncVendasResultado | null> {
+// `opts.desde`: carga avulsa de um período passado (script --desde), pedida
+// pelo João em 2026-10-30 pra trazer as vendas que faltaram em outubro.
+export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promise<SyncVendasResultado | null> {
   const desdeConfig = await getConfigTexto('sap_vendas_auto_desde')
-  if (!desdeConfig) return null
+  if (!desdeConfig && !opts.desde) return null
   const hoje = hojeBrString()
   const janela = new Date(`${hoje}T12:00:00Z`)
   janela.setUTCDate(janela.getUTCDate() - DIAS_PARA_TRAS)
-  const desde = desdeConfig > janela.toISOString().slice(0, 10) ? desdeConfig : janela.toISOString().slice(0, 10)
+  const desde = opts.desde ?? (desdeConfig! > janela.toISOString().slice(0, 10) ? desdeConfig! : janela.toISOString().slice(0, 10))
 
   const grupo = new Set(((await getConfigTexto('sap_receber_ignorar_clientes')) ?? GRUPO_PADRAO).split(',').map((s) => s.trim().toUpperCase()))
   const automacao = await vendedoresAutomacaoSap()
