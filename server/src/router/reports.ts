@@ -15,6 +15,7 @@ import {
   logAuditoria,
   ordens,
   ordemDetalhes,
+  ordemLiberacaoFinanceira,
   sapImportacoes,
   sapVendasHistorico,
   sapCotacoesHistorico,
@@ -150,6 +151,7 @@ async function vendasSap(params: {
       empresaId: sapVendasHistorico.empresaId,
       data: sapVendasHistorico.dataPedido,
       valor: sapVendasHistorico.valor,
+      numeroPedido: sapVendasHistorico.numeroPedido,
       razaoSocial: clientes.razaoSocial,
       vendedorId: clientes.vendedorAtualId,
       vendedorNome: users.name,
@@ -194,10 +196,14 @@ async function pedidosOdin(params: Parameters<typeof vendasSap>[0]) {
       razaoSocial: clientes.razaoSocial,
       vendedorId: ordens.vendedorId,
       vendedorNome: users.name,
+      ordemId: ordens.id,
+      formaPagamento: ordemLiberacaoFinanceira.formaPagamento,
+      condicaoPagamento: ordemLiberacaoFinanceira.condicaoPagamento,
     })
     .from(ordens)
     .innerJoin(clientes, eq(clientes.id, ordens.clienteId))
     .leftJoin(ordemDetalhes, eq(ordemDetalhes.ordemId, ordens.id))
+    .leftJoin(ordemLiberacaoFinanceira, eq(ordemLiberacaoFinanceira.ordemId, ordens.id))
     .leftJoin(users, eq(users.id, ordens.vendedorId))
     .where(and(...filtros))
   return linhas.map((l) => ({ ...l, origem: 'pedidos' as const }))
@@ -648,6 +654,92 @@ export const reportsRouter = router({
       mapa.set(chave, atual)
     }
     return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : a.data > b.data ? 1 : a.nome.localeCompare(b.nome)))
+  }),
+
+  // Lista venda a venda (pedido do João, 2026-10-30): cliente, valor,
+  // condição de pagamento, nº do pedido/nota — mesmo escopo e filtros de
+  // `vendas` (Carteira + Pedidos Odin + histórico SAP). Vendedor só vê as
+  // dele. Pedidos/SAP nem sempre têm condição de pagamento.
+  vendasLista: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, vendasTable.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtros.push(filtroReg)
+
+    const carteira = await db
+      .select({
+        id: vendasTable.id,
+        dataFechamento: vendasTable.dataFechamento,
+        clienteId: vendasTable.clienteId,
+        razaoSocial: clientes.razaoSocial,
+        vendedorNome: users.name,
+        valor: vendasTable.valorFechado,
+        condicaoPagamento: vendasTable.condicaoPagamento,
+        numeroPedido: vendasTable.numeroPedido,
+        numeroNotaFiscal: vendasTable.numeroNotaFiscal,
+        numeroCupomFiscal: vendasTable.numeroCupomFiscal,
+      })
+      .from(vendasTable)
+      .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
+      .innerJoin(funilMensal, eq(funilMensal.id, vendasTable.funilMensalId))
+      .innerJoin(users, eq(users.id, vendasTable.vendedorId))
+      .where(and(...filtros))
+
+    const extras = await vendasExtras({
+      empresaId: ctx.empresaId,
+      dataInicio: input.dataInicio,
+      dataFim: input.dataFim,
+      ctx,
+      vendedorId: input.vendedorId,
+      regiao: input.regiao,
+    })
+
+    type Linha = {
+      chave: string
+      data: string
+      clienteId: number
+      cliente: string
+      vendedor: string
+      valor: number
+      condicaoPagamento: string | null
+      formaPagamento: string | null
+      numero: string | null
+      origem: 'carteira' | 'pedidos' | 'sap'
+    }
+    const linhas: Linha[] = carteira.map((v) => ({
+      chave: `crm-${v.id}`,
+      // Mesmo dia que vendasPorDia usa (date(dataFechamento)).
+      data: v.dataFechamento.slice(0, 10),
+      clienteId: v.clienteId,
+      cliente: v.razaoSocial,
+      vendedor: v.vendedorNome,
+      valor: v.valor,
+      condicaoPagamento: v.condicaoPagamento,
+      formaPagamento: null,
+      numero:
+        [v.numeroPedido && `Pedido ${v.numeroPedido}`, v.numeroNotaFiscal && `NF ${v.numeroNotaFiscal}`, v.numeroCupomFiscal && `Cupom ${v.numeroCupomFiscal}`]
+          .filter(Boolean)
+          .join(' · ') || null,
+      origem: 'carteira',
+    }))
+    for (const e of extras) {
+      const ehPedido = e.origem === 'pedidos'
+      linhas.push({
+        chave: ehPedido ? `ped-${(e as any).ordemId}` : `sap-${e.clienteId}-${e.data}-${(e as any).numeroPedido ?? e.valor}`,
+        data: e.data.slice(0, 10),
+        clienteId: e.clienteId,
+        cliente: e.razaoSocial,
+        vendedor: e.vendedorNome ?? 'Sem vendedor',
+        valor: e.valor,
+        condicaoPagamento: ehPedido ? ((e as any).condicaoPagamento ?? null) : null,
+        formaPagamento: ehPedido ? ((e as any).formaPagamento ?? null) : null,
+        numero: ehPedido ? `Pedido #${(e as any).ordemId}` : (e as any).numeroPedido ? `SAP ${(e as any).numeroPedido}` : null,
+        origem: e.origem,
+      })
+    }
+    return linhas.sort((a, b) => (a.data < b.data ? 1 : a.data > b.data ? -1 : b.valor - a.valor))
   }),
 
   // Contatos por dia, separados por tipo (ligação/whatsapp/email/visita) —

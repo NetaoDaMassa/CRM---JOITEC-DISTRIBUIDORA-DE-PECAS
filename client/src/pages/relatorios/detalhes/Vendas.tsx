@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { BadgeDollarSign, Clock, FileText, Megaphone, Receipt, ShoppingBag, XCircle, Building2 } from 'lucide-react'
 import { trpc } from '../../../lib/trpc'
+import { formatarMoeda } from '../../../lib/moeda'
 import { formatarDataCurta } from '../../../components/relatorios/filtros'
 import { Abas, Etiqueta, KpiCard, OrigemVendas, Ranking, Secao, moeda, numero, pct } from '../../../components/relatorios/blocos'
 import TabelaDados from '../../../components/relatorios/TabelaDados'
@@ -15,14 +16,15 @@ const tick = { fill: 'var(--color-dark-400)', fontSize: 11 }
 const diaMes = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`
 
 // ── Vendas ──────────────────────────────────────────────────────────────
-export function Vendas({ f, simples, mostrarResumo }: PropsDetalhe) {
+export function Vendas({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe) {
   const { data: vendas } = trpc.reports.vendas.useQuery(f.periodo)
   const { data: vendasAnt } = trpc.reports.vendas.useQuery(f.anterior)
   const { data: mkt } = trpc.reports.vendas.useQuery({ ...f.periodo, apenasMarketing: true })
   const { data: mktAnt } = trpc.reports.vendas.useQuery({ ...f.anterior, apenasMarketing: true })
   const { data: porDia, isLoading } = trpc.reports.vendasPorDia.useQuery(f.periodo)
   const [visao, setVisao] = useState<'geral' | 'vendedor'>('geral')
-  const [tabela, setTabela] = useState<'vendedor' | 'dia'>(simples ? 'dia' : 'vendedor')
+  const [tabela, setTabela] = useState<'vendedor' | 'dia' | 'lista'>(simples ? 'dia' : 'vendedor')
+  const { data: lista, isLoading: carregandoLista } = trpc.reports.vendasLista.useQuery(f.periodo, { enabled: tabela === 'lista' })
 
   const { serie, nomes, porVendedor, dias } = useMemo(() => {
     const nomesSet = new Set<string>()
@@ -80,6 +82,23 @@ export function Vendas({ f, simples, mostrarResumo }: PropsDetalhe) {
     { id: 'qtd', rotulo: 'Vendas', valor: (d) => d.qtd, formato: 'numero', somar: true },
     { id: 'valor', rotulo: 'Faturamento', valor: (d) => d.valor, formato: 'moeda', somar: true },
     { id: 'ticket', rotulo: 'Ticket médio', valor: (d) => d.ticket, formato: 'moeda' },
+  ]
+  // Venda a venda (pedido do João, 2026-10-30).
+  type L = NonNullable<typeof lista>[number]
+  const ORIGEM: Record<L['origem'], { rotulo: string; cor: string }> = {
+    carteira: { rotulo: 'Carteira', cor: '#24aff4' },
+    pedidos: { rotulo: 'Pedidos', cor: '#8b5cf6' },
+    sap: { rotulo: 'SAP', cor: '#64748b' },
+  }
+  const colLista: Coluna<L>[] = [
+    { id: 'data', rotulo: 'Data', valor: (l) => l.data, formato: 'data' },
+    { id: 'cliente', rotulo: 'Cliente', valor: (l) => l.cliente, render: (l) => <span className="font-medium text-dark-50">{l.cliente}</span> },
+    ...(simples ? [] : [{ id: 'vendedor', rotulo: 'Vendedor', valor: (l: L) => l.vendedor }]),
+    { id: 'valor', rotulo: 'Valor', valor: (l) => l.valor, formato: 'moeda', somar: true, render: (l) => formatarMoeda(l.valor) },
+    { id: 'condicao', rotulo: 'Condição de pagamento', valor: (l) => l.condicaoPagamento },
+    { id: 'forma', rotulo: 'Forma de pagamento', valor: (l) => l.formaPagamento, oculta: true },
+    { id: 'numero', rotulo: 'Nº pedido / nota', valor: (l) => l.numero },
+    { id: 'origem', rotulo: 'Origem', valor: (l) => ORIGEM[l.origem].rotulo, render: (l) => <Etiqueta cor={ORIGEM[l.origem].cor}>{ORIGEM[l.origem].rotulo}</Etiqueta> },
   ]
 
   return (
@@ -141,17 +160,32 @@ export function Vendas({ f, simples, mostrarResumo }: PropsDetalhe) {
           </Secao>
         </>
       )}
-      {!simples && (
-        <Abas<'vendedor' | 'dia'>
-          valor={tabela}
-          onChange={setTabela}
-          opcoes={[
-            { valor: 'vendedor', rotulo: 'Por vendedor', contagem: porVendedor.length },
-            { valor: 'dia', rotulo: 'Por dia', contagem: dias.length },
-          ]}
+      <Abas<'vendedor' | 'dia' | 'lista'>
+        valor={tabela}
+        onChange={setTabela}
+        opcoes={[
+          ...(simples ? [] : [{ valor: 'vendedor' as const, rotulo: 'Por vendedor', contagem: porVendedor.length }]),
+          { valor: 'dia', rotulo: 'Por dia', contagem: dias.length },
+          { valor: 'lista', rotulo: 'Venda a venda', contagem: lista?.length },
+        ]}
+      />
+      {tabela === 'lista' ? (
+        <TabelaDados
+          key="vendas-lista"
+          id="vendas-lista"
+          linhas={lista}
+          colunas={colLista}
+          chave={(l) => l.chave}
+          buscaEm={(l) => `${l.cliente} ${l.vendedor} ${l.numero ?? ''} ${l.condicaoPagamento ?? ''}`}
+          placeholderBusca="Buscar cliente, vendedor, nº ou condição..."
+          nomeArquivo="vendas-venda-a-venda.csv"
+          link={(l) => `${clientesBase}/${l.clienteId}`}
+          ordemInicial={{ coluna: 'data', direcao: 'desc' }}
+          simples={simples}
+          carregando={carregandoLista}
+          vazio="Nenhuma venda no período."
         />
-      )}
-      {tabela === 'vendedor' && !simples ? (
+      ) : tabela === 'vendedor' && !simples ? (
         <TabelaDados id="vendas-vendedor" linhas={porVendedor} colunas={colVend} chave={(v) => v.nome} buscaEm={(v) => v.nome} placeholderBusca="Buscar vendedor..." nomeArquivo="vendas-por-vendedor.csv" ordemInicial={{ coluna: 'valor', direcao: 'desc' }} carregando={isLoading} />
       ) : (
         <TabelaDados id="vendas-dia" linhas={dias} colunas={colDia} chave={(d) => d.data} nomeArquivo="vendas-por-dia.csv" ordemInicial={{ coluna: 'data', direcao: 'desc' }} simples={simples} carregando={isLoading} />
