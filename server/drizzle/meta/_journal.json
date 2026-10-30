@@ -932,6 +932,13 @@
       "when": 1793365248314,
       "tag": "0132_vendas_pedido_sap",
       "breakpoints": true
+    },
+    {
+      "idx": 133,
+      "version": "6",
+      "when": 1793371821136,
+      "tag": "0133_sap_conferencia_ignorados",
+      "breakpoints": true
     }
   ]
 }

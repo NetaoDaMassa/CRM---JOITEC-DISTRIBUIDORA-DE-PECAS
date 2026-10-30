@@ -4334,3 +4334,23 @@ export const agendamentoPecasContatosRelations = relations(agendamentoPecasConta
   agendamento: one(agendamentosPecas, { fields: [agendamentoPecasContatos.agendamentoId], references: [agendamentosPecas.id] }),
   user: one(users, { fields: [agendamentoPecasContatos.userId], references: [users.id] }),
 }))
+
+// Conferência SAP × CRM (pedido do João, 2026-10-30): venda do CRM sem pedido
+// no SAP que é venda de verdade (ou pedido do SAP que não é venda — troca,
+// garantia...) e o admin marcou pra não aparecer mais como pendência.
+// `referencia` = vendas.id (tipo 'venda') ou DocEntry do pedido (tipo 'pedido').
+export const sapConferenciaIgnorados = sqliteTable(
+  'sap_conferencia_ignorados',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    tipo: text('tipo', { enum: ['venda', 'pedido'] }).notNull(),
+    referencia: integer('referencia').notNull(),
+    motivo: text('motivo'),
+    ignoradoPor: integer('ignorado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    tipoRefUnq: unique('uq_sap_conferencia_ignorados').on(t.tipo, t.referencia),
+  })
+)

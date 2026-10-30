@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -54,7 +54,8 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // faria diferença nenhuma pra esses itens).
 // 'boletos_carteira' (2026-10-30): cada vendedor só vê os boletos dos
 // próprios clientes, então fica liberado pra todos (Joitec e Odin Tubos).
-export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira'])
+// 'conferencia_sap' (2026-10-30): idem — o vendedor só vê as próprias vendas.
+export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira', 'conferencia_sap'])
 
 // Guia do Financeiro (pedido do João, 2026-10-20) — só aparece/abre pra quem
 // tem pelo menos UMA das telas do Financeiro liberada.
@@ -81,6 +82,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/admin/clientes', label: 'Clientes', icon: BookUser, feature: 'clientes' },
   { to: '/admin/boletos-carteira', label: 'Boletos da carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos'], feature: 'boletos_carteira' },
+  { to: '/admin/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
   { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft, feature: 'carteira' },
@@ -190,6 +192,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: BookUser, feature: 'clientes' },
   { to: '/vendedor/boletos-carteira', label: 'Boletos da minha carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos'], feature: 'boletos_carteira' },
+  { to: '/vendedor/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
   {

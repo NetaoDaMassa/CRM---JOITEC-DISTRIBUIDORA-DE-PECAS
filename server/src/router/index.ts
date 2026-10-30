@@ -55,6 +55,7 @@ import { leadsRegioesRouter } from './leadsRegioes.js'
 import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { historicoSapRouter } from './historicoSap.js'
 import { sapFinanceiroRouter } from './sapFinanceiro.js'
+import { conferenciaSapRouter } from './conferenciaSap.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { devolucaoEcommerceRouter } from './devolucaoEcommerce.js'
@@ -139,6 +140,7 @@ export const appRouter = router({
   sidebarGrupos: sidebarGruposRouter,
   historicoSap: historicoSapRouter,
   sapFinanceiro: sapFinanceiroRouter,
+  conferenciaSap: conferenciaSapRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
   devolucaoEcommerce: devolucaoEcommerceRouter,

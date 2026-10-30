@@ -25,6 +25,14 @@ import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
 //      atualiza (venda ligada a registro manual nunca é apagada).
 
 const SLUG_POR_FILIAL: Record<number, string> = { 3: 'joitec', 4: 'odin-tubos' }
+// Vendedoras da Odin Tubos às vezes tiram o pedido pela filial Joitec (3) —
+// a venda conta pra Odin Tubos mesmo assim (João, 2026-10-30; em outubro:
+// Luana 11, Ricardo 9, Yasmim Ramos 7, Gláucia 5...). Mesma ideia da Odin
+// Automação. Códigos do SAP (SalesPersonCode), configurável em
+// `sap_vendedores_odin_tubos`: 124 Karinna, 128 Luana, 153 Gláucia,
+// 157 Tatiane, 158 Yasmim Salles, 159 Yasmim Ramos, 2036 Ricardo, 4 Bianca
+// (PPR), 90 Arthur, 100 Debora, 150 Gabriel Mann e 151 CHP (representantes).
+const VENDEDORES_ODIN_TUBOS_PADRAO = '124,128,153,157,158,159,2036,4,90,100,150,151'
 const GRUPO_PADRAO = 'C003770,C002707,C001284,C001270'
 const DIAS_PARA_TRAS = 7
 
@@ -56,6 +64,25 @@ export interface SyncVendasResultado {
   semVendedor: { pedido: number; cliente: string }[]
 }
 
+export async function vendedoresOdinTubosSap(): Promise<Set<number>> {
+  return new Set(
+    ((await getConfigTexto('sap_vendedores_odin_tubos')) ?? VENDEDORES_ODIN_TUBOS_PADRAO)
+      .split(',')
+      .map((s) => Number(s.trim()))
+      .filter((n) => Number.isFinite(n))
+  )
+}
+
+// Empresa do CRM de um pedido do SAP: a filial decide, mas na filial Joitec
+// o vendedor manda (Odin Automação / Odin Tubos).
+export function slugDoPedidoSap(filial: number, vendedor: number, automacao: Set<number>, odinTubos: Set<number>): string | undefined {
+  const slug = SLUG_POR_FILIAL[filial]
+  if (slug !== 'joitec') return slug
+  if (automacao.has(vendedor)) return 'joitec-automacao'
+  if (odinTubos.has(vendedor)) return 'odin-tubos'
+  return slug
+}
+
 function brParaUtc(data: string, hora: string | null): string {
   return new Date(`${data}T${(hora ?? '12:00:00').slice(0, 8)}-03:00`).toISOString().replace('T', ' ').slice(0, 19)
 }
@@ -74,7 +101,8 @@ export async function vendaJaVeioDoSap(clienteId: number, valor: number): Promis
 
 // `opts.desde`: carga avulsa de um período passado (script --desde), pedida
 // pelo João em 2026-10-30 pra trazer as vendas que faltaram em outubro.
-export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promise<SyncVendasResultado | null> {
+// `opts.docEntries`: só esses pedidos (botão "Criar venda" da Conferência SAP × CRM).
+export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: number[] } = {}): Promise<SyncVendasResultado | null> {
   const desdeConfig = await getConfigTexto('sap_vendas_auto_desde')
   if (!desdeConfig && !opts.desde) return null
   const hoje = hojeBrString()
@@ -84,6 +112,7 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
 
   const grupo = new Set(((await getConfigTexto('sap_receber_ignorar_clientes')) ?? GRUPO_PADRAO).split(',').map((s) => s.trim().toUpperCase()))
   const automacao = await vendedoresAutomacaoSap()
+  const odinTubos = await vendedoresOdinTubosSap()
   const lista = await db.query.empresas.findMany({ where: inArray(empresas.slug, ['joitec', 'odin-tubos', 'joitec-automacao']) })
   const empresaPorSlug = new Map(lista.map((e) => [e.slug, e]))
   const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true), columns: { id: true } })
@@ -91,6 +120,7 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
   const { pedidos, condicoes, notas } = await comSessaoSap(async (sap) => ({
     pedidos: await sap.getTodos<PedidoSap>(
       `/Orders?$filter=DocDate ge '${desde}' and (BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4)` +
+        (opts.docEntries?.length ? ` and (${opts.docEntries.map((e) => `DocEntry eq ${e}`).join(' or ')})` : '') +
         '&$select=DocEntry,DocNum,DocDate,DocTime,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice,PaymentGroupCode,Cancelled,DocumentLines',
       100
     ),
@@ -174,8 +204,7 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
       continue
     }
 
-    const filial = SLUG_POR_FILIAL[p.BPL_IDAssignedToInvoice]
-    const slug = filial === 'joitec' && automacao.has(p.SalesPersonCode) ? 'joitec-automacao' : filial
+    const slug = slugDoPedidoSap(p.BPL_IDAssignedToInvoice, p.SalesPersonCode, automacao, odinTubos)
     const empresa = slug ? empresaPorSlug.get(slug) : undefined
     if (!empresa) continue
 
