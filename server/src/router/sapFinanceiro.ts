@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, gt, inArray, isNull, lt, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, sapSaldosClientes, sapTitulosAbertos } from '../db/schema.js'
+import { clientes, empresas, sapSaldosClientes, sapTitulosAbertos, users } from '../db/schema.js'
 import { getConfigNumero, getConfigTexto } from '../lib/configuracoes.js'
 import { hojeBrString } from '../lib/dataBr.js'
 
@@ -31,6 +31,66 @@ async function inadimplenciaLigada(empresaId: number): Promise<boolean> {
 }
 
 export const sapFinanceiroRouter = router({
+  // "Boletos da minha carteira" (pedido do João, 2026-10-30): todas as
+  // parcelas em aberto (vencidas e a vencer) dos clientes do vendedor — o
+  // admin vê a empresa toda ou filtra por vendedor. `dias` < 0 = a vencer.
+  boletosCarteira: protectedProcedure.input(z.object({ vendedorId: z.number().optional() })).query(async ({ ctx, input }) => {
+    if (!(await inadimplenciaLigada(ctx.empresaId))) return { ligado: false, linhas: [], atualizadoEm: null }
+    const hoje = hojeBrString()
+    const titulos = await db
+      .select()
+      .from(sapTitulosAbertos)
+      .where(and(gt(sapTitulosAbertos.valorAberto, 0), inArray(sapTitulosAbertos.tipo, ['nota', 'titulo_antigo', 'adiantamento'])))
+    const codigos = [...new Set(titulos.map((t) => t.codigoCliente))]
+    const vendedorId = ctx.user.role === 'admin' ? input.vendedorId : ctx.user.id
+    const lista = codigos.length
+      ? await db
+          .select({
+            id: clientes.id,
+            codigo: clientes.codigo,
+            razaoSocial: clientes.razaoSocial,
+            telefone: clientes.telefoneWhatsapp,
+            vendedor: users.name,
+          })
+          .from(clientes)
+          .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
+          .where(
+            and(
+              eq(clientes.empresaId, ctx.empresaId),
+              isNull(clientes.deletedAt),
+              inArray(clientes.codigo, codigos),
+              vendedorId ? eq(clientes.vendedorAtualId, vendedorId) : undefined
+            )
+          )
+      : []
+    const porCodigo = new Map(lista.map((c) => [c.codigo, c]))
+    const [{ atualizadoEm } = { atualizadoEm: null }] = await db
+      .select({ atualizadoEm: sql<string | null>`max(${sapSaldosClientes.atualizadoEm})` })
+      .from(sapSaldosClientes)
+    const linhas = titulos.flatMap((t) => {
+      const c = porCodigo.get(t.codigoCliente)
+      if (!c || !t.vencimento) return []
+      return [
+        {
+          clienteId: c.id,
+          cliente: c.razaoSocial,
+          codigo: c.codigo,
+          telefone: c.telefone,
+          vendedor: c.vendedor,
+          tipo: t.tipo,
+          documento: t.documento,
+          parcela: t.parcela,
+          vencimento: t.vencimento,
+          valor: t.valorAberto,
+          empresaSlug: t.empresaSlug,
+          dias: diasEntre(t.vencimento, hoje),
+        },
+      ]
+    })
+    linhas.sort((a, b) => a.vencimento.localeCompare(b.vencimento))
+    return { ligado: true, linhas, atualizadoEm }
+  }),
+
   // Clientes da empresa ativa com título vencido além da carência →
   // { clienteId, vencido, maiorAtraso }. O vendedor só recebe os dele.
   inadimplentes: protectedProcedure.query(async ({ ctx }) => {

@@ -74,6 +74,7 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
     )
     const notas = await sap.getTodos<{
       DocNum: number
+      SequenceSerial: number | null
       DocDate: string
       CardCode: string
       CardName: string
@@ -82,7 +83,7 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
       DocumentInstallments: { InstallmentId: number; DueDate: string; Total: number; PaidToDate: number | null }[]
     }>(
       "/Invoices?$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'" +
-        '&$select=DocNum,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,DocumentInstallments'
+        '&$select=DocNum,SequenceSerial,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,DocumentInstallments'
     )
     const devolucoes = await sap.getTodos<{
       DocNum: number
@@ -135,7 +136,8 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
         codigoCliente: n.CardCode,
         nomeCliente: n.CardName,
         tipo: 'nota',
-        documento: String(n.DocNum),
+        // Nº da NF-e (é o que o cliente e o vendedor conhecem); sem série, o DocNum.
+        documento: String(n.SequenceSerial || n.DocNum),
         parcela: `${p.InstallmentId}/${n.DocumentInstallments.length}`,
         emissao: dataSap(n.DocDate),
         vencimento: dataSap(p.DueDate),

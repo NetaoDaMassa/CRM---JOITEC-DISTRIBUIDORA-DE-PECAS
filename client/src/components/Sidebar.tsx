@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, BarChart3,
+  LayoutDashboard, Users, BarChart3, FileClock,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
@@ -52,7 +52,9 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // empresa). Usado tanto aqui (pula a checagem de `minhasFeatures`) quanto
 // em Permissoes.tsx (tira da lista de caixinhas — marcar/desmarcar não
 // faria diferença nenhuma pra esses itens).
-export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos'])
+// 'boletos_carteira' (2026-10-30): cada vendedor só vê os boletos dos
+// próprios clientes, então fica liberado pra todos (Joitec e Odin Tubos).
+export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira'])
 
 // Guia do Financeiro (pedido do João, 2026-10-20) — só aparece/abre pra quem
 // tem pelo menos UMA das telas do Financeiro liberada.
@@ -78,6 +80,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
   { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/admin/clientes', label: 'Clientes', icon: BookUser, feature: 'clientes' },
+  { to: '/admin/boletos-carteira', label: 'Boletos da carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos'], feature: 'boletos_carteira' },
   { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
   { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft, feature: 'carteira' },
@@ -186,6 +189,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/demandas', label: 'Demandas', icon: ClipboardList, feature: 'demandas' },
   { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: BookUser, feature: 'clientes' },
+  { to: '/vendedor/boletos-carteira', label: 'Boletos da minha carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos'], feature: 'boletos_carteira' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
   {
