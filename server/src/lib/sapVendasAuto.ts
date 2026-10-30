@@ -18,7 +18,7 @@ import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
 //   - venda pra empresa do grupo (Comprefer etc.) não entra.
 // Contra duplicidade:
 //   1. vendas.pedidoSapEntry guarda o pedido — nunca cria duas vezes;
-//   2. venda registrada na mão (mesmo cliente, ±3 dias, valor ±5% ou mesmo
+//   2. venda registrada na mão (mesmo cliente, de 5 dias antes a 15 depois, valor ±15% ou mesmo
 //      nº de pedido) é LIGADA ao pedido em vez de criar outra;
 //   3. registro manual depois é bloqueado (ver vendaJaVeioDoSap);
 //   4. pedido cancelado no SAP: a venda criada por aqui sai; valor alterado:
@@ -63,7 +63,7 @@ function brParaUtc(data: string, hora: string | null): string {
 // Usado pelo registro manual (funil.moverEtapa / vendas.registrar): já existe
 // venda vinda do SAP pra esse cliente nesses dias com valor parecido?
 export async function vendaJaVeioDoSap(clienteId: number, valor: number): Promise<{ numeroPedido: string | null } | null> {
-  const de = new Date(Date.now() - 5 * 86400_000).toISOString().replace('T', ' ').slice(0, 19)
+  const de = new Date(Date.now() - 20 * 86400_000).toISOString().replace('T', ' ').slice(0, 19)
   const lista = await db
     .select({ numeroPedido: vendas.numeroPedido, valor: vendas.valorFechado })
     .from(vendas)
@@ -115,27 +115,42 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
     : []
   const porEntry = new Map(existentes.map((v) => [v.pedidoSapEntry!, v]))
 
+  // Um mesmo cliente às vezes tem MAIS DE UM cadastro na empresa (ex.: TC
+  // Manutec na Odin Automação com o código antigo 5503 e com o C004638 do
+  // SAP — a Pamela registrou a venda no antigo). Todos os cadastros
+  // equivalentes contam: código do SAP, código antigo (inclusive o que outra
+  // empresa do CRM liga a esse código) e mesma razão social.
   type Cli = { id: number; codigo: string; codigoAntigo: string | null; razaoSocial: string; vendedorAtualId: number | null }
-  const cacheClientes = new Map<number, { exato: Map<string, Cli>; semZero: Map<string, Cli> }>()
-  const acharCliente = async (empresaId: number, codigo: string): Promise<Cli | undefined> => {
-    let m = cacheClientes.get(empresaId)
-    if (!m) {
-      const lista = await db.query.clientes.findMany({
-        where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt)),
-        columns: { id: true, codigo: true, codigoAntigo: true, razaoSocial: true, vendedorAtualId: true },
-      })
-      m = { exato: new Map(), semZero: new Map() }
-      for (const c of lista) {
-        for (const cod of [c.codigo, c.codigoAntigo]) {
-          if (!cod) continue
-          const l = limparCodigo(cod)
-          if (!m.exato.has(l)) m.exato.set(l, c)
-          if (!m.semZero.has(semZerosEsquerda(l))) m.semZero.set(semZerosEsquerda(l), c)
-        }
-      }
-      cacheClientes.set(empresaId, m)
+  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+  const todos = await db.query.clientes.findMany({
+    where: isNull(clientes.deletedAt),
+    columns: { id: true, empresaId: true, codigo: true, codigoAntigo: true, razaoSocial: true, vendedorAtualId: true },
+  })
+  const antigosDoSap = new Map<string, Set<string>>()
+  for (const c of todos) {
+    if (!c.codigoAntigo) continue
+    const k = limparCodigo(c.codigo)
+    antigosDoSap.set(k, (antigosDoSap.get(k) ?? new Set()).add(limparCodigo(c.codigoAntigo)))
+  }
+  const porEmpresa = new Map<number, { cod: Map<string, Cli[]>; nome: Map<string, Cli[]> }>()
+  for (const c of todos) {
+    const m = porEmpresa.get(c.empresaId) ?? { cod: new Map(), nome: new Map() }
+    for (const cod of [c.codigo, c.codigoAntigo]) {
+      if (!cod) continue
+      for (const k of new Set([limparCodigo(cod), semZerosEsquerda(limparCodigo(cod))])) m.cod.set(k, [...(m.cod.get(k) ?? []), c])
     }
-    return m.exato.get(codigo) ?? m.semZero.get(semZerosEsquerda(codigo))
+    const n = norm(c.razaoSocial)
+    if (n.length >= 6) m.nome.set(n, [...(m.nome.get(n) ?? []), c])
+    porEmpresa.set(c.empresaId, m)
+  }
+  const equivalentes = (empresaId: number, codigo: string, nome: string): Cli[] => {
+    const m = porEmpresa.get(empresaId)
+    if (!m) return []
+    const chaves = new Set([codigo, semZerosEsquerda(codigo), ...(antigosDoSap.get(codigo) ?? [])])
+    const achados = new Map<number, Cli>()
+    for (const k of chaves) for (const c of m.cod.get(k) ?? []) achados.set(c.id, c)
+    for (const c of m.nome.get(norm(nome)) ?? []) achados.set(c.id, c)
+    return [...achados.values()]
   }
 
   for (const p of pedidos) {
@@ -165,8 +180,8 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
     if (!empresa) continue
 
     const codigo = limparCodigo(p.CardCode)
-    const cliente = await acharCliente(empresa.id, codigo)
-    if (!cliente) {
+    const cadastros = equivalentes(empresa.id, codigo, p.CardName)
+    if (!cadastros.length) {
       r.semCliente.push({ pedido: p.DocNum, codigo, nome: p.CardName, empresa: empresa.nome })
       continue
     }
@@ -176,17 +191,33 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
     const mesReferencia = `${dia.slice(0, 7)}-01`
 
     // Venda já registrada na mão? Liga em vez de criar outra.
-    const de = brParaUtc(addDias(dia, -3), '00:00:00')
-    const ate = brParaUtc(addDias(dia, 3), '23:59:59')
+    // O vendedor às vezes registra no CRM dias depois do pedido (até 4–5 dias
+    // depois, passando por fim de semana, nos dados de outubro).
+    const de = brParaUtc(addDias(dia, -5), '00:00:00')
+    const ate = brParaUtc(addDias(dia, 15), '23:59:59')
+    const idsCadastros = cadastros.map((c) => c.id)
+    // Cadastro "principal": o que tem card neste mês (de preferência Fechado);
+    // senão o do código do SAP; senão o primeiro com vendedor.
+    const cardsDoMes = await db
+      .select()
+      .from(funilMensal)
+      .where(and(inArray(funilMensal.clienteId, idsCadastros), eq(funilMensal.mesReferencia, mesReferencia), isNull(funilMensal.deletedAt)))
+      .orderBy(desc(funilMensal.id))
+    const cardPreferido = cardsDoMes.find((c) => c.etapa === 'fechado') ?? cardsDoMes[0]
+    const cliente =
+      (cardPreferido && cadastros.find((c) => c.id === cardPreferido.clienteId)) ??
+      cadastros.find((c) => limparCodigo(c.codigo) === codigo && c.vendedorAtualId) ??
+      cadastros.find((c) => c.vendedorAtualId) ??
+      cadastros[0]
     const manuais = await db
       .select()
       .from(vendas)
-      .where(and(eq(vendas.clienteId, cliente.id), isNull(vendas.deletedAt), isNull(vendas.pedidoSapEntry), gte(vendas.dataFechamento, de), lte(vendas.dataFechamento, ate)))
+      .where(and(inArray(vendas.clienteId, idsCadastros), isNull(vendas.deletedAt), isNull(vendas.pedidoSapEntry), gte(vendas.dataFechamento, de), lte(vendas.dataFechamento, ate)))
     // Mesmo pedido: nº do pedido igual; senão valor até 15% diferente; senão,
     // se o cliente tem UMA venda manual e UM pedido do SAP nesses dias, é a
     // mesma venda com valor digitado diferente (ex.: Retema 2.789 × 2.637).
     const pedidosDoClienteNaJanela = pedidos.filter(
-      (o) => o.Cancelled !== 'tYES' && o.CardCode === p.CardCode && dataSap(o.DocDate) >= addDias(dia, -3) && dataSap(o.DocDate) <= addDias(dia, 3)
+      (o) => o.Cancelled !== 'tYES' && o.CardCode === p.CardCode && dataSap(o.DocDate) >= addDias(dia, -15) && dataSap(o.DocDate) <= addDias(dia, 5)
     ).length
     const manual =
       manuais.find((v) => v.numeroPedido && v.numeroPedido.replace(/\D/g, '') === String(p.DocNum)) ??
@@ -210,18 +241,13 @@ export async function sincronizarVendasSap(opts: { desde?: string } = {}): Promi
         .set({ pedidoSapEntry: p.DocEntry, numeroPedido: manual.numeroPedido ?? String(p.DocNum), valorFechado: p.DocTotal })
         .where(eq(vendas.id, manual.id))
       const temItens = await db.select({ id: itensPedido.id }).from(itensPedido).where(and(eq(itensPedido.vendaId, manual.id), isNull(itensPedido.deletedAt))).limit(1)
-      if (!temItens.length) await gravarItens(manual.id, cliente.id, p)
+      if (!temItens.length) await gravarItens(manual.id, manual.clienteId, p)
       r.ligadas++
       continue
     }
 
     // Card do cliente no mês: o que já está Fechado; senão o mais recente.
-    const cards = await db
-      .select()
-      .from(funilMensal)
-      .where(and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferencia), isNull(funilMensal.deletedAt)))
-      .orderBy(desc(funilMensal.id))
-    let card = cards.find((c) => c.etapa === 'fechado') ?? cards[0]
+    let card = cardPreferido
     if (!card) {
       if (!cliente.vendedorAtualId) {
         r.semVendedor.push({ pedido: p.DocNum, cliente: cliente.razaoSocial })
