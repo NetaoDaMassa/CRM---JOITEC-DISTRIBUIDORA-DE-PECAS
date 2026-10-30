@@ -7,7 +7,7 @@ import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
-import { slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
+import { sincronizarVendasSap, slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
 
 // Conferência SAP × CRM (pedido do João, 2026-10-30). Depois da venda
 // automática, o comparativo de outubro mostrou que a parte ligada ao SAP batia
@@ -90,7 +90,7 @@ export async function conferenciaVendasSap(empresaId: number, mes: string, opts:
   const entries = pedidos.map((p) => p.DocEntry)
   const ligadas = entries.length
     ? await db
-        .select({ id: vendas.id, entry: vendas.pedidoSapEntry, mes: vendas.mesReferencia, empresa: empresas.nome, vendedor: users.name })
+        .select({ id: vendas.id, entry: vendas.pedidoSapEntry, mes: vendas.mesReferencia, valor: vendas.valorFechado, empresaId: empresas.id, empresa: empresas.nome, vendedor: users.name })
         .from(vendas)
         .innerJoin(clientes, eq(clientes.id, vendas.clienteId))
         .innerJoin(empresas, eq(empresas.id, clientes.empresaId))
@@ -204,6 +204,20 @@ export async function conferenciaVendasSap(empresaId: number, mes: string, opts:
       return l && l.mes !== `${mes}-01` ? [{ ...resumoPedido(p), mesVenda: l.mes.slice(0, 7) }] : []
     })
 
+  // Pedido desta empresa (pela filial/vendedor) que no CRM é venda de OUTRA
+  // empresa — ex.: vendedora da Odin Tubos tirou pela filial Joitec e a venda
+  // ficou na Joitec. Conta no SAP daqui e no CRM de lá.
+  const outraEmpresa = doMes.flatMap((p) => {
+    const l = ligadaPorEntry.get(p.DocEntry)
+    return p.Cancelled !== 'tYES' && l && l.empresaId !== empresaId ? [resumoPedido(p)] : []
+  })
+  // Venda ligada com valor diferente do pedido (pedido alterado no SAP antes da
+  // venda automática atualizar sozinha, ou pedido de mais de 7 dias atrás).
+  const valorDiferente = doMes.flatMap((p) => {
+    const l = ligadaPorEntry.get(p.DocEntry)
+    return p.Cancelled !== 'tYES' && l && l.empresaId === empresaId && Math.abs(l.valor - p.DocTotal) > 0.009 ? [{ ...resumoPedido(p), valorCrm: l.valor }] : []
+  })
+
   const soma = (l: number[]) => Math.round(l.reduce((a, b) => a + b, 0) * 100) / 100
   const sapTotal = soma(doMes.filter((p) => p.Cancelled !== 'tYES').map((p) => p.DocTotal))
   const crmTotal = soma(vendasMes.map((v) => v.valor))
@@ -221,6 +235,8 @@ export async function conferenciaVendasSap(empresaId: number, mes: string, opts:
     semPedido,
     semVenda,
     outroMes,
+    outraEmpresa,
+    valorDiferente,
   }
 }
 
@@ -262,18 +278,21 @@ export async function excluirVendaConferencia(vendaId: number, motivo: string, u
   const venda = await db.query.vendas.findFirst({ where: eq(vendas.id, vendaId) })
   if (!venda || venda.deletedAt) throw new Error('Venda não encontrada')
   if (venda.pedidoSapEntry) throw new Error('Essa venda está ligada a um pedido do SAP — não sai por aqui.')
-  const agora = agoraSqlite()
-  await db.update(vendas).set({ deletedAt: agora }).where(eq(vendas.id, vendaId))
-  await db
-    .update(caixaMovimentacoes)
-    .set({ deletedAt: agora })
-    .where(and(eq(caixaMovimentacoes.origemVendaId, vendaId), isNull(caixaMovimentacoes.deletedAt)))
-  await registrarAuditoria({ tabela: 'vendas', registroId: vendaId, acao: 'excluir', campo: 'deletedAt', valorNovo: `${agora} — conferência SAP: ${motivo}`, alteradoPor: usuarioId })
+  await marcarExcluida(vendaId, motivo, usuarioId)
+  const cardVoltouPara = await voltarCardSeVazio(venda.funilMensalId, usuarioId)
+  cache.clear()
+  return { cardVoltouPara }
+}
 
-  const resta = await db.select({ id: vendas.id }).from(vendas).where(and(eq(vendas.funilMensalId, venda.funilMensalId), isNull(vendas.deletedAt))).limit(1)
+
+// Card que ficou sem nenhuma venda volta pra etapa de antes do "Fechado"
+// (pela auditoria). Devolve a etapa nova, ou null se não mexeu.
+async function voltarCardSeVazio(funilMensalId: number, usuarioId: number): Promise<string | null> {
+  const agora = agoraSqlite()
+  const resta = await db.select({ id: vendas.id }).from(vendas).where(and(eq(vendas.funilMensalId, funilMensalId), isNull(vendas.deletedAt))).limit(1)
   let cardVoltouPara: string | null = null
   if (!resta.length) {
-    const card = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, venda.funilMensalId) })
+    const card = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, funilMensalId) })
     if (card?.etapa === 'fechado') {
       const [mud] = await db
         .select({ anterior: logAuditoria.valorAnterior })
@@ -303,9 +322,81 @@ export async function excluirVendaConferencia(vendaId: number, motivo: string, u
           alteradoPor: usuarioId,
         })
         cardVoltouPara = mud.anterior
+      } else {
+        // Card que a venda automática criou junto com a venda (sem histórico
+        // de etapa): sem a venda, ele não tem razão de existir.
+        const [criadoPeloSap] = await db
+          .select({ id: vendas.id })
+          .from(vendas)
+          .where(and(eq(vendas.funilMensalId, card.id), eq(vendas.criadaPeloSap, true), sql`abs(julianday(${vendas.createdAt}) - julianday(${card.createdAt})) < 0.0003`))
+          .limit(1)
+        if (criadoPeloSap) {
+          await db.update(funilMensal).set({ deletedAt: agora }).where(eq(funilMensal.id, card.id))
+          await registrarAuditoria({ tabela: 'funil_mensal', registroId: card.id, acao: 'excluir', campo: 'deletedAt', valorNovo: `${agora} (card criado pelo SAP; venda saiu)`, alteradoPor: usuarioId })
+          cardVoltouPara = 'card removido'
+        }
       }
     }
   }
+  return cardVoltouPara
+}
+
+async function marcarExcluida(vendaId: number, motivo: string, usuarioId: number) {
+  const agora = agoraSqlite()
+  await db.update(vendas).set({ deletedAt: agora }).where(eq(vendas.id, vendaId))
+  await db
+    .update(caixaMovimentacoes)
+    .set({ deletedAt: agora })
+    .where(and(eq(caixaMovimentacoes.origemVendaId, vendaId), isNull(caixaMovimentacoes.deletedAt)))
+  await registrarAuditoria({ tabela: 'vendas', registroId: vendaId, acao: 'excluir', campo: 'deletedAt', valorNovo: `${agora} — conferência SAP: ${motivo}`, alteradoPor: usuarioId })
+}
+
+// "Usar valor do SAP": venda ligada com valor diferente do pedido.
+export async function usarValorDoSap(vendaId: number, usuarioId: number) {
+  const venda = await db.query.vendas.findFirst({ where: eq(vendas.id, vendaId) })
+  if (!venda || venda.deletedAt || !venda.pedidoSapEntry) throw new Error('Venda não encontrada ou sem pedido do SAP')
+  const p = await pedidoSap(venda.pedidoSapEntry)
+  if (Math.abs(venda.valorFechado - p.DocTotal) <= 0.009) return { valor: p.DocTotal }
+  await db.update(vendas).set({ valorFechado: p.DocTotal }).where(eq(vendas.id, vendaId))
+  await registrarAuditoria({
+    tabela: 'vendas',
+    registroId: vendaId,
+    acao: 'editar',
+    campo: 'valor_fechado',
+    valorAnterior: String(venda.valorFechado),
+    valorNovo: `${p.DocTotal} (pedido ${p.DocNum} do SAP)`,
+    alteradoPor: usuarioId,
+  })
+  return { valor: p.DocTotal }
+}
+
+// "Trazer pra esta empresa": o pedido é desta empresa (filial/vendedor do SAP)
+// mas a venda está em outra. A de lá sai e o pedido entra aqui com a regra da
+// venda automática (liga à venda manual parecida, senão card do dono do
+// cliente). Se não der (cliente não cadastrado/sem vendedor), desfaz.
+export async function trazerPedidoParaEmpresa(docEntry: number, empresaId: number, usuarioId: number) {
+  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId) })
+  const p = await pedidoSap(docEntry)
+  const slug = slugDoPedidoSap(p.BPL_IDAssignedToInvoice, p.SalesPersonCode, await vendedoresAutomacaoSap(), await vendedoresOdinTubosSap())
+  if (!empresa || slug !== empresa.slug) throw new Error(`O pedido ${p.DocNum} não é desta empresa.`)
+  if (p.Cancelled === 'tYES') throw new Error(`O pedido ${p.DocNum} está cancelado no SAP.`)
+  const [atual] = await db
+    .select({ id: vendas.id, funilMensalId: vendas.funilMensalId, empresaId: clientes.empresaId })
+    .from(vendas)
+    .innerJoin(clientes, eq(clientes.id, vendas.clienteId))
+    .where(and(eq(vendas.pedidoSapEntry, docEntry), isNull(vendas.deletedAt)))
+  if (!atual) throw new Error('Esse pedido não está em nenhuma venda.')
+  if (atual.empresaId === empresaId) throw new Error('Esse pedido já está nesta empresa.')
+
+  const r = await sincronizarVendasSap({ desde: dataSap(p.DocDate), docEntries: [docEntry], ignorarVendaId: atual.id })
+  if (!r || (!r.criadas && !r.ligadas)) {
+    if (r?.semCliente.length) throw new Error(`O cliente ${r.semCliente[0].codigo} ${r.semCliente[0].nome} não está cadastrado na ${r.semCliente[0].empresa} — cadastre primeiro.`)
+    if (r?.semVendedor.length) throw new Error(`O cliente ${r.semVendedor[0].cliente} está sem vendedor na carteira — defina o vendedor primeiro.`)
+    throw new Error('Não deu pra trazer o pedido — nada foi mudado.')
+  }
+  // Entrou aqui: a venda de lá sai (auditoria + caixa + card).
+  await marcarExcluida(atual.id, `pedido ${p.DocNum} levado pra ${empresa.nome}`, usuarioId)
+  await voltarCardSeVazio(atual.funilMensalId, usuarioId)
   cache.clear()
-  return { cardVoltouPara }
+  return { docNum: p.DocNum, criada: r.criadas > 0 }
 }

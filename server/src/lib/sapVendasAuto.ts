@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, empresas, funilMensal, itensPedido, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
@@ -22,7 +22,7 @@ import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
 //      nº de pedido) é LIGADA ao pedido em vez de criar outra;
 //   3. registro manual depois é bloqueado (ver vendaJaVeioDoSap);
 //   4. pedido cancelado no SAP: a venda criada por aqui sai; valor alterado:
-//      atualiza (venda ligada a registro manual nunca é apagada).
+//      atualiza (inclusive a venda manual ligada, que nunca é apagada).
 
 const SLUG_POR_FILIAL: Record<number, string> = { 3: 'joitec', 4: 'odin-tubos' }
 // Vendedoras da Odin Tubos às vezes tiram o pedido pela filial Joitec (3) —
@@ -101,8 +101,10 @@ export async function vendaJaVeioDoSap(clienteId: number, valor: number): Promis
 
 // `opts.desde`: carga avulsa de um período passado (script --desde), pedida
 // pelo João em 2026-10-30 pra trazer as vendas que faltaram em outubro.
-// `opts.docEntries`: só esses pedidos (botão "Criar venda" da Conferência SAP × CRM).
-export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: number[] } = {}): Promise<SyncVendasResultado | null> {
+// `opts.docEntries`: só esses pedidos (botões "Criar venda"/"Trazer para cá" da
+// Conferência SAP × CRM). `opts.ignorarVendaId`: finge que essa venda não está
+// ligada ao pedido (a de outra empresa, que só sai depois que a nova entrou).
+export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: number[]; ignorarVendaId?: number } = {}): Promise<SyncVendasResultado | null> {
   const desdeConfig = await getConfigTexto('sap_vendas_auto_desde')
   if (!desdeConfig && !opts.desde) return null
   const hoje = hojeBrString()
@@ -117,31 +119,41 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
   const empresaPorSlug = new Map(lista.map((e) => [e.slug, e]))
   const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true), columns: { id: true } })
 
-  const { pedidos, condicoes, notas } = await comSessaoSap(async (sap) => ({
-    pedidos: await sap.getTodos<PedidoSap>(
+  const { pedidos, condicoes, notas } = await comSessaoSap(async (sap) => {
+    const pedidos = await sap.getTodos<PedidoSap>(
       `/Orders?$filter=DocDate ge '${desde}' and (BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4)` +
         (opts.docEntries?.length ? ` and (${opts.docEntries.map((e) => `DocEntry eq ${e}`).join(' or ')})` : '') +
         '&$select=DocEntry,DocNum,DocDate,DocTime,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice,PaymentGroupCode,Cancelled,DocumentLines',
       100
-    ),
-    condicoes: new Map(
-      (await sap.getTodos<{ GroupNumber: number; PaymentTermsGroupName: string }>('/PaymentTermsTypes?$select=GroupNumber,PaymentTermsGroupName')).map((c) => [
-        c.GroupNumber,
-        c.PaymentTermsGroupName,
-      ])
-    ),
-    // Notas dos últimos dias pra marcar a venda como faturada (nº da NF-e).
-    notas: await sap.getTodos<{ SequenceSerial: number | null; DocNum: number; Cancelled: string; CancelStatus: string; DocumentLines: { BaseType: number; BaseEntry: number | null }[] }>(
-      `/Invoices?$filter=DocDate ge '${desde}' and Cancelled eq 'tNO'&$select=SequenceSerial,DocNum,Cancelled,CancelStatus,DocumentLines`,
-      100
-    ),
-  }))
+    )
+    // Pedidos escolhidos (botão da Conferência): só as notas desses clientes —
+    // o mês inteiro de notas com linhas demora.
+    const soClientes = opts.docEntries?.length ? [...new Set(pedidos.map((p) => p.CardCode))] : []
+    const filtroClientes = soClientes.length ? ` and (${soClientes.map((c) => `CardCode eq '${c.replace(/'/g, "''")}'`).join(' or ')})` : ''
+    return {
+      pedidos,
+      condicoes: new Map(
+        (await sap.getTodos<{ GroupNumber: number; PaymentTermsGroupName: string }>('/PaymentTermsTypes?$select=GroupNumber,PaymentTermsGroupName')).map((c) => [
+          c.GroupNumber,
+          c.PaymentTermsGroupName,
+        ])
+      ),
+      // Notas dos últimos dias pra marcar a venda como faturada (nº da NF-e).
+      notas: await sap.getTodos<{ SequenceSerial: number | null; DocNum: number; Cancelled: string; CancelStatus: string; DocumentLines: { BaseType: number; BaseEntry: number | null }[] }>(
+        `/Invoices?$filter=DocDate ge '${desde}' and Cancelled eq 'tNO'${filtroClientes}&$select=SequenceSerial,DocNum,Cancelled,CancelStatus,DocumentLines`,
+        100
+      ),
+    }
+  })
 
   const r: SyncVendasResultado = { desde, pedidosNoSap: pedidos.length, criadas: 0, ligadas: 0, jaExistiam: 0, atualizadas: 0, canceladas: 0, faturadas: 0, semCliente: [], semVendedor: [] }
 
   const entries = pedidos.map((p) => p.DocEntry)
   const existentes = entries.length
-    ? await db.select().from(vendas).where(and(inArray(vendas.pedidoSapEntry, entries), isNull(vendas.deletedAt)))
+    ? await db
+        .select()
+        .from(vendas)
+        .where(and(inArray(vendas.pedidoSapEntry, entries), isNull(vendas.deletedAt), opts.ignorarVendaId ? ne(vendas.id, opts.ignorarVendaId) : undefined))
     : []
   const porEntry = new Map(existentes.map((v) => [v.pedidoSapEntry!, v]))
 
@@ -197,8 +209,20 @@ export async function sincronizarVendasSap(opts: { desde?: string; docEntries?: 
       continue
     }
     if (ja) {
-      if (ja.criadaPeloSap && Math.abs(ja.valorFechado - p.DocTotal) > 0.009) {
+      // Pedido alterado no SAP depois de virar venda: o valor oficial é o do
+      // SAP — vale também pra venda digitada e depois ligada (João, 2026-10-30:
+      // pedido 8889 estava R$ 12.309 no SAP × R$ 9.462 no CRM).
+      if (Math.abs(ja.valorFechado - p.DocTotal) > 0.009) {
         await db.update(vendas).set({ valorFechado: p.DocTotal }).where(eq(vendas.id, ja.id))
+        await registrarAuditoria({
+          tabela: 'vendas',
+          registroId: ja.id,
+          acao: 'editar',
+          campo: 'valor_fechado',
+          valorAnterior: String(ja.valorFechado),
+          valorNovo: `${p.DocTotal} (pedido ${p.DocNum} alterado no SAP)`,
+          alteradoPor: autor?.id ?? null,
+        })
         r.atualizadas++
       } else r.jaExistiam++
       continue

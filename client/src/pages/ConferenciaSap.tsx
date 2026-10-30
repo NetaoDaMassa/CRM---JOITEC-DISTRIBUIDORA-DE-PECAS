@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Scale, RefreshCw, Link2, Trash2, EyeOff, Plus, Undo2 } from 'lucide-react'
+import { Scale, RefreshCw, Link2, Trash2, EyeOff, Plus, Undo2, ArrowDownToLine, Check } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { formatarMoeda } from '../lib/moeda'
@@ -14,7 +14,7 @@ import ComoUsar from '../components/ui/ComoUsar'
 // pedido provável. O vendedor vê as dele e pode ligar; o admin também exclui,
 // cria a venda do pedido e marca como "ignorar".
 
-type Aba = 'semPedido' | 'semVenda' | 'outroMes'
+type Aba = 'semPedido' | 'semVenda' | 'outraEmpresa' | 'valorDiferente' | 'outroMes'
 type Acao = { tipo: 'excluir' | 'ignorarVenda' | 'ignorarPedido'; ref: number; titulo: string }
 
 function dataBr(iso: string): string {
@@ -53,10 +53,16 @@ export default function ConferenciaSap() {
   const deuErro = (e: { message: string }) => setAviso({ ok: false, texto: e.message })
   const ligar = trpc.conferenciaSap.ligar.useMutation({ onSuccess: (r) => deuCerto(`Venda ligada ao pedido ${r.docNum} (${formatarMoeda(r.valor)}).`), onError: deuErro })
   const excluir = trpc.conferenciaSap.excluirVenda.useMutation({
-    onSuccess: (r) => deuCerto(`Venda excluída.${r.cardVoltouPara ? ` O card voltou para "${r.cardVoltouPara}".` : ''}`),
+    onSuccess: (r) =>
+      deuCerto(`Venda excluída.${r.cardVoltouPara === 'card removido' ? ' O card (criado pelo SAP) saiu.' : r.cardVoltouPara ? ` O card voltou para "${r.cardVoltouPara}".` : ''}`),
     onError: deuErro,
   })
   const criar = trpc.conferenciaSap.criarVenda.useMutation({ onSuccess: (r) => deuCerto(r.criada ? 'Venda criada a partir do pedido.' : 'Pedido ligado à venda que já existia.'), onError: deuErro })
+  const usarValor = trpc.conferenciaSap.usarValorSap.useMutation({ onSuccess: (r) => deuCerto(`Valor atualizado para ${formatarMoeda(r.valor)}.`), onError: deuErro })
+  const trazer = trpc.conferenciaSap.trazerParaEmpresa.useMutation({
+    onSuccess: (r) => deuCerto(`Pedido ${r.docNum} trazido para esta empresa${r.criada ? ' (venda criada no card do dono do cliente)' : ' (ligado à venda que já existia aqui)'}.`),
+    onError: deuErro,
+  })
   const ignorar = trpc.conferenciaSap.ignorar.useMutation({ onSuccess: () => deuCerto('Marcado como ignorado.'), onError: deuErro })
   const desfazer = trpc.conferenciaSap.desfazerIgnorar.useMutation({ onSuccess: () => deuCerto('Voltou para a lista de pendências.'), onError: deuErro })
   const atualizarSap = async () => {
@@ -76,13 +82,15 @@ export default function ConferenciaSap() {
   const pendSemVenda = (data?.semVenda ?? []).filter((p) => !p.ignorado)
   const soma = (l: { valor: number }[]) => l.reduce((s, x) => s + x.valor, 0)
   const baseCliente = admin ? '/admin/clientes' : '/vendedor/clientes'
-  const ocupado = ligar.isPending || excluir.isPending || criar.isPending || ignorar.isPending || desfazer.isPending
+  const ocupado = usarValor.isPending || trazer.isPending || ligar.isPending || excluir.isPending || criar.isPending || ignorar.isPending || desfazer.isPending
 
   const ABAS: { id: Aba; label: string; n: number; valor: number }[] = [
-    { id: 'semPedido', label: 'Vendas no CRM sem pedido no SAP', n: pendSemPedido.length, valor: soma(pendSemPedido) },
-    { id: 'semVenda', label: 'Pedidos do SAP sem venda no CRM', n: pendSemVenda.length, valor: soma(pendSemVenda) },
-    { id: 'outroMes', label: 'Pedido do mês com venda em outro mês', n: data?.outroMes.length ?? 0, valor: soma(data?.outroMes ?? []) },
-  ]
+    { id: 'semPedido' as Aba, label: 'Vendas no CRM sem pedido no SAP', n: pendSemPedido.length, valor: soma(pendSemPedido) },
+    { id: 'semVenda' as Aba, label: 'Pedidos do SAP sem venda no CRM', n: pendSemVenda.length, valor: soma(pendSemVenda) },
+    ...(admin ? [{ id: 'outraEmpresa' as Aba, label: 'Pedido desta empresa com venda em outra', n: data?.outraEmpresa.length ?? 0, valor: soma(data?.outraEmpresa ?? []) }] : []),
+    { id: 'valorDiferente' as Aba, label: 'Valor diferente do SAP', n: data?.valorDiferente.length ?? 0, valor: soma(data?.valorDiferente ?? []) },
+    { id: 'outroMes' as Aba, label: 'Pedido do mês com venda em outro mês', n: data?.outroMes.length ?? 0, valor: soma(data?.outroMes ?? []) },
+  ].filter((a) => a.n > 0 || a.id === 'semPedido' || a.id === 'semVenda')
 
   return (
     <div className="space-y-5">
@@ -193,7 +201,7 @@ export default function ConferenciaSap() {
                 {a.label} <b className="ml-1">{a.n}</b> <span className="text-dark-500 font-mono">· {formatarMoeda(a.valor, { casas: 0 })}</span>
               </button>
             ))}
-            {aba !== 'outroMes' && (
+            {(aba === 'semPedido' || aba === 'semVenda') && (
               <label className="ml-auto flex items-center gap-2 text-xs text-dark-400">
                 <input type="checkbox" checked={verIgnorados} onChange={(e) => setVerIgnorados(e.target.checked)} /> mostrar ignorados
               </label>
@@ -339,6 +347,55 @@ export default function ConferenciaSap() {
                 </table>
               </div>
             ))}
+
+          {aba === 'outraEmpresa' && data.outraEmpresa.length > 0 && (
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-2 text-sm">
+              <p className="text-xs text-dark-500">
+                Pelo SAP (filial e vendedor) estes pedidos são de {data.empresa}, mas no CRM estão como venda de outra empresa. <b>Trazer para cá</b> tira a venda de lá e cria aqui
+                (no card do dono do cliente, ou ligada a uma venda parecida que já exista aqui).
+              </p>
+              {data.outraEmpresa.map((p) => (
+                <div key={p.docEntry} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-dark-700/70 pt-2">
+                  <span className="font-mono">pedido {p.docNum}</span>
+                  <span>{dataBr(p.data)}</span>
+                  <span className="font-mono">{formatarMoeda(p.valor)}</span>
+                  <span className="text-dark-300 truncate max-w-[18rem]">{p.clienteSap}</span>
+                  <span className="text-xs text-dark-500">
+                    filial {p.filial}
+                    {p.vendedorSap ? ` · ${p.vendedorSap}` : ''}
+                  </span>
+                  <span className="text-xs rounded-full px-2 py-0.5 bg-amber-900/30 text-amber-200">
+                    hoje: venda {p.ligadoA?.vendaId} na {p.ligadoA?.empresa}
+                    {p.ligadoA?.vendedor ? ` · ${p.ligadoA.vendedor}` : ''}
+                  </span>
+                  <Button size="sm" variant="outline" disabled={ocupado} onClick={() => trazer.mutate({ docEntry: p.docEntry })}>
+                    <ArrowDownToLine size={14} /> Trazer para cá
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {aba === 'valorDiferente' && data.valorDiferente.length > 0 && (
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-2 text-sm">
+              <p className="text-xs text-dark-500">Pedidos alterados no SAP depois de virar venda. A venda automática já corrige os dos últimos 7 dias; os mais antigos, corrija aqui.</p>
+              {data.valorDiferente.map((p) => (
+                <div key={p.docEntry} className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-dark-700/70 pt-2">
+                  <span className="font-mono">pedido {p.docNum}</span>
+                  <span>{dataBr(p.data)}</span>
+                  <span className="text-dark-300 truncate max-w-[18rem]">{p.clienteSap}</span>
+                  <span>
+                    SAP <b className="font-mono">{formatarMoeda(p.valor)}</b> × CRM <b className="font-mono">{formatarMoeda(p.valorCrm)}</b>
+                  </span>
+                  {p.ligadoA && (
+                    <Button size="sm" variant="outline" disabled={ocupado} onClick={() => usarValor.mutate({ vendaId: p.ligadoA!.vendaId })}>
+                      <Check size={14} /> Usar valor do SAP
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {aba === 'outroMes' &&
             (data.outroMes.length === 0 ? (

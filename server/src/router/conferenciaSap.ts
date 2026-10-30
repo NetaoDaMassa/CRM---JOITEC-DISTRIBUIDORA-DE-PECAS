@@ -3,7 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { sapConferenciaIgnorados, vendas } from '../db/schema.js'
-import { conferenciaVendasSap, excluirVendaConferencia, ligarVendaAoPedido, pedidoSap } from '../lib/conferenciaVendasSap.js'
+import { conferenciaVendasSap, excluirVendaConferencia, ligarVendaAoPedido, pedidoSap, trazerPedidoParaEmpresa, usarValorDoSap } from '../lib/conferenciaVendasSap.js'
 import { sincronizarVendasSap } from '../lib/sapVendasAuto.js'
 import { dataSap } from '../lib/sapServiceLayer.js'
 
@@ -24,6 +24,19 @@ export const conferenciaSapRouter = router({
     if (!venda) throw new Error('Venda não encontrada')
     if (ctx.user.role !== 'admin' && venda.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
     return ligarVendaAoPedido(input.vendaId, input.docEntry, ctx.user.id)
+  }),
+
+  usarValorSap: protectedProcedure.input(z.object({ vendaId: z.number() })).mutation(async ({ ctx, input }) => {
+    const venda = await db.query.vendas.findFirst({ where: eq(vendas.id, input.vendaId) })
+    if (!venda) throw new Error('Venda não encontrada')
+    if (ctx.user.role !== 'admin' && venda.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
+    return usarValorDoSap(input.vendaId, ctx.user.id)
+  }),
+
+  // Pedido desta empresa que está como venda em outra (ex.: vendedora da
+  // Odin Tubos que tirou pela filial Joitec) — traz pra cá.
+  trazerParaEmpresa: adminProcedure.input(z.object({ docEntry: z.number() })).mutation(async ({ ctx, input }) => {
+    return trazerPedidoParaEmpresa(input.docEntry, ctx.empresaId, ctx.user.id)
   }),
 
   excluirVenda: adminProcedure.input(z.object({ vendaId: z.number(), motivo: z.string().trim().min(3, 'Escreva o motivo.') })).mutation(async ({ ctx, input }) => {
