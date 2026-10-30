@@ -5,6 +5,7 @@ import { getConfigBool } from './configuracoes.js'
 import { sapConfigurado } from './sapServiceLayer.js'
 import { sincronizarItensSap } from './sapSyncItens.js'
 import { sincronizarContasReceberSap } from './sapContasReceber.js'
+import { sincronizarVendasSap } from './sapVendasAuto.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -29,5 +30,23 @@ export async function rodarSincronizacaoSap(): Promise<void> {
     console.error('[sap] erro na sincronização:', err instanceof Error ? err.message : err)
   } finally {
     rodando = false
+  }
+}
+
+// Venda automática a partir do pedido do SAP (lib/sapVendasAuto.ts) — de 10
+// em 10 min, só com `sap_sync_ativo` ligado e `sap_vendas_auto_desde` definido.
+let rodandoVendas = false
+
+export async function rodarVendasSap(): Promise<void> {
+  if (rodandoVendas || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoVendas = true
+  try {
+    const r = await sincronizarVendasSap()
+    if (r && (r.criadas || r.ligadas || r.canceladas || r.faturadas))
+      console.log(`[sap-vendas] ${r.criadas} criada(s), ${r.ligadas} ligada(s) a registro manual, ${r.canceladas} cancelada(s), ${r.faturadas} faturada(s)`)
+  } catch (err) {
+    console.error('[sap-vendas] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoVendas = false
   }
 }

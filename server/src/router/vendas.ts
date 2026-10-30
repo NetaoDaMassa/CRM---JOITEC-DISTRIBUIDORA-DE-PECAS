@@ -7,6 +7,7 @@ import { agoraSqlite, mesReferenciaAtual, hojeBrString, dataFechamentoDoCard } f
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
+import { vendaJaVeioDoSap } from '../lib/sapVendasAuto.js'
 
 // Só a Compretec Loja Física usa o botão de venda rápida (venda de balcão,
 // consumidor final) — pedido do João depois de criar o Thiago/Marcos/Flavio
@@ -183,6 +184,9 @@ export const vendasRouter = router({
       if (clienteFaturamentoId !== funil.clienteId) {
         await validarClienteFaturamento(funil.clienteId, clienteFaturamentoId, ctx.empresaId)
       }
+      // Venda que já entrou sozinha pelo pedido do SAP (lib/sapVendasAuto.ts) — não duplica.
+      const jaSap = await vendaJaVeioDoSap(clienteFaturamentoId, input.valorFechado)
+      if (jaSap) throw new Error(`Esta venda já entrou sozinha pelo pedido ${jaSap.numeroPedido ?? ''} do SAP — não precisa registrar de novo.`)
 
       const vendaResult = await db.insert(vendas).values({
         funilMensalId: funil.id,

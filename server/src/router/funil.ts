@@ -12,6 +12,7 @@ import { validarClienteFaturamento } from './vinculos.js'
 import { SLUG_VENDA_RAPIDA } from './vendas.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
 import { registrarHistoricoOrdem } from '../lib/ordensGates.js'
+import { vendaJaVeioDoSap } from '../lib/sapVendasAuto.js'
 
 // Etapas pra onde dá pra reabrir/reenviar um pedido cancelado a partir de
 // "Fechado" — mesma lista de ETAPAS_ABERTAS_SUGESTAO do front (reset
@@ -471,6 +472,9 @@ export const funilRouter = router({
           throw new Error('Este cliente já está fechado esse mês. Use "Registrar nova venda" pra lançar outro pedido.')
         }
         if (input.valorFechado === undefined) throw new Error('Informe o valor fechado.')
+        // Venda que já entrou sozinha pelo pedido do SAP (lib/sapVendasAuto.ts) — não duplica.
+        const jaSap = await vendaJaVeioDoSap(input.clienteIdFaturamento ?? funil.clienteId, input.valorFechado)
+        if (jaSap) throw new Error(`Esta venda já entrou sozinha pelo pedido ${jaSap.numeroPedido ?? ''} do SAP — não precisa registrar de novo.`)
         if (!input.pdfPedidoPath) throw new Error('Anexe o PDF do pedido/nota para fechar a venda.')
 
         // Compretec Loja Física exige número do pedido em qualquer venda, não

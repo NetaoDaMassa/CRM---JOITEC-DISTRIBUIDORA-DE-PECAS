@@ -925,6 +925,13 @@
       "when": 1793275180012,
       "tag": "0131_sap_contas_receber",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "6",
+      "when": 1793365248314,
+      "tag": "0132_vendas_pedido_sap",
+      "breakpoints": true
     }
   ]
 }

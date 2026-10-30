@@ -541,11 +541,19 @@ export const vendas = sqliteTable('vendas', {
   // conta só por `ordens` (ver server/src/router/financeiro.ts). Pedido do
   // João, 2026-09-01. Nunca preenchido pra outras empresas.
   convertidoParaOrdemId: integer('convertido_para_ordem_id').references(() => ordens.id, { onDelete: 'set null' }),
+  // Pedido de venda do SAP desta venda (DocEntry) — preenchido pela venda
+  // automática (lib/sapVendasAuto.ts, pedido do João, 2026-10-30): ou o CRM
+  // criou a venda a partir do pedido (`criadaPeloSap`), ou ligou o pedido a
+  // uma venda que o vendedor já tinha registrado na mão. É a trava contra
+  // venda duplicada.
+  pedidoSapEntry: integer('pedido_sap_entry'),
+  criadaPeloSap: integer('criada_pelo_sap', { mode: 'boolean' }).notNull().default(false),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
 }, (t) => ({
   clienteIdx: index('idx_vendas_cliente').on(t.clienteId),
   funilIdx: index('idx_vendas_funil').on(t.funilMensalId),
+  pedidoSapIdx: index('idx_vendas_pedido_sap').on(t.pedidoSapEntry),
 }))
 
 export const itensPedido = sqliteTable('itens_pedido', {
