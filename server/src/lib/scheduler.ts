@@ -15,7 +15,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { rodarCotacoesSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -206,6 +206,10 @@ export function startScheduler() {
   // Venda automática a partir do pedido do SAP — de 10 em 10 minutos.
   cron.schedule('*/10 * * * *', () => {
     rodarVendasSap().catch((err) => console.error('[sap-vendas] erro no agendador:', err))
+  })
+  // Cotações do SAP no card/ficha (Fase 1, só mostrar) — de 2 em 2 minutos.
+  cron.schedule('*/2 * * * *', () => {
+    rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))
   })
 
   // Arquivos/Mídia → Google Drive (googleDriveSync.ts). Sem conta conectada

@@ -6,6 +6,7 @@ import { sapConfigurado } from './sapServiceLayer.js'
 import { sincronizarItensSap } from './sapSyncItens.js'
 import { sincronizarContasReceberSap } from './sapContasReceber.js'
 import { sincronizarVendasSap } from './sapVendasAuto.js'
+import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -48,5 +49,22 @@ export async function rodarVendasSap(): Promise<void> {
     console.error('[sap-vendas] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoVendas = false
+  }
+}
+
+// Cotações do SAP ao vivo (lib/sapCotacoesAuto.ts, Fase 1: só mostrar) — de
+// 2 em 2 minutos, com `sap_sync_ativo` ligado.
+let rodandoCotacoes = false
+
+export async function rodarCotacoesSap(): Promise<void> {
+  if (rodandoCotacoes || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoCotacoes = true
+  try {
+    const r = await sincronizarCotacoesSap()
+    if (r && (r.novas || r.alteradas)) console.log(`[sap-cotacoes] ${r.novas} nova(s), ${r.alteradas} alterada(s)`)
+  } catch (err) {
+    console.error('[sap-cotacoes] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoCotacoes = false
   }
 }

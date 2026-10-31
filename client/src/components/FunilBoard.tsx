@@ -24,6 +24,7 @@ import { NovoCompromissoModal } from './CalendarBoard'
 import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
 import InadimplenciaCliente from './InadimplenciaCliente'
+import HistoricoCotacoesSapCliente from './HistoricoCotacoesSapCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
 import { AvatarIniciais, dispararConfete } from './ui/Visual'
@@ -144,6 +145,8 @@ const CLASSIFICACAO_COR: Record<string, string> = {
   revenda: 'text-purple-300 bg-purple-900/20 border-purple-700/40',
   consumidor_final: 'text-cyan-300 bg-cyan-900/20 border-cyan-700/40',
 }
+
+const STATUS_COTACAO_SAP: Record<string, string> = { aberto: 'aberta', fechado: 'fechada', cancelado: 'cancelada' }
 
 function formatarMoeda(v: number | null): string {
   return formatarMoedaBr(v, { vazio: '' })
@@ -438,6 +441,11 @@ export default function FunilBoard({
   // Clientes devendo no SAP (InadimplenciaCliente) → etiqueta vermelha no card.
   const { data: inadimplentes } = trpc.sapFinanceiro.inadimplentes.useQuery(undefined, { staleTime: 5 * 60_000 })
   const devendo = useMemo(() => new Map((inadimplentes ?? []).map((d) => [d.clienteId, d])), [inadimplentes])
+  // Cotações do SAP ao vivo (Fase 1, 2026-10-31: só mostrar) → etiqueta azul
+  // no card com a cotação mais recente do cliente naquele mês.
+  const mesesDosCards = useMemo(() => [...new Set(cards.map((c) => c.mesReferencia.slice(0, 7)))].slice(0, 12), [cards])
+  const { data: cotacoesSap } = trpc.historicoSap.cotacoesDosCards.useQuery({ meses: mesesDosCards }, { staleTime: 2 * 60_000, enabled: mesesDosCards.length > 0 })
+  const cotacaoDoCard = useMemo(() => new Map((cotacoesSap ?? []).map((c) => [`${c.clienteId}:${c.mes}`, c])), [cotacoesSap])
   const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
   const [classificacaoFiltro, setClassificacaoFiltro] = useState<'' | 'revenda' | 'consumidor_final'>('')
   const etapasVisiveis = apenasEtapas
@@ -727,6 +735,19 @@ export default function FunilBoard({
                           ⚠ {formatarMoeda(devendo.get(card.clienteId)!.vencido)} vencido · {devendo.get(card.clienteId)!.maiorAtraso}d
                         </p>
                       )}
+                      {(() => {
+                        const cq = cotacaoDoCard.get(`${card.clienteId}:${card.mesReferencia}`)
+                        if (!cq) return null
+                        return (
+                          <p
+                            className="text-xs text-sky-200 bg-sky-900/20 border border-sky-700/40 rounded-lg px-2 py-1 mb-2"
+                            title={`${cq.qtd} cotação(ões) no SAP neste mês (${cq.abertas} aberta(s)), total ${formatarMoeda(cq.valor)} — abra o card para ver os itens`}
+                          >
+                            📝 Cotação SAP nº {cq.ultima.numero} · {formatarMoeda(cq.ultima.valor)} · {STATUS_COTACAO_SAP[cq.ultima.status] ?? cq.ultima.status}
+                            {cq.qtd > 1 ? ` (+${cq.qtd - 1})` : ''}
+                          </p>
+                        )
+                      })()}
                       {card.proximoCompromisso && (() => {
                         const cp = formatarProximoCompromisso(card.proximoCompromisso.dataHora)
                         return (
@@ -1219,6 +1240,10 @@ function CardModal({
   const [itensPedido, setItensPedido] = useState<{ descricao: string; quantidade: string; valorUnitario: string }[]>([])
   const [clienteIdFaturamento, setClienteIdFaturamento] = useState(card.clienteId)
   const [historicoAberto, setHistoricoAberto] = useState(false)
+  // Cotações do SAP deste cliente no mês do card (Fase 1, só mostrar).
+  const { data: cotacoesDoMes } = trpc.historicoSap.cotacoesDosCards.useQuery({ meses: [card.mesReferencia.slice(0, 7)] }, { staleTime: 2 * 60_000 })
+  const cotacaoSapDoCard = cotacoesDoMes?.find((c) => c.clienteId === card.clienteId)
+  const [cotacoesSapAbertas, setCotacoesSapAbertas] = useState(false)
   const [mostrarRegistroManual, setMostrarRegistroManual] = useState(false)
   const [cancelarAberto, setCancelarAberto] = useState(false)
   const [cancelarNovaEtapa, setCancelarNovaEtapa] = useState<string>('perdido')
@@ -1658,6 +1683,25 @@ function CardModal({
           </div>
         )}
         <InadimplenciaCliente clienteId={card.clienteId} compacto />
+        {cotacaoSapDoCard && (
+          <div className="space-y-2">
+            <div className="flex gap-3 items-start bg-sky-900/15 border border-sky-700/40 rounded-xl px-4 py-2.5">
+              <span className="text-lg leading-none">📝</span>
+              <p className="text-sm text-sky-100 min-w-0">
+                {cotacaoSapDoCard.qtd} cotação(ões) no SAP neste mês · {formatarMoeda(cotacaoSapDoCard.valor)}
+                {cotacaoSapDoCard.abertas > 0 && <span className="text-sky-300"> · {cotacaoSapDoCard.abertas} aberta(s)</span>}
+                <span className="text-sky-300">
+                  {' '}
+                  · última nº {cotacaoSapDoCard.ultima.numero} ({STATUS_COTACAO_SAP[cotacaoSapDoCard.ultima.status] ?? cotacaoSapDoCard.ultima.status})
+                </span>
+              </p>
+            </div>
+            <button type="button" onClick={() => setCotacoesSapAbertas((v) => !v)} className="text-xs text-gold-400 hover:underline">
+              {cotacoesSapAbertas ? '▾ Esconder cotações e itens' : '▸ Ver cotações e itens'}
+            </button>
+            {cotacoesSapAbertas && <HistoricoCotacoesSapCliente clienteId={card.clienteId} />}
+          </div>
+        )}
         <ClienteInfoEditavel card={card} />
 
         <div>

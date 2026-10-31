@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, asc, desc, eq, inArray, isNull, isNotNull, or } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, isNotNull, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import {
@@ -304,6 +304,52 @@ export const historicoSapRouter = router({
       primeiraCompra: linhas[linhas.length - 1]?.data ?? null,
       porAno: [...porAno.entries()].map(([ano, v]) => ({ ano, ...v })).sort((a, b) => b.ano.localeCompare(a.ano)),
     }
+  }),
+
+  // Etiqueta "Cotação SAP" nos cards do Kanban (Fase 1 das cotações ao vivo,
+  // lib/sapCotacoesAuto.ts, 2026-10-31): cotações do SAP de cada cliente nos
+  // meses dos cards. Uma consulta pro quadro inteiro; vendedor só recebe os
+  // clientes dele. Só mostra — não mexe em card nem em relatório.
+  cotacoesDosCards: protectedProcedure.input(z.object({ meses: z.array(z.string().regex(/^\d{4}-\d{2}/)).max(12) })).query(async ({ ctx, input }) => {
+    if (!input.meses.length) return []
+    const meses = [...new Set(input.meses.map((m) => m.slice(0, 7)))]
+    const linhas = await db
+      .selectDistinct({
+        clienteId: sapCotacoesItens.clienteId,
+        numero: sapCotacoesItens.numeroCotacao,
+        data: sapCotacoesItens.dataCotacao,
+        status: sapCotacoesItens.status,
+        valor: sapCotacoesItens.valorCotacao,
+      })
+      .from(sapCotacoesItens)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesItens.importacaoId))
+      .innerJoin(clientes, eq(clientes.id, sapCotacoesItens.clienteId))
+      .where(
+        and(
+          eq(sapCotacoesItens.empresaId, ctx.empresaId),
+          eq(sapImportacoes.ativo, true),
+          inArray(sql`substr(${sapCotacoesItens.dataCotacao}, 1, 7)`, meses),
+          ctx.user.role === 'admin' ? undefined : eq(clientes.vendedorAtualId, ctx.user.id)
+        )
+      )
+    // Por cliente e mês: quantas, valor somado e a mais recente.
+    const porChave = new Map<string, { clienteId: number; mes: string; qtd: number; abertas: number; valor: number; ultima: { numero: string; data: string; status: string; valor: number } }>()
+    for (const l of linhas) {
+      const mes = `${l.data.slice(0, 7)}-01`
+      const k = `${l.clienteId}:${mes}`
+      const valor = l.valor ?? 0
+      const atual = porChave.get(k)
+      const ultima = { numero: l.numero, data: l.data, status: l.status, valor }
+      if (!atual) {
+        porChave.set(k, { clienteId: l.clienteId, mes, qtd: 1, abertas: l.status === 'aberto' ? 1 : 0, valor, ultima })
+        continue
+      }
+      atual.qtd++
+      if (l.status === 'aberto') atual.abertas++
+      atual.valor += valor
+      if (l.data > atual.ultima.data || (l.data === atual.ultima.data && Number(l.numero) > Number(atual.ultima.numero))) atual.ultima = ultima
+    }
+    return [...porChave.values()]
   }),
 
   // Cotações/orçamentos do SAP na ficha do cliente (pedido do João,
