@@ -161,6 +161,9 @@ export const FEATURES_ADMIN = [
   // Controle SUFRAMA (Financeiro) — sem isso o save de Permissões descartava
   // a caixinha em silêncio (só entra o que está nesta lista). 2026-10-29.
   'controle_suframa',
+  // Relatório de ligações da PABXONE360 (3 empresas Odin) — tentativas x
+  // efetivas por vendedor. 2026-10-30.
+  'relatorio_ligacoes',
   'grupo_odin',
   // Liberação de Crédito — cross-empresa igual as duas acima. Pedido do
   // João, 2026-09-24: registro de liberações feitas pelo Financeiro (hoje a

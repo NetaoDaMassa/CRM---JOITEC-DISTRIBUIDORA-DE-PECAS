@@ -2,7 +2,7 @@ import { Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import EmailButton from './EmailButton'
-import { soDigitos } from './ContatoButtons'
+import { soDigitos, usePabxDiscar } from './ContatoButtons'
 
 // Mesmo esquema visual/de registro do ContatoButtons.tsx (Carteira), mas pro
 // módulo de Leads: clicar já abre o WhatsApp/discador E registra a
@@ -57,6 +57,7 @@ export function LeadWhatsappButton({
 
 export function LeadLigarButton({ telefone, leadId, size = 'sm' }: { telefone: string; leadId: number; size?: 'sm' | 'md' }) {
   const utils = trpc.useUtils()
+  const pabx = usePabxDiscar()
 
   const registrarMut = trpc.leads.registrarContatoPendente.useMutation({
     onSuccess: () => {
@@ -75,9 +76,16 @@ export function LeadLigarButton({ telefone, leadId, size = 'sm' }: { telefone: s
       href={`tel:0${soDigitos(telefone)}`}
       onClick={(e) => {
         e.stopPropagation()
+        // Pelo PABX a tentativa entra sozinha (com resultado) quando a
+        // ligação aparece no histórico — não registra pendente aqui.
+        if (pabx.ativo) {
+          e.preventDefault()
+          pabx.discar(telefone)
+          return
+        }
         registrarMut.mutate({ leadId, channel: 'ligacao' })
       }}
-      title={`Ligar — ${telefone}`}
+      title={`${pabx.ativo ? 'Ligar pelo PABX' : 'Ligar'} — ${telefone}`}
       className={`inline-flex items-center justify-center rounded-lg bg-gold-600/20 hover:bg-gold-600/40 text-gold-400 hover:text-gold-300 border border-gold-600/30 hover:border-gold-500/60 transition-all shrink-0 ${size === 'sm' ? 'w-7 h-7' : 'w-8 h-8'}`}
     >
       <Phone size={size === 'sm' ? 14 : 16} />

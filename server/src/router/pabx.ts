@@ -1,70 +1,295 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
-import { router, superAdminProcedure } from './_base.js'
+import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas } from '../db/schema.js'
-import { getConfigNumero, getConfigTexto } from '../lib/configuracoes.js'
-import { buscarChamadasPabxone360, registrarLigacoesAutomaticasPabxone360 } from '../lib/pabxone360.js'
+import { clientes, contasVinculadas, empresas, leads, pabxLigacoesProcessadas, pabxRamais, users } from '../db/schema.js'
+import { getConfigBool, getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
+import { agoraSqlite } from '../lib/dataBr.js'
+import {
+  SLUGS_EMPRESAS_PABX,
+  buscarChamadasPabxone360,
+  discarPabx,
+  lerCredenciaisPabx,
+  listarRamaisPabx,
+  registrarLigacoesAutomaticasPabxone360,
+} from '../lib/pabxone360.js'
 
-// Integração de TESTE com a PABXONE360 — só Odin Tubos e Conexões usa esse
-// PABX hoje, e os ramais ainda são compartilhados (não 1 por vendedora), por
-// isso isso não grava nada em registro_contato ainda, só devolve o resumo
-// pra conferir se a API está trazendo os números certos. superAdminProcedure
-// de propósito (só o João testa isso por enquanto, não é uma tela de
-// vendedor/admin normal).
-const SLUG_ODIN_TUBOS = 'odin-tubos'
+// Telefonia PABXONE360 das 3 empresas Odin (uma conta só) — ver o cabeçalho
+// de lib/pabxone360.ts. Configuração e ramais: só superAdmin (o token nunca
+// volta pra tela, só "configurado"). Relatório: admin com a permissão
+// `relatorio_ligacoes` vê a empresa; vendedor vê só as próprias ligações.
+const FEATURE_RELATORIO = 'relatorio_ligacoes'
+
+async function credenciaisOuErro() {
+  const cred = await lerCredenciaisPabx()
+  if (!cred) throw new Error('Usuário/token da PABXONE360 ainda não configurados (Telefonia → Configuração)')
+  return cred
+}
+
+// Datas da tela vêm como YYYY-MM-DD de Brasília — vira Date em UTC certo.
+function inicioDiaBr(data: string) {
+  return new Date(`${data}T03:00:00Z`)
+}
+function fimDiaBr(data: string) {
+  return new Date(new Date(`${data}T03:00:00Z`).getTime() + 24 * 3600e3 - 1000)
+}
+const paraSqlite = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19)
+
+async function idsDaPessoa(userId: number): Promise<number[]> {
+  const v = await db.query.contasVinculadas.findMany({ where: eq(contasVinculadas.userId, userId) })
+  return [userId, ...v.map((x) => x.contaVinculadaId)]
+}
 
 export const pabxRouter = router({
-  resumoChamadasOdinTubos: superAdminProcedure
-    .input(z.object({ dataInicio: z.string(), dataFim: z.string() }))
-    .query(async ({ input }) => {
-      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.slug, SLUG_ODIN_TUBOS) })
-      if (!empresa) throw new Error('Empresa Odin Tubos e Conexões não encontrada')
+  status: superAdminProcedure.query(async () => {
+    const [usuario, token, ligada, click2call, duracaoMinima, ultimaSync, ultimoErro, prefixo] = await Promise.all([
+      getConfigTexto('pabxone360_usuario'),
+      getConfigTexto('pabxone360_token'),
+      getConfigBool('pabxone360_ligada', false),
+      getConfigBool('pabxone360_click2call', false),
+      getConfigNumero('pabxone360_duracao_minima_segundos', 15),
+      getConfigTexto('pabxone360_ultima_sync'),
+      getConfigTexto('pabxone360_ultimo_erro'),
+      getConfigTexto('pabxone360_prefixo_discagem'),
+    ])
+    return {
+      usuario: usuario ?? '',
+      tokenConfigurado: !!token,
+      ligada,
+      click2call,
+      duracaoMinima,
+      prefixoDiscagem: prefixo ?? '0',
+      ultimaSync,
+      ultimoErro,
+    }
+  }),
 
-      const [usuario, token] = await Promise.all([
-        getConfigTexto('pabxone360_usuario'),
-        getConfigTexto('pabxone360_token'),
-      ])
-      if (!usuario || !token) throw new Error('Credenciais da PABXONE360 não configuradas')
-
-      const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 15)
-
-      const inicio = new Date(`${input.dataInicio}T00:00:00`)
-      const fim = new Date(`${input.dataFim}T23:59:59`)
-      const chamadas = await buscarChamadasPabxone360(usuario, token, inicio, fim, duracaoMinima)
-
-      const semRamal = chamadas.filter((c) => !c.ramal).length
-      const efetivas = chamadas.filter((c) => c.efetiva).length
-
-      return {
-        tentativas: chamadas.length,
-        efetivas,
-        semRamal,
-        duracaoMinimaSegundos: duracaoMinima,
-        chamadas,
-      }
+  salvarConfig: superAdminProcedure
+    .input(
+      z.object({
+        usuario: z.string().optional(),
+        token: z.string().optional(),
+        ligada: z.boolean(),
+        click2call: z.boolean(),
+        duracaoMinima: z.number().int().min(0).max(600),
+        prefixoDiscagem: z.string().max(4),
+      })
+    )
+    .mutation(async ({ input }) => {
+      if (input.usuario !== undefined && input.usuario.trim()) await setConfig('pabxone360_usuario', input.usuario.trim())
+      if (input.token !== undefined && input.token.trim()) await setConfig('pabxone360_token', input.token.trim())
+      if (input.ligada && !(await lerCredenciaisPabx())) throw new Error('Preencha usuário e token antes de ligar a integração')
+      await setConfig('pabxone360_ligada', input.ligada ? '1' : '0')
+      await setConfig('pabxone360_click2call', input.click2call ? '1' : '0')
+      await setConfig('pabxone360_duracao_minima_segundos', input.duracaoMinima)
+      await setConfig('pabxone360_prefixo_discagem', input.prefixoDiscagem.replace(/\D/g, ''))
+      if (input.ligada) await setConfig('pabxone360_ultimo_erro', '')
+      return { ok: true }
     }),
 
-  // Dispara manualmente o mesmo processamento do scheduler (que roda a
-  // cada 10min sozinho) — só pra testar/validar sem esperar o próximo ciclo.
+  // Testa usuário/token: lista os ramais e conta as ligações de hoje.
+  testarConexao: superAdminProcedure.mutation(async () => {
+    const cred = await credenciaisOuErro()
+    const ramais = await listarRamaisPabx(cred)
+    const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)
+    const chamadas = await buscarChamadasPabxone360(cred, inicioDiaBr(hoje), new Date(), await getConfigNumero('pabxone360_duracao_minima_segundos', 15))
+    return { ramais: ramais.length, chamadasHoje: chamadas.length, efetivasHoje: chamadas.filter((c) => c.efetiva).length }
+  }),
+
+  // Ramais do PABX + vendedor ligado a cada um + quem pode ser escolhido
+  // (usuários ativos das 3 empresas Odin).
+  ramais: superAdminProcedure.query(async () => {
+    const cred = await lerCredenciaisPabx()
+    let doPabx: { numero: string; nome: string }[] = []
+    let erro: string | null = null
+    if (cred) {
+      try {
+        doPabx = await listarRamaisPabx(cred)
+      } catch (e) {
+        erro = (e as Error).message
+      }
+    }
+    const salvos = await db.query.pabxRamais.findMany()
+    const porRamal = new Map(salvos.map((r) => [r.ramal, r]))
+    const numeros = [...new Set([...doPabx.map((r) => r.numero), ...salvos.map((r) => r.ramal)])].sort((a, b) =>
+      a.localeCompare(b, 'pt-BR', { numeric: true })
+    )
+    const nomePabx = new Map(doPabx.map((r) => [r.numero, r.nome]))
+    const usuarios = await db
+      .select({ id: users.id, name: users.name, role: users.role, empresa: empresas.nome, empresaSlug: empresas.slug })
+      .from(users)
+      .innerJoin(empresas, eq(empresas.id, users.empresaId))
+      .where(and(eq(users.isActive, true), inArray(empresas.slug, SLUGS_EMPRESAS_PABX)))
+      .orderBy(users.name)
+    return {
+      erro,
+      ramais: numeros.map((n) => ({
+        ramal: n,
+        nome: nomePabx.get(n) ?? porRamal.get(n)?.nome ?? '',
+        userId: porRamal.get(n)?.userId ?? null,
+        noPabx: nomePabx.has(n),
+      })),
+      usuarios,
+    }
+  }),
+
+  salvarRamal: superAdminProcedure
+    .input(z.object({ ramal: z.string().min(1), nome: z.string().optional(), userId: z.number().nullable() }))
+    .mutation(async ({ input }) => {
+      const ramal = input.ramal.trim()
+      if (input.userId) {
+        // 1 ramal por vendedor: tira esse vendedor de outro ramal, se tiver.
+        const outro = await db.query.pabxRamais.findFirst({ where: eq(pabxRamais.userId, input.userId) })
+        if (outro && outro.ramal !== ramal) await db.update(pabxRamais).set({ userId: null, updatedAt: agoraSqlite() }).where(eq(pabxRamais.id, outro.id))
+      }
+      await db
+        .insert(pabxRamais)
+        .values({ ramal, nome: input.nome ?? null, userId: input.userId })
+        .onConflictDoUpdate({ target: pabxRamais.ramal, set: { userId: input.userId, nome: input.nome ?? null, updatedAt: agoraSqlite() } })
+      return { ok: true }
+    }),
+
+  // Reprocessa um período na mão (ex: depois de cadastrar os ramais, pra
+  // pegar as ligações de hoje cedo). Não duplica nada.
   sincronizarAgora: superAdminProcedure
     .input(z.object({ dataInicio: z.string(), dataFim: z.string() }))
     .mutation(async ({ input }) => {
-      const [usuario, token] = await Promise.all([
-        getConfigTexto('pabxone360_usuario'),
-        getConfigTexto('pabxone360_token'),
-      ])
-      if (!usuario || !token) throw new Error('Credenciais da PABXONE360 não configuradas')
+      const cred = await credenciaisOuErro()
       const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 15)
-
-      const inicio = new Date(`${input.dataInicio}T00:00:00`)
-      const fim = new Date(`${input.dataFim}T23:59:59`)
-      const resultados = await registrarLigacoesAutomaticasPabxone360(usuario, token, inicio, fim, duracaoMinima)
-
+      const resultados = await registrarLigacoesAutomaticasPabxone360(cred, inicioDiaBr(input.dataInicio), fimDiaBr(input.dataFim), duracaoMinima, true)
       return {
-        total: resultados.length,
-        registradas: resultados.filter((r) => r.registroContatoId).length,
-        resultados,
+        novas: resultados.length,
+        registradas: resultados.filter((r) => r.registroContatoId || r.leadId).length,
       }
     }),
+
+  // Pro botão Ligar: se o Click2Call está ligado e a pessoa tem ramal, o
+  // botão liga pelo PABX; senão continua abrindo o discador (tel:).
+  meuRamal: protectedProcedure.query(async ({ ctx }) => {
+    const [ligada, click2call] = await Promise.all([getConfigBool('pabxone360_ligada', false), getConfigBool('pabxone360_click2call', false)])
+    if (!ligada || !click2call) return { click2call: false, ramal: null }
+    const ids = await idsDaPessoa(ctx.user.id)
+    const r = await db.query.pabxRamais.findFirst({ where: inArray(pabxRamais.userId, ids) })
+    return { click2call: !!r, ramal: r?.ramal ?? null }
+  }),
+
+  discar: protectedProcedure.input(z.object({ numero: z.string().min(8) })).mutation(async ({ ctx, input }) => {
+    const cred = await credenciaisOuErro()
+    if (!(await getConfigBool('pabxone360_click2call', false))) throw new Error('Ligar pelo CRM não está ativado')
+    const ids = await idsDaPessoa(ctx.user.id)
+    const r = await db.query.pabxRamais.findFirst({ where: inArray(pabxRamais.userId, ids) })
+    if (!r) throw new Error('Você ainda não tem ramal cadastrado no CRM — peça pro administrador em Telefonia → Ramais')
+    let digitos = input.numero.replace(/\D/g, '')
+    if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) digitos = digitos.slice(2)
+    if ((digitos.length === 11 || digitos.length === 12) && digitos.startsWith('0')) digitos = digitos.slice(1)
+    const prefixo = (await getConfigTexto('pabxone360_prefixo_discagem')) ?? '0'
+    return discarPabx(cred, r.ramal, `${prefixo}${digitos}`)
+  }),
+
+  // Relatório de ligações: tentativas x efetivas por vendedor + lista.
+  relatorio: protectedProcedure
+    .input(z.object({ dataInicio: z.string(), dataFim: z.string(), empresaId: z.number().nullable().optional(), userId: z.number().nullable().optional() }))
+    .query(async ({ ctx, input }) => {
+      const veTudo = ctx.user.superAdmin || (ctx.user.role !== 'vendor' && (await temFeature(ctx.user.id, FEATURE_RELATORIO)))
+      const filtros = [
+        gte(pabxLigacoesProcessadas.dataHora, paraSqlite(inicioDiaBr(input.dataInicio))),
+        lte(pabxLigacoesProcessadas.dataHora, paraSqlite(fimDiaBr(input.dataFim))),
+      ]
+      if (!veTudo) {
+        filtros.push(inArray(pabxLigacoesProcessadas.userId, await idsDaPessoa(ctx.user.id)))
+      } else {
+        if (input.userId) filtros.push(eq(pabxLigacoesProcessadas.userId, input.userId))
+        // Admin comum vê a empresa em que está; superAdmin escolhe (null = as 3).
+        const empresaId = ctx.user.superAdmin ? (input.empresaId ?? null) : ctx.empresaId
+        if (empresaId) filtros.push(eq(pabxLigacoesProcessadas.empresaId, empresaId))
+      }
+
+      const linhas = await db
+        .select({
+          id: pabxLigacoesProcessadas.id,
+          dataHora: pabxLigacoesProcessadas.dataHora,
+          direcao: pabxLigacoesProcessadas.direcao,
+          numero: pabxLigacoesProcessadas.numeroExterno,
+          duracao: pabxLigacoesProcessadas.duracaoSegundos,
+          efetiva: pabxLigacoesProcessadas.efetiva,
+          status: pabxLigacoesProcessadas.statusChamada,
+          ramal: pabxLigacoesProcessadas.ramal,
+          userId: pabxLigacoesProcessadas.userId,
+          vendedor: users.name,
+          empresaId: pabxLigacoesProcessadas.empresaId,
+          clienteId: pabxLigacoesProcessadas.clienteId,
+          leadId: pabxLigacoesProcessadas.leadId,
+          motivo: pabxLigacoesProcessadas.motivoNaoRegistrado,
+          linkGravacao: pabxLigacoesProcessadas.linkGravacao,
+          resumo: pabxLigacoesProcessadas.resumo,
+          transcricao: pabxLigacoesProcessadas.transcricao,
+        })
+        .from(pabxLigacoesProcessadas)
+        .leftJoin(users, eq(users.id, pabxLigacoesProcessadas.userId))
+        .where(and(...filtros))
+        .orderBy(desc(pabxLigacoesProcessadas.dataHora))
+
+      const idsCliente = [...new Set(linhas.map((l) => l.clienteId).filter((x): x is number => !!x))]
+      const idsLead = [...new Set(linhas.map((l) => l.leadId).filter((x): x is number => !!x))]
+      const nomesCliente = new Map<number, string>()
+      for (let i = 0; i < idsCliente.length; i += 900) {
+        const rs = await db.query.clientes.findMany({ where: inArray(clientes.id, idsCliente.slice(i, i + 900)), columns: { id: true, razaoSocial: true } })
+        for (const c of rs) nomesCliente.set(c.id, c.razaoSocial)
+      }
+      const nomesLead = new Map<number, string>()
+      for (let i = 0; i < idsLead.length; i += 900) {
+        const rs = await db.query.leads.findMany({ where: inArray(leads.id, idsLead.slice(i, i + 900)), columns: { id: true, name: true, company: true } })
+        for (const l of rs) nomesLead.set(l.id, l.company ? `${l.name} / ${l.company}` : l.name)
+      }
+      const nomesEmpresa = new Map((await db.query.empresas.findMany({ columns: { id: true, nome: true } })).map((e) => [e.id, e.nome]))
+
+      // Por vendedor (ligação sem ramal cadastrado fica em "Sem vendedor").
+      const porVendedor = new Map<string, { userId: number | null; vendedor: string; ramal: string | null; tentativas: number; efetivas: number; segundosFalados: number; feitas: number; recebidas: number }>()
+      for (const l of linhas) {
+        const chave = l.userId ? `u${l.userId}` : `r${l.ramal ?? '?'}`
+        const p = porVendedor.get(chave) ?? {
+          userId: l.userId,
+          vendedor: l.vendedor ?? (l.ramal ? `Ramal ${l.ramal} (sem vendedor)` : 'Sem ramal (fila/URA)'),
+          ramal: l.ramal,
+          tentativas: 0,
+          efetivas: 0,
+          segundosFalados: 0,
+          feitas: 0,
+          recebidas: 0,
+        }
+        p.tentativas++
+        if (l.efetiva) {
+          p.efetivas++
+          p.segundosFalados += l.duracao ?? 0
+        }
+        if (l.direcao === 'OUTBOUND') p.feitas++
+        if (l.direcao === 'INBOUND') p.recebidas++
+        porVendedor.set(chave, p)
+      }
+
+      return {
+        veTudo,
+        porVendedor: [...porVendedor.values()].sort((a, b) => b.tentativas - a.tentativas),
+        chamadas: linhas.slice(0, 3000).map((l) => ({
+          ...l,
+          empresa: l.empresaId ? (nomesEmpresa.get(l.empresaId) ?? null) : null,
+          contato: l.clienteId ? (nomesCliente.get(l.clienteId) ?? null) : l.leadId ? (nomesLead.get(l.leadId) ?? null) : null,
+        })),
+        totalChamadas: linhas.length,
+      }
+    }),
+
+  // Opções de filtro do relatório (empresas Odin + vendedores com ramal).
+  filtrosRelatorio: protectedProcedure.query(async ({ ctx }) => {
+    const empresasOdin = await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_EMPRESAS_PABX), columns: { id: true, nome: true } })
+    const comRamal = await db
+      .select({ id: users.id, name: users.name, ramal: pabxRamais.ramal, empresaId: users.empresaId })
+      .from(pabxRamais)
+      .innerJoin(users, eq(users.id, pabxRamais.userId))
+      .orderBy(users.name)
+    return {
+      empresas: ctx.user.superAdmin ? empresasOdin : empresasOdin.filter((e) => e.id === ctx.empresaId),
+      vendedores: ctx.user.superAdmin ? comRamal : comRamal.filter((v) => v.empresaId === ctx.empresaId),
+    }
+  }),
 })

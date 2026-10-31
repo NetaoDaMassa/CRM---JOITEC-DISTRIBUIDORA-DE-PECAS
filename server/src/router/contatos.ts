@@ -183,7 +183,7 @@ async function ehMesCorrente(funilMensalId: number): Promise<boolean> {
 // Só chamada pra registro automático que ainda estava sem resultado (nunca
 // tinha sido contado) — resultado não volta pra null depois de definido,
 // então isso nunca conta a mesma tentativa 2x.
-async function contarTentativaSePendente(funilMensalId: number): Promise<void> {
+export async function contarTentativaSePendente(funilMensalId: number): Promise<void> {
   const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, funilMensalId) })
   if (!funil) return
   await db

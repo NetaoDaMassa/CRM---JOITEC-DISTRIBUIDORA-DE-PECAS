@@ -81,7 +81,21 @@ export function WhatsappButton({
   )
 }
 
+// Ligar pelo PABX (PABXONE360 Click2Call, empresas Odin — 2026-10-30): com
+// "Ligar pelo CRM" ativo e ramal cadastrado pra pessoa, o clique faz o PABX
+// chamar o ramal dela e depois o cliente; a ligação é registrada sozinha
+// pela sincronização (lib/pabxone360.ts). Sem isso, segue o discador (tel:).
+export function usePabxDiscar() {
+  const { data } = trpc.pabx.meuRamal.useQuery(undefined, { staleTime: 5 * 60_000 })
+  const discarMut = trpc.pabx.discar.useMutation({
+    onSuccess: () => toast.success(`Chamando pelo PABX — atenda o seu ramal${data?.ramal ? ` (${data.ramal})` : ''}.`),
+    onError: (err) => toast.error(err.message),
+  })
+  return { ativo: !!data?.click2call, discar: (telefone: string) => discarMut.mutate({ numero: telefone }) }
+}
+
 export function LigarButton({ telefone, size = 'sm' }: { telefone: string; size?: 'sm' | 'md' }) {
+  const pabx = usePabxDiscar()
   return (
     <a
       // O MicroSIP (discador SIP usado com a PABXONE360) não aceita o
@@ -90,8 +104,14 @@ export function LigarButton({ telefone, size = 'sm' }: { telefone: string; size?
       // de discagem nacional com prefixo "0" (confirmado pelo João testando
       // ao vivo), então troca "+55" por "0" na frente do número limpo.
       href={`tel:0${soDigitos(telefone)}`}
-      onClick={(e) => e.stopPropagation()}
-      title={`Ligar — ${telefone}`}
+      onClick={(e) => {
+        e.stopPropagation()
+        if (pabx.ativo) {
+          e.preventDefault()
+          pabx.discar(telefone)
+        }
+      }}
+      title={`${pabx.ativo ? 'Ligar pelo PABX' : 'Ligar'} — ${telefone}`}
       className={`inline-flex items-center justify-center rounded-lg bg-gold-600/20 hover:bg-gold-600/40 text-gold-400 hover:text-gold-300 border border-gold-600/30 hover:border-gold-500/60 transition-all shrink-0 ${size === 'sm' ? 'w-7 h-7' : 'w-8 h-8'}`}
     >
       <Phone size={size === 'sm' ? 14 : 16} />

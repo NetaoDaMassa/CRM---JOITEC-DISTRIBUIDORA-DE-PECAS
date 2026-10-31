@@ -807,6 +807,38 @@ export const pabxLigacoesProcessadas = sqliteTable('pabx_ligacoes_processadas', 
   // batendo", "cliente ambíguo", "sem vendedor", "sem ramal identificado").
   motivoNaoRegistrado: text('motivo_nao_registrado'),
   criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
+  // Daqui pra baixo: 2026-10-30, integração refeita pras 3 empresas Odin
+  // (Compressores, Tubos, Automação — uma conta só na PABXONE360) com 1
+  // ramal por vendedor. Toda chamada fica guardada aqui (casando ou não com
+  // cliente/lead) — é a fonte do relatório de ligações (tentativa x efetiva).
+  empresaId: integer('empresa_id').references(() => empresas.id, { onDelete: 'set null' }),
+  // Vendedor dono do ramal (pabx_ramais) — quem LIGOU/ATENDEU, não o dono
+  // da carteira do cliente.
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  ramal: text('ramal'),
+  dataHora: text('data_hora'), // UTC, mesmo formato do resto do banco
+  efetiva: integer('efetiva', { mode: 'boolean' }),
+  // atendida | nao_atendida | ocupado | falha | curta (atendida mas abaixo
+  // da duração mínima)
+  statusChamada: text('status_chamada'),
+  leadId: integer('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+  linkGravacao: text('link_gravacao'),
+  resumo: text('resumo'),
+  transcricao: text('transcricao'),
+}, (t) => ({
+  dataIdx: index('idx_pabx_ligacoes_data').on(t.dataHora),
+  userDataIdx: index('idx_pabx_ligacoes_user_data').on(t.userId, t.dataHora),
+}))
+
+// Ramal da PABXONE360 → vendedor do CRM (1 ramal por vendedor). Quem tem
+// conta em mais de uma empresa Odin (contas_vinculadas) liga pelo mesmo
+// ramal — o registro vai pra conta da empresa do cliente/lead.
+export const pabxRamais = sqliteTable('pabx_ramais', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ramal: text('ramal').notNull().unique(),
+  nome: text('nome'), // nome do ramal lá no PABX
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 })
 
 export const notifications = sqliteTable('notifications', {

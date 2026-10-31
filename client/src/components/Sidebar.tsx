@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -160,6 +160,10 @@ export const ADMIN_LINKS = [
   // Controle SUFRAMA (Financeiro): PIN de cada nota de cliente da Zona Franca,
   // cross-empresa. Pedido do João, 2026-10-28.
   { to: '/admin/controle-suframa', label: 'Controle SUFRAMA', icon: KeyRound, feature: 'controle_suframa' },
+  // Telefonia PABXONE360 (3 empresas Odin, uma conta): relatório de
+  // ligações tentativa x efetiva + (superAdmin) configuração e ramais.
+  // 2026-10-30.
+  { to: '/admin/ligacoes', label: 'Ligações (PABX)', icon: PhoneCall, feature: 'relatorio_ligacoes' },
   // Hub simples com atalhos pros painéis/telas "gerais do grupo" (Compras,
   // Painel Financeiro, relatórios etc.) — começa enxuto, pra ir ganhando
   // mais conteúdo conforme o João for definindo o que entra. Pedido do

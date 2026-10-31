@@ -3,8 +3,9 @@ import { executarResetMensal } from './resetMensal.js'
 import { checarClientesSemContato } from './notificacoes.js'
 import { executarBackupSeNecessario } from './backup.js'
 import { executarResumoDiario } from './resumoDiario.js'
-import { getConfigTexto, getConfigNumero } from './configuracoes.js'
-import { registrarLigacoesAutomaticasPabxone360 } from './pabxone360.js'
+import { setConfig } from './configuracoes.js'
+import { agoraSqlite } from './dataBr.js'
+import { completarResumosPabxone360, duracaoMinimaPabx, lerCredenciaisPabx, pabxLigada, registrarLigacoesAutomaticasPabxone360 } from './pabxone360.js'
 import { executarAvisoLeadsNovos, type Periodo } from './avisoLeadsNovos.js'
 import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
@@ -33,27 +34,47 @@ export async function runChecks() {
   if (resumosCriados > 0) console.log(`[resumo-diario] ${resumosCriados} resumo(s) diário(s) enviado(s)`)
 }
 
-// Integração de teste PABXONE360 (só Odin Tubos e Conexões, ver
-// pabxone360.ts) — a API dela não tem webhook (só REST + polling), então a
-// velocidade do registro automático depende só de quão frequente rodamos
-// essa busca. Busca as ligações dos últimos 5 minutos a cada 1 minuto
-// (sobreposição de 4min de propósito, contra queda momentânea do servidor;
-// a tabela pabx_ligacoes_processadas evita duplicar mesmo com a sobreposição
-// e com rodadas concorrentes, se uma demorar mais que 1min). Só roda de
-// verdade quando as credenciais estão configuradas — sem elas, sai calado,
-// não é erro (empresa nenhuma além da Odin Tubos configura isso).
-const PABXONE360_LIGADA = false
+// PABXONE360 — telefonia das 3 empresas Odin (ver pabxone360.ts). A API
+// não tem webhook (só REST + polling): busca as ligações dos últimos 5
+// minutos a cada 1 minuto (sobreposição de propósito, contra queda
+// momentânea; pabx_ligacoes_processadas evita duplicar). Liga/desliga em
+// Telefonia → Configuração (config `pabxone360_ligada`) — desligada sai
+// calada. Erro (ex: token recusado) fica gravado pra aparecer na tela, e só
+// vai pro log quando muda, pra não encher o log a cada minuto (foi isso que
+// fez desligarem em 2026-10-21: 401 a cada minuto).
+let ultimoErroPabx = ''
+
+async function registrarErroPabx(err: unknown) {
+  const msg = (err as Error)?.message ?? String(err)
+  if (msg !== ultimoErroPabx) console.error('[pabxone360] erro ao sincronizar ligações:', msg)
+  ultimoErroPabx = msg
+  await setConfig('pabxone360_ultimo_erro', `${agoraSqlite()} — ${msg}`).catch(() => {})
+}
 
 async function sincronizarPabxone360() {
-  const [usuario, token] = await Promise.all([getConfigTexto('pabxone360_usuario'), getConfigTexto('pabxone360_token')])
-  if (!usuario || !token) return
-
-  const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 15)
+  if (!(await pabxLigada())) return
+  const cred = await lerCredenciaisPabx()
+  if (!cred) return
   const fim = new Date()
   const inicio = new Date(fim.getTime() - 5 * 60 * 1000)
-  const resultados = await registrarLigacoesAutomaticasPabxone360(usuario, token, inicio, fim, duracaoMinima)
-  const registradas = resultados.filter((r) => r.registroContatoId).length
+  const resultados = await registrarLigacoesAutomaticasPabxone360(cred, inicio, fim, await duracaoMinimaPabx())
+  await setConfig('pabxone360_ultima_sync', agoraSqlite())
+  if (ultimoErroPabx) {
+    ultimoErroPabx = ''
+    await setConfig('pabxone360_ultimo_erro', '')
+  }
+  const registradas = resultados.filter((r) => r.registroContatoId || r.leadId).length
   if (registradas > 0) console.log(`[pabxone360] ${registradas} ligação(ões) registrada(s) automaticamente`)
+}
+
+// Resumo/transcrição/gravação ficam prontos alguns minutos depois da
+// ligação — completa as últimas 3h a cada 15min.
+async function completarResumosPabx() {
+  if (!(await pabxLigada())) return
+  const cred = await lerCredenciaisPabx()
+  if (!cred) return
+  const fim = new Date()
+  await completarResumosPabxone360(cred, new Date(fim.getTime() - 3 * 3600e3), fim, await duracaoMinimaPabx())
 }
 
 // Aviso amigável de leads novos no WhatsApp (ver avisoLeadsNovos.ts) — POR
@@ -154,15 +175,12 @@ export function startScheduler() {
   runChecks().catch((err) => console.error('[scheduler] erro ao processar checagens iniciais:', err))
   console.log('[scheduler] reset mensal + notificações rodando a cada hora')
 
-  // PABXONE360 DESLIGADA a pedido do João (2026-10-21): a Odin Tubos não vai
-  // usar por enquanto, e a API vinha devolvendo 401 a cada minuto. Pra religar,
-  // volte PABXONE360_LIGADA pra true (credenciais seguem em Configurações).
-  if (PABXONE360_LIGADA) {
-    cron.schedule('* * * * *', () => {
-      sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações:', err))
-    })
-    sincronizarPabxone360().catch((err) => console.error('[pabxone360] erro ao sincronizar ligações iniciais:', err))
-  }
+  cron.schedule('* * * * *', () => {
+    sincronizarPabxone360().catch(registrarErroPabx)
+  })
+  cron.schedule('*/15 * * * *', () => {
+    completarResumosPabx().catch((err) => console.error('[pabxone360] erro ao completar resumos:', (err as Error)?.message ?? err))
+  })
 
   iniciarAvisoLeadsNovos().catch((err) => console.error('[aviso-leads] falha na inicialização:', err))
 
