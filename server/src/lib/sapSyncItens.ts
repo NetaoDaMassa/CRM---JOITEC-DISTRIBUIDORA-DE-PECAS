@@ -6,7 +6,7 @@ import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
-import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap } from './sapCompressores.js'
+import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
 
 // Itens das notas de venda puxados DIRETO do SAP (Service Layer) — passo 2
 // da integração, pedido do João, 2026-10-29. Faz o mesmo papel da planilha
@@ -139,6 +139,9 @@ export async function sincronizarItensSap(opts: {
     clientesPorSlug.set(e.slug, { exato, semZero })
   }
 
+  // Odin Compressores: só nota feita pela Bruna (máquina de externo fica de
+  // fora por enquanto — João, 2026-10-31).
+  const vendedoresBruna = await vendedoresSapCompressores()
   const { notas, compressores } = await comSessaoSap(async (sap) => {
     const notas = await sap.getTodos<NotaSap>(
       `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,DocTotal,DownPaymentAmount,Cancelled,CancelStatus,DocumentLines` +
@@ -148,7 +151,7 @@ export async function sincronizarItensSap(opts: {
     const compressores = empresaPorSlug.has(SLUG_COMPRESSORES)
       ? await clientesCompressoresPorCodigoSap(
           sap,
-          notas.filter((n) => n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES).map((n) => n.CardCode)
+          notas.filter((n) => n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && vendedoresBruna.has(n.SalesPersonCode)).map((n) => n.CardCode)
         )
       : new Map()
     return { notas, compressores }
@@ -169,6 +172,7 @@ export async function sincronizarItensSap(opts: {
   }
   const paraGravar = new Map<string, (typeof sapItensHistorico.$inferInsert)[]>()
   const notasCanceladas: string[] = []
+  const foraDaRegra: string[] = []
 
   for (const n of notas) {
     const nota = String(n.DocNum)
@@ -177,9 +181,12 @@ export async function sincronizarItensSap(opts: {
       if (n.Cancelled === 'tYES') notasCanceladas.push(nota)
       continue
     }
-    const daCarteira = n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES ? compressores.get(n.CardCode) : undefined
+    const daCarteira =
+      n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && vendedoresBruna.has(n.SalesPersonCode) ? compressores.get(n.CardCode) : undefined
     if (n.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && !daCarteira && empresaPorSlug.has(SLUG_COMPRESSORES)) {
       resultado.foraDaCarteira++
+      // Nota de outro vendedor que entrou antes dessa regra: sai.
+      if (!vendedoresBruna.has(n.SalesPersonCode)) foraDaRegra.push(nota)
       continue
     }
     const slugFilial = daCarteira ? SLUG_COMPRESSORES : SLUG_POR_FILIAL[n.BPL_IDAssignedToInvoice]
@@ -283,6 +290,11 @@ export async function sincronizarItensSap(opts: {
     await db
       .delete(sapItensHistorico)
       .where(and(inArray(sapItensHistorico.importacaoId, idsAgora), inArray(sapItensHistorico.numeroNota, resultado.canceladasRemovidas.map((c) => c.nota))))
+  }
+  const loteCompressores = lotes.get(SLUG_COMPRESSORES)?.id
+  if (loteCompressores && foraDaRegra.length) {
+    for (let i = 0; i < foraDaRegra.length; i += 500)
+      await db.delete(sapItensHistorico).where(and(eq(sapItensHistorico.importacaoId, loteCompressores), inArray(sapItensHistorico.numeroNota, foraDaRegra.slice(i, i + 500))))
   }
   // Totais do lote recalculados do que ficou nele (período = cobertura usada
   // em lib/sapItens.ts).

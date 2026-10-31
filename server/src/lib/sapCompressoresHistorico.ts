@@ -15,11 +15,11 @@ import { limparCodigo } from './importSapHistorico.js'
 // itens das notas vêm da sincronização normal (sincronizarItensSap
 // --so-compressores). Só consulta: nada vai pro SAP.
 //
-// Pra não contar venda 2x nos relatórios (que já somam vendas do CRM e
-// Pedidos/ordens da Odin Compressores):
-//   - pedido da Bruna no SAP: até a véspera da 1ª venda dela no Kanban;
-//   - pedido de outro vendedor (máquina, externo): até a véspera do 1º
-//     Pedido (ordem) da Odin Compressores no CRM.
+// Só documento feito pela PRÓPRIA Bruna no SAP (`sap_vendedores_compressores`):
+// máquina vendida por externo pros clientes dela fica de fora por enquanto
+// (João, 2026-10-31: "máquinas vendidas ainda não, vamos puxar mas não agora").
+// Pra não contar venda 2x nos relatórios, pedido só até a véspera da 1ª venda
+// dela no Kanban (dali em diante a venda já está no CRM).
 // Cotações: cabeçalho até 31/07 (de agosto em diante o orçamento é o card do
 // CRM, como nas outras); itens de cotação do período todo.
 
@@ -100,7 +100,7 @@ export async function carregarHistoricoCompressores(opts: { confirmar: boolean; 
     )
     const mapa = await clientesCompressoresPorCodigoSap(sap, [...pedidos, ...cabecalhos].map((d) => d.CardCode))
     // Itens só das cotações dos clientes da carteira (com linhas é pesado).
-    const daCarteira = cabecalhos.filter((q) => mapa.has(q.CardCode))
+    const daCarteira = cabecalhos.filter((q) => mapa.has(q.CardCode) && vendedoresBruna.has(q.SalesPersonCode))
     const cotacoes: DocSap[] = []
     for (let i = 0; i < daCarteira.length; i += 20) {
       const f = daCarteira
@@ -109,7 +109,7 @@ export async function carregarHistoricoCompressores(opts: { confirmar: boolean; 
         .join(' or ')
       cotacoes.push(...(await sap.getTodos<DocSap>(`/Quotations?$filter=${f}&$select=DocEntry,DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,Cancelled,DocumentStatus,DocumentLines`, 20)))
     }
-    return { pedidos, cotacoes: [...cotacoes, ...cabecalhos.filter((q) => !mapa.has(q.CardCode))], mapa }
+    return { pedidos, cotacoes: [...cotacoes, ...cabecalhos.filter((q) => !daCarteira.includes(q))], mapa }
   })
 
   const r: HistoricoCompressoresResultado = {
@@ -158,14 +158,13 @@ export async function carregarHistoricoCompressores(opts: { confirmar: boolean; 
   for (const p of pedidos) {
     if (p.Cancelled === 'tYES') continue
     const c = mapa.get(p.CardCode)
-    if (!c) {
+    if (!c || !vendedoresBruna.has(p.SalesPersonCode)) {
       r.foraDaCarteira++
       continue
     }
     r.pedidos.lidos++
     const dia = dataSap(p.DocDate)
-    const corte = vendedoresBruna.has(p.SalesPersonCode) ? cortePedidosBruna : cortePedidosOutros
-    if (corte && dia > corte) {
+    if (cortePedidosBruna && dia > cortePedidosBruna) {
       r.pedidos.depoisDoCorte++
       continue
     }
@@ -192,7 +191,7 @@ export async function carregarHistoricoCompressores(opts: { confirmar: boolean; 
   const novosItensCotacao: (typeof sapCotacoesItens.$inferInsert)[] = []
   for (const q of cotacoes) {
     const c = mapa.get(q.CardCode)
-    if (!c) {
+    if (!c || !vendedoresBruna.has(q.SalesPersonCode)) {
       r.foraDaCarteira++
       continue
     }
