@@ -16,6 +16,7 @@ import { ResumoConteudo } from './Resumo'
 import { ClientesParados, CurvaAbc, Positivacao } from './detalhes/Carteira'
 import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/Vendas'
 import { Contatos, Ligacoes } from './detalhes/Contatos'
+import { ItensSap } from './detalhes/ItensSap'
 import type { PropsDetalhe } from './detalhes/tipos'
 
 // Exportar relatórios (pedido do João, 2026-10-20): escolhe quais relatórios
@@ -35,6 +36,7 @@ const COMPONENTES: Record<string, ComponentType<PropsDetalhe>> = {
   vendas: Vendas,
   orcamentos: Orcamentos,
   produtos: Produtos,
+  'itens-sap': ItensSap,
   contatos: Contatos,
   ligacoes: Ligacoes,
   'clientes-parados': ClientesParados,

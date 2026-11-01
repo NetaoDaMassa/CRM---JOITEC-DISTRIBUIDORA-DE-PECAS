@@ -1807,4 +1807,97 @@ export const reportsRouter = router({
         })
         .sort((a, b) => (a.periodo < b.periodo ? -1 : a.periodo > b.periodo ? 1 : a.nome.localeCompare(b.nome, 'pt-BR')))
     }),
+  // Itens das notas do SAP mês a mês — pedido do diretor via João,
+  // 2026-10-30: "item que em um mês vendeu 1000 e em novembro 600". Agrupa
+  // pelo código do item do SAP (a descrição muda de nota pra nota; sem
+  // código, cai na descrição). Cliente conta pro vendedor que tem ele na
+  // carteira hoje, como no resto do SAP. Período em meses inteiros.
+  itensSapPorMes: protectedProcedure
+    .input(z.object({ mesInicio: z.string().regex(/^\d{4}-\d{2}$/), mesFim: z.string().regex(/^\d{4}-\d{2}$/), vendedorId: z.number().optional(), regiao: regiaoEnum }))
+    .query(async ({ ctx, input }) => {
+      const filtros = [
+        eq(sapItensHistorico.empresaId, ctx.empresaId),
+        eq(sapImportacoes.ativo, true),
+        between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
+        isNull(clientes.deletedAt),
+      ]
+      const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+      if (filtroVend) filtros.push(filtroVend)
+      const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+      if (filtroReg) filtros.push(filtroReg)
+      const chave = sql<string>`coalesce(nullif(trim(${sapItensHistorico.codigoItem}), ''), upper(trim(${sapItensHistorico.descricao})))`
+      const mes = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
+      const linhas = await db
+        .select({
+          chave,
+          mes,
+          descricao: sql<string>`max(${sapItensHistorico.descricao})`,
+          quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
+          valor: sql<number>`coalesce(sum(${sapItensHistorico.valorTotal}), 0)`.mapWith(Number),
+          clientes: sql<number>`count(distinct ${sapItensHistorico.clienteId})`.mapWith(Number),
+        })
+        .from(sapItensHistorico)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+        .innerJoin(clientes, eq(clientes.id, sapItensHistorico.clienteId))
+        .where(and(...filtros))
+        .groupBy(chave, mes)
+
+      const itens = new Map<string, { chave: string; codigo: string | null; descricao: string; meses: Record<string, { quantidade: number; valor: number; clientes: number }>; quantidade: number; valor: number }>()
+      for (const l of linhas) {
+        const ehCodigo = !!l.chave && l.chave !== l.descricao.trim().toUpperCase()
+        const it = itens.get(l.chave) ?? { chave: l.chave, codigo: ehCodigo ? l.chave : null, descricao: l.descricao.trim(), meses: {}, quantidade: 0, valor: 0 }
+        it.meses[l.mes] = { quantidade: l.quantidade, valor: l.valor, clientes: l.clientes }
+        it.quantidade += l.quantidade
+        it.valor += l.valor
+        itens.set(l.chave, it)
+      }
+      const meses: string[] = []
+      let [ano, mesNum] = input.mesInicio.split('-').map(Number)
+      while (meses.length < 36) {
+        const atual = `${ano}-${String(mesNum).padStart(2, '0')}`
+        if (atual > input.mesFim) break
+        meses.push(atual)
+        mesNum += 1
+        if (mesNum > 12) {
+          ano += 1
+          mesNum = 1
+        }
+      }
+      return { meses, itens: [...itens.values()] }
+    }),
+
+  // Um item do relatório acima: quem comprou em cada mês.
+  itemSapClientes: protectedProcedure
+    .input(z.object({ chave: z.string().min(1), mesInicio: z.string().regex(/^\d{4}-\d{2}$/), mesFim: z.string().regex(/^\d{4}-\d{2}$/), vendedorId: z.number().optional(), regiao: regiaoEnum }))
+    .query(async ({ ctx, input }) => {
+      const chave = sql<string>`coalesce(nullif(trim(${sapItensHistorico.codigoItem}), ''), upper(trim(${sapItensHistorico.descricao})))`
+      const filtros = [
+        eq(sapItensHistorico.empresaId, ctx.empresaId),
+        eq(sapImportacoes.ativo, true),
+        between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
+        isNull(clientes.deletedAt),
+        sql`${chave} = ${input.chave}`,
+      ]
+      const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+      if (filtroVend) filtros.push(filtroVend)
+      const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+      if (filtroReg) filtros.push(filtroReg)
+      const mes = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
+      return db
+        .select({
+          clienteId: clientes.id,
+          razaoSocial: clientes.razaoSocial,
+          codigo: clientes.codigo,
+          vendedorNome: users.name,
+          mes,
+          quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
+          valor: sql<number>`coalesce(sum(${sapItensHistorico.valorTotal}), 0)`.mapWith(Number),
+        })
+        .from(sapItensHistorico)
+        .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+        .innerJoin(clientes, eq(clientes.id, sapItensHistorico.clienteId))
+        .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
+        .where(and(...filtros))
+        .groupBy(clientes.id, mes)
+    }),
 })

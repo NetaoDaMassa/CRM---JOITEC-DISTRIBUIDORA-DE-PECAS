@@ -13,6 +13,7 @@ import AdminReports from '../admin/Reports'
 import { ClientesParados, CurvaAbc, Positivacao } from './detalhes/Carteira'
 import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/Vendas'
 import { Contatos, Ligacoes } from './detalhes/Contatos'
+import { ItensSap } from './detalhes/ItensSap'
 import type { PropsDetalhe } from './detalhes/tipos'
 
 const COMPONENTES: Record<string, ComponentType<PropsDetalhe>> = {
@@ -21,6 +22,7 @@ const COMPONENTES: Record<string, ComponentType<PropsDetalhe>> = {
   vendas: Vendas,
   orcamentos: Orcamentos,
   produtos: Produtos,
+  'itens-sap': ItensSap,
   contatos: Contatos,
   ligacoes: Ligacoes,
   'clientes-parados': ClientesParados,
@@ -29,7 +31,8 @@ const COMPONENTES: Record<string, ComponentType<PropsDetalhe>> = {
 }
 
 // Relatórios que olham a "foto de agora" (não usam o período).
-const SEM_PERIODO = new Set(['clientes-parados'])
+// Itens SAP tem o período em meses inteiros dentro do próprio relatório.
+const SEM_PERIODO = new Set(['clientes-parados', 'itens-sap'])
 
 export default function DetalheRelatorio() {
   const { slug = '' } = useParams()

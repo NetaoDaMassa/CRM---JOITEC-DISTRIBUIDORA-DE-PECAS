@@ -151,6 +151,14 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'Itens por cliente (mix)', texto: 'Linhas de item ÷ clientes que compraram. Quanto maior, mais variedade de produtos o vendedor coloca em cada cliente.' },
     { termo: 'Quantidade por cliente', texto: 'Unidades vendidas ÷ clientes que compraram.' },
   ],
+  'itens-sap': [
+    { termo: 'De onde vêm os itens', texto: 'Das notas de venda do SAP, puxadas sozinhas pela integração (Joitec, Odin Tubos e Odin Automação). Notas canceladas e devoluções ficam de fora. A Odin Compressores ainda não entra.' },
+    { termo: 'Meses', texto: 'Cada coluna é um mês inteiro, pela data da nota. O mês atual vai só até hoje, então ele só fica completo no fim do mês.' },
+    { termo: 'Comparar', texto: 'Escolha os dois meses que quer comparar. A coluna de variação mostra quanto mudou do primeiro pro segundo: vermelho caiu, verde subiu.' },
+    { termo: 'Parou', texto: 'Item que vendeu no primeiro mês e não vendeu nada no segundo.' },
+    { termo: 'Novo', texto: 'Item que não vendeu no primeiro mês e vendeu no segundo.' },
+    { termo: 'Vendedor', texto: 'O cliente conta pro vendedor que tem ele na carteira hoje, como no resto dos dados do SAP.' },
+  ],
   contatos: [
     { termo: 'Contatos registrados', texto: 'Todos os contatos lançados no período (ligação, WhatsApp, e-mail e visita). O mesmo cliente pode ter vários.' },
     { termo: 'WhatsApp / Ligações', texto: 'Quantos desses contatos foram por WhatsApp e quantos por ligação.' },
