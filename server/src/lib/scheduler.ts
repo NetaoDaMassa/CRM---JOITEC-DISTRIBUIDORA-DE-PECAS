@@ -35,13 +35,17 @@ export async function runChecks() {
 }
 
 // PABXONE360 — telefonia das 3 empresas Odin (ver pabxone360.ts). A API
-// não tem webhook (só REST + polling): busca as ligações dos últimos 5
-// minutos a cada 1 minuto (sobreposição de propósito, contra queda
-// momentânea; pabx_ligacoes_processadas evita duplicar). Liga/desliga em
+// não tem webhook (só REST + polling): a cada 1 minuto busca as ligações
+// das últimas 2 HORAS. Era 5 minutos, mas se a API data a chamada pelo
+// horário em que ela COMEÇOU (e só a mostra depois que termina), uma
+// conversa de mais de ~5min nascia fora da janela e nunca era registrada
+// (João, 2026-11-01). Ligação nova continua caindo em 1-2min; as já vistas
+// são puladas (pabx_ligacoes_processadas evita duplicar). Liga/desliga em
 // Telefonia → Configuração (config `pabxone360_ligada`) — desligada sai
 // calada. Erro (ex: token recusado) fica gravado pra aparecer na tela, e só
 // vai pro log quando muda, pra não encher o log a cada minuto (foi isso que
 // fez desligarem em 2026-10-21: 401 a cada minuto).
+const JANELA_SYNC_PABX_MS = 2 * 60 * 60 * 1000
 let ultimoErroPabx = ''
 
 async function registrarErroPabx(err: unknown) {
@@ -56,7 +60,7 @@ async function sincronizarPabxone360() {
   const cred = await lerCredenciaisPabx()
   if (!cred) return
   const fim = new Date()
-  const inicio = new Date(fim.getTime() - 5 * 60 * 1000)
+  const inicio = new Date(fim.getTime() - JANELA_SYNC_PABX_MS)
   const resultados = await registrarLigacoesAutomaticasPabxone360(cred, inicio, fim, await duracaoMinimaPabx())
   await setConfig('pabxone360_ultima_sync', agoraSqlite())
   if (ultimoErroPabx) {
