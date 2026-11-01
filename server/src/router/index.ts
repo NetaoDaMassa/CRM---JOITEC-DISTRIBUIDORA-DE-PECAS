@@ -56,6 +56,7 @@ import { sidebarGruposRouter } from './sidebarGrupos.js'
 import { historicoSapRouter } from './historicoSap.js'
 import { sapFinanceiroRouter } from './sapFinanceiro.js'
 import { conferenciaSapRouter } from './conferenciaSap.js'
+import { clientesSapRouter } from './clientesSap.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { devolucaoEcommerceRouter } from './devolucaoEcommerce.js'
@@ -141,6 +142,7 @@ export const appRouter = router({
   historicoSap: historicoSapRouter,
   sapFinanceiro: sapFinanceiroRouter,
   conferenciaSap: conferenciaSapRouter,
+  clientesSap: clientesSapRouter,
   pabx: pabxRouter,
   devolucoes: devolucoesRouter,
   devolucaoEcommerce: devolucaoEcommerceRouter,

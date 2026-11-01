@@ -92,6 +92,10 @@ export async function sincronizarItensSap(opts: {
   // da Bruna, scripts/sincronizarItensSap.ts --so-compressores) — não mexe
   // nas outras nem na data da última sincronização.
   soEmpresa?: string
+  // Só as notas desses clientes (CardCode) — cliente recém-cadastrado pela
+  // tela "Clientes do SAP para cadastrar" (lib/sapClientes.ts). Também não
+  // mexe na data da última sincronização.
+  cardCodes?: string[]
 }): Promise<SyncItensResultado> {
   const slugs = [...Object.values(SLUG_POR_FILIAL), SLUG_AUTOMACAO, SLUG_COMPRESSORES]
   const listaEmpresas = await db.query.empresas.findMany({ where: inArray(empresas.slug, slugs) })
@@ -145,7 +149,9 @@ export async function sincronizarItensSap(opts: {
   const { notas, compressores } = await comSessaoSap(async (sap) => {
     const notas = await sap.getTodos<NotaSap>(
       `/Invoices?$select=DocEntry,DocNum,DocDate,CardCode,CardName,SalesPersonCode,BPL_IDAssignedToInvoice,DocTotal,DownPaymentAmount,Cancelled,CancelStatus,DocumentLines` +
-        `&$filter=DocDate ge '${de}' and DocDate le '${ate}'${opts.soEmpresa === SLUG_COMPRESSORES ? ` and BPL_IDAssignedToInvoice eq ${FILIAL_COMPRESSORES}` : ''}&$orderby=DocEntry`,
+        `&$filter=DocDate ge '${de}' and DocDate le '${ate}'${opts.soEmpresa === SLUG_COMPRESSORES ? ` and BPL_IDAssignedToInvoice eq ${FILIAL_COMPRESSORES}` : ''}` +
+        (opts.cardCodes?.length ? ` and (${opts.cardCodes.map((c) => `CardCode eq '${c.replace(/'/g, "''")}'`).join(' or ')})` : '') +
+        '&$orderby=DocEntry',
       200
     )
     const compressores = empresaPorSlug.has(SLUG_COMPRESSORES)
@@ -313,7 +319,7 @@ export async function sincronizarItensSap(opts: {
       .set({ totalLinhas: Number(t.linhas), importadas: Number(t.linhas), valorTotal: Number(t.valor), dataInicio: t.de, dataFim: t.ate })
       .where(eq(sapImportacoes.id, loteId))
   }
-  if (!opts.soEmpresa) await setConfig(CHAVE_ULTIMA_DATA, ate)
+  if (!opts.soEmpresa && !opts.cardCodes?.length) await setConfig(CHAVE_ULTIMA_DATA, ate)
   resultado.gravado = true
   return resultado
 }

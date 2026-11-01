@@ -777,6 +777,12 @@ export default function FunilBoard({
                           🆕 Adicionado recentemente
                         </p>
                       )}
+                      {card.novoDoSapEm && (
+                        <p className="text-xs text-teal-400 mb-1" title="Cliente cadastrado no SAP e puxado sozinho para o CRM — some quando alguém editar o cadastro">
+                          🆕 Novo do SAP · {card.novoDoSapEm.slice(8, 10)}/{card.novoDoSapEm.slice(5, 7)}
+                          {card.novoDoSapEm.length > 10 && ` às ${card.novoDoSapEm.slice(11, 16)}`}
+                        </p>
+                      )}
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
                       )}

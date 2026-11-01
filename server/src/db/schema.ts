@@ -384,6 +384,11 @@ export const clientes = sqliteTable('clientes', {
   // manual. Campo separado de propósito, pra não misturar os dois
   // significados num badge só. Pedido do João, 2026-10-13.
   importadoRecentemente: integer('importado_recentemente', { mode: 'boolean' }).notNull().default(false),
+  // Selo "🆕 Novo do SAP · dd/mm às hh:mm" — cliente que entrou pelo SAP
+  // (lib/sapClientes.ts); guarda quando foi cadastrado no SAP (horário de
+  // Brasília, "YYYY-MM-DD HH:MM"). Some sozinho quando alguém edita o
+  // cliente, igual aos selos acima. Pedido do João, 2026-11-01.
+  novoDoSapEm: text('novo_do_sap_em'),
 }, (t) => ({
   empresaCnpj: unique().on(t.empresaId, t.cnpj),
   empresaCodigo: unique().on(t.empresaId, t.codigo),

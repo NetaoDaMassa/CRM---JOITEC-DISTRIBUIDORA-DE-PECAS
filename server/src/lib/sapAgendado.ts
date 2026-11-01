@@ -7,6 +7,7 @@ import { sincronizarItensSap } from './sapSyncItens.js'
 import { sincronizarContasReceberSap } from './sapContasReceber.js'
 import { sincronizarVendasSap } from './sapVendasAuto.js'
 import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
+import { sincronizarClientesNovosSap } from './sapClientes.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -66,5 +67,22 @@ export async function rodarCotacoesSap(): Promise<void> {
     console.error('[sap-cotacoes] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoCotacoes = false
+  }
+}
+
+// Cadastro novo do SAP → cliente no CRM (lib/sapClientes.ts) — de 10 em 10
+// min, com `sap_sync_ativo` ligado e `sap_clientes_auto_desde` definido.
+let rodandoClientes = false
+
+export async function rodarClientesSap(): Promise<void> {
+  if (rodandoClientes || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoClientes = true
+  try {
+    const r = await sincronizarClientesNovosSap()
+    if (r?.criados) console.log(`[sap-clientes] ${r.criados} cliente(s) novo(s) do SAP cadastrado(s), ${r.pendentes} esperando o gestor`)
+  } catch (err) {
+    console.error('[sap-clientes] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoClientes = false
   }
 }

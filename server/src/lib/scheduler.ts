@@ -15,7 +15,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarCotacoesSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCotacoesSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -214,6 +214,10 @@ export function startScheduler() {
   // Cotações do SAP no card/ficha (Fase 1, só mostrar) — de 2 em 2 minutos.
   cron.schedule('*/2 * * * *', () => {
     rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))
+  })
+  // Cadastro novo do SAP vira cliente no CRM — de 10 em 10 minutos.
+  cron.schedule('3-59/10 * * * *', () => {
+    rodarClientesSap().catch((err) => console.error('[sap-clientes] erro no agendador:', err))
   })
 
   // Arquivos/Mídia → Google Drive (googleDriveSync.ts). Sem conta conectada

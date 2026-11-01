@@ -547,6 +547,7 @@ export const clientesRouter = router({
       // Mesma ideia — tira o selo "🆕 Adicionado recentemente" (importação
       // em massa) assim que alguém mexe no cadastro.
       if (cliente.importadoRecentemente) updates.importadoRecentemente = false
+      if (cliente.novoDoSapEm) updates.novoDoSapEm = null
       if (cnpj) {
         if (!cnpjValido(cnpj)) throw new Error('CNPJ inválido')
         const cnpjLimpo = limparCnpj(cnpj)

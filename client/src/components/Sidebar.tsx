@@ -83,6 +83,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/clientes', label: 'Clientes', icon: BookUser, feature: 'clientes' },
   { to: '/admin/boletos-carteira', label: 'Boletos da carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos', 'odin-compressores'], feature: 'boletos_carteira' },
   { to: '/admin/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
+  { to: '/admin/clientes-sap', label: 'Clientes do SAP p/ cadastrar', icon: UserPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
   { to: '/admin/carteira', label: 'Carteira', icon: ArrowRightLeft, feature: 'carteira' },

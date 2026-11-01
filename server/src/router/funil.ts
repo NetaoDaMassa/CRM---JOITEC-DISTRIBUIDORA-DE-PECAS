@@ -78,6 +78,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
           origemMarketingTipo: true,
           cadastroRapido: true,
           importadoRecentemente: true,
+          novoDoSapEm: true,
           classificacaoComercial: true,
         },
         with: {
@@ -250,6 +251,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     origemMarketingTipo: f.cliente.origemMarketingTipo,
     cadastroRapido: f.cliente.cadastroRapido,
     importadoRecentemente: f.cliente.importadoRecentemente,
+    novoDoSapEm: f.cliente.novoDoSapEm,
     classificacaoComercial: f.cliente.classificacaoComercial,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
     proximoCompromisso: (() => {
