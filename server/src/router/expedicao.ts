@@ -660,6 +660,138 @@ export const expedicaoRouter = router({
     }
   }),
 
+  // Telas extras dos painéis de TV (pedido do João, 2026-11-02): resumo por
+  // empresa (Joitec, Odin Tubos, Odin Automação) — inclusive quantas notas
+  // estão esperando o Financeiro emitir —, a equipe do dia e as coletas da
+  // semana. Serve o painel do estoque (`painel_logistica`) e o Painel
+  // Financeiro (`painel_financeiro`).
+  painelResumo: protectedProcedure.query(async ({ ctx }) => {
+    if (!ctx.user.superAdmin && !(await temFeature(ctx.user.id, FEATURE_PAINEL)) && !(await temFeature(ctx.user.id, 'painel_financeiro')))
+      throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso restrito a esse setor' })
+    const lista = await db.query.empresas.findMany({ where: inArray(empresas.slug, ['joitec', 'odin-tubos', 'joitec-automacao']) })
+    const ordem = ['joitec', 'odin-tubos', 'joitec-automacao']
+    lista.sort((a, b) => ordem.indexOf(a.slug) - ordem.indexOf(b.slug))
+    const nome = (slug: string) => (slug === 'joitec' ? 'Joitec' : slug === 'odin-tubos' ? 'Odin Tubos' : 'Odin Automação')
+    const hoje = hojeBrString()
+    const inicioDia = (dia: string) => new Date(`${dia}T00:00:00-03:00`).toISOString().replace('T', ' ').slice(0, 19)
+    const seteDias = new Date(`${hoje}T12:00:00Z`)
+    seteDias.setUTCDate(seteDias.getUTCDate() - 6)
+    const desde7 = inicioDia(seteDias.toISOString().slice(0, 10))
+    const inicioHoje = inicioDia(hoje)
+    const agora = Date.now()
+    const pedidos = await db
+      .select()
+      .from(expedicaoPedidos)
+      .where(
+        and(
+          inArray(expedicaoPedidos.empresaId, lista.map((e) => e.id)),
+          eq(expedicaoPedidos.historico, false),
+          notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado']),
+          or(ne(expedicaoPedidos.etapa, 'coletado'), gte(expedicaoPedidos.coletadoEm, desde7))
+        )
+      )
+    const ativos = pedidos.filter((p) => p.etapa !== 'coletado')
+    const diaBr = (utc: string) => new Date(Date.parse(`${utc.replace(' ', 'T')}Z`) - 3 * 3600_000).toISOString().slice(0, 10)
+
+    const empresasResumo = lista.map((e) => {
+      const dela = ativos.filter((p) => p.empresaId === e.id)
+      const col = (etapa: string) => dela.filter((p) => p.etapa === etapa)
+      const aguardandoNf = dela.filter((p) => (p.etapa === 'nf' || p.etapa === 'agendamento') && !p.nfNumero)
+      const coletadosHoje = pedidos.filter((p) => p.empresaId === e.id && p.etapa === 'coletado' && p.coletadoEm && p.coletadoEm >= inicioHoje)
+      return {
+        slug: e.slug,
+        nome: nome(e.slug),
+        separacao: col('separacao').length,
+        conferencia: col('conferencia').length,
+        embalagem: col('embalagem').length,
+        aguardandoNf: aguardandoNf.length,
+        liberados: dela.filter((p) => (p.etapa === 'nf' || p.etapa === 'agendamento') && !!p.nfNumero).length,
+        coleta: col('coleta').length,
+        coletadosHoje: coletadosHoje.length,
+        noPrazoHoje: coletadosHoje.filter((p) => ms(p.coletadoEm) <= prazoLimite(p.inicioPrazo)).length,
+        atrasados: dela.filter((p) => agora > prazoLimite(p.inicioPrazo)).length,
+        pausados: dela.filter((p) => !!p.pausadoEm).length,
+        emAndamento: dela.length,
+        // Notas que o Financeiro precisa emitir: embalado, sem NF ainda.
+        notasAguardando: aguardandoNf
+          .map((p) => ({ pedido: p.pedidosSap, cliente: p.clienteNome ?? '', desde: p.embalagemFim, volumes: p.volumes, atrasado: agora > prazoLimite(p.inicioPrazo) }))
+          .sort((a, b) => (a.desde ?? '').localeCompare(b.desde ?? '')),
+      }
+    })
+
+    // Equipe hoje: etapas terminadas hoje por pessoa + erros de hoje.
+    const pessoas = await db.query.expedicaoColaboradores.findMany({ where: inArray(expedicaoColaboradores.empresaId, lista.map((e) => e.id)) })
+    const feitosHoje = await db
+      .select()
+      .from(expedicaoPedidos)
+      .where(
+        and(
+          inArray(expedicaoPedidos.empresaId, lista.map((e) => e.id)),
+          eq(expedicaoPedidos.historico, false),
+          or(gte(expedicaoPedidos.separacaoFim, inicioHoje), gte(expedicaoPedidos.conferenciaFim, inicioHoje), gte(expedicaoPedidos.embalagemFim, inicioHoje))
+        )
+      )
+    const errosHoje = await db.select({ responsavelId: expedicaoErros.responsavelId }).from(expedicaoErros).where(gte(expedicaoErros.createdAt, inicioHoje))
+    const empresaSlug = new Map(lista.map((e) => [e.id, e.slug]))
+    const equipe = pessoas
+      .filter((c) => c.ativo)
+      .map((c) => {
+        const conta = (fim: 'separacaoFim' | 'conferenciaFim' | 'embalagemFim', quem: 'separacaoColaboradorId' | 'conferenciaColaboradorId' | 'embalagemColaboradorId') =>
+          feitosHoje.filter((p) => p[quem] === c.id && p[fim] && p[fim]! >= inicioHoje)
+        const sep = conta('separacaoFim', 'separacaoColaboradorId')
+        const conf = conta('conferenciaFim', 'conferenciaColaboradorId')
+        const emb = conta('embalagemFim', 'embalagemColaboradorId')
+        const agoraFazendo = ativos.find(
+          (p) =>
+            (p.etapa === 'separacao' && p.separacaoColaboradorId === c.id && p.separacaoInicio && !p.separacaoFim) ||
+            (p.etapa === 'conferencia' && p.conferenciaColaboradorId === c.id && p.conferenciaInicio && !p.conferenciaFim) ||
+            (p.etapa === 'embalagem' && p.embalagemColaboradorId === c.id && p.embalagemInicio && !p.embalagemFim)
+        )
+        return {
+          id: c.id,
+          nome: c.nome,
+          empresa: nome(empresaSlug.get(c.empresaId) ?? ''),
+          separados: sep.length,
+          conferidos: conf.length,
+          embalados: emb.length,
+          pecas: [...sep, ...conf, ...emb].reduce((s, p) => s + p.pecas, 0),
+          erros: errosHoje.filter((e) => e.responsavelId === c.id).length,
+          agora: agoraFazendo ? `${agoraFazendo.etapa === 'separacao' ? 'separando' : agoraFazendo.etapa === 'conferencia' ? 'conferindo' : 'embalando'} ${agoraFazendo.pedidosSap}` : null,
+        }
+      })
+      .filter((p) => p.separados + p.conferidos + p.embalados > 0 || p.agora)
+      .sort((a, b) => b.separados + b.conferidos + b.embalados - (a.separados + a.conferidos + a.embalados))
+
+    // Coletas: agendadas pra hoje por transportadora + últimos 7 dias.
+    const agendadasHoje = ativos.filter((p) => p.etapa === 'coleta' && p.coletaAgendada?.slice(0, 10) === hoje)
+    const porTransp = new Map<string, { transportadora: string; agendadas: number; coletadas: number; volumes: number }>()
+    for (const p of [...agendadasHoje, ...pedidos.filter((p) => p.etapa === 'coletado' && p.coletadoEm && p.coletadoEm >= inicioHoje)]) {
+      const t = (p.transportadora ?? 'Sem transportadora').trim() || 'Sem transportadora'
+      const x = porTransp.get(t) ?? { transportadora: t, agendadas: 0, coletadas: 0, volumes: 0 }
+      if (p.etapa === 'coletado') x.coletadas++
+      else x.agendadas++
+      x.volumes += p.volumes ?? 0
+      porTransp.set(t, x)
+    }
+    const dias = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(seteDias)
+      d.setUTCDate(d.getUTCDate() + i)
+      return d.toISOString().slice(0, 10)
+    })
+    const semana = dias.map((dia) => {
+      const doDia = pedidos.filter((p) => p.etapa === 'coletado' && p.coletadoEm && diaBr(p.coletadoEm) === dia)
+      return { dia, coletados: doDia.length, noPrazo: doDia.filter((p) => ms(p.coletadoEm) <= prazoLimite(p.inicioPrazo)).length }
+    })
+
+    return {
+      empresas: empresasResumo,
+      equipe,
+      transportadoras: [...porTransp.values()].sort((a, b) => b.agendadas + b.coletadas - (a.agendadas + a.coletadas)),
+      semana,
+      atualizadoEm: new Date().toISOString(),
+    }
+  }),
+
   // Descartar = pedido que voltou (o SAP mudou o picking): sai da fila, fica
   // em "Descartados" com o motivo, e a busca no SAP já cria o card novo com
   // o picking atual. Só quem tem `expedicao_descartar` (admin), pedido do

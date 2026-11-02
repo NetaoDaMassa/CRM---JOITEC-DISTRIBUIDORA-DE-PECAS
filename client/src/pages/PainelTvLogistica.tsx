@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../lib/trpc'
+import { TelaColetas, TelaEmpresasExpedicao, TelaEquipeEstoque } from '../components/PainelExpedicaoTelas'
 
 // Painel de TV "Controle Logístico" (pedido do João, 2026-10-29) — pro
 // Financeiro, TV de 75". Quantidade e pedidos/clientes em cada etapa da
@@ -16,6 +17,14 @@ const COLUNAS = [
   { id: 'coletado', titulo: 'Coletados hoje', cor: '#22c55e' },
 ] as const
 const LINHAS_POR_COLUNA = 6
+// Telas que o painel gira (pedido do João, 2026-11-02: "criar mais telas").
+const TELAS = [
+  { id: 'quadro', titulo: 'Quadro', sub: 'Prazo de 48h do picking até a coleta' },
+  { id: 'empresas', titulo: 'Por empresa', sub: 'Etapas, notas aguardando o Financeiro, atrasados e coletados hoje' },
+  { id: 'equipe', titulo: 'Equipe hoje', sub: 'Etapas terminadas hoje por pessoa e quem está trabalhando agora' },
+  { id: 'coletas', titulo: 'Coletas', sub: 'Coletas de hoje por transportadora e os últimos 7 dias' },
+] as const
+const SEGUNDOS_POR_TELA = 20
 
 function usePalco() {
   const ref = useRef<HTMLDivElement>(null)
@@ -50,6 +59,13 @@ function horaBr(utc: string | null): string {
 export default function PainelTvLogistica() {
   const { ref, escala, largura, altura } = usePalco()
   const { data } = trpc.expedicao.painelTv.useQuery(undefined, { refetchInterval: 30_000 })
+  const { data: resumo } = trpc.expedicao.painelResumo.useQuery(undefined, { refetchInterval: 30_000 })
+  const [tela, setTela] = useState(0)
+  useEffect(() => {
+    const id = setInterval(() => setTela((t) => (t + 1) % TELAS.length), SEGUNDOS_POR_TELA * 1000)
+    return () => clearInterval(id)
+  }, [tela])
+  const atual = TELAS[tela]
   const [agora, setAgora] = useState(Date.now())
   useEffect(() => {
     const id = setInterval(() => setAgora(Date.now()), 30_000)
@@ -70,8 +86,10 @@ export default function PainelTvLogistica() {
           <div className="flex items-center gap-8">
             <div>
               <p className="text-[20px] text-dark-400 uppercase tracking-[0.06em] font-semibold">Grupo Odin · Joitec · Odin Tubos · Odin Automação</p>
-              <h1 className="font-heading text-[50px] font-bold text-dark-50 leading-tight">Controle Logístico</h1>
-              <p className="text-[21px] text-dark-400">Prazo de 48h do picking até a coleta</p>
+              <h1 className="font-heading text-[50px] font-bold text-dark-50 leading-tight">
+                Controle Logístico{atual.id !== 'quadro' && <span className="text-dark-400"> · {atual.titulo}</span>}
+              </h1>
+              <p className="text-[21px] text-dark-400">{atual.sub}</p>
             </div>
             <div className="ml-auto flex items-center gap-5">
               <div className={`rounded-2xl px-6 py-3 text-center ${atrasados ? 'bg-red-900/40 border-2 border-red-500/70' : 'bg-dark-800 border-2 border-dark-700'}`}>
@@ -89,7 +107,17 @@ export default function PainelTvLogistica() {
             </div>
           </div>
 
-          {!data ? (
+          {atual.id !== 'quadro' ? (
+            !resumo ? (
+              <p className="text-[26px] text-dark-500">Carregando...</p>
+            ) : atual.id === 'empresas' ? (
+              <TelaEmpresasExpedicao data={resumo} />
+            ) : atual.id === 'equipe' ? (
+              <TelaEquipeEstoque data={resumo} />
+            ) : (
+              <TelaColetas data={resumo} />
+            )
+          ) : !data ? (
             <p className="text-[26px] text-dark-500">Carregando...</p>
           ) : (
             <div className="grid grid-cols-6 gap-[18px] min-h-0">
@@ -163,6 +191,18 @@ export default function PainelTvLogistica() {
               })}
             </div>
           )}
+        </div>
+        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-3">
+          {TELAS.map((t, i) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTela(i)}
+              className={`px-4 py-1 rounded-full text-[16px] transition-colors ${i === tela ? 'bg-teal-400 text-dark-950 font-semibold' : 'bg-dark-800 text-dark-400'}`}
+            >
+              {t.titulo}
+            </button>
+          ))}
         </div>
       </div>
     </div>

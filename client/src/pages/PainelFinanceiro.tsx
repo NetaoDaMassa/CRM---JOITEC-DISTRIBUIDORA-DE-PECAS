@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Settings } from 'lucide-react'
 import { trpc } from '../lib/trpc'
+import { TelaEmpresasExpedicao } from '../components/PainelExpedicaoTelas'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import { Input } from '../components/ui/Input'
 import Button from '../components/ui/Button'
@@ -553,6 +554,10 @@ export default function PainelFinanceiro() {
   const { data } = trpc.financeiro.painelResumo.useQuery(undefined, { refetchInterval: 30000, refetchIntervalInBackground: true })
   const { data: hist } = trpc.financeiro.painelHistorico.useQuery(undefined, { refetchInterval: 10 * 60 * 1000, refetchIntervalInBackground: true })
   const { data: demandasFinanceiras } = trpc.demandas.painelFinanceiro.useQuery(undefined, { refetchInterval: 30000, refetchIntervalInBackground: true })
+  // Expedição (Joitec, Odin Tubos, Odin Automação) — pedido do João,
+  // 2026-11-02: o Financeiro vê o que está acontecendo no estoque e quantas
+  // notas esperam por eles.
+  const { data: expedicao } = trpc.expedicao.painelResumo.useQuery(undefined, { refetchInterval: 30000, refetchIntervalInBackground: true, retry: false })
 
   const hoje = relogio.toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' })
   const c = data?.consolidado
@@ -567,6 +572,16 @@ export default function PainelFinanceiro() {
     { titulo: 'Empresas', cabecalho: 'Empresas', sub: '% da meta de cada uma, vendas, comparação e inadimplência', render: () => (data ? <TelaEmpresas data={data} hist={hist} /> : null) },
     { titulo: 'Demandas', cabecalho: 'Demandas financeiras pendentes', sub: 'Marcadas para aparecer no painel · as atrasadas vêm primeiro', render: () => <TelaDemandas demandas={demandasFinanceiras} hoje={hoje} /> },
     { titulo: 'Mês a mês', cabecalho: 'Mês a mês', sub: '% da meta batida em cada mês · quanto mais forte a cor, mais perto da meta', render: () => (data ? <TelaMeses data={data} hist={hist} /> : null) },
+    ...(expedicao
+      ? [
+          {
+            titulo: 'Expedição',
+            cabecalho: 'Expedição — Joitec, Odin Tubos e Odin Automação',
+            sub: `${expedicao.empresas.reduce((s, e) => s + e.aguardandoNf, 0)} nota(s) aguardando o Financeiro · etapas do estoque, atrasados e coletados hoje`,
+            render: () => <TelaEmpresasExpedicao data={expedicao} foco="financeiro" />,
+          },
+        ]
+      : []),
   ]
   const [slideAtual, setSlideAtual] = useState(0)
   const [configAberta, setConfigAberta] = useState(false)
