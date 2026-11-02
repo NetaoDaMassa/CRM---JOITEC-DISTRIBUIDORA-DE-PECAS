@@ -63,6 +63,9 @@ import FilaHoje from './pages/vendor/FilaHoje'
 import SolicitarDesign from './pages/vendor/SolicitarDesign'
 import RequisicaoPosto from './pages/admin/RequisicaoPosto'
 import ControleSuframa from './pages/admin/ControleSuframa'
+import Expedicao from './pages/admin/Expedicao'
+import ExpedicaoDesempenho from './pages/admin/ExpedicaoDesempenho'
+import ExpedicaoEquipe from './pages/admin/ExpedicaoEquipe'
 import LigacoesPabx from './pages/admin/LigacoesPabx'
 import GrupoOdin from './pages/admin/GrupoOdin'
 import LiberacaoCredito from './pages/admin/LiberacaoCredito'
@@ -79,6 +82,7 @@ import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
 import PainelTvMarketing from './pages/PainelTvMarketing'
+import PainelTvLogistica from './pages/PainelTvLogistica'
 import Devolucoes from './pages/Devolucoes'
 import MarketingArquivos from './pages/MarketingArquivos'
 import OrdensKanban from './pages/OrdensKanban'
@@ -247,6 +251,18 @@ export default function App() {
           }
         />
         <Route
+          path="/painel-tv-logistica"
+          element={
+            <AuthGuard>
+              <AdminGuard>
+                <FeatureGuard feature="painel_logistica">
+                  <PainelTvLogistica />
+                </FeatureGuard>
+              </AdminGuard>
+            </AuthGuard>
+          }
+        />
+        <Route
           path="/painel-tv-marketing"
           element={
             <AuthGuard>
@@ -317,6 +333,9 @@ export default function App() {
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
           <Route path="admin/controle-suframa" element={<AdminGuard><FeatureGuard feature="controle_suframa"><ControleSuframa /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/expedicao" element={<AdminGuard><FeatureGuard feature="controle_estoque"><Expedicao /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/expedicao-desempenho" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoDesempenho /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/expedicao-equipe" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoEquipe /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ligacoes" element={<AdminGuard><FeatureGuard feature="relatorio_ligacoes"><LigacoesPabx /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />

@@ -25,6 +25,10 @@ const FEATURES = [
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
   { feature: 'painel_tv_marketing', label: 'Painel de TV Marketing' },
   { feature: 'funil_excluir_card', label: 'Excluir card do Kanban' },
+  // Poder dentro da Expedição (não é item de menu) — só admin descarta
+  // pedido que voltou. Pedido do João, 2026-10-29.
+  { feature: 'expedicao_descartar', label: 'Controle do Estoque — descartar pedido' },
+  { feature: 'painel_logistica', label: 'Painel de TV Controle Logístico' },
   // ETAPA 2 de Garantias (oficina/avaliação técnica) — não tem item de menu
   // próprio (fica numa aba dentro do processo), entra na mão igual
   // 'funil_excluir_card'. Pedido do João, 2026-10-02.

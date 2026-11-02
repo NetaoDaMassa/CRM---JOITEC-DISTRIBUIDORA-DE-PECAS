@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, BarChart3, FileClock,
+  LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
@@ -161,6 +161,12 @@ export const ADMIN_LINKS = [
   // Controle SUFRAMA (Financeiro): PIN de cada nota de cliente da Zona Franca,
   // cross-empresa. Pedido do João, 2026-10-28.
   { to: '/admin/controle-suframa', label: 'Controle SUFRAMA', icon: KeyRound, feature: 'controle_suframa' },
+  // Controle do Estoque (pedido do João, 2026-10-29): fila de expedição que
+  // nasce do picking do SAP, desempenho da equipe e cadastro da equipe. Cada
+  // empresa tem o próprio estoque; Odin Compressores usa Ordens.
+  { to: '/admin/expedicao', label: 'Expedição', icon: PackageCheck, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
+  { to: '/admin/expedicao-desempenho', label: 'Desempenho do estoque', icon: Medal, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
+  { to: '/admin/expedicao-equipe', label: 'Equipe do estoque', icon: UsersRound, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
   // Telefonia PABXONE360 (3 empresas Odin, uma conta): relatório de
   // ligações tentativa x efetiva + (superAdmin) configuração e ramais.
   // 2026-10-30.
@@ -490,6 +496,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     // só como saída de emergência pra desligar um lote.
     // { to: '/painel-tv-marketing', label: 'Painel de TV Marketing', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv_marketing')) },
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
+    // Painel de TV "Controle Logístico" (Expedição das 3 empresas) — pro
+    // Financeiro, TV de 75". Pedido do João, 2026-10-29.
+    { to: '/painel-tv-logistica', label: 'Painel Controle Logístico', icon: Truck, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_logistica')) },
     {
       // Sem trava de empresa aqui de propósito — a permissão concedida em
       // Permissões já decide quem vê (mesmo padrão de painel_tv/

@@ -161,6 +161,14 @@ export const FEATURES_ADMIN = [
   // Controle SUFRAMA (Financeiro) — sem isso o save de Permissões descartava
   // a caixinha em silêncio (só entra o que está nesta lista). 2026-10-29.
   'controle_suframa',
+  // Controle do Estoque / Expedição (fila do SAP, separação → conferência →
+  // embalagem → coleta, desempenho da equipe). Pedido do João, 2026-10-29.
+  'controle_estoque',
+  // Descartar pedido da Expedição (o pedido voltou / o SAP mudou o picking)
+  // — só admin, pedido do João, 2026-10-29.
+  'expedicao_descartar',
+  // Painel de TV "Controle Logístico" (Financeiro), 2026-10-29.
+  'painel_logistica',
   // Relatório de ligações da PABXONE360 (3 empresas Odin) — tentativas x
   // efetivas por vendedor. 2026-10-30.
   'relatorio_ligacoes',

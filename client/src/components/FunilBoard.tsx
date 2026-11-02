@@ -24,6 +24,7 @@ import { NovoCompromissoModal } from './CalendarBoard'
 import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
 import InadimplenciaCliente from './InadimplenciaCliente'
+import JornadaPedidosCliente from './JornadaPedidosCliente'
 import HistoricoCotacoesSapCliente from './HistoricoCotacoesSapCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
@@ -441,6 +442,9 @@ export default function FunilBoard({
   // Clientes devendo no SAP (InadimplenciaCliente) → etiqueta vermelha no card.
   const { data: inadimplentes } = trpc.sapFinanceiro.inadimplentes.useQuery(undefined, { staleTime: 5 * 60_000 })
   const devendo = useMemo(() => new Map((inadimplentes ?? []).map((d) => [d.clienteId, d])), [inadimplentes])
+  // Pedido do cliente andando no SAP/estoque (JornadaPedidosCliente) → etiqueta no card.
+  const { data: jornadas } = trpc.expedicao.jornadaMapa.useQuery(undefined, { staleTime: 2 * 60_000 })
+  const jornadaPor = useMemo(() => new Map((jornadas ?? []).map((j) => [j.clienteId, j])), [jornadas])
   // Cotações do SAP ao vivo (Fase 1, 2026-10-31: só mostrar) → etiqueta azul
   // no card com a cotação mais recente do cliente naquele mês.
   const mesesDosCards = useMemo(() => [...new Set(cards.map((c) => c.mesReferencia.slice(0, 7)))].slice(0, 12), [cards])
@@ -735,6 +739,18 @@ export default function FunilBoard({
                           ⚠ {formatarMoeda(devendo.get(card.clienteId)!.vencido)} vencido · {devendo.get(card.clienteId)!.maiorAtraso}d
                         </p>
                       )}
+                      {jornadaPor.has(card.clienteId) && (() => {
+                        const j = jornadaPor.get(card.clienteId)!
+                        return (
+                          <p
+                            className={`text-[11px] font-medium rounded-lg px-2 py-1 mb-2 border ${j.atrasado ? 'text-red-300 bg-red-900/20 border-red-700/40' : 'text-cyan-300 bg-cyan-900/15 border-cyan-700/30'}`}
+                            title="Onde está o pedido no SAP/estoque — abra o card para ver a jornada"
+                          >
+                            📦 Pedido {j.pedido} · {j.texto}
+                            {j.total > 1 ? ` (+${j.total - 1})` : ''}
+                          </p>
+                        )
+                      })()}
                       {(() => {
                         const cq = cotacaoDoCard.get(`${card.clienteId}:${card.mesReferencia}`)
                         if (!cq) return null
@@ -1689,6 +1705,7 @@ function CardModal({
           </div>
         )}
         <InadimplenciaCliente clienteId={card.clienteId} compacto />
+        <JornadaPedidosCliente clienteId={card.clienteId} />
         {cotacaoSapDoCard && (
           <div className="space-y-2">
             <div className="flex gap-3 items-start bg-sky-900/15 border border-sky-700/40 rounded-xl px-4 py-2.5">

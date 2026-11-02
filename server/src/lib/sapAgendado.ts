@@ -7,6 +7,7 @@ import { sincronizarItensSap } from './sapSyncItens.js'
 import { sincronizarContasReceberSap } from './sapContasReceber.js'
 import { sincronizarVendasSap } from './sapVendasAuto.js'
 import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
+import { sincronizarExpedicaoSap } from './sapExpedicao.js'
 import { sincronizarClientesNovosSap } from './sapClientes.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
@@ -84,5 +85,22 @@ export async function rodarClientesSap(): Promise<void> {
     console.error('[sap-clientes] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoClientes = false
+  }
+}
+
+// Fila do Controle do Estoque (lib/sapExpedicao.ts) — leve (só os pickings
+// dos últimos dias), roda de 5 em 5 min com `expedicao_sap_ativo` ligado.
+let rodandoExpedicao = false
+
+export async function rodarExpedicaoSap(): Promise<void> {
+  if (rodandoExpedicao || !sapConfigurado() || !(await getConfigBool('expedicao_sap_ativo', false))) return
+  rodandoExpedicao = true
+  try {
+    const r = await sincronizarExpedicaoSap()
+    if (r.novas || r.nfs) console.log(`[sap-expedicao] ${r.novas} picking(s) novo(s), ${r.nfs} NF(s)`)
+  } catch (err) {
+    console.error('[sap-expedicao] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoExpedicao = false
   }
 }

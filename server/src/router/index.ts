@@ -57,6 +57,7 @@ import { historicoSapRouter } from './historicoSap.js'
 import { sapFinanceiroRouter } from './sapFinanceiro.js'
 import { conferenciaSapRouter } from './conferenciaSap.js'
 import { clientesSapRouter } from './clientesSap.js'
+import { expedicaoRouter } from './expedicao.js'
 import { pabxRouter } from './pabx.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { devolucaoEcommerceRouter } from './devolucaoEcommerce.js'
@@ -167,6 +168,7 @@ export const appRouter = router({
   avisoLeads: avisoLeadsRouter,
   marketing: marketingRouter,
   brevo: brevoRouter,
+  expedicao: expedicaoRouter,
 })
 
 export type AppRouter = typeof appRouter

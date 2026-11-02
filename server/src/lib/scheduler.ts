@@ -15,7 +15,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarClientesSap, rodarCotacoesSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCotacoesSap, rodarExpedicaoSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -212,6 +212,11 @@ export function startScheduler() {
     rodarVendasSap().catch((err) => console.error('[sap-vendas] erro no agendador:', err))
   })
   // Cotações do SAP no card/ficha (Fase 1, só mostrar) — de 2 em 2 minutos.
+  // Fila do Controle do Estoque (pickings novos + NF) — de 5 em 5 minutos,
+  // só com `expedicao_sap_ativo` ligado.
+  cron.schedule('*/5 * * * *', () => {
+    rodarExpedicaoSap().catch((err) => console.error('[sap-expedicao] erro no agendador:', err))
+  })
   cron.schedule('*/2 * * * *', () => {
     rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))
   })

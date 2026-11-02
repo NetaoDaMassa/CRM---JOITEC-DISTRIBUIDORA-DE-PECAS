@@ -4391,3 +4391,197 @@ export const sapConferenciaIgnorados = sqliteTable(
     tipoRefUnq: unique('uq_sap_conferencia_ignorados').on(t.tipo, t.referencia),
   })
 )
+
+
+// Controle do Estoque / Expedição (pedido do João, 2026-10-29) — substitui
+// as fichas de papel (separação, conferência, embalagem) e a planilha
+// "Análise de Desempenho Estoque". Cada empresa tem estoque e equipe
+// próprios (Joitec, Odin Tubos, Odin Automação). A fila nasce do SAP: cada
+// lista de picking gerada vira um registro aqui (lib/sapExpedicao.ts); o
+// que o SAP não sabe — quem separou/conferiu/embalou, horários, erros,
+// volumes, coleta — é anotado no CRM, nos computadores do estoque.
+// Prazo: 48h do picking gerado até a coleta. A NF sai enquanto embalam; a
+// coleta só é agendada depois que a NF existe.
+export const expedicaoColaboradores = sqliteTable('expedicao_colaboradores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  // 'geral' = faz tudo (separa, confere e embala) — ex.: o cadastro "Estoque
+  // Odin Automação", onde uma pessoa só cuida do pedido inteiro.
+  cargo: text('cargo', { enum: ['separador', 'conferente', 'embalador', 'expedicao', 'geral'] }).notNull(),
+  // Taxa de erro máxima (erros ÷ pedidos) pra ser elegível à bonificação —
+  // igual a aba "Orientações" da planilha (Elias 5%, o resto 1%).
+  limiteErro: real('limite_erro').notNull().default(0.01),
+  ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const expedicaoPedidos = sqliteTable(
+  'expedicao_pedidos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    // Absoluteentry da lista de picking no SAP — a unidade de trabalho do
+    // estoque ("gerou o picking"). Uma lista quase sempre é de um pedido só.
+    // Pode repetir: pedido descartado e recriado do mesmo picking (ver descartadoEm).
+    pickListSap: integer('pick_list_sap').notNull(),
+    // Nº(s) do pedido de venda (DocNum) e DocEntry(s), separados por vírgula.
+    pedidosSap: text('pedidos_sap').notNull(),
+    orderEntriesSap: text('order_entries_sap').notNull(),
+    cotacaoSap: text('cotacao_sap'),
+    clienteCodigo: text('cliente_codigo'),
+    clienteNome: text('cliente_nome'),
+    vendedorSap: text('vendedor_sap'),
+    // Observação da lista de picking (transportadora, volumes, cotação de frete).
+    observacaoSap: text('observacao_sap'),
+    // Endereço de entrega do pedido no SAP (Address2) — vai na etiqueta de volume.
+    enderecoEntrega: text('endereco_entrega'),
+    pickingGeradoPor: text('picking_gerado_por'),
+    // YYYY-MM-DD
+    dataPicking: text('data_picking').notNull(),
+    // ps_Released (gerado) → ps_Picked (conferido, liberado p/ faturar) → ps_Closed.
+    statusPickingSap: text('status_picking_sap'),
+    // UTC (datetime('now')) — quando o picking entrou na fila; prazo = +48h até a coleta.
+    inicioPrazo: text('inicio_prazo').notNull(),
+    itens: integer('itens').notNull().default(0),
+    pecas: real('pecas').notNull().default(0),
+    etapa: text('etapa', { enum: ['separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'coleta', 'coletado', 'cancelado', 'descartado'] })
+      .notNull()
+      .default('separacao'),
+    // Já estava faturado/fechado no SAP quando a fila começou: fica fora da
+    // fila e das métricas (ninguém anotou as etapas dele).
+    historico: integer('historico', { mode: 'boolean' }).notNull().default(false),
+    separacaoColaboradorId: integer('separacao_colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    separacaoInicio: text('separacao_inicio'),
+    separacaoFim: text('separacao_fim'),
+    conferenciaColaboradorId: integer('conferencia_colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    conferenciaInicio: text('conferencia_inicio'),
+    conferenciaFim: text('conferencia_fim'),
+    embalagemColaboradorId: integer('embalagem_colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    embalagemInicio: text('embalagem_inicio'),
+    embalagemFim: text('embalagem_fim'),
+    volumes: integer('volumes'),
+    cabecotes: integer('cabecotes'),
+    paletes: integer('paletes'),
+    // Vem sozinho do SAP (nota baseada no pedido): nº da NF-e e emissão (UTC).
+    nfNumero: text('nf_numero'),
+    nfEmissao: text('nf_emissao'),
+    // Agendamento da coleta — só depois que a NF sai (João, 2026-10-29).
+    // coletaAgendada = "YYYY-MM-DDTHH:MM" no horário de Brasília (o que a
+    // pessoa escolheu); agendadoEm = quando foi agendado (UTC).
+    transportadora: text('transportadora'),
+    coletaAgendada: text('coleta_agendada'),
+    agendadoEm: text('agendado_em'),
+    coletadoEm: text('coletado_em'),
+    coletadoColaboradorId: integer('coletado_colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    observacao: text('observacao'),
+    // Quando o aviso "passou das 48h" foi mandado (uma vez só por pedido).
+    alertaAtrasoEm: text('alerta_atraso_em'),
+    // O SAP mudou o pedido depois que ele entrou na fila (itens/quantidades
+    // diferentes no picking, ou picking novo pro mesmo pedido) — o card avisa
+    // e o admin descarta; o resumo do que mudou fica em alteracaoSap.
+    alteradoSapEm: text('alterado_sap_em'),
+    alteracaoSap: text('alteracao_sap'),
+    // Card anterior do mesmo pedido (descartado/substituído) — o prazo de
+    // 48h continua contando do primeiro picking (João, 2026-10-29).
+    substituiId: integer('substitui_id'),
+    // Descartado pelo admin (permissão expedicao_descartar): sai da fila e
+    // das contas de prazo, fica na lista "Descartados" com o motivo.
+    descartadoEm: text('descartado_em'),
+    descartadoPor: integer('descartado_por').references(() => users.id, { onDelete: 'set null' }),
+    motivoDescarte: text('motivo_descarte'),
+    // Cancelado na mão (admin, 2026-11-02): mesma lista dos descartados, mas
+    // não é recriado; guarda a etapa pra "Reabrir" voltar pra ela.
+    etapaAntesCancelar: text('etapa_antes_cancelar'),
+    // Pausado (aguardando cliente/financeiro/material): ninguém inicia etapa
+    // até retomar. O prazo de 48h continua contando.
+    pausadoEm: text('pausado_em'),
+    pausadoPor: integer('pausado_por').references(() => users.id, { onDelete: 'set null' }),
+    pausaMotivo: text('pausa_motivo'),
+    // "Finalizar (já expedido)": fechado na mão sem passar pelas etapas —
+    // fica fora do desempenho e do % no prazo (vai como histórico).
+    finalizadoManual: integer('finalizado_manual', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaEtapaIdx: index('idx_expedicao_pedidos_empresa_etapa').on(t.empresaId, t.etapa),
+    pickListIdx: index('idx_expedicao_pedidos_pick_list').on(t.pickListSap),
+  })
+)
+
+export const expedicaoItens = sqliteTable(
+  'expedicao_itens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    expedicaoId: integer('expedicao_id').notNull().references(() => expedicaoPedidos.id, { onDelete: 'cascade' }),
+    pedidoSap: integer('pedido_sap'),
+    // Linha do pedido no SAP (DocEntry + LineNum) — pra comparar com o
+    // picking a cada rodada e perceber item novo/quantidade mudada.
+    orderEntrySap: integer('order_entry_sap'),
+    linhaPedidoSap: integer('linha_pedido_sap'),
+    itemCodigo: text('item_codigo'),
+    descricao: text('descricao').notNull(),
+    deposito: text('deposito'),
+    quantidade: real('quantidade').notNull(),
+    // Endereço no estoque (ex.: 2-REV-A01-27) — o SAP ainda não informa;
+    // fica vazio até a localização ser cadastrada.
+    localizacao: text('localizacao'),
+    // Conferência item a item, às cegas (pedido do João, 2026-10-29): o
+    // conferente digita a quantidade contada sem ver a do pedido; só fica
+    // conferido quando bate. Cada contagem que não bateu soma uma tentativa.
+    qtdConferida: real('qtd_conferida'),
+    conferidoEm: text('conferido_em'),
+    tentativasConferencia: integer('tentativas_conferencia').notNull().default(0),
+  },
+  (t) => ({
+    expedicaoIdx: index('idx_expedicao_itens_expedicao').on(t.expedicaoId),
+  })
+)
+
+// Erro achado numa etapa, contado pra quem fez a etapa anterior (achado na
+// conferência → separador; na embalagem → conferente; na expedição →
+// embalador). Detalhado por item e tipo, pedido do João.
+export const expedicaoErros = sqliteTable(
+  'expedicao_erros',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    expedicaoId: integer('expedicao_id').notNull().references(() => expedicaoPedidos.id, { onDelete: 'cascade' }),
+    etapa: text('etapa', { enum: ['conferencia', 'embalagem', 'expedicao'] }).notNull(),
+    responsavelId: integer('responsavel_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    registradoPorId: integer('registrado_por_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    itemCodigo: text('item_codigo'),
+    descricao: text('descricao'),
+    tipo: text('tipo', { enum: ['faltou', 'sobrou', 'trocado', 'quantidade', 'avaria', 'outro'] }).notNull(),
+    quantidade: real('quantidade'),
+    observacao: text('observacao'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    expedicaoIdx: index('idx_expedicao_erros_expedicao').on(t.expedicaoId),
+  })
+)
+
+// Pedidos do SAP ANTES do picking (pedido do João, 2026-10-29: o vendedor vê
+// a jornada inteira do pedido no card) — foto refeita a cada rodada da
+// fila (lib/sapExpedicao.ts): 'aprovacao' = esboço de pedido aguardando o
+// financeiro liberar; 'pedido' = pedido fechado que o estoque ainda não
+// transformou em picking. Do picking em diante, quem conta é expedicaoPedidos.
+export const sapPedidosPendentes = sqliteTable(
+  'sap_pedidos_pendentes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    codigoCliente: text('codigo_cliente').notNull(),
+    tipo: text('tipo', { enum: ['aprovacao', 'pedido'] }).notNull(),
+    numero: text('numero').notNull(),
+    // UTC (SQLite)
+    data: text('data'),
+    valor: real('valor'),
+    vendedorSap: text('vendedor_sap'),
+    empresaSlug: text('empresa_slug'),
+    atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    clienteIdx: index('idx_sap_pedidos_pendentes_cliente').on(t.codigoCliente),
+  })
+)
