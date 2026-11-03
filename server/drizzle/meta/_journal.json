@@ -967,6 +967,13 @@
       "when": 1793540456286,
       "tag": "0137_loja_eventos",
       "breakpoints": true
+    },
+    {
+      "idx": 138,
+      "version": "6",
+      "when": 1793540516286,
+      "tag": "0138_sap_garantias",
+      "breakpoints": true
     }
   ]
 }

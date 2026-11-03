@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { caixaMovimentacoes, clientes, empresas, funilMensal, logAuditoria, sapConferenciaIgnorados, users, vendas } from '../db/schema.js'
+import { caixaMovimentacoes, clientes, empresas, funilMensal, logAuditoria, sapConferenciaIgnorados, sapGarantias, users, vendas } from '../db/schema.js'
 import { agoraSqlite } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
 import { registrarAuditoria } from './auditoria.js'
@@ -183,8 +183,12 @@ export async function conferenciaVendasSap(empresaId: number, mes: string, opts:
   })
   const porCodigo = new Map<string, (typeof cadastros)[number]>()
   for (const c of cadastros) for (const k of [...chaves(c.codigo), ...chaves(c.codigoAntigo)]) if (!porCodigo.has(k)) porCodigo.set(k, c)
+  // Pedido de garantia não vira venda de propósito (sap_garantias, 2026-11-03).
+  const garantias = doMes.length
+    ? new Set((await db.select({ e: sapGarantias.pedidoSapEntry }).from(sapGarantias).where(inArray(sapGarantias.pedidoSapEntry, doMes.map((p) => p.DocEntry)))).map((g) => g.e))
+    : new Set<number>()
   const semVenda = doMes
-    .filter((p) => p.Cancelled !== 'tYES' && !ligadaPorEntry.has(p.DocEntry))
+    .filter((p) => p.Cancelled !== 'tYES' && !ligadaPorEntry.has(p.DocEntry) && !garantias.has(p.DocEntry))
     .map((p) => {
       const cli = chaves(p.CardCode).map((k) => porCodigo.get(k)).find(Boolean) ?? null
       const ign = ignPedido.get(p.DocEntry)

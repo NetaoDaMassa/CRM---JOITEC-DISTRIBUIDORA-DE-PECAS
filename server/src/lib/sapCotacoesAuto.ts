@@ -1,8 +1,9 @@
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, sapCotacoesItens, sapImportacoes, users } from '../db/schema.js'
+import { clientes, empresas, funilMensal, sapCotacoesItens, sapImportacoes, users } from '../db/schema.js'
 import { getConfigBool, getConfigTexto, setConfig } from './configuracoes.js'
-import { hojeBrString } from './dataBr.js'
+import { agoraSqlite, hojeBrString, mesReferenciaAtual } from './dataBr.js'
+import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
@@ -14,7 +15,11 @@ import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSa
 // guarda com os itens em sap_cotacoes_itens (lote fixo "SAP automático" por
 // empresa). Só MOSTRA: etiqueta no card do Kanban e lista na ficha — não
 // move card, não preenche valor orçado, não entra em relatório de orçamento
-// (só no "Itens mais orçados", que já usa essa tabela). Fases 2 e 3 depois.
+// (só no "Itens mais orçados", que já usa essa tabela).
+// Fase 2 (João, 2026-11-03): cotação NOVA e aberta do mês leva o card do
+// cliente pra "Negociação" (se ainda estava antes disso) e preenche o valor
+// orçado se estiver vazio; sem card no mês, cria um em Negociação pro dono
+// da carteira. Pedido (lib/sapVendasAuto.ts) já leva pra "Fechado".
 //
 // Mesmas regras de empresa do resto do SAP: filial Joitec com item PPR é da
 // Odin Tubos (importSapCotacoesItens.ts); vendedor da Automação / da Odin
@@ -46,6 +51,39 @@ interface CotacaoSap {
   DocumentLines?: { LineNum: number; ItemCode: string | null; ItemDescription: string | null; Quantity: number; Price: number; LineTotal: number }[]
 }
 
+// Etapas que vêm antes da Negociação — card em Fechado/Perdido/etc. não mexe.
+const ANTES_DA_NEGOCIACAO = ['novo', 'abordagem', 'interessado', 'sem_contato']
+
+export async function levarParaNegociacao(clienteId: number, valor: number, numero: string, autorId: number | null): Promise<boolean> {
+  const mes = mesReferenciaAtual()
+  const [card] = await db
+    .select()
+    .from(funilMensal)
+    .where(and(eq(funilMensal.clienteId, clienteId), eq(funilMensal.mesReferencia, mes), isNull(funilMensal.deletedAt)))
+    .orderBy(desc(funilMensal.id))
+    .limit(1)
+  if (!card) {
+    const c = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { vendedorAtualId: true, deletedAt: true } })
+    if (!c?.vendedorAtualId || c.deletedAt) return false
+    const r = await db.insert(funilMensal).values({ clienteId, vendedorId: c.vendedorAtualId, mesReferencia: mes, etapa: 'negociacao', valorOrcado: valor || null, dataEntradaEtapa: agoraSqlite() })
+    await registrarAuditoria({ tabela: 'funil_mensal', registroId: Number(r.lastInsertRowid), acao: 'mudar_etapa', campo: 'etapa', valorAnterior: `(sem card) cotação ${numero} do SAP`, valorNovo: 'negociacao', alteradoPor: autorId })
+    return true
+  }
+  const valorOrcado = card.valorOrcado ?? (valor || null)
+  if (!ANTES_DA_NEGOCIACAO.includes(card.etapa)) {
+    if (card.etapa === 'negociacao' && card.valorOrcado == null && valorOrcado != null)
+      await db.update(funilMensal).set({ valorOrcado, updatedAt: agoraSqlite() }).where(eq(funilMensal.id, card.id))
+    return false
+  }
+  await db
+    .update(funilMensal)
+    .set({ etapa: 'negociacao', valorOrcado, dataEntradaEtapa: agoraSqlite(), updatedAt: agoraSqlite(), versao: sql`${funilMensal.versao} + 1` })
+    .where(eq(funilMensal.id, card.id))
+  // valorNovo exatamente 'negociacao': é por ele que a ficha data o orçamento.
+  await registrarAuditoria({ tabela: 'funil_mensal', registroId: card.id, acao: 'mudar_etapa', campo: 'etapa', valorAnterior: `${card.etapa} (cotação ${numero} do SAP)`, valorNovo: 'negociacao', alteradoPor: autorId })
+  return true
+}
+
 export interface SyncCotacoesResultado {
   desde: string
   noSap: number
@@ -54,6 +92,7 @@ export interface SyncCotacoesResultado {
   semMudanca: number
   deOutroLote: number
   semCliente: number
+  cardsParaNegociacao: number
 }
 
 function statusDe(q: CotacaoSap): 'aberto' | 'fechado' | 'cancelado' {
@@ -116,7 +155,7 @@ export async function sincronizarCotacoesSap(opts: { desde?: string } = {}): Pro
     return id
   }
 
-  const r: SyncCotacoesResultado = { desde, noSap: 0, novas: 0, alteradas: 0, semMudanca: 0, deOutroLote: 0, semCliente: 0 }
+  const r: SyncCotacoesResultado = { desde, noSap: 0, novas: 0, alteradas: 0, semMudanca: 0, deOutroLote: 0, semCliente: 0, cardsParaNegociacao: 0 }
 
   await comSessaoSap(async (sap) => {
     const cabecalhos = await sap.getTodos<CotacaoSap>(
@@ -218,11 +257,32 @@ export async function sincronizarCotacoesSap(opts: { desde?: string } = {}): Pro
         await tx.insert(sapCotacoesItens).values(valores)
       })
       if (anterior) r.alteradas++
-      else r.novas++
+      else {
+        r.novas++
+        if (status === 'aberto' && dataSap(q.DocDate).slice(0, 7) === mesReferenciaAtual().slice(0, 7) && (await getConfigBool('sap_cotacoes_mover_card', true))) {
+          if (await levarParaNegociacao(clienteId!, q.DocTotal, numero, autor?.id ?? null)) r.cardsParaNegociacao++
+        }
+      }
       jaTem.set(`${empresa.id}:${numero}`, { empresaId: empresa.id, numero, lote: loteAuto, status, valor: q.DocTotal })
     }
   })
 
   if (!opts.desde) await setConfig(CHAVE_ULTIMA, hoje)
   return r
+}
+
+// Carga avulsa (script --mover-cards-do-mes): aplica a regra da Fase 2 nas
+// cotações abertas do mês que já tinham entrado antes dela existir.
+export async function moverCardsDasCotacoesDoMes(): Promise<{ cotacoes: number; movidos: number }> {
+  const mes = mesReferenciaAtual().slice(0, 7)
+  const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true), columns: { id: true } })
+  const lista = await db
+    .selectDistinct({ clienteId: sapCotacoesItens.clienteId, numero: sapCotacoesItens.numeroCotacao, valor: sapCotacoesItens.valorCotacao, data: sapCotacoesItens.dataCotacao })
+    .from(sapCotacoesItens)
+    .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapCotacoesItens.importacaoId))
+    .where(and(eq(sapImportacoes.ativo, true), eq(sapCotacoesItens.status, 'aberto'), sql`substr(${sapCotacoesItens.dataCotacao}, 1, 7) = ${mes}`))
+    .orderBy(sapCotacoesItens.dataCotacao)
+  let movidos = 0
+  for (const c of lista) if (await levarParaNegociacao(c.clienteId, c.valor ?? 0, c.numero, autor?.id ?? null)) movidos++
+  return { cotacoes: lista.length, movidos }
 }

@@ -26,6 +26,7 @@ import HistoricoCliente from './HistoricoCliente'
 import InadimplenciaCliente from './InadimplenciaCliente'
 import JornadaPedidosCliente from './JornadaPedidosCliente'
 import HistoricoCotacoesSapCliente from './HistoricoCotacoesSapCliente'
+import GarantiasCliente from './GarantiasCliente'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
 import { AvatarIniciais, dispararConfete } from './ui/Visual'
@@ -450,6 +451,9 @@ export default function FunilBoard({
   const mesesDosCards = useMemo(() => [...new Set(cards.map((c) => c.mesReferencia.slice(0, 7)))].slice(0, 12), [cards])
   const { data: cotacoesSap } = trpc.historicoSap.cotacoesDosCards.useQuery({ meses: mesesDosCards }, { staleTime: 2 * 60_000, enabled: mesesDosCards.length > 0 })
   const cotacaoDoCard = useMemo(() => new Map((cotacoesSap ?? []).map((c) => [`${c.clienteId}:${c.mes}`, c])), [cotacoesSap])
+  // Garantia do SAP no mês (não é venda) → selo 🛡 no card (2026-11-03).
+  const { data: garantiasSap } = trpc.historicoSap.garantiasDosCards.useQuery({ meses: mesesDosCards }, { staleTime: 5 * 60_000, enabled: mesesDosCards.length > 0 })
+  const garantiaDoCard = useMemo(() => new Map((garantiasSap ?? []).map((g) => [`${g.clienteId}:${g.mes}`, g])), [garantiasSap])
   const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
   const [classificacaoFiltro, setClassificacaoFiltro] = useState<'' | 'revenda' | 'consumidor_final'>('')
   const etapasVisiveis = apenasEtapas
@@ -748,6 +752,16 @@ export default function FunilBoard({
                           >
                             📦 Pedido {j.pedido} · {j.texto}
                             {j.total > 1 ? ` (+${j.total - 1})` : ''}
+                          </p>
+                        )
+                      })()}
+                      {(() => {
+                        const g = garantiaDoCard.get(`${card.clienteId}:${card.mesReferencia}`)
+                        if (!g) return null
+                        return (
+                          <p className="text-xs text-indigo-200 bg-indigo-900/25 border border-indigo-700/40 rounded-lg px-2 py-1 mb-2" title="Pedido de garantia no SAP — não conta como venda nem na meta">
+                            🛡 Garantia · pedido {g.ultimo}
+                            {g.qtd > 1 ? ` (+${g.qtd - 1})` : ''}
                           </p>
                         )
                       })()}
@@ -1706,6 +1720,7 @@ function CardModal({
         )}
         <InadimplenciaCliente clienteId={card.clienteId} compacto />
         <JornadaPedidosCliente clienteId={card.clienteId} />
+        <GarantiasCliente clienteId={card.clienteId} />
         {cotacaoSapDoCard && (
           <div className="space-y-2">
             <div className="flex gap-3 items-start bg-sky-900/15 border border-sky-700/40 rounded-xl px-4 py-2.5">

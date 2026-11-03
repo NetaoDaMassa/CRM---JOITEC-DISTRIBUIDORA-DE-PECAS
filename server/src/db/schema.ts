@@ -4633,3 +4633,30 @@ export const lojaEventos = sqliteTable(
     empresaSessaoIdx: index('idx_loja_eventos_empresa_sessao').on(t.empresaId, t.sessionId),
   })
 )
+
+// Pedido de GARANTIA do SAP (vendedor "Garantia" no SAP ou "garantia" na
+// observação) — pedido do João, 2026-11-03: não vira venda (não conta em
+// meta, faturamento, ranking nem positivação), mas o vendedor vê no card do
+// Kanban e na ficha que o cliente teve uma garantia (lib/sapVendasAuto.ts).
+export const sapGarantias = sqliteTable(
+  'sap_garantias',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    pedidoSapEntry: integer('pedido_sap_entry').notNull(),
+    numeroPedido: text('numero_pedido').notNull(),
+    // YYYY-MM-DD (dia do pedido no SAP)
+    dataPedido: text('data_pedido').notNull(),
+    valor: real('valor').notNull().default(0),
+    vendedorSap: text('vendedor_sap'),
+    observacao: text('observacao'),
+    nfNumero: text('nf_numero'),
+    cancelado: integer('cancelado', { mode: 'boolean' }).notNull().default(false),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    pedidoUnico: unique('sap_garantias_pedido_unique').on(t.pedidoSapEntry),
+    clienteIdx: index('idx_sap_garantias_cliente').on(t.clienteId, t.dataPedido),
+  })
+)

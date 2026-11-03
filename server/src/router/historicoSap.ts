@@ -10,6 +10,7 @@ import {
   logAuditoria,
   sapCotacoesHistorico,
   sapCotacoesItens,
+  sapGarantias,
   sapImportacoes,
   sapItensHistorico,
   sapVendasHistorico,
@@ -304,6 +305,44 @@ export const historicoSapRouter = router({
       primeiraCompra: linhas[linhas.length - 1]?.data ?? null,
       porAno: [...porAno.entries()].map(([ano, v]) => ({ ano, ...v })).sort((a, b) => b.ano.localeCompare(a.ano)),
     }
+  }),
+
+  // Garantias do SAP (pedido de garantia não vira venda — lib/sapVendasAuto.ts,
+  // 2026-11-03): selo 🛡 no card do mês e lista na ficha / card aberto.
+  garantiasDosCards: protectedProcedure.input(z.object({ meses: z.array(z.string().regex(/^\d{4}-\d{2}/)).max(12) })).query(async ({ ctx, input }) => {
+    if (!input.meses.length) return []
+    const meses = [...new Set(input.meses.map((m) => m.slice(0, 7)))]
+    const linhas = await db
+      .select({ clienteId: sapGarantias.clienteId, numero: sapGarantias.numeroPedido, data: sapGarantias.dataPedido, valor: sapGarantias.valor })
+      .from(sapGarantias)
+      .innerJoin(clientes, eq(clientes.id, sapGarantias.clienteId))
+      .where(
+        and(
+          eq(sapGarantias.empresaId, ctx.empresaId),
+          eq(sapGarantias.cancelado, false),
+          inArray(sql`substr(${sapGarantias.dataPedido}, 1, 7)`, meses),
+          ctx.user.role === 'admin' ? undefined : eq(clientes.vendedorAtualId, ctx.user.id)
+        )
+      )
+    const por = new Map<string, { clienteId: number; mes: string; qtd: number; ultimo: string; valor: number }>()
+    for (const l of linhas) {
+      const k = `${l.clienteId}:${l.data.slice(0, 7)}-01`
+      const x = por.get(k) ?? { clienteId: l.clienteId, mes: `${l.data.slice(0, 7)}-01`, qtd: 0, ultimo: l.numero, valor: 0 }
+      x.qtd++
+      x.valor += l.valor
+      x.ultimo = l.numero
+      por.set(k, x)
+    }
+    return [...por.values()]
+  }),
+
+  garantiasDoCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
+    const cliente = await acharCliente(ctx, input.clienteId)
+    return db
+      .select()
+      .from(sapGarantias)
+      .where(and(eq(sapGarantias.clienteId, cliente.id), eq(sapGarantias.cancelado, false)))
+      .orderBy(desc(sapGarantias.dataPedido))
   }),
 
   // Etiqueta "Cotação SAP" nos cards do Kanban (Fase 1 das cotações ao vivo,

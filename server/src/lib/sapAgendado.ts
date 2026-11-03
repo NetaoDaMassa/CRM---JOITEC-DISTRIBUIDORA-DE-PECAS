@@ -63,7 +63,7 @@ export async function rodarCotacoesSap(): Promise<void> {
   rodandoCotacoes = true
   try {
     const r = await sincronizarCotacoesSap()
-    if (r && (r.novas || r.alteradas)) console.log(`[sap-cotacoes] ${r.novas} nova(s), ${r.alteradas} alterada(s)`)
+    if (r && (r.novas || r.alteradas)) console.log(`[sap-cotacoes] ${r.novas} nova(s), ${r.alteradas} alterada(s), ${r.cardsParaNegociacao} card(s) pra Negociação`)
   } catch (err) {
     console.error('[sap-cotacoes] erro:', err instanceof Error ? err.message : err)
   } finally {

@@ -16,6 +16,7 @@ import HistoricoSapCliente from '../components/HistoricoSapCliente'
 import InadimplenciaCliente from '../components/InadimplenciaCliente'
 import HistoricoCotacoesSapCliente from '../components/HistoricoCotacoesSapCliente'
 import JornadaPedidosCliente from '../components/JornadaPedidosCliente'
+import GarantiasCliente from '../components/GarantiasCliente'
 import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 import { parseValorBr } from '../lib/valorBr'
 import ResumoCliente, { EtiquetasCliente } from '../components/ResumoCliente'
@@ -652,6 +653,7 @@ export default function ClienteDetail() {
 
       <InadimplenciaCliente clienteId={cliente.id} />
       <JornadaPedidosCliente clienteId={cliente.id} />
+      <GarantiasCliente clienteId={cliente.id} />
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,440px)_minmax(0,1fr)] gap-4 items-start">
       <div className="space-y-4 min-w-0">

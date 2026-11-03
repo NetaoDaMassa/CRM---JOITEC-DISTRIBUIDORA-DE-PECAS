@@ -3,10 +3,11 @@
 //   node dist/scripts/sincronizarCotacoesSap.js                     → roda agora (o que mudou desde a última)
 //   node dist/scripts/sincronizarCotacoesSap.js --desde 2026-10-22  → carga avulsa de um período
 //   node dist/scripts/sincronizarCotacoesSap.js --desligar | --ligar
+//   node dist/scripts/sincronizarCotacoesSap.js --mover-cards-do-mes        → leva pra Negociação os cards das cotações abertas do mês
 import { sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { setConfig } from '../lib/configuracoes.js'
-import { sincronizarCotacoesSap } from '../lib/sapCotacoesAuto.js'
+import { moverCardsDasCotacoesDoMes, sincronizarCotacoesSap } from '../lib/sapCotacoesAuto.js'
 
 async function main() {
   await db.run(sql`PRAGMA busy_timeout = 30000`)
@@ -15,6 +16,10 @@ async function main() {
     return console.log('Cotações do SAP ao vivo DESLIGADAS.')
   }
   if (process.argv.includes('--ligar')) await setConfig('sap_cotacoes_auto', '1')
+  if (process.argv.includes('--mover-cards-do-mes')) {
+    const m = await moverCardsDasCotacoesDoMes()
+    return console.log(`Cotações abertas do mês: ${m.cotacoes} · cards levados pra Negociação: ${m.movidos}`)
+  }
   const i = process.argv.indexOf('--desde')
   const desde = i > 0 ? process.argv[i + 1] : undefined
   if (desde && !/^\d{4}-\d{2}-\d{2}$/.test(desde)) throw new Error('--desde no formato AAAA-MM-DD')
@@ -27,6 +32,7 @@ async function main() {
   console.log(`Sem mudança:               ${r.semMudanca}`)
   console.log(`Situação atualizada (planilha): ${r.deOutroLote}`)
   console.log(`Cliente fora do CRM / da carteira: ${r.semCliente}`)
+  console.log(`Cards levados pra Negociação: ${r.cardsParaNegociacao}`)
 }
 
 main()

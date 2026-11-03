@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, funilMensal, itensPedido, ordemDetalhes, ordens, users, vendas } from '../db/schema.js'
+import { clientes, empresas, funilMensal, itensPedido, ordemDetalhes, ordens, sapGarantias, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
 import { registrarAuditoria } from './auditoria.js'
@@ -52,6 +52,7 @@ interface PedidoSap {
   BPL_IDAssignedToInvoice: number
   PaymentGroupCode: number | null
   Cancelled: string
+  Comments: string | null
   DocumentLines: { ItemCode: string | null; ItemDescription: string | null; Quantity: number; Price: number; LineTotal: number }[]
 }
 
@@ -66,6 +67,8 @@ export interface SyncVendasResultado {
   faturadas: number
   semCliente: { pedido: number; codigo: string; nome: string; empresa: string }[]
   semVendedor: { pedido: number; cliente: string }[]
+  // Pedidos de garantia guardados à parte (não viram venda).
+  garantias: number
 }
 
 export async function vendedoresOdinTubosSap(): Promise<Set<number>> {
@@ -111,7 +114,7 @@ export async function vendaJaVeioDoSap(clienteId: number, valor: number): Promis
 // `opts.soFilial`: só os pedidos dessa filial do SAP (carga avulsa da carteira
 // da Bruna — script --so-compressores — sem mexer de novo nas outras).
 export async function sincronizarVendasSap(
-  opts: { desde?: string; docEntries?: number[]; ignorarVendaId?: number; soFilial?: number } = {}
+  opts: { desde?: string; docEntries?: number[]; ignorarVendaId?: number; soFilial?: number; soGarantias?: boolean } = {}
 ): Promise<SyncVendasResultado | null> {
   const desdeConfig = await getConfigTexto('sap_vendas_auto_desde')
   if (!desdeConfig && !opts.desde) return null
@@ -128,12 +131,12 @@ export async function sincronizarVendasSap(
   const empresaPorSlug = new Map(lista.map((e) => [e.slug, e]))
   const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true), columns: { id: true } })
 
-  const { pedidos, condicoes, notas, compressores } = await comSessaoSap(async (sap) => {
+  const { pedidos, condicoes, notas, compressores, nomesVendedores } = await comSessaoSap(async (sap) => {
     const pedidos = await sap.getTodos<PedidoSap>(
       `/Orders?$filter=DocDate ge '${desde}' and ` +
         (opts.soFilial ? `BPL_IDAssignedToInvoice eq ${opts.soFilial}` : `(BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4 or BPL_IDAssignedToInvoice eq ${FILIAL_COMPRESSORES})`) +
         (opts.docEntries?.length ? ` and (${opts.docEntries.map((e) => `DocEntry eq ${e}`).join(' or ')})` : '') +
-        '&$select=DocEntry,DocNum,DocDate,DocTime,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice,PaymentGroupCode,Cancelled,DocumentLines',
+        '&$select=DocEntry,DocNum,DocDate,DocTime,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice,PaymentGroupCode,Cancelled,Comments,DocumentLines',
       100
     )
     // Pedidos escolhidos (botão da Conferência): só as notas desses clientes —
@@ -144,6 +147,12 @@ export async function sincronizarVendasSap(
       (opts.soFilial ? ` and BPL_IDAssignedToInvoice eq ${opts.soFilial}` : '')
     return {
       pedidos,
+      nomesVendedores: new Map(
+        (await sap.getTodos<{ SalesEmployeeCode: number; SalesEmployeeName: string }>('/SalesPersons?$select=SalesEmployeeCode,SalesEmployeeName')).map((v) => [
+          v.SalesEmployeeCode,
+          v.SalesEmployeeName,
+        ])
+      ),
       compressores: empresaPorSlug.has(SLUG_COMPRESSORES)
         ? await clientesCompressoresPorCodigoSap(
             sap,
@@ -164,7 +173,7 @@ export async function sincronizarVendasSap(
     }
   })
 
-  const r: SyncVendasResultado = { desde, pedidosNoSap: pedidos.length, criadas: 0, ligadas: 0, jaExistiam: 0, atualizadas: 0, canceladas: 0, faturadas: 0, semCliente: [], semVendedor: [] }
+  const r: SyncVendasResultado = { desde, pedidosNoSap: pedidos.length, criadas: 0, ligadas: 0, jaExistiam: 0, atualizadas: 0, canceladas: 0, faturadas: 0, semCliente: [], semVendedor: [], garantias: 0 }
 
   const entries = pedidos.map((p) => p.DocEntry)
   const existentes = entries.length
@@ -213,9 +222,41 @@ export async function sincronizarVendasSap(
     return [...achados.values()]
   }
 
+  // Garantia (João, 2026-11-03): vendedor "GARANTIA…" no SAP. Não vira venda
+  // — vai pra sap_garantias e aparece no card/ficha com o selo 🛡. Só pelo
+  // vendedor: a palavra na observação pegava venda de verdade ("M.O cliente
+  // peça garantia", "Setor de Garantia" — pedidos 8347 e 8935 de outubro).
+  const ehGarantia = (p: PedidoSap) => /garantia/i.test(nomesVendedores.get(p.SalesPersonCode) ?? '')
+  const garantiasJa = new Set(
+    entries.length
+      ? (await db.select({ e: sapGarantias.pedidoSapEntry }).from(sapGarantias).where(inArray(sapGarantias.pedidoSapEntry, entries))).map((g) => g.e)
+      : []
+  )
+
   for (const p of pedidos) {
     if (grupo.has(p.CardCode.toUpperCase())) continue
-    const ja = porEntry.get(p.DocEntry)
+    let ja = porEntry.get(p.DocEntry)
+    const garantia = ehGarantia(p)
+    // Carga avulsa só das garantias (script --so-garantias): o resto não mexe.
+    if (opts.soGarantias && !garantia) continue
+
+    if (garantia) {
+      // Venda criada por aqui antes da regra da garantia: sai (a manual
+      // ligada fica — foi o vendedor que registrou).
+      if (ja?.criadaPeloSap) {
+        await db.update(vendas).set({ deletedAt: agoraSqlite() }).where(eq(vendas.id, ja.id))
+        if (ja.convertidoParaOrdemId) await db.update(ordens).set({ status: 'cancelado' }).where(eq(ordens.id, ja.convertidoParaOrdemId))
+        await registrarAuditoria({ tabela: 'vendas', registroId: ja.id, acao: 'excluir', valorNovo: `pedido ${p.DocNum} é garantia — não conta como venda`, alteradoPor: autor?.id ?? null })
+        r.canceladas++
+        ja = undefined
+      }
+      if (garantiasJa.has(p.DocEntry)) {
+        await db.update(sapGarantias).set({ cancelado: p.Cancelled === 'tYES', valor: p.DocTotal }).where(eq(sapGarantias.pedidoSapEntry, p.DocEntry))
+        continue
+      }
+      if (p.Cancelled === 'tYES') continue
+    }
+
 
     // Pedido cancelado no SAP: some a venda que o CRM criou sozinho.
     if (p.Cancelled === 'tYES') {
@@ -271,6 +312,24 @@ export async function sincronizarVendasSap(
     }
 
     const dia = dataSap(p.DocDate)
+    if (garantia) {
+      const dono = cadastros.find((c) => c.vendedorAtualId) ?? cadastros[0]
+      await db
+        .insert(sapGarantias)
+        .values({
+          empresaId: empresa.id,
+          clienteId: dono.id,
+          pedidoSapEntry: p.DocEntry,
+          numeroPedido: String(p.DocNum),
+          dataPedido: dia,
+          valor: p.DocTotal,
+          vendedorSap: nomesVendedores.get(p.SalesPersonCode) ?? null,
+          observacao: p.Comments?.replace(/\s+/g, ' ').trim().slice(0, 300) || null,
+        })
+        .onConflictDoNothing()
+      r.garantias++
+      continue
+    }
     const dataFechamento = brParaUtc(dia, p.DocTime)
     const mesReferencia = `${dia.slice(0, 7)}-01`
 
@@ -399,6 +458,8 @@ export async function sincronizarVendasSap(
     for (const l of n.DocumentLines) if (l.BaseType === 17 && l.BaseEntry != null && !nfPorPedido.has(l.BaseEntry)) nfPorPedido.set(l.BaseEntry, String(n.SequenceSerial || n.DocNum))
   }
   if (nfPorPedido.size) {
+    for (const p of pedidos.filter((x) => ehGarantia(x) && nfPorPedido.has(x.DocEntry)))
+      await db.update(sapGarantias).set({ nfNumero: nfPorPedido.get(p.DocEntry)! }).where(and(eq(sapGarantias.pedidoSapEntry, p.DocEntry), isNull(sapGarantias.nfNumero)))
     const semNf = await db
       .select({ id: vendas.id, entry: vendas.pedidoSapEntry })
       .from(vendas)
