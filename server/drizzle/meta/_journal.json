@@ -960,6 +960,13 @@
       "when": 1793540396286,
       "tag": "0136_controle_expedicao",
       "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "6",
+      "when": 1793540456286,
+      "tag": "0137_loja_eventos",
+      "breakpoints": true
     }
   ]
 }

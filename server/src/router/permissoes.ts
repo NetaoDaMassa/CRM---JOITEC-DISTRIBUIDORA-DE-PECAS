@@ -169,6 +169,8 @@ export const FEATURES_ADMIN = [
   'expedicao_descartar',
   // Painel de TV "Controle Logístico" (Financeiro), 2026-10-29.
   'painel_logistica',
+  // Loja virtual nova (Compretec): comportamento dos visitantes, 2026-11-03.
+  'loja_rastreamento',
   // Relatório de ligações da PABXONE360 (3 empresas Odin) — tentativas x
   // efetivas por vendedor. 2026-10-30.
   'relatorio_ligacoes',

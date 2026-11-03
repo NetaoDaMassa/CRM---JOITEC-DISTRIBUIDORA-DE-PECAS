@@ -29,6 +29,7 @@ const FEATURES = [
   // pedido que voltou. Pedido do João, 2026-10-29.
   { feature: 'expedicao_descartar', label: 'Controle do Estoque — descartar pedido' },
   { feature: 'painel_logistica', label: 'Painel de TV Controle Logístico' },
+  { feature: 'loja_rastreamento', label: 'Loja virtual — comportamento dos visitantes' },
   // ETAPA 2 de Garantias (oficina/avaliação técnica) — não tem item de menu
   // próprio (fica numa aba dentro do processo), entra na mão igual
   // 'funil_excluir_card'. Pedido do João, 2026-10-02.

@@ -4585,3 +4585,51 @@ export const sapPedidosPendentes = sqliteTable(
     clienteIdx: index('idx_sap_pedidos_pendentes_cliente').on(t.codigoCliente),
   })
 )
+
+// Rastreamento da loja virtual nova (Compretec, Next.js) — pedido do João,
+// 2026-11-03: tudo que o visitante faz na loja vem pro CRM em lotes
+// assinados (routes/lojaEventos.ts): páginas com tempo engajado e tempo até
+// sair, cliques com o produto, produto visto / carrinho / checkout / compra,
+// origem (UTM/referrer). `event_id` vem da loja e não repete (reenvio do
+// mesmo lote não duplica). O visitante é o mesmo de lead_tracking_visitors
+// (anonymous_id da loja = visitor_uid), que liga ao lead quando ele se
+// identifica (telefone).
+export const lojaEventos = sqliteTable(
+  'loja_eventos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    eventId: text('event_id').notNull(),
+    visitorId: integer('visitor_id').references(() => leadTrackingVisitors.id, { onDelete: 'set null' }),
+    visitorUid: text('visitor_uid').notNull(),
+    sessionId: text('session_id'),
+    eventType: text('event_type').notNull(),
+    // UTC "YYYY-MM-DD HH:MM:SS" (quando aconteceu na loja, não quando chegou)
+    ocorreuEm: text('ocorreu_em').notNull(),
+    pageUrl: text('page_url'),
+    pagePath: text('page_path'),
+    pageTitle: text('page_title'),
+    referrer: text('referrer'),
+    utmSource: text('utm_source'),
+    utmMedium: text('utm_medium'),
+    utmCampaign: text('utm_campaign'),
+    produtoSku: text('produto_sku'),
+    produtoNome: text('produto_nome'),
+    produtoPreco: real('produto_preco'),
+    // Valor do carrinho / pedido (add_to_cart, begin_checkout, purchase)
+    valor: real('valor'),
+    // page_leave: tempo na página (duracao) e tempo com a aba ativa/rolando (engajado)
+    duracaoMs: integer('duracao_ms'),
+    engajadoMs: integer('engajado_ms'),
+    // click: texto/id do botão clicado
+    elemento: text('elemento'),
+    metadata: text('metadata'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaEvento: unique('loja_eventos_empresa_event_unique').on(t.empresaId, t.eventId),
+    empresaQuandoIdx: index('idx_loja_eventos_empresa_quando').on(t.empresaId, t.ocorreuEm),
+    empresaSkuIdx: index('idx_loja_eventos_empresa_sku').on(t.empresaId, t.produtoSku),
+    empresaSessaoIdx: index('idx_loja_eventos_empresa_sessao').on(t.empresaId, t.sessionId),
+  })
+)

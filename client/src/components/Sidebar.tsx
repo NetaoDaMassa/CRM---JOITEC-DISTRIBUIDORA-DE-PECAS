@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
-  LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck,
+  LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck, MousePointerClick,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
@@ -167,6 +167,9 @@ export const ADMIN_LINKS = [
   { to: '/admin/expedicao', label: 'Expedição', icon: PackageCheck, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
   { to: '/admin/expedicao-desempenho', label: 'Desempenho do estoque', icon: Medal, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
   { to: '/admin/expedicao-equipe', label: 'Equipe do estoque', icon: UsersRound, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
+  // Loja virtual nova (Compretec): o que os visitantes fazem na loja —
+  // páginas, tempo, cliques, produtos, origem. Pedido do João, 2026-11-03.
+  { to: '/admin/loja-rastreamento', label: 'Loja virtual — visitantes', icon: MousePointerClick, somenteEmpresas: ['compretec-ecommerce'], feature: 'loja_rastreamento' },
   // Telefonia PABXONE360 (3 empresas Odin, uma conta): relatório de
   // ligações tentativa x efetiva + (superAdmin) configuração e ramais.
   // 2026-10-30.

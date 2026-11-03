@@ -66,6 +66,7 @@ import ControleSuframa from './pages/admin/ControleSuframa'
 import Expedicao from './pages/admin/Expedicao'
 import ExpedicaoDesempenho from './pages/admin/ExpedicaoDesempenho'
 import ExpedicaoEquipe from './pages/admin/ExpedicaoEquipe'
+import LojaRastreamento from './pages/admin/LojaRastreamento'
 import LigacoesPabx from './pages/admin/LigacoesPabx'
 import GrupoOdin from './pages/admin/GrupoOdin'
 import LiberacaoCredito from './pages/admin/LiberacaoCredito'
@@ -336,6 +337,7 @@ export default function App() {
           <Route path="admin/expedicao" element={<AdminGuard><FeatureGuard feature="controle_estoque"><Expedicao /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao-desempenho" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoDesempenho /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao-equipe" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoEquipe /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/loja-rastreamento" element={<AdminGuard><FeatureGuard feature="loja_rastreamento"><LojaRastreamento /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ligacoes" element={<AdminGuard><FeatureGuard feature="relatorio_ligacoes"><LigacoesPabx /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />

@@ -21,6 +21,7 @@ import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermis
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
 import { trackingRouter, TRACKER_JS } from './routes/tracking.js'
+import { lojaEventosRouter } from './routes/lojaEventos.js'
 import { brevoRouter } from './routes/brevo.js'
 import { woocommerceRouter } from './routes/woocommerce.js'
 import { instagramRouter } from './routes/instagram.js'
@@ -55,6 +56,10 @@ app.use('/api/woocommerce', express.raw({ type: () => true, limit: '2mb' }), woo
 // mesmo motivo do WooCommerce acima: a assinatura (x-hub-signature-256) é
 // calculada em cima do corpo cru, precisa vir antes do express.json() global.
 app.use('/api/instagram', express.raw({ type: () => true, limit: '2mb' }), instagramRouter)
+
+// Rastreamento da loja virtual nova (Compretec) em lotes assinados — mesma
+// razão: HMAC sobre o corpo cru (routes/lojaEventos.ts).
+app.use('/api/loja', cors({ origin: false }), express.raw({ type: () => true, limit: '5mb' }), lojaEventosRouter)
 
 // Limite default do express.json() é 100kb — currículo em base64 (até 5MB,
 // ver RESUME_MAX_SIZE_BYTES em routes/careers.ts) estourava isso e o body
