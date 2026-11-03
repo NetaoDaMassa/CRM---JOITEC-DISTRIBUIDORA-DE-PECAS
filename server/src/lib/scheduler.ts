@@ -207,17 +207,19 @@ export function startScheduler() {
   cron.schedule('20 * * * *', () => {
     rodarSincronizacaoSap().catch((err) => console.error('[sap] erro no agendador:', err))
   })
-  // Venda automática a partir do pedido do SAP — de 10 em 10 minutos.
-  cron.schedule('*/10 * * * *', () => {
+  // Horários do SAP desencontrados (2026-11-03) pra não logarem todas no
+  // mesmo minuto — e comSessaoSap ainda põe uma atrás da outra.
+  // Venda automática a partir do pedido do SAP — de 10 em 10 minutos (:06, :16…).
+  cron.schedule('6-59/10 * * * *', () => {
     rodarVendasSap().catch((err) => console.error('[sap-vendas] erro no agendador:', err))
   })
   // Cotações do SAP no card/ficha (Fase 1, só mostrar) — de 2 em 2 minutos.
   // Fila do Controle do Estoque (pickings novos + NF) — de 5 em 5 minutos,
   // só com `expedicao_sap_ativo` ligado.
-  cron.schedule('*/5 * * * *', () => {
+  cron.schedule('4-59/5 * * * *', () => {
     rodarExpedicaoSap().catch((err) => console.error('[sap-expedicao] erro no agendador:', err))
   })
-  cron.schedule('*/2 * * * *', () => {
+  cron.schedule('1-59/2 * * * *', () => {
     rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))
   })
   // Cadastro novo do SAP vira cliente no CRM — de 10 em 10 minutos.

@@ -22,20 +22,49 @@ export function sapConfigurado(): boolean {
   return Boolean(process.env.SAP_SL_URL && process.env.SAP_SL_COMPANYDB && process.env.SAP_SL_USER && process.env.SAP_SL_PASSWORD)
 }
 
+// Uma sessão por vez neste processo (2026-11-03): cotações (2 min), vendas
+// (10 min), expedição (5 min) e a rodada de hora em hora logavam juntas com o
+// mesmo usuário (compartilhado com a integração do frete) e o SAP recusava
+// parte dos logins ("SAML Login Failed", ~3 por hora). Na fila, uma espera a
+// outra terminar.
+let filaSap: Promise<unknown> = Promise.resolve()
+
 // Abre uma sessão, roda `fn` e fecha a sessão no fim, mesmo se der erro.
 export async function comSessaoSap<T>(fn: (sap: SapSessao) => Promise<T>): Promise<T> {
+  const vez = filaSap.then(() => sessaoSap(fn))
+  filaSap = vez.catch(() => {})
+  return vez
+}
+
+// Login recusado por instabilidade do SAP (HTTP 5xx / rede): tenta de novo
+// depois de 5 s e 15 s. Senha errada (4xx) não insiste.
+async function loginSap(base: string): Promise<Response> {
+  const esperas = [5_000, 15_000]
+  for (let tentativa = 0; ; tentativa++) {
+    let r: Response | null = null
+    try {
+      r = await fetch(`${base}/Login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          CompanyDB: process.env.SAP_SL_COMPANYDB,
+          UserName: process.env.SAP_SL_USER,
+          Password: process.env.SAP_SL_PASSWORD,
+        }),
+      })
+    } catch (err) {
+      if (tentativa >= esperas.length) throw err
+    }
+    if (r && (r.ok || r.status < 500 || tentativa >= esperas.length)) return r
+    await new Promise((ok) => setTimeout(ok, esperas[tentativa]))
+  }
+}
+
+async function sessaoSap<T>(fn: (sap: SapSessao) => Promise<T>): Promise<T> {
   if (!sapConfigurado()) throw new Error('SAP não configurado (SAP_SL_URL / SAP_SL_COMPANYDB / SAP_SL_USER / SAP_SL_PASSWORD no .env)')
   const base = process.env.SAP_SL_URL!.replace(/\/+$/, '')
 
-  const login = await fetch(`${base}/Login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      CompanyDB: process.env.SAP_SL_COMPANYDB,
-      UserName: process.env.SAP_SL_USER,
-      Password: process.env.SAP_SL_PASSWORD,
-    }),
-  })
+  const login = await loginSap(base)
   if (!login.ok) throw new Error(`Login no SAP recusado (HTTP ${login.status}): ${mensagemErro(await login.text())}`)
   const cookie = login.headers
     .getSetCookie()

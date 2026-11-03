@@ -140,7 +140,10 @@ export async function sincronizarCotacoesSap(opts: { desde?: string } = {}): Pro
       const existentes = listaEmpresas.map((e) => jaTem.get(`${e.id}:${numero}`)).filter(Boolean)
       const assinatura = `${status}:${cab.DocTotal}:${cab.CardCode}`
       if (
-        (existentes.length && existentes.every((g) => g!.status === status && Math.abs((g!.valor ?? 0) - cab.DocTotal) < 0.01)) ||
+        // `some`: a mesma cotação às vezes está em 2 empresas (PPR da Joitec
+        // movido pra Odin Tubos) e só uma é atualizada — com `every` ela
+        // aparecia como "alterada" a cada 2 minutos (visto em 2026-11-03).
+        (existentes.length && existentes.some((g) => g!.status === status && Math.abs((g!.valor ?? 0) - cab.DocTotal) < 0.01)) ||
         ignoradas.get(cab.DocEntry) === assinatura
       ) {
         r.semMudanca++
