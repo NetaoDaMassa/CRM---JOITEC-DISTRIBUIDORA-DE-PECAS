@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, lte, notInArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoItens, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoErros, expedicaoItens, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
@@ -61,6 +61,7 @@ export interface SyncExpedicaoResultado {
   atrasados: number
   localizacoes: number
   descartadosSap: number
+  retomados: number
 }
 
 // "2026-10-20" + "09:17:00" (horário de Brasília) → UTC no formato do SQLite.
@@ -108,7 +109,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
     for (const o of e.orderEntriesSap.split(',').map(Number)) porPedido.set(o, [...(porPedido.get(o) ?? []), e])
   }
 
-  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0 }
+  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0, retomados: 0 }
 
   await comSessaoSap(async (sap) => {
     const listas = await sap.getTodos<PickListSap>(
@@ -140,7 +141,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
         if (novo) {
           await db
             .update(expedicaoPedidos)
-            .set({ etapa: 'descartado', descartadoEm: agoraSqlite(), descartadoPor: null, motivoDescarte: `Picking ${l.Absoluteentry} descartado no SAP — refeito no picking ${novo}`, updatedAt: agoraSqlite() })
+            .set({ etapa: 'descartado', etapaAntesCancelar: e.etapa, descartadoEm: agoraSqlite(), descartadoPor: null, motivoDescarte: `Picking ${l.Absoluteentry} descartado no SAP — refeito no picking ${novo}`, updatedAt: agoraSqlite() })
             .where(eq(expedicaoPedidos.id, e.id))
           e.etapa = 'descartado'
           resultado.descartadosSap++
@@ -275,6 +276,30 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
       })
       resultado.novas++
       if (historico) resultado.historicas++
+    }
+
+    // Card novo de picking refeito volta de onde o descartado parou: quem
+    // separou/conferiu/embalou, horários, erros, volumes (João, 2026-11-04:
+    // "manter os dados do que foi feito naquele pedido… na hora que gerar o
+    // picking de novo, voltar").
+    const intocados = await db
+      .select({ id: expedicaoPedidos.id, orderEntriesSap: expedicaoPedidos.orderEntriesSap })
+      .from(expedicaoPedidos)
+      .where(
+        and(
+          isNotNull(expedicaoPedidos.substituiId),
+          isNull(expedicaoPedidos.separacaoInicio),
+          eq(expedicaoPedidos.etapa, 'separacao'),
+          eq(expedicaoPedidos.historico, false)
+        )
+      )
+    for (const c of intocados) {
+      const ordens = c.orderEntriesSap.split(',').map(Number)
+      const anterior = ordens
+        .flatMap((o) => porPedido.get(o) ?? [])
+        .filter((a) => a.id < c.id && a.etapa === 'descartado')
+        .reduce<{ id: number } | null>((m, a) => (!m || a.id > m.id ? a : m), null)
+      if (anterior && (await herdarTrabalho(anterior.id, c.id))) resultado.retomados++
     }
 
     // Cards que entraram antes disso existir (ou cujo anterior só foi
@@ -459,6 +484,74 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
 
   resultado.atrasados = await avisarAtrasados()
   return resultado
+}
+
+const ETAPAS_FILA = ['separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'coleta'] as const
+type EtapaFila = (typeof ETAPAS_FILA)[number]
+
+// Copia pro card novo o trabalho feito no card descartado do mesmo pedido.
+// Etapa = a que ele estava ao ser descartado (etapaAntesCancelar; card
+// descartado antes disso: deduzida pelos horários). Conferência item a item
+// só vale pra linha igual (mesma linha do pedido e mesma quantidade).
+async function herdarTrabalho(anteriorId: number, novoId: number): Promise<boolean> {
+  const [a] = await db.select().from(expedicaoPedidos).where(eq(expedicaoPedidos.id, anteriorId))
+  if (!a || !a.separacaoInicio) return false
+  const etapa: EtapaFila = ETAPAS_FILA.includes(a.etapaAntesCancelar as EtapaFila)
+    ? (a.etapaAntesCancelar as EtapaFila)
+    : a.agendadoEm
+      ? 'coleta'
+      : a.embalagemFim
+        ? 'nf'
+        : a.conferenciaFim
+          ? 'embalagem'
+          : a.separacaoFim
+            ? 'conferencia'
+            : 'separacao'
+  const [velhos, novos] = await Promise.all([
+    db.select().from(expedicaoItens).where(eq(expedicaoItens.expedicaoId, anteriorId)),
+    db.select().from(expedicaoItens).where(eq(expedicaoItens.expedicaoId, novoId)),
+  ])
+  const antes = new Map(velhos.map((v) => [`${v.orderEntrySap}:${v.linhaPedidoSap}`, v]))
+  await db.transaction(async (tx) => {
+    await tx
+      .update(expedicaoPedidos)
+      .set({
+        etapa,
+        separacaoColaboradorId: a.separacaoColaboradorId,
+        separacaoInicio: a.separacaoInicio,
+        separacaoFim: a.separacaoFim,
+        conferenciaColaboradorId: a.conferenciaColaboradorId,
+        conferenciaInicio: a.conferenciaInicio,
+        conferenciaFim: a.conferenciaFim,
+        embalagemColaboradorId: a.embalagemColaboradorId,
+        embalagemInicio: a.embalagemInicio,
+        embalagemFim: a.embalagemFim,
+        volumes: a.volumes,
+        cabecotes: a.cabecotes,
+        paletes: a.paletes,
+        transportadora: a.transportadora,
+        coletaAgendada: a.coletaAgendada,
+        agendadoEm: a.agendadoEm,
+        observacao: a.observacao,
+        pausadoEm: a.pausadoEm,
+        pausadoPor: a.pausadoPor,
+        pausaMotivo: a.pausaMotivo,
+        alertaAtrasoEm: a.alertaAtrasoEm,
+        updatedAt: agoraSqlite(),
+      })
+      .where(eq(expedicaoPedidos.id, novoId))
+    for (const n of novos) {
+      const v = antes.get(`${n.orderEntrySap}:${n.linhaPedidoSap}`)
+      if (!v || Math.abs(v.quantidade - n.quantidade) > 0.0001 || (!v.conferidoEm && !v.tentativasConferencia)) continue
+      await tx
+        .update(expedicaoItens)
+        .set({ qtdConferida: v.qtdConferida, conferidoEm: v.conferidoEm, tentativasConferencia: v.tentativasConferencia })
+        .where(eq(expedicaoItens.id, n.id))
+    }
+    // Erros registrados vão junto (contam uma vez só no desempenho).
+    await tx.update(expedicaoErros).set({ expedicaoId: novoId }).where(eq(expedicaoErros.expedicaoId, anteriorId))
+  })
+  return true
 }
 
 // Compara os itens de um picking novo com o card anterior do mesmo pedido

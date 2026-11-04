@@ -428,7 +428,10 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             <p className="font-semibold">
               ✎ Pedido alterado — refeito no SAP (picking {mudancas.pickingAnterior} → {p.pickListSap}): {resumoMudancas(mudancas)}
             </p>
-            <p className="text-xs text-sky-200/90">Os itens novos e as quantidades que mudaram estão marcados na lista abaixo e na ficha impressa.</p>
+            <p className="text-xs text-sky-200/90">
+              Os itens novos e as quantidades que mudaram estão marcados na lista abaixo e na ficha impressa.
+              {p.separacaoInicio && ' O que já tinha sido feito no card anterior (quem separou/conferiu/embalou, horários, erros, volumes) continua aqui.'}
+            </p>
             {mudancas.removidos.length > 0 && (
               <p className="text-xs text-red-200">
                 Retirado{mudancas.removidos.length > 1 ? 's' : ''} do pedido (não separar / devolver se já separou):{' '}

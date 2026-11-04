@@ -825,7 +825,7 @@ export const expedicaoRouter = router({
       if (p.etapa === 'descartado') return { recriado: false }
       await db
         .update(expedicaoPedidos)
-        .set({ etapa: 'descartado', descartadoEm: agoraSqlite(), descartadoPor: ctx.user.id, motivoDescarte: input.motivo, updatedAt: agoraSqlite() })
+        .set({ etapa: 'descartado', etapaAntesCancelar: p.etapa, descartadoEm: agoraSqlite(), descartadoPor: ctx.user.id, motivoDescarte: input.motivo, updatedAt: agoraSqlite() })
         .where(eq(expedicaoPedidos.id, p.id))
       const r = await sincronizarExpedicaoSap().catch(() => null)
       return { recriado: !!r?.novas }
