@@ -4461,6 +4461,13 @@ export const expedicaoPedidos = sqliteTable(
     embalagemInicio: text('embalagem_inicio'),
     embalagemFim: text('embalagem_fim'),
     volumes: integer('volumes'),
+    // O que o vendedor/faturamento lançou no pedido do SAP (TaxExtension):
+    // quantidade de volumes, espécie e transportadora (nome do fornecedor).
+    // Atualizado a cada rodada enquanto o card está na fila (João, 2026-11-04).
+    volumesSap: integer('volumes_sap'),
+    especieSap: text('especie_sap'),
+    transportadoraSap: text('transportadora_sap'),
+    transportadoraSapCodigo: text('transportadora_sap_codigo'),
     cabecotes: integer('cabecotes'),
     paletes: integer('paletes'),
     // Vem sozinho do SAP (nota baseada no pedido): nº da NF-e e emissão (UTC).

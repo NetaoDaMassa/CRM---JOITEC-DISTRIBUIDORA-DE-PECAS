@@ -54,6 +54,7 @@ export interface SyncExpedicaoResultado {
   novas: number
   historicas: number
   nfs: number
+  freteSap: number
   foraDoEscopo: number
   atrasados: number
 }
@@ -103,7 +104,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
     for (const o of e.orderEntriesSap.split(',').map(Number)) porPedido.set(o, [...(porPedido.get(o) ?? []), e])
   }
 
-  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, foraDoEscopo: 0, atrasados: 0 }
+  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0 }
 
   await comSessaoSap(async (sap) => {
     const listas = await sap.getTodos<PickListSap>(
@@ -272,6 +273,63 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
           .set({ nfNumero: nf.numero, nfEmissao: nf.emissao, updatedAt: agoraSqlite() })
           .where(eq(expedicaoPedidos.id, p.id))
         resultado.nfs++
+      }
+    }
+
+    // Volumes e transportadora lançados no pedido do SAP (aba Imposto →
+    // Transporte: TaxExtension.PackQuantity/PackDescription/Carrier). A
+    // embalagem já abre com isso (João, 2026-11-04). Relido a cada rodada
+    // enquanto o card não foi coletado, porque o pedido pode mudar no SAP.
+    const naFila = await db
+      .select({
+        id: expedicaoPedidos.id,
+        orderEntriesSap: expedicaoPedidos.orderEntriesSap,
+        volumesSap: expedicaoPedidos.volumesSap,
+        especieSap: expedicaoPedidos.especieSap,
+        transportadoraSap: expedicaoPedidos.transportadoraSap,
+        transportadoraSapCodigo: expedicaoPedidos.transportadoraSapCodigo,
+      })
+      .from(expedicaoPedidos)
+      .where(and(eq(expedicaoPedidos.historico, false), notInArray(expedicaoPedidos.etapa, ['coletado', 'cancelado', 'descartado'])))
+    if (naFila.length) {
+      type Frete = { DocEntry: number; TaxExtension: { Carrier: string | null; PackQuantity: number | null; PackDescription: string | null } | null }
+      const entradas = [...new Set(naFila.flatMap((p) => p.orderEntriesSap.split(',').map(Number)))]
+      const fretePorPedido = new Map<number, Frete['TaxExtension']>()
+      for (let i = 0; i < entradas.length; i += 15) {
+        const filtro = entradas.slice(i, i + 15).map((e) => `DocEntry eq ${e}`).join(' or ')
+        for (const o of await sap.getTodos<Frete>(`/Orders?$filter=${filtro}&$select=DocEntry,TaxExtension`, 50)) fretePorPedido.set(o.DocEntry, o.TaxExtension)
+      }
+      const codigos = [...new Set([...fretePorPedido.values()].map((t) => t?.Carrier?.trim()).filter((c): c is string => !!c))]
+      const nomeTransp = new Map<string, string>()
+      for (let i = 0; i < codigos.length; i += 15) {
+        const filtro = codigos.slice(i, i + 15).map((c) => `CardCode eq '${c.replace(/'/g, "''")}'`).join(' or ')
+        for (const bp of await sap.getTodos<{ CardCode: string; CardName: string; CardForeignName: string | null }>(
+          `/BusinessPartners?$filter=${filtro}&$select=CardCode,CardName,CardForeignName`,
+          50
+        ))
+          nomeTransp.set(bp.CardCode, (bp.CardForeignName?.trim() || bp.CardName?.trim() || bp.CardCode).replace(/\s+/g, ' '))
+      }
+      for (const p of naFila) {
+        // Card com mais de um pedido: soma os volumes; transportadora/espécie do primeiro que tiver.
+        const fretes = p.orderEntriesSap.split(',').map((e) => fretePorPedido.get(Number(e))).filter((t): t is NonNullable<Frete['TaxExtension']> => !!t)
+        if (!fretes.length) continue
+        const vols = fretes.map((t) => t.PackQuantity).filter((v): v is number => v != null && v > 0)
+        const codigo = fretes.map((t) => t.Carrier?.trim()).find(Boolean) ?? null
+        const novo = {
+          volumesSap: vols.length ? Math.round(vols.reduce((a, b) => a + b, 0)) : null,
+          especieSap: fretes.map((t) => t.PackDescription?.trim()).find(Boolean) ?? null,
+          transportadoraSapCodigo: codigo,
+          transportadoraSap: codigo ? nomeTransp.get(codigo) ?? codigo : null,
+        }
+        if (
+          novo.volumesSap === p.volumesSap &&
+          novo.especieSap === p.especieSap &&
+          novo.transportadoraSap === p.transportadoraSap &&
+          novo.transportadoraSapCodigo === p.transportadoraSapCodigo
+        )
+          continue
+        await db.update(expedicaoPedidos).set(novo).where(eq(expedicaoPedidos.id, p.id))
+        resultado.freteSap++
       }
     }
 

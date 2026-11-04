@@ -284,6 +284,11 @@ export default function Expedicao() {
                             🚚 {agendaBr(p.coletaAgendada)}{p.transportadora ? ` · ${p.transportadora}` : ''}
                           </span>
                         )}
+                        {['separacao', 'conferencia', 'embalagem'].includes(p.etapa) && (p.volumesSap != null || p.transportadoraSap) && (
+                          <span className="text-[10px] rounded bg-blue-900/30 text-blue-200 px-1.5 py-0.5" title="Lançado no pedido do SAP">
+                            📦 SAP: {[p.volumesSap != null ? `${p.volumesSap} vol.` : null, p.transportadoraSap].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
                         {p.erros > 0 && <span className="text-[10px] font-semibold rounded bg-red-900/30 text-red-300 px-1.5 py-0.5">{p.erros} erro(s)</span>}
                         {p.volumes != null && p.etapa !== 'embalagem' && (
                           <span className="text-[10px] rounded bg-dark-700 text-dark-300 px-1.5 py-0.5">{p.volumes} vol.</span>
@@ -333,10 +338,11 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   })
 
   const [pessoa, setPessoa] = useState('')
-  const [volumes, setVolumes] = useState('')
+  // Volumes e transportadora já vêm do pedido do SAP; o embalador confere e ajusta.
+  const [volumes, setVolumes] = useState(p.volumes != null ? String(p.volumes) : p.volumesSap != null ? String(p.volumesSap) : '')
   const [cabecotes, setCabecotes] = useState('')
   const [paletes, setPaletes] = useState('')
-  const [transportadora, setTransportadora] = useState(p.transportadora ?? '')
+  const [transportadora, setTransportadora] = useState(p.transportadora ?? p.transportadoraSap ?? '')
   const [coletaAgendada, setColetaAgendada] = useState(p.coletaAgendada ?? '')
   const [erroItem, setErroItem] = useState('')
   const [erroTipo, setErroTipo] = useState<(typeof TIPOS_ERRO)[number]['value']>('faltou')
@@ -356,7 +362,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const remetente = empresas?.find((e) => e.id === empresaAtivaId)?.nome ?? ''
-  const [transpEmbalagem, setTranspEmbalagem] = useState(p.transportadora ?? '')
+  const [transpEmbalagem, setTranspEmbalagem] = useState(p.transportadora ?? p.transportadoraSap ?? '')
   const [etiquetasItens, setEtiquetasItens] = useState(false)
   const imprimirVolumes = (qtd: number, transportadora: string | null) => {
     if (!qtd) return toast.error('Informe quantos volumes')
@@ -451,6 +457,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                 {conferindo && data && <ConferenciaItens pedidoId={p.id} pedidoSap={p.pedidosSap} itens={data.itens} conferidos={itensConferidos} />}
                 {etapaPessoa === 'embalagem' && (
                   <>
+                    <FreteSap p={p} volumesDigitados={volumes} />
                     <div className="w-24"><Input label="Volumes" type="number" min={0} value={volumes} onChange={(e) => setVolumes(e.target.value)} /></div>
                     <div className="w-24"><Input label="Cabeçotes" type="number" min={0} value={cabecotes} onChange={(e) => setCabecotes(e.target.value)} /></div>
                     <div className="w-24"><Input label="Paletes" type="number" min={0} value={paletes} onChange={(e) => setPaletes(e.target.value)} /></div>
@@ -1132,6 +1139,32 @@ function AcoesEmLote({ ids, todosDaTela, onSelecionar, onFeito }: { ids: number[
             Voltar
           </Button>
         </div>
+      )}
+    </div>
+  )
+}
+
+// O que foi lançado no pedido do SAP (aba Imposto → Transporte): volumes,
+// espécie e transportadora. Mostra na embalagem e avisa se o embalador
+// digitar uma quantidade diferente.
+function FreteSap({ p, volumesDigitados }: { p: { volumesSap: number | null; especieSap: string | null; transportadoraSap: string | null }; volumesDigitados: string }) {
+  const temAlgo = p.volumesSap != null || !!p.transportadoraSap
+  const diferente = p.volumesSap != null && volumesDigitados !== '' && Number(volumesDigitados) !== p.volumesSap
+  return (
+    <div className="w-full rounded-lg border border-blue-700/50 bg-blue-950/30 px-3 py-2 text-sm">
+      {temAlgo ? (
+        <>
+          <span className="text-blue-300 font-semibold">📦 No pedido do SAP: </span>
+          <span className="text-dark-100">
+            {p.volumesSap != null ? <b>{p.volumesSap} volume(s)</b> : 'volumes não informados'}
+            {p.especieSap ? ` (${p.especieSap.toLowerCase()})` : ''}
+            {' · '}
+            {p.transportadoraSap ? <>transportadora <b>{p.transportadoraSap}</b></> : 'sem transportadora'}
+          </span>
+          {diferente && <p className="text-amber-300 text-xs mt-1">⚠️ Você digitou {volumesDigitados} volume(s), diferente do SAP ({p.volumesSap}). Confira antes de terminar.</p>}
+        </>
+      ) : (
+        <span className="text-dark-400">O pedido no SAP não tem volumes nem transportadora lançados — preencha abaixo.</span>
       )}
     </div>
   )
