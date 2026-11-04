@@ -5,6 +5,7 @@ import { agoraSqlite, hojeBrString } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
+import { aprenderLocalizacoes } from './sapLocalizacoes.js'
 
 // Fila do Controle do Estoque a partir do SAP (pedido do João, 2026-10-29).
 // Jornada no SAP: cotação → financeiro libera → pedido → estoque gera o
@@ -57,6 +58,7 @@ export interface SyncExpedicaoResultado {
   freteSap: number
   foraDoEscopo: number
   atrasados: number
+  localizacoes: number
 }
 
 // "2026-10-20" + "09:17:00" (horário de Brasília) → UTC no formato do SQLite.
@@ -104,7 +106,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
     for (const o of e.orderEntriesSap.split(',').map(Number)) porPedido.set(o, [...(porPedido.get(o) ?? []), e])
   }
 
-  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0 }
+  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0 }
 
   await comSessaoSap(async (sap) => {
     const listas = await sap.getTodos<PickListSap>(
@@ -369,6 +371,15 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
       await tx.delete(sapPedidosPendentes)
       for (let i = 0; i < pendentes.length; i += 200) await tx.insert(sapPedidosPendentes).values(pendentes.slice(i, i + 200))
     })
+
+    // Endereço dos itens (ficha de separação): aprende com alguns pickings
+    // já separados/fechados por rodada. Erro aqui não derruba a fila.
+    try {
+      const loc = await aprenderLocalizacoes(sap)
+      resultado.localizacoes = loc.itensAtualizados
+    } catch (err) {
+      console.error('[sap-expedicao] localização dos itens:', err instanceof Error ? err.message : err)
+    }
   })
 
   resultado.atrasados = await avisarAtrasados()

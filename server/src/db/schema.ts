@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique, index, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique, index, primaryKey, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Multi-empresa (adicionado quando a Odin Tubos e Conexões entrou no mesmo
@@ -4531,8 +4531,9 @@ export const expedicaoItens = sqliteTable(
     descricao: text('descricao').notNull(),
     deposito: text('deposito'),
     quantidade: real('quantidade').notNull(),
-    // Endereço no estoque (ex.: 2-REV-A01-27) — o SAP ainda não informa;
-    // fica vazio até a localização ser cadastrada.
+    // Endereço no estoque (ex.: PP02-14-01, sem o "2-REV-" do depósito) —
+    // vem de sap_item_localizacao (onde o item foi retirado da última vez
+    // nos pickings fechados do SAP); vazio se o SAP nunca registrou.
     localizacao: text('localizacao'),
     // Conferência item a item, às cegas (pedido do João, 2026-10-29): o
     // conferente digita a quantidade contada sem ver a do pedido; só fica
@@ -4574,6 +4575,34 @@ export const expedicaoErros = sqliteTable(
 // fila (lib/sapExpedicao.ts): 'aprovacao' = esboço de pedido aguardando o
 // financeiro liberar; 'pedido' = pedido fechado que o estoque ainda não
 // transformou em picking. Do picking em diante, quem conta é expedicaoPedidos.
+// Endereço de cada item no depósito (pedido do João, 2026-11-04): o SAP só
+// grava a posição (2-REV-PP02-14-01) quando o picking é separado/fechado
+// (DocumentLinesBinAllocations, que só vem no GET de UM picking). O CRM
+// aprende com os pickings fechados: guarda o último endereço real (não o
+// SYSTEM-BIN) de onde o item saiu — é o que a ficha de separação mostra.
+export const sapItemLocalizacao = sqliteTable(
+  'sap_item_localizacao',
+  {
+    deposito: text('deposito').notNull(),
+    itemCodigo: text('item_codigo').notNull(),
+    // Sem o prefixo do depósito ("PP02-14-01"); binCode = código completo.
+    localizacao: text('localizacao').notNull(),
+    binCode: text('bin_code').notNull(),
+    // Picking de onde veio — só um picking mais novo substitui.
+    pickListSap: integer('pick_list_sap').notNull(),
+    atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    pk: primaryKey({ columns: [t.deposito, t.itemCodigo] }),
+  })
+)
+
+// Pickings já lidos pra aprender endereço (não relê a cada rodada).
+export const sapLocalizacaoPicksLidos = sqliteTable('sap_localizacao_picks_lidos', {
+  pickListSap: integer('pick_list_sap').primaryKey(),
+  lidoEm: text('lido_em').notNull().default(sql`(datetime('now'))`),
+})
+
 export const sapPedidosPendentes = sqliteTable(
   'sap_pedidos_pendentes',
   {
