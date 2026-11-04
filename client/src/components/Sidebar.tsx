@@ -19,7 +19,7 @@ import { publicarMenu } from '../lib/menuAtual'
 // salvo como texto no banco (sidebarGroups.icone), mapeado pro componente
 // aqui. `Folder` é o fallback se algum dia salvar um nome que saia da lista.
 export const ICONES_GRUPO: Record<string, LucideIcon> = {
-  Folder, Megaphone, Ship, Wrench, Banknote, Briefcase, RotateCcw, Users, Target, Palette, UserPlus, Landmark, Activity, Layers, Wallet,
+  Folder, Megaphone, Ship, ShoppingBag, Wrench, Banknote, Briefcase, RotateCcw, Users, Target, Palette, UserPlus, Landmark, Activity, Layers, Wallet,
 }
 export const NOMES_ICONES_GRUPO = Object.keys(ICONES_GRUPO)
 
@@ -108,7 +108,7 @@ export const ADMIN_LINKS = [
   // admin comum concedido (ex: Roberto) usa a versão dele pelo link daqui,
   // vendedor concedido usa a de VENDOR_LINKS. Pedido do João, 2026-09-23.
   { to: '/admin/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
-  { to: '/admin/compras', label: 'Compras', icon: Ship, feature: 'compras' },
+  { to: '/admin/compras', label: 'Importações e nacionais', icon: Ship, feature: 'compras' },
   // Setor de Compras — processo completo (solicitação → cotação → negociação
   // → aprovação → pedido → recebimento → finalizado). Setor único do grupo:
   // quem tem gestão/aprovação/relatórios vê as compras de todas as empresas.

@@ -156,3 +156,38 @@ CREATE TABLE `compras_historico` (
 );
 --> statement-breakpoint
 CREATE INDEX `idx_compras_hist_sol` ON `compras_historico` (`solicitacao_id`);
+--> statement-breakpoint
+-- Menu: pasta "Compras" com todas as telas do setor (pedido do João,
+-- 2026-11-04). Uma pasta por layout (padrão + cada empresa com sidebar
+-- própria); se já existir uma pasta chamada Compras, usa ela.
+INSERT INTO `sidebar_groups` (`nome`, `icone`, `ordem`, `empresa_id`)
+SELECT 'Compras', 'ShoppingBag',
+	(SELECT COALESCE(MAX(g2.`ordem`), 0) + 1 FROM `sidebar_groups` g2 WHERE g2.`empresa_id` IS s.`empresa_id`),
+	s.`empresa_id`
+FROM (SELECT DISTINCT `empresa_id` FROM `sidebar_groups` UNION SELECT NULL) s
+WHERE NOT EXISTS (SELECT 1 FROM `sidebar_groups` g WHERE g.`empresa_id` IS s.`empresa_id` AND UPPER(TRIM(g.`nome`)) = 'COMPRAS');
+--> statement-breakpoint
+DELETE FROM `sidebar_group_items` WHERE `link_to` IN (
+	'/admin/compras', '/admin/compras-solicitar', '/admin/compras-aprovar', '/admin/compras-quadro', '/admin/compras-fornecedores', '/admin/compras-dashboard', '/admin/compras-relatorios',
+	'/vendedor/compras-solicitar', '/vendedor/compras-aprovar', '/vendedor/compras-quadro', '/vendedor/compras-fornecedores', '/vendedor/compras-dashboard', '/vendedor/compras-relatorios'
+);
+--> statement-breakpoint
+INSERT INTO `sidebar_group_items` (`group_id`, `link_to`, `ordem`)
+SELECT g.`id`, l.`link`, l.`ordem`
+FROM `sidebar_groups` g
+JOIN (
+	SELECT '/admin/compras-solicitar' AS `link`, 1 AS `ordem`
+	UNION ALL SELECT '/admin/compras-aprovar', 2
+	UNION ALL SELECT '/admin/compras-quadro', 3
+	UNION ALL SELECT '/admin/compras-fornecedores', 4
+	UNION ALL SELECT '/admin/compras-dashboard', 5
+	UNION ALL SELECT '/admin/compras-relatorios', 6
+	UNION ALL SELECT '/admin/compras', 7
+	UNION ALL SELECT '/vendedor/compras-solicitar', 1
+	UNION ALL SELECT '/vendedor/compras-aprovar', 2
+	UNION ALL SELECT '/vendedor/compras-quadro', 3
+	UNION ALL SELECT '/vendedor/compras-fornecedores', 4
+	UNION ALL SELECT '/vendedor/compras-dashboard', 5
+	UNION ALL SELECT '/vendedor/compras-relatorios', 6
+) l
+WHERE UPPER(TRIM(g.`nome`)) = 'COMPRAS';
