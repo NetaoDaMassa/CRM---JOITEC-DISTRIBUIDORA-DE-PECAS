@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PhoneCall, PhoneIncoming, PhoneOutgoing, Settings2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
@@ -436,11 +436,7 @@ export default function LigacoesPabx() {
                               <tr className="bg-dark-900/40">
                                 <td />
                                 <td colSpan={6} className="py-2 pr-3 space-y-2 text-sm">
-                                  {c.linkGravacao && (
-                                    <a href={c.linkGravacao} target="_blank" rel="noopener noreferrer" className="text-gold-400 hover:underline">
-                                      ▶ Ouvir gravação
-                                    </a>
-                                  )}
+                                  {c.linkGravacao && <GravacaoLigacao ligacaoId={c.id} partes={c.linkGravacao.split('\n').filter(Boolean).length} />}
                                   {c.resumo && (
                                     <p>
                                       <span className="text-dark-400">Resumo: </span>
@@ -475,6 +471,59 @@ export default function LigacoesPabx() {
           )}
         </>
       )}
+    </div>
+  )
+}
+
+// Player da gravação: o áudio passa pelo CRM (/pabx-gravacao/:id, com login),
+// porque o link da PABXONE360 tem o token da gravação e certificado que o
+// navegador recusa. Só baixa quando a pessoa clica em ouvir.
+function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: number; partes: number }) {
+  const [urls, setUrls] = useState<string[] | null>(null)
+  const [carregando, setCarregando] = useState(false)
+  const [erro, setErro] = useState<string | null>(null)
+  useEffect(() => () => urls?.forEach((u) => URL.revokeObjectURL(u)), [urls])
+  const ouvir = async () => {
+    setCarregando(true)
+    setErro(null)
+    try {
+      const token = localStorage.getItem('odin_token')
+      const empresa = localStorage.getItem('empresa_ativa_id')
+      const lista: string[] = []
+      for (let i = 0; i < Math.max(1, partes); i++) {
+        const r = await fetch(`/pabx-gravacao/${ligacaoId}${i ? `?parte=${i}` : ''}`, {
+          headers: { Authorization: `Bearer ${token}`, ...(empresa ? { 'x-empresa-id': empresa } : {}) },
+        })
+        if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `erro ${r.status}`)
+        lista.push(URL.createObjectURL(await r.blob()))
+      }
+      setUrls(lista)
+    } catch (e) {
+      setErro((e as Error).message)
+    } finally {
+      setCarregando(false)
+    }
+  }
+  if (urls)
+    return (
+      <div className="space-y-1" onClick={(e) => e.stopPropagation()}>
+        {urls.map((u, i) => (
+          <div key={u} className="flex items-center gap-2">
+            {urls.length > 1 && <span className="text-xs text-dark-400">Parte {i + 1}</span>}
+            <audio controls autoPlay={i === 0} src={u} className="h-9 w-full max-w-md" />
+            <a href={u} download={`ligacao-${ligacaoId}${urls.length > 1 ? `-${i + 1}` : ''}.mp3`} className="text-xs text-gold-400 hover:underline whitespace-nowrap">
+              baixar
+            </a>
+          </div>
+        ))}
+      </div>
+    )
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <button type="button" onClick={ouvir} disabled={carregando} className="text-gold-400 hover:underline disabled:opacity-60">
+        {carregando ? 'Carregando gravação…' : '▶ Ouvir gravação'}
+      </button>
+      {erro && <p className="text-xs text-red-300 mt-1">{erro}</p>}
     </div>
   )
 }

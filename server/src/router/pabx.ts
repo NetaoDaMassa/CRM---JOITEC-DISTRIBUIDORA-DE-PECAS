@@ -36,6 +36,19 @@ function fimDiaBr(data: string) {
 }
 const paraSqlite = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19)
 
+// Quem pode ouvir a gravação de uma ligação: a mesma regra do relatório —
+// superAdmin; admin/gestor com Ligações (PABX) na empresa da ligação; ou a
+// própria pessoa que ligou/atendeu (qualquer conta vinculada dela).
+export async function podeOuvirLigacao(
+  user: { id: number; role: string; superAdmin: boolean },
+  empresaIdAtual: number | null,
+  ligacao: { userId: number | null; empresaId: number | null }
+): Promise<boolean> {
+  if (user.superAdmin) return true
+  if (ligacao.userId && (await idsDaPessoa(user.id)).includes(ligacao.userId)) return true
+  return user.role !== 'vendor' && ligacao.empresaId === empresaIdAtual && (await temFeature(user.id, FEATURE_RELATORIO))
+}
+
 async function idsDaPessoa(userId: number): Promise<number[]> {
   const v = await db.query.contasVinculadas.findMany({ where: eq(contasVinculadas.userId, userId) })
   return [userId, ...v.map((x) => x.contaVinculadaId)]

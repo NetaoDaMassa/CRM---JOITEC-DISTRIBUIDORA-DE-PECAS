@@ -12,7 +12,8 @@ import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
-import { adminEmpresasExtras, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela } from './db/schema.js'
+import { podeOuvirLigacao } from './router/pabx.js'
+import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela } from './db/schema.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
@@ -465,6 +466,51 @@ app.get('/marketing-arquivo/:id/conteudo', async (req, res) => {
   res.setHeader('Content-Disposition', 'inline')
   if (arquivo.tipoArquivo) res.setHeader('Content-Type', arquivo.tipoArquivo)
   res.sendFile(path.resolve(UPLOADS_DIR, arquivo.nomeArmazenado))
+})
+
+// Gravação de ligação da PABXONE360 (relatório Ligações). O CRM busca o
+// áudio no link da PABXONE360 e repassa, só pra quem pode ver aquela
+// ligação (o link carrega o token da gravação, não vai pro navegador).
+app.get('/pabx-gravacao/:id', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  const lig = await db.query.pabxLigacoesProcessadas.findFirst({ where: eq(pabxLigacoesProcessadas.id, Number(req.params.id)) })
+  const links = (lig?.linkGravacao ?? '').split('\n').filter(Boolean)
+  const parte = Math.max(0, Number(req.query.parte ?? 0) || 0)
+  const link = links[parte]
+  if (!lig || !link) return res.status(404).json({ error: 'Gravação não encontrada' })
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  if (!(await podeOuvirLigacao(user, empresaId, lig))) return res.status(403).json({ error: 'Sem permissão' })
+  let url: URL
+  try {
+    url = new URL(link)
+  } catch {
+    return res.status(404).json({ error: 'Link de gravação inválido' })
+  }
+  // A API devolve o link num IP (https://45.170.138.172/…) com certificado
+  // autoassinado; o mesmo download_audio.php responde no domínio oficial,
+  // que tem certificado válido — usa o domínio.
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)) {
+    url.hostname = 'pabxone360.com.br'
+    url.protocol = 'https:'
+    url.port = ''
+  }
+  try {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+    if (!resp.ok || !resp.body) return res.status(502).json({ error: `PABXONE360 não devolveu o áudio (${resp.status})` })
+    const tipo = resp.headers.get('content-type') ?? ''
+    // "Parâmetros inválidos!" / link vencido vem como página HTML, não áudio.
+    if (/text\/|json/i.test(tipo)) return res.status(502).json({ error: `PABXONE360 não devolveu o áudio: ${(await resp.text()).replace(/<[^>]+>/g, ' ').trim().slice(0, 120)}` })
+    res.setHeader('Content-Type', /audio/i.test(tipo) ? tipo : 'audio/mpeg')
+    const tamanho = resp.headers.get('content-length')
+    if (tamanho) res.setHeader('Content-Length', tamanho)
+    res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}${parte ? `-${parte + 1}` : ''}.mp3"`)
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    res.end(Buffer.from(await resp.arrayBuffer()))
+  } catch (e) {
+    const causa = (e as { cause?: { code?: string } }).cause?.code ?? (e as Error).message
+    res.status(502).json({ error: `Não consegui buscar a gravação na PABXONE360 (${causa})` })
+  }
 })
 
 // Baixar o anexo de uma proposta com nome amigável ("Proposta - <cliente>.pdf")

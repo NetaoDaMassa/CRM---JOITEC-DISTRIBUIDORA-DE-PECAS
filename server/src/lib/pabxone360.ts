@@ -12,7 +12,7 @@
 // de ligações, separando tentativa de ligação efetiva; resumo/transcrição e
 // link da gravação quando a PABXONE360 devolve; botão Ligar pelo CRM
 // (Click2Call, discar_numero).
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import {
   clientes,
@@ -122,7 +122,9 @@ interface CdrBruto {
   destino: string
   duracao: string
   sip_code: string
-  link_gravacao?: string
+  // Vem como LISTA de links ("[\"https://…/download_audio.php?t=…\"]"), não
+  // texto — antes só aceitava texto e descartava todas (João, 2026-11-04).
+  link_gravacao?: string | string[]
   [campo: string]: unknown
 }
 
@@ -139,6 +141,12 @@ function campoTexto(c: CdrBruto, trecho: string): string | null {
     }
   }
   return null
+}
+
+// Guarda os links um por linha (normalmente 1; ligação transferida pode ter mais).
+function linksGravacao(v: unknown): string | null {
+  const lista = (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter((x) => /^https?:\/\//i.test(x))
+  return lista.length ? lista.join('\n') : null
 }
 
 async function chamarApi(cred: CredenciaisPabx, caminho: string, init?: { metodo?: 'GET' | 'POST'; query?: Record<string, string>; corpo?: unknown }) {
@@ -225,7 +233,7 @@ export async function buscarChamadasPabxone360(
       duracaoSegundos,
       efetiva: status === 'atendida',
       status,
-      linkGravacao: typeof c.link_gravacao === 'string' && c.link_gravacao.trim() ? c.link_gravacao.trim() : null,
+      linkGravacao: linksGravacao(c.link_gravacao),
       resumo: campoTexto(c, 'resumo'),
       transcricao: campoTexto(c, 'transcri'),
     }
@@ -635,8 +643,17 @@ export async function completarResumosPabxone360(cred: CredenciaisPabx, dataInic
   for (const c of chamadas) {
     const r = await db
       .update(pabxLigacoesProcessadas)
-      .set({ resumo: c.resumo, transcricao: c.transcricao, linkGravacao: c.linkGravacao })
-      .where(and(eq(pabxLigacoesProcessadas.chamadaId, c.chamadaId), isNull(pabxLigacoesProcessadas.resumo)))
+      .set({
+        resumo: sql`coalesce(${pabxLigacoesProcessadas.resumo}, ${c.resumo})`,
+        transcricao: sql`coalesce(${pabxLigacoesProcessadas.transcricao}, ${c.transcricao})`,
+        linkGravacao: sql`coalesce(${pabxLigacoesProcessadas.linkGravacao}, ${c.linkGravacao})`,
+      })
+      .where(
+        and(
+          eq(pabxLigacoesProcessadas.chamadaId, c.chamadaId),
+          or(isNull(pabxLigacoesProcessadas.resumo), isNull(pabxLigacoesProcessadas.transcricao), isNull(pabxLigacoesProcessadas.linkGravacao))
+        )
+      )
     atualizadas += r.rowsAffected
   }
   return atualizadas
