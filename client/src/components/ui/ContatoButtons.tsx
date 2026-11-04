@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
@@ -85,10 +86,44 @@ export function WhatsappButton({
 // "Ligar pelo CRM" ativo e ramal cadastrado pra pessoa, o clique faz o PABX
 // chamar o ramal dela e depois o cliente; a ligação é registrada sozinha
 // pela sincronização (lib/pabxone360.ts). Sem isso, segue o discador (tel:).
+// Depois do clique, pergunta ao CRM a cada 5s se a ligação já foi gravada
+// (o servidor checa a PABXONE360 a cada ~10s — lib/pabxAcompanhamento.ts);
+// quando grava, recarrega os dados da tela pra ela aparecer no card sem F5.
+// Estado no módulo: o hook é usado por vários botões na mesma tela.
+let esperandoLigacao: { ultimoId: number; ate: number } | null = null
+const ouvintes = new Set<() => void>()
+function setEsperando(v: typeof esperandoLigacao) {
+  esperandoLigacao = v
+  ouvintes.forEach((f) => f())
+}
+
+export function useAtualizarAoGravarLigacao() {
+  const utils = trpc.useUtils()
+  const [, forcar] = useState(0)
+  useEffect(() => {
+    const f = () => forcar((n) => n + 1)
+    ouvintes.add(f)
+    return () => void ouvintes.delete(f)
+  }, [])
+  const ativo = !!esperandoLigacao && esperandoLigacao.ate > Date.now()
+  const { data } = trpc.pabx.minhaUltimaLigacao.useQuery(undefined, { enabled: ativo, refetchInterval: ativo ? 5000 : false })
+  useEffect(() => {
+    if (!esperandoLigacao || !data) return
+    if (data.id > esperandoLigacao.ultimoId) {
+      setEsperando(null)
+      toast.success('Ligação registrada no CRM.')
+      void utils.invalidate()
+    } else if (esperandoLigacao.ate < Date.now()) setEsperando(null)
+  }, [data, utils])
+}
+
 export function usePabxDiscar() {
   const { data } = trpc.pabx.meuRamal.useQuery(undefined, { staleTime: 5 * 60_000 })
   const discarMut = trpc.pabx.discar.useMutation({
-    onSuccess: () => toast.success(`Chamando pelo PABX — atenda o seu ramal${data?.ramal ? ` (${data.ramal})` : ''}.`),
+    onSuccess: (r) => {
+      toast.success(`Seu ramal${data?.ramal ? ` (${data.ramal})` : ''} vai tocar — ATENDA para ligar para o cliente.`, { duration: 8000 })
+      setEsperando({ ultimoId: r.ultimoId, ate: Date.now() + 40 * 60_000 })
+    },
     onError: (err) => toast.error(err.message),
   })
   return { ativo: !!data?.click2call, discar: (telefone: string) => discarMut.mutate({ numero: telefone }) }

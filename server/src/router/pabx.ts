@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lte, max } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, contasVinculadas, empresas, leads, pabxLigacoesProcessadas, pabxRamais, users } from '../db/schema.js'
@@ -13,6 +13,7 @@ import {
   listarRamaisPabx,
   registrarLigacoesAutomaticasPabxone360,
 } from '../lib/pabxone360.js'
+import { acompanharLigacao } from '../lib/pabxAcompanhamento.js'
 
 // Telefonia PABXONE360 das 3 empresas Odin (uma conta só) — ver o cabeçalho
 // de lib/pabxone360.ts. Configuração e ramais: só superAdmin (o token nunca
@@ -40,9 +41,17 @@ async function idsDaPessoa(userId: number): Promise<number[]> {
   return [userId, ...v.map((x) => x.contaVinculadaId)]
 }
 
+async function ultimaLigacaoId(userIds: number[]): Promise<number> {
+  const [r] = await db
+    .select({ id: max(pabxLigacoesProcessadas.id) })
+    .from(pabxLigacoesProcessadas)
+    .where(inArray(pabxLigacoesProcessadas.userId, userIds))
+  return r?.id ?? 0
+}
+
 export const pabxRouter = router({
   status: superAdminProcedure.query(async () => {
-    const [usuario, token, ligada, click2call, duracaoMinima, ultimaSync, ultimoErro, prefixo] = await Promise.all([
+    const [usuario, token, ligada, click2call, duracaoMinima, ultimaSync, ultimoErro, prefixo, atrasoApi] = await Promise.all([
       getConfigTexto('pabxone360_usuario'),
       getConfigTexto('pabxone360_token'),
       getConfigBool('pabxone360_ligada', false),
@@ -51,6 +60,7 @@ export const pabxRouter = router({
       getConfigTexto('pabxone360_ultima_sync'),
       getConfigTexto('pabxone360_ultimo_erro'),
       getConfigTexto('pabxone360_prefixo_discagem'),
+      getConfigTexto('pabxone360_atraso_api'),
     ])
     return {
       usuario: usuario ?? '',
@@ -61,6 +71,7 @@ export const pabxRouter = router({
       prefixoDiscagem: prefixo ?? '0',
       ultimaSync,
       ultimoErro,
+      atrasoApi,
     }
   }),
 
@@ -183,8 +194,17 @@ export const pabxRouter = router({
     if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) digitos = digitos.slice(2)
     if ((digitos.length === 11 || digitos.length === 12) && digitos.startsWith('0')) digitos = digitos.slice(1)
     const prefixo = (await getConfigTexto('pabxone360_prefixo_discagem')) ?? '0'
-    return discarPabx(cred, r.ramal, `${prefixo}${digitos}`)
+    const ultimoId = await ultimaLigacaoId(ids)
+    const resultado = await discarPabx(cred, r.ramal, `${prefixo}${digitos}`)
+    // Passa a checar a PABXONE360 a cada ~10s até a ligação aparecer
+    // (em vez de esperar a sincronização do minuto) — pabxAcompanhamento.ts.
+    acompanharLigacao(r.ramal)
+    return { ...resultado, ultimoId }
   }),
+
+  // A tela, depois do clique em Ligar, pergunta isto a cada poucos segundos:
+  // quando o id muda, a ligação foi gravada e ela recarrega os dados.
+  minhaUltimaLigacao: protectedProcedure.query(async ({ ctx }) => ({ id: await ultimaLigacaoId(await idsDaPessoa(ctx.user.id)) })),
 
   // Relatório de ligações: tentativas x efetivas por vendedor + lista.
   relatorio: protectedProcedure

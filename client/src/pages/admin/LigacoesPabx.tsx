@@ -83,6 +83,7 @@ function Configuracao() {
         <span className="text-xs text-dark-500">
           Última sincronização: {dataHoraBr(st.ultimaSync)}
           {st.ultimoErro ? <span className="text-red-300"> · erro: {st.ultimoErro}</span> : null}
+          {st.atrasoApi ? <span> · PABX liberou a última ligação acompanhada em {st.atrasoApi.split(' — ')[1] ?? st.atrasoApi}</span> : null}
         </span>
       </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">

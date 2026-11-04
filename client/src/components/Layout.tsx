@@ -9,6 +9,7 @@ import LembretesCompromisso from './LembretesCompromisso'
 import BuscaRapida, { BotaoBuscaRapida } from './BuscaRapida'
 import { useAuth } from '../contexts/AuthContext'
 import { trpc } from '../lib/trpc'
+import { useAtualizarAoGravarLigacao } from './ui/ContatoButtons'
 
 // Cor de destaque de cada empresa (design novo, teste) — ver
 // html[data-empresa] no index.css. Fica no <html> pra valer no app todo.
@@ -79,6 +80,8 @@ export default function Layout() {
   const [menuAberto, setMenuAberto] = useState(false)
   const location = useLocation()
   const empresa = useCorDaEmpresa()
+  // Botão Ligar (PABX): recarrega a tela quando a ligação é gravada.
+  useAtualizarAoGravarLigacao()
 
   // Fecha a gaveta sozinha ao trocar de rota (cinto de segurança — o
   // onNavigate do link já fecha, isso cobre navegação por outros meios,
