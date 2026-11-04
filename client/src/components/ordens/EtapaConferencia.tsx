@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { CheckCircle2, AlertTriangle, Boxes, PackageCheck, MessageSquareWarning, Lock, Pencil } from 'lucide-react'
+import { CheckCircle2, AlertTriangle, Boxes, PackageCheck, MessageSquareWarning, Lock, Pencil, Plus, X } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
 import { Input } from '../ui/Input'
@@ -8,9 +8,59 @@ import Select from '../ui/Select'
 import { formatDateTime } from '../../lib/utils'
 
 // Portado de odin-crm.duckdns.org (ConferenceStage.tsx) pra ficar igual —
-// pedido do João, 2026-09-01. Mesma lista fixa de quem embala (não é um
-// campo livre nem lista de usuários do sistema).
-const EMBALADORES = ['RAFAEL', 'MARCUS', 'EDUARDO']
+// pedido do João, 2026-09-01. Lista de quem embala (não é campo livre nem
+// lista de usuários do sistema). Desde 2026-11-04 o gestor edita a lista
+// aqui mesmo ("Editar nomes") — vem de ordens.conferencia.embaladores.
+
+function EditorEmbaladores({ nomes, onFechar }: { nomes: string[]; onFechar: () => void }) {
+  const utils = trpc.useUtils()
+  const [lista, setLista] = useState<string[]>(nomes)
+  const [novo, setNovo] = useState('')
+  const salvarMut = trpc.ordens.conferencia.salvarEmbaladores.useMutation({
+    onSuccess: () => { toast.success('Lista de quem embala atualizada'); utils.ordens.conferencia.embaladores.invalidate(); onFechar() },
+    onError: (e) => toast.error(e.message),
+  })
+  function adicionar() {
+    const nome = novo.trim().toUpperCase()
+    if (!nome) return
+    if (lista.includes(nome)) { toast.error('Esse nome já está na lista'); return }
+    setLista([...lista, nome])
+    setNovo('')
+  }
+  return (
+    <div className="mt-2 rounded-lg border border-dark-600 bg-dark-900/40 p-3 space-y-2">
+      <p className="text-[11px] text-dark-400">Quem aparece em "Quem embalou" (vale pra todos os pedidos). Pedido que já foi embalado continua mostrando o nome antigo.</p>
+      <div className="flex flex-wrap gap-1.5">
+        {lista.map((n) => (
+          <span key={n} className="inline-flex items-center gap-1 rounded-full border border-dark-600 bg-dark-700/60 px-2 py-0.5 text-xs text-dark-200">
+            {n}
+            <button onClick={() => setLista(lista.filter((x) => x !== n))} className="text-dark-400 hover:text-red-400" title={`Tirar ${n}`}>
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+        {lista.length === 0 && <span className="text-xs text-amber-400">Lista vazia — adicione pelo menos um nome</span>}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={novo}
+          onChange={(e) => setNovo(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); adicionar() } }}
+          placeholder="Nome novo"
+          maxLength={60}
+          className="flex-1 rounded-lg border border-dark-600 bg-dark-800 px-2.5 py-1.5 text-xs text-dark-100 placeholder:text-dark-500 focus:outline-none focus:border-gold-600"
+        />
+        <Button size="sm" variant="secondary" onClick={adicionar}>
+          <Plus size={13} className="mr-1" /> Adicionar
+        </Button>
+      </div>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="secondary" onClick={onFechar}>Cancelar</Button>
+        <Button size="sm" loading={salvarMut.isPending} disabled={lista.length === 0} onClick={() => salvarMut.mutate({ nomes: lista })}>Salvar lista</Button>
+      </div>
+    </div>
+  )
+}
 const ITEM_CHECKLIST: { campo: 'placaOk' | 'adesivoOk' | 'fichaTecnicaOk' | 'voltagemOk' | 'kitOk'; label: string }[] = [
   { campo: 'placaOk', label: 'Placa' },
   { campo: 'adesivoOk', label: 'Adesivo' },
@@ -38,6 +88,8 @@ export default function EtapaConferencia({ ordemId, isAdmin, readonly }: { ordem
   const { data: itens } = trpc.ordens.conferencia.listarItens.useQuery({ ordemId })
   const { data: anexos } = trpc.ordens.anexos.listar.useQuery({ ordemId, stage: 'conferencia' })
   const [enviandoId, setEnviandoId] = useState<number | null>(null)
+  const { data: embaladores } = trpc.ordens.conferencia.embaladores.useQuery()
+  const [editandoEmbaladores, setEditandoEmbaladores] = useState(false)
   // Uma vez confirmada, TUDO trava (checklist, "não aplicável", embalagem,
   // desfazer) — igual ao sistema antigo (readonly || isConfirmed em cada
   // controle). Antes só as observações travavam sozinhas, o resto continuava
@@ -225,14 +277,26 @@ export default function EtapaConferencia({ ordemId, isAdmin, readonly }: { ordem
           <PackageCheck size={14} /> Embalagem
         </p>
         <div>
-          <label className="text-xs text-dark-400 mb-1 block">Quem embalou</label>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs text-dark-400 block">Quem embalou</label>
+            {isAdmin && !editandoEmbaladores && (
+              <button onClick={() => setEditandoEmbaladores(true)} className="flex items-center gap-1 text-[11px] font-semibold text-dark-400 hover:text-gold-400">
+                <Pencil size={11} /> Editar nomes
+              </button>
+            )}
+          </div>
           <Select
             value={confAny?.embalagemPor ?? ''}
             disabled={!podeEditar || !!confAny?.embalagemOk}
             onChange={(e) => atualizarMut.mutate({ ordemId, embalagemPor: e.target.value })}
-            options={EMBALADORES.map((n) => ({ value: n, label: n }))}
+            options={[
+              ...(embaladores ?? []),
+              // nome antigo já gravado neste pedido que saiu da lista continua aparecendo
+              ...(confAny?.embalagemPor && !(embaladores ?? []).includes(confAny.embalagemPor) ? [confAny.embalagemPor] : []),
+            ].map((n) => ({ value: n, label: n }))}
             placeholder="Selecione..."
           />
+          {editandoEmbaladores && embaladores && <EditorEmbaladores nomes={embaladores} onFechar={() => setEditandoEmbaladores(false)} />}
         </div>
 
         {confAny?.embalagemOk ? (

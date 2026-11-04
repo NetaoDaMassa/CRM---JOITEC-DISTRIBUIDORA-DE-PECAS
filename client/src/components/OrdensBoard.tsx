@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { ChevronRight, ArrowLeft, User, AlertTriangle, Clock, CheckCircle2, Truck } from 'lucide-react'
+import { ChevronRight, ArrowLeft, User, AlertTriangle, Clock, CheckCircle2, Truck, FileText, X } from 'lucide-react'
 import { timeAgo, formatDateTime } from '../lib/utils'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -44,6 +44,8 @@ export type OrdemCard = {
   preparacao: { aprovadoGestor: boolean; operadorFinalizou?: boolean } | null
   coleta: { confirmado: boolean } | null
   rastreio: { transportadora: string | null; codigoRastreio: string | null } | null
+  // Aviso "NF solicitada — faturamento antecipado" (core.marcarNfSolicitada)
+  nfSolicitada?: { por: string; em: string } | null
 }
 
 // Alerta visual quando o pedido demora demais numa etapa — mesmos limites
@@ -69,6 +71,10 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
   // que destravam cada etapa.
   const moverMut = trpc.ordens.core.mover.useMutation({
     onSuccess: () => { toast.success('Pedido voltou de etapa'); utils.ordens.core.listarKanban.invalidate() },
+    onError: (e) => toast.error(e.message),
+  })
+  const nfMut = trpc.ordens.core.marcarNfSolicitada.useMutation({
+    onSuccess: (_d, v) => { toast.success(v.marcado ? 'Marcado: NF solicitada' : 'Aviso de NF solicitada retirado'); utils.ordens.core.listarKanban.invalidate(); utils.ordens.core.nfSolicitada.invalidate({ id: v.id }) },
     onError: (e) => toast.error(e.message),
   })
 
@@ -127,6 +133,13 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                   const mostrarPills = stage === 'cotacao_frete' || stage === 'preparacao'
                   const idxStage = colunas.indexOf(stage)
                   const etapaAnterior = isAdmin && idxStage > 0 ? colunas[idxStage - 1] : undefined
+                  // NF solicitada: o aviso aparece até a etapa de Faturamento
+                  // (depois perde o sentido) e só o gestor marca/desmarca,
+                  // antes de o pedido chegar no Faturamento.
+                  const idxFaturamento = colunas.indexOf('faturamento' as never)
+                  const antesDoFaturamento = idxFaturamento < 0 || idxStage < idxFaturamento
+                  const mostrarNf = !!ordem.nfSolicitada && (idxFaturamento < 0 || idxStage <= idxFaturamento)
+                  const podeMarcarNf = isAdmin && antesDoFaturamento
 
                   return (
                     <div
@@ -154,6 +167,29 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                           <ChevronRight size={14} className="text-dark-600 group-hover:text-gold-400 transition-colors shrink-0 mt-0.5" />
                         )}
                       </div>
+
+                      {mostrarNf && (
+                        <div
+                          className="mb-2 flex items-center gap-2 rounded-lg border border-amber-600/50 bg-amber-900/40 px-2.5 py-1.5"
+                          title={`Marcado por ${ordem.nfSolicitada!.por} em ${formatDateTime(ordem.nfSolicitada!.em)}`}
+                        >
+                          <FileText size={16} className="text-amber-300 shrink-0" />
+                          <div className="min-w-0 flex-1 leading-tight">
+                            <p className="text-[11px] font-extrabold tracking-wide text-amber-200">NF SOLICITADA</p>
+                            <p className="text-[10px] text-amber-300/80">Faturamento antecipado</p>
+                          </div>
+                          {podeMarcarNf && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); nfMut.mutate({ id: ordem.id, marcado: false }) }}
+                              disabled={nfMut.isPending}
+                              className="shrink-0 rounded p-0.5 text-amber-300/70 hover:text-amber-100 hover:bg-amber-800/40 disabled:opacity-50"
+                              title="Tirar o aviso de NF solicitada"
+                            >
+                              <X size={13} />
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {ordem.cliente && (
                         <div className="flex items-center gap-2 text-xs text-dark-300 mb-1.5">
@@ -228,8 +264,19 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                         </div>
                       )}
 
-                      {etapaAnterior && (
-                        <div className="mt-2 pt-2 border-t border-dark-700/60" onClick={(e) => e.stopPropagation()}>
+                      {(etapaAnterior || (podeMarcarNf && !ordem.nfSolicitada)) && (
+                        <div className="mt-2 pt-2 border-t border-dark-700/60 flex flex-col items-start gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {podeMarcarNf && !ordem.nfSolicitada && (
+                            <button
+                              onClick={() => nfMut.mutate({ id: ordem.id, marcado: true })}
+                              disabled={nfMut.isPending}
+                              className="flex items-center gap-1 text-[11px] font-semibold text-amber-400/80 hover:text-amber-300 transition-colors disabled:opacity-50"
+                              title="Avisa que a NF já foi pedida (faturamento antecipado) — o pedido continua nesta etapa"
+                            >
+                              <FileText size={11} /> Marcar NF solicitada
+                            </button>
+                          )}
+                          {etapaAnterior && (
                           <button
                             onClick={() => moverMut.mutate({ id: ordem.id, novaEtapa: etapaAnterior })}
                             disabled={moverMut.isPending}
@@ -238,6 +285,7 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                           >
                             <ArrowLeft size={11} /> Voltar pra "{rotuloEtapa(etapaAnterior, orderType)}"
                           </button>
+                          )}
                         </div>
                       )}
                     </div>

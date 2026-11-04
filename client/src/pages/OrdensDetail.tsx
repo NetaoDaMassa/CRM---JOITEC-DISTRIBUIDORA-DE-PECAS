@@ -38,6 +38,7 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
 
   const utils = trpc.useUtils()
   const { data: ordem, isLoading } = trpc.ordens.core.obterPorId.useQuery({ id: ordemId })
+  const { data: nfSolicitada } = trpc.ordens.core.nfSolicitada.useQuery({ id: ordemId })
 
   function invalidarTudo() {
     utils.ordens.core.obterPorId.invalidate({ id: ordemId })
@@ -138,6 +139,11 @@ export default function OrdensDetail({ ordemId, onClose }: { ordemId: number; on
               <Badge className="text-dark-300 bg-dark-700 border-dark-600">{ORDER_TYPE_LABELS[orderType]}</Badge>
               {ordem.status !== 'ativo' && <Badge className="text-red-400 bg-red-900/20 border-red-700/40">{ordem.status}</Badge>}
               {ordem.pausadoEm && <Badge className="text-yellow-400 bg-yellow-900/20 border-yellow-700/40">Pausado: {ordem.pausadoMotivo}</Badge>}
+              {nfSolicitada && (
+                <Badge className="text-amber-200 bg-amber-900/40 border-amber-600/50">
+                  📄 NF solicitada — faturamento antecipado · {nfSolicitada.por}, {formatDateTime(nfSolicitada.em)}
+                </Badge>
+              )}
             </div>
           </div>
           <button onClick={onClose} className="text-dark-400 hover:text-dark-100 transition-colors p-1.5 rounded-lg hover:bg-dark-700 shrink-0">

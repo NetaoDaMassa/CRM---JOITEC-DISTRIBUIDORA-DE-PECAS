@@ -11,8 +11,48 @@ import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
 import { diffObs } from './financeiro.js'
+import { getConfigTexto, setConfig } from '../../lib/configuracoes.js'
+
+// Lista de quem embala (select "Quem embalou" da Conferência). Era fixa no
+// código (RAFAEL/MARCUS/EDUARDO) — pedido da Andreia via João, 2026-11-04:
+// o gestor edita sozinho, direto na etapa. Fica em configuracoes (JSON) pra
+// não precisar de migração. Ausente = a lista antiga.
+const CHAVE_EMBALADORES = 'ordens_embaladores'
+const EMBALADORES_PADRAO = ['RAFAEL', 'MARCUS', 'EDUARDO']
+async function lerEmbaladores(): Promise<string[]> {
+  const bruto = await getConfigTexto(CHAVE_EMBALADORES)
+  if (!bruto) return EMBALADORES_PADRAO
+  try {
+    const lista = JSON.parse(bruto)
+    return Array.isArray(lista) ? lista.filter((n): n is string => typeof n === 'string' && n.trim() !== '') : EMBALADORES_PADRAO
+  } catch {
+    return EMBALADORES_PADRAO
+  }
+}
 
 export const ordensConferenciaRouter = router({
+  embaladores: adminOrFeatureProcedure('pedidos_odin').query(async ({ ctx }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    return lerEmbaladores()
+  }),
+
+  // Só gestor. Quem já embalou um pedido antigo continua aparecendo nele
+  // (embalagemPor é texto) mesmo saindo da lista.
+  salvarEmbaladores: adminProcedure.input(z.object({ nomes: z.array(z.string().max(60)).max(50) })).mutation(async ({ ctx, input }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    const vistos = new Set<string>()
+    const nomes: string[] = []
+    for (const bruto of input.nomes) {
+      const nome = bruto.trim().toUpperCase()
+      if (!nome || vistos.has(nome)) continue
+      vistos.add(nome)
+      nomes.push(nome)
+    }
+    if (nomes.length === 0) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Deixe pelo menos um nome na lista' })
+    await setConfig(CHAVE_EMBALADORES, JSON.stringify(nomes))
+    return nomes
+  }),
+
   obter: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
     await assertEmpresaOrdens(ctx.empresaId)
     await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)

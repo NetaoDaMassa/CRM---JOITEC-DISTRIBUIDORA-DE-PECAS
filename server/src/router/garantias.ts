@@ -336,6 +336,18 @@ export const garantiasCoreRouter = router({
       orderBy: (h, { desc }) => [desc(h.createdAt)],
     })
   }),
+
+  // Corrigir o texto de um evento do histórico — igual ao
+  // ordens.core.editarNotaHistorico dos Pedidos (pedido do João, 2026-11-04).
+  editarNotaHistorico: adminProcedure.input(z.object({ garantiaId: z.number(), historicoId: z.number(), description: z.string().trim().min(1) })).mutation(async ({ ctx, input }) => {
+    await assertEmpresaGarantias(ctx.empresaId)
+    await obterGarantia(input.garantiaId, ctx.empresaId)
+    await db
+      .update(garantiaHistorico)
+      .set({ description: input.description })
+      .where(and(eq(garantiaHistorico.id, input.historicoId), eq(garantiaHistorico.garantiaId, input.garantiaId)))
+    return { ok: true }
+  }),
 })
 
 export const garantiasAnexosRouter = router({

@@ -12,6 +12,17 @@ import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarAuditoria } from '../../lib/auditoria.js'
 import { avancarEtapaPedido, moverEtapaPedido, registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { ORDER_TYPE_VALUES, getStageSequence, type OrderType } from '../../lib/ordensStages.js'
+import { listarConfigPrefixo, setConfig, apagarConfig, getConfigTexto } from '../../lib/configuracoes.js'
+
+// "NF solicitada — faturamento antecipado" (pedido do João, 2026-11-04): o
+// faturista marca no card da Cotação de Frete/Preparação que já pediu a NF
+// (fechamento do mês), em vez de empurrar o pedido pra Faturamento antes
+// da preparação. É SÓ um aviso: não muda etapa, não destrava nada e não
+// mexe em ordens.updatedAt (senão zera o "há X dias" e os alertas de
+// atraso). Guardado em configuracoes (`ordem_nf_solicitada_<id>` → JSON
+// {por, em}) pra não precisar de migração.
+const PREFIXO_NF_SOLICITADA = 'ordem_nf_solicitada_'
+export type NfSolicitada = { por: string; em: string }
 
 // Módulo disponível só pra Odin Compressores — pedido explícito do João,
 // mesmo padrão de SLUG_VENDA_RAPIDA em router/vendas.ts.
@@ -48,7 +59,7 @@ export const ordensCoreRouter = router({
     const filtroVendedor = ctx.user.role === 'admin' ? input.vendedorId : ctx.user.id
     const condicoes = [eq(ordens.empresaId, ctx.empresaId), eq(ordens.orderType, input.orderType)]
     if (filtroVendedor) condicoes.push(eq(ordens.vendedorId, filtroVendedor))
-    return db.query.ordens.findMany({
+    const lista = await db.query.ordens.findMany({
       where: and(...condicoes),
       with: {
         cliente: { columns: { id: true, razaoSocial: true, codigo: true, telefoneWhatsapp: true } },
@@ -64,6 +75,35 @@ export const ordensCoreRouter = router({
       },
       orderBy: (o, { desc }) => [desc(o.updatedAt)],
     })
+    const nfPorOrdem = new Map<number, NfSolicitada>()
+    for (const row of await listarConfigPrefixo(PREFIXO_NF_SOLICITADA)) {
+      try { nfPorOrdem.set(Number(row.chave.slice(PREFIXO_NF_SOLICITADA.length)), JSON.parse(row.valor)) } catch { /* linha estragada: ignora */ }
+    }
+    return lista.map((o) => ({ ...o, nfSolicitada: nfPorOrdem.get(o.id) ?? null }))
+  }),
+
+  nfSolicitada: adminOrFeatureProcedure('pedidos_odin').input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
+    const bruto = await getConfigTexto(PREFIXO_NF_SOLICITADA + input.id)
+    if (!bruto) return null
+    try { return JSON.parse(bruto) as NfSolicitada } catch { return null }
+  }),
+
+  // Só gestor/faturista (admin). Marcar e desmarcar ficam no histórico.
+  marcarNfSolicitada: adminProcedure.input(z.object({ id: z.number(), marcado: z.boolean() })).mutation(async ({ ctx, input }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    const ordem = await assertOrdemAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
+    const chave = PREFIXO_NF_SOLICITADA + input.id
+    if (input.marcado) {
+      const valor: NfSolicitada = { por: ctx.user.name, em: agoraSqlite() }
+      await setConfig(chave, JSON.stringify(valor))
+      await registrarHistoricoOrdem({ ordemId: input.id, userId: ctx.user.id, action: 'update', description: 'NF solicitada — faturamento antecipado (marcado)', stage: ordem.stage })
+    } else {
+      await apagarConfig(chave)
+      await registrarHistoricoOrdem({ ordemId: input.id, userId: ctx.user.id, action: 'update', description: 'NF solicitada — faturamento antecipado (desmarcado)', stage: ordem.stage })
+    }
+    return { ok: true }
   }),
 
   contarAtivos: adminOrFeatureProcedure('pedidos_odin').query(async ({ ctx }) => {

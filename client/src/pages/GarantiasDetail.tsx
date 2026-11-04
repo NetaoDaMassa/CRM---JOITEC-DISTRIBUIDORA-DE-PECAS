@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ArrowRight, Ban, X } from 'lucide-react'
+import { ArrowRight, Ban, X, ChevronDown, ChevronRight, Pencil, Check } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
@@ -157,7 +157,7 @@ export default function GarantiasDetail({ garantiaId, onClose }: { garantiaId: n
             ))}
           {tab === 'oficina' && <EtapaOficina garantiaId={garantiaId} readonly={!podeEditarOficina} />}
           {tab === 'anexos' && <AnexosTab garantiaId={garantiaId} stageAtual={garantia.stage} />}
-          {tab === 'historico' && <HistoricoTab garantiaId={garantiaId} />}
+          {tab === 'historico' && <HistoricoTab garantiaId={garantiaId} garantia={garantia} isAdmin={isAdmin} />}
         </div>
       </div>
 
@@ -717,19 +717,104 @@ function AnexosTab({ garantiaId, stageAtual }: { garantiaId: number; stageAtual:
   )
 }
 
-function HistoricoTab({ garantiaId }: { garantiaId: number }) {
+// Histórico por etapa, igual ao dos Pedidos (HistoricoAccordion): cada
+// etapa abre com os dados dela (só leitura) + os eventos; o gestor clica
+// "Editar" pra corrigir os dados da etapa e no lápis pra corrigir o texto
+// de um evento (pedido do João, 2026-11-04). A Aprovação do Diretor fica
+// sempre só leitura aqui — os botões dela abrem/encerram o processo.
+function HistoricoTab({ garantiaId, garantia, isAdmin }: { garantiaId: number; garantia: GarantiaData & { comRetorno: boolean | null }; isAdmin: boolean }) {
   const { data } = trpc.garantias.core.historico.useQuery({ id: garantiaId })
+  const [abertos, setAbertos] = useState<Set<string>>(new Set())
+  const [editandoEtapa, setEditandoEtapa] = useState<string | null>(null)
+  const sequencia = getStageSequence(garantia.comRetorno)
+  const grupos = new Map<string, NonNullable<typeof data>>()
+  for (const h of data ?? []) {
+    const k = h.stage ?? 'sem_etapa'
+    grupos.set(k, [...(grupos.get(k) ?? []), h])
+  }
+  const etapas: string[] = [...sequencia, ...[...grupos.keys()].filter((k) => !(sequencia as readonly string[]).includes(k))]
+
+  function toggle(k: string) {
+    setAbertos((prev) => {
+      const next = new Set(prev)
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
+      return next
+    })
+  }
+
+  function dadosEtapa(stage: string, readonly: boolean) {
+    if (stage === 'analise') return <EtapaAnalise garantiaId={garantiaId} garantia={garantia} readonly={readonly} />
+    if (stage === 'aprovacao_diretor') return <EtapaAprovacaoDiretor garantiaId={garantiaId} garantia={garantia} readonly />
+    if ((sequencia as readonly string[]).includes(stage)) return <EtapaCampos garantiaId={garantiaId} stage={stage as Stage} garantia={garantia} readonly={readonly} />
+    return null
+  }
+
   return (
     <div className="space-y-2">
-      {(data ?? []).map((h) => (
-        <div key={h.id} className="p-2.5 rounded-lg border border-dark-700 bg-dark-900/40 text-sm">
-          <p className="text-dark-200">{h.description}</p>
-          <p className="text-xs text-dark-500 mt-0.5">
-            {h.user?.name ?? 'Sistema'} · {formatDateTime(h.createdAt)}
-          </p>
-        </div>
-      ))}
-      {(!data || data.length === 0) && <p className="text-dark-500 text-sm">Nenhum evento registrado ainda</p>}
+      {etapas.map((stage) => {
+        const eventos = grupos.get(stage) ?? []
+        const aberto = abertos.has(stage)
+        const editando = editandoEtapa === stage
+        const podeEditarDados = isAdmin && stage !== 'aprovacao_diretor' && (sequencia as readonly string[]).includes(stage)
+        return (
+          <div key={stage} className="rounded-lg border border-dark-700 overflow-hidden">
+            <button onClick={() => toggle(stage)} className="w-full flex items-center justify-between px-3 py-2.5 bg-dark-800/60 hover:bg-dark-800 text-left">
+              <span className="flex items-center gap-2 text-sm text-dark-200">
+                {aberto ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {STAGE_LABELS[stage as Stage] ?? (stage === 'sem_etapa' ? 'Outros' : stage)}
+              </span>
+              <span className="text-xs text-dark-500">{eventos.length} evento{eventos.length === 1 ? '' : 's'}</span>
+            </button>
+            {aberto && (
+              <div className="p-3 space-y-3 border-t border-dark-700">
+                {podeEditarDados && (
+                  <button onClick={() => setEditandoEtapa(editando ? null : stage)} className="text-xs font-semibold text-gold-400 hover:text-gold-300">
+                    {editando ? 'Concluir edição' : 'Editar'}
+                  </button>
+                )}
+                {dadosEtapa(stage, !editando)}
+                <div className="space-y-1.5 pt-2 border-t border-dark-700">
+                  {eventos.map((h) => (
+                    <HistoricoLinhaGarantia key={h.id} garantiaId={garantiaId} historicoId={h.id} description={h.description} userName={h.user?.name} createdAt={h.createdAt} isAdmin={isAdmin} />
+                  ))}
+                  {eventos.length === 0 && <p className="text-dark-500 text-xs">Sem eventos registrados nesta etapa</p>}
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function HistoricoLinhaGarantia({ garantiaId, historicoId, description, userName, createdAt, isAdmin }: { garantiaId: number; historicoId: number; description: string; userName?: string; createdAt: string; isAdmin: boolean }) {
+  const utils = trpc.useUtils()
+  const [editando, setEditando] = useState(false)
+  const [texto, setTexto] = useState(description)
+  const salvarMut = trpc.garantias.core.editarNotaHistorico.useMutation({
+    onSuccess: () => { toast.success('Atualizado'); setEditando(false); utils.garantias.core.historico.invalidate({ id: garantiaId }) },
+    onError: (e) => toast.error(e.message),
+  })
+
+  if (editando) {
+    return (
+      <div className="flex items-center gap-2">
+        <input value={texto} onChange={(e) => setTexto(e.target.value)} className="flex-1 bg-dark-900 border border-dark-600 rounded px-2 py-1 text-xs text-dark-100" />
+        <button onClick={() => salvarMut.mutate({ garantiaId, historicoId, description: texto })} disabled={salvarMut.isPending} className="text-green-400 hover:text-green-300"><Check size={14} /></button>
+        <button onClick={() => { setEditando(false); setTexto(description) }} className="text-dark-400 hover:text-dark-200"><X size={14} /></button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-2 text-sm">
+      <div>
+        <div className="text-dark-200">{description}</div>
+        <div className="text-dark-500 text-xs mt-0.5">{userName ?? 'Sistema'} · {formatDateTime(createdAt)}</div>
+      </div>
+      {isAdmin && <button onClick={() => setEditando(true)} className="text-dark-500 hover:text-gold-400 shrink-0" title="Corrigir o texto"><Pencil size={12} /></button>}
     </div>
   )
 }
