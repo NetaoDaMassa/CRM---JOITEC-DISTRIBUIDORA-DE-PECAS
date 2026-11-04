@@ -6,6 +6,7 @@ import { getConfigTexto } from './configuracoes.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { aprenderLocalizacoes } from './sapLocalizacoes.js'
+import { atualizarKits, dadosDaLinha } from './sapKits.js'
 
 // Fila do Controle do Estoque a partir do SAP (pedido do João, 2026-10-29).
 // Jornada no SAP: cotação → financeiro libera → pedido → estoque gera o
@@ -47,7 +48,7 @@ interface PedidoSap {
   BPL_IDAssignedToInvoice: number
   Comments: string | null
   Address2: string | null
-  DocumentLines: { LineNum: number; ItemCode: string | null; ItemDescription: string | null; WarehouseCode: string | null }[]
+  DocumentLines: { LineNum: number; ItemCode: string | null; ItemDescription: string | null; WarehouseCode: string | null; TreeType?: string | null; UoMCode?: string | null; UnitsOfMeasurment?: number | null }[]
 }
 
 export interface SyncExpedicaoResultado {
@@ -184,7 +185,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
         const linha = p?.DocumentLines.find((d) => d.LineNum === x.OrderRowID)
         const quantidade = qtdLinha(x)
         if (!linha || quantidade <= 0) return []
-        return [{ pedidoSap: p!.DocNum, orderEntrySap: x.OrderEntry, linhaPedidoSap: x.OrderRowID, itemCodigo: linha.ItemCode, descricao: (linha.ItemDescription ?? '').trim() || linha.ItemCode || '(sem descrição)', deposito: linha.WarehouseCode, quantidade }]
+        return [{ pedidoSap: p!.DocNum, orderEntrySap: x.OrderEntry, linhaPedidoSap: x.OrderRowID, itemCodigo: linha.ItemCode, descricao: (linha.ItemDescription ?? '').trim() || linha.ItemCode || '(sem descrição)', deposito: linha.WarehouseCode, quantidade, ...dadosDaLinha(linha, quantidade) }]
       })
       const dataPicking = dataSap(l.PickDate)
       // Já fechado no SAP quando apareceu aqui (faturado antes da fila
@@ -371,6 +372,13 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
       await tx.delete(sapPedidosPendentes)
       for (let i = 0; i < pendentes.length; i += 200) await tx.insert(sapPedidosPendentes).values(pendentes.slice(i, i + 200))
     })
+
+    // Kits: estrutura do SAP + linhas antigas sem quantidade do pedido.
+    try {
+      await atualizarKits(sap)
+    } catch (err) {
+      console.error('[sap-expedicao] kits:', err instanceof Error ? err.message : err)
+    }
 
     // Endereço dos itens (ficha de separação): aprende com alguns pickings
     // já separados/fechados por rodada. Erro aqui não derruba a fila.

@@ -3,9 +3,10 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArra
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
+import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
 // empresa vê só a própria fila e a própria equipe (estoques separados). Os 3
@@ -265,7 +266,24 @@ export const expedicaoRouter = router({
         db.select().from(expedicaoItens).where(eq(expedicaoItens.expedicaoId, p.id)).orderBy(asc(expedicaoItens.localizacao), asc(expedicaoItens.itemCodigo)),
         db.select().from(expedicaoErros).where(eq(expedicaoErros.expedicaoId, p.id)).orderBy(asc(expedicaoErros.id)),
       ])
-      return { itens, erros }
+      return { itens: await kitsDosItens(itens), erros }
+    }),
+
+  // Kits do SAP (estruturas) e como o estoque separa cada um. Ver lib/sapKits.ts.
+  kits: featureProcedure(FEATURE).query(async () => {
+    const kits = await db.select().from(expedicaoKits).orderBy(asc(expedicaoKits.descricao))
+    return kits.map((k) => ({ ...k, componentes: JSON.parse(k.componentes) as ComponenteKit[] }))
+  }),
+
+  definirModoKit: featureProcedure(FEATURE_DESCARTAR)
+    .input(z.object({ itemCodigo: z.string(), modo: z.enum(['kit', 'peca']) }))
+    .mutation(async ({ ctx, input }) => {
+      const r = await db
+        .update(expedicaoKits)
+        .set({ modo: input.modo, alteradoPor: ctx.user.id, alteradoEm: agoraSqlite() })
+        .where(eq(expedicaoKits.itemCodigo, input.itemCodigo))
+      if (!r.rowsAffected) throw new TRPCError({ code: 'NOT_FOUND', message: 'Kit não encontrado' })
+      return { ok: true }
     }),
 
   iniciar: featureProcedure(FEATURE)
@@ -371,7 +389,9 @@ export const expedicaoRouter = router({
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Inicie a conferência antes de conferir os itens.' })
       const item = await db.query.expedicaoItens.findFirst({ where: and(eq(expedicaoItens.id, input.itemId), eq(expedicaoItens.expedicaoId, p.id)) })
       if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item não encontrado' })
-      const confere = Math.abs(item.quantidade - input.quantidade) < 0.0001
+      // Kit sai do estoque por KIT: conta kits montados (5 PC4 = 5, não 20).
+      const esperado = item.ehKit && item.qtdVenda != null ? item.qtdVenda : item.quantidade
+      const confere = Math.abs(esperado - input.quantidade) < 0.0001
       await db
         .update(expedicaoItens)
         .set(confere ? { qtdConferida: input.quantidade, conferidoEm: agoraSqlite() } : { tentativasConferencia: item.tentativasConferencia + 1 })

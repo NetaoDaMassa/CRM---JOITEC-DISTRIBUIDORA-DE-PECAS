@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PackageCheck, RefreshCw, Printer, Undo2, Trash2 } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -41,6 +41,13 @@ const TIPOS_ERRO = [
 const STATUS_SAP: Record<string, string> = { ps_Released: 'Liberado', ps_Picked: 'Conferido no SAP', ps_Closed: 'Fechado no SAP' }
 
 const num = (n: number) => n.toLocaleString('pt-BR')
+// Kit sai por KIT (André, 2026-11-04): mostra a quantidade do pedido em kits;
+// o SAP manda o picking em unidade de estoque (5 PC4 → 20).
+type QtdItem = { quantidade: number; ehKit: boolean; qtdVenda: number | null; unidadeVenda: string | null; kit: unknown }
+const qtdSeparar = (i: QtdItem) => (i.kit && i.qtdVenda != null ? i.qtdVenda : i.quantidade)
+const textoQtd = (i: QtdItem) => (i.kit ? `${num(qtdSeparar(i))} kit${qtdSeparar(i) === 1 ? '' : 's'}` : num(i.quantidade))
+const unidadesSap = (i: QtdItem) =>
+  i.kit && i.qtdVenda != null && Math.abs(i.qtdVenda - i.quantidade) > 0.0001 ? `pedido: ${num(i.qtdVenda)} ${i.unidadeVenda ?? ''} · SAP: ${num(i.quantidade)} un.`.replace('  ', ' ') : null
 function hora(utc: string | null): string {
   if (!utc) return '—'
   return new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -85,6 +92,7 @@ export default function Expedicao() {
   const utils = trpc.useUtils()
   const [abertoId, setAbertoId] = useState<number | null>(null)
   const [verDescartados, setVerDescartados] = useState(false)
+  const [verKits, setVerKits] = useState(false)
   const [busca, setBusca] = useState('')
   // Seleção de vários pedidos (admin) pra finalizar/mover/cancelar de uma vez.
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
@@ -138,6 +146,9 @@ export default function Expedicao() {
               {selecionando ? 'Sair da seleção' : '☑ Selecionar vários'}
             </Button>
           )}
+          <Button variant="ghost" onClick={() => setVerKits(true)}>
+            🧩 Kits
+          </Button>
           <Button variant="ghost" onClick={() => setVerDescartados(true)}>
             Descartados / cancelados
           </Button>
@@ -282,6 +293,7 @@ export default function Expedicao() {
 
       {aberto && <PedidoModal pedido={aberto} colaboradores={colaboradores} onClose={() => setAbertoId(null)} />}
       {verDescartados && <DescartadosModal onClose={() => setVerDescartados(false)} />}
+      {verKits && <KitsModal podeAlterar={!!podeDescartar} onClose={() => setVerKits(false)} />}
     </div>
   )
 }
@@ -584,16 +596,36 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
               </thead>
               <tbody>
                 {data?.itens.map((i) => (
-                  <tr key={i.id} className="border-t border-dark-700/70">
-                    <td className="py-1.5 pr-3 font-mono text-xs text-dark-400">{i.localizacao ?? '—'}</td>
-                    <td className="py-1.5 pr-3 font-mono text-xs text-dark-300">{i.itemCodigo}</td>
-                    <td className="py-1.5 pr-3 text-dark-200">{i.descricao}</td>
-                    <td className="py-1.5 pr-3 text-dark-400">{i.deposito}</td>
-                    <td className="py-1.5 text-right font-mono">
-                      {conferindo && !i.conferidoEm ? <span className="text-dark-500">?</span> : num(i.quantidade)}
-                      {i.conferidoEm && <span className="ml-1 text-green-400">✓</span>}
-                    </td>
-                  </tr>
+                  <Fragment key={i.id}>
+                    <tr className="border-t border-dark-700/70">
+                      <td className="py-1.5 pr-3 font-mono text-xs text-dark-400">{i.kit?.modo === 'peca' ? '↓ peças' : i.localizacao ?? '—'}</td>
+                      <td className="py-1.5 pr-3 font-mono text-xs text-dark-300">{i.itemCodigo}</td>
+                      <td className="py-1.5 pr-3 text-dark-200">
+                        {i.kit && (
+                          <span className="mr-1.5 rounded bg-violet-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-200">
+                            KIT · {i.kit.modo === 'peca' ? 'montar com as peças' : 'por kit'}
+                          </span>
+                        )}
+                        {i.descricao}
+                      </td>
+                      <td className="py-1.5 pr-3 text-dark-400">{i.deposito}</td>
+                      <td className="py-1.5 text-right font-mono whitespace-nowrap">
+                        {conferindo && !i.conferidoEm ? <span className="text-dark-500">?</span> : textoQtd(i)}
+                        {i.conferidoEm && <span className="ml-1 text-green-400">✓</span>}
+                        {i.kit && !conferindo && unidadesSap(i) && <span className="block text-[10px] text-dark-500">{unidadesSap(i)}</span>}
+                      </td>
+                    </tr>
+                    {i.kit?.modo === 'peca' &&
+                      i.kit.pecas.map((c) => (
+                        <tr key={`${i.id}-${c.codigo}`} className="text-xs bg-violet-950/20">
+                          <td className="py-1 pr-3 pl-3 font-mono text-dark-400">{c.localizacao ?? '—'}</td>
+                          <td className="py-1 pr-3 font-mono text-dark-400">{c.codigo}</td>
+                          <td className="py-1 pr-3 text-dark-300">↳ {c.descricao}</td>
+                          <td className="py-1 pr-3 text-dark-500">{c.deposito}</td>
+                          <td className="py-1 text-right font-mono text-dark-300">{num(c.total)}</td>
+                        </tr>
+                      ))}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -703,6 +735,80 @@ function EtiquetasItensModal({ pedidoSap, itens, onClose }: { pedidoSap: string;
 
 // Pedidos descartados pelo admin (voltaram / picking refeito) — ficam
 // guardados aqui, fora da fila, com o motivo.
+// Kits do SAP (estruturas): o André/admin escolhe, kit a kit, se a ficha de
+// separação mostra o kit (uma linha) ou as peças pra montar na hora.
+function KitsModal({ podeAlterar, onClose }: { podeAlterar: boolean; onClose: () => void }) {
+  const { data = [], isLoading } = trpc.expedicao.kits.useQuery()
+  const utils = trpc.useUtils()
+  const [aberto, setAberto] = useState<string | null>(null)
+  const [busca, setBusca] = useState('')
+  const definir = trpc.expedicao.definirModoKit.useMutation({
+    onSuccess: () => (utils.expedicao.kits.invalidate(), utils.expedicao.detalhe.invalidate()),
+    onError: (e) => toast.error(e.message),
+  })
+  const t = busca.trim().toLowerCase()
+  const lista = t ? data.filter((k) => `${k.itemCodigo} ${k.descricao}`.toLowerCase().includes(t)) : data
+  return (
+    <Modal open onClose={onClose} title={`Kits do SAP (${data.length})`} size="lg">
+      <div className="space-y-3">
+        <p className="text-xs text-dark-400">
+          <b className="text-dark-200">Por kit</b>: a ficha mostra uma linha só, com a quantidade de kits. <b className="text-dark-200">Por peça</b>: a ficha lista as peças do kit
+          (já multiplicadas pela quantidade de kits, com o endereço de cada uma) para montar na hora. A conferência conta sempre os kits montados. As peças vêm da estrutura do
+          kit no SAP.
+          {!podeAlterar && ' Só o responsável do estoque pode mudar.'}
+        </p>
+        {data.length > 8 && <Input placeholder="Buscar kit por código ou nome" value={busca} onChange={(e) => setBusca(e.target.value)} />}
+        {isLoading ? (
+          <p className="text-sm text-dark-400">Carregando…</p>
+        ) : data.length === 0 ? (
+          <p className="text-sm text-dark-400">Os kits aparecem aqui depois da próxima leitura do SAP (alguns minutos).</p>
+        ) : (
+          <div className="space-y-1.5">
+            {lista.map((k) => (
+              <div key={k.itemCodigo} className="rounded-lg border border-dark-600 bg-dark-900/40 px-3 py-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" className="min-w-0 flex-1 text-left" onClick={() => setAberto(aberto === k.itemCodigo ? null : k.itemCodigo)}>
+                    <span className="block text-[11px] font-mono text-dark-400">
+                      {k.itemCodigo} · {k.componentes.length} peça(s) {aberto === k.itemCodigo ? '▲' : '▼'}
+                    </span>
+                    <span className="block text-sm text-dark-100 leading-tight">{k.descricao}</span>
+                  </button>
+                  <div className="flex rounded-lg border border-dark-600 overflow-hidden text-xs">
+                    {(['kit', 'peca'] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        disabled={!podeAlterar || definir.isPending}
+                        onClick={() => k.modo !== m && definir.mutate({ itemCodigo: k.itemCodigo, modo: m })}
+                        className={`px-2.5 py-1 ${k.modo === m ? 'bg-violet-600 text-white' : 'bg-dark-800 text-dark-300 hover:text-dark-100'} disabled:cursor-not-allowed`}
+                      >
+                        {m === 'kit' ? 'Por kit' : 'Por peça'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {aberto === k.itemCodigo && (
+                  <ul className="mt-2 space-y-0.5 border-t border-dark-700 pt-2 text-xs">
+                    {k.componentes.map((c) => (
+                      <li key={c.codigo} className="flex gap-2 text-dark-300">
+                        <span className="w-14 text-right font-mono text-dark-100">{num(c.quantidade / k.quantidadeBase)}×</span>
+                        <span className="font-mono text-dark-500">{c.codigo}</span>
+                        <span className="min-w-0 flex-1">{c.descricao}</span>
+                        <span className="text-dark-500">{c.deposito}</span>
+                      </li>
+                    ))}
+                    <li className="pt-1 text-[10px] text-dark-500">Quantidade de cada peça para 1 kit.</li>
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function DescartadosModal({ onClose }: { onClose: () => void }) {
   const { data = [] } = trpc.expedicao.descartados.useQuery()
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
@@ -804,6 +910,7 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-dark-400">{escolhido.localizacao ?? escolhido.deposito} · {escolhido.itemCodigo}</p>
             <p className="text-base font-semibold text-dark-50 leading-tight">{escolhido.descricao}</p>
+            {escolhido.kit && <p className="text-[11px] text-violet-300">KIT — conte os kits montados (não as peças)</p>}
             {escolhido.tentativasConferencia > 0 && <p className="text-[11px] text-amber-300">{escolhido.tentativasConferencia} contagem(ns) que não bateram</p>}
             <div className="flex items-center gap-1.5 mt-1">
               <input
@@ -829,7 +936,7 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
             </div>
           </div>
           <div className="w-32">
-            <Input label="Quantidade contada" type="number" min={0} step="any" autoFocus value={qtd} onChange={(e) => (setQtd(e.target.value), setAviso(null))} />
+            <Input label={escolhido.kit ? 'Kits contados' : 'Quantidade contada'} type="number" min={0} step="any" autoFocus value={qtd} onChange={(e) => (setQtd(e.target.value), setAviso(null))} />
           </div>
           <Button type="submit" size="lg" disabled={qtd === ''} loading={conferir.isPending}>
             Conferir
@@ -867,12 +974,19 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
 // com os itens já em ordem de localização.
 function imprimirFolha(p: Pedido, itens: ItemDetalhe[]) {
   const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
-  const total = itens.reduce((s, i) => s + i.quantidade, 0)
+  const total = itens.reduce((s, i) => s + qtdSeparar(i), 0)
+  const linha = (loc: string | null, dep: string | null, cod: string | null, desc: string, qtd: string, cls = '') =>
+    `<tr class="${cls}"><td class="c"><span class="box"></span></td><td><b class="loc">${esc(loc ?? '—')}</b><div class="dep">${esc(dep)}</div></td><td class="mono">${esc(cod)}</td><td>${desc}</td><td class="r q">${qtd}</td><td class="c"><span class="escr"></span></td></tr>`
   const linhas = itens
-    .map(
-      (i) =>
-        `<tr><td class="c"><span class="box"></span></td><td><b class="loc">${esc(i.localizacao ?? '—')}</b><div class="dep">${esc(i.deposito)}</div></td><td class="mono">${esc(i.itemCodigo)}</td><td>${esc(i.descricao)}</td><td class="r q">${num(i.quantidade)}</td><td class="c"><span class="escr"></span></td></tr>`
-    )
+    .map((i) => {
+      if (!i.kit) return linha(i.localizacao, i.deposito, i.itemCodigo, esc(i.descricao), num(i.quantidade))
+      const sap = unidadesSap(i)
+      if (i.kit.modo === 'kit')
+        return linha(i.localizacao, i.deposito, i.itemCodigo, `<span class="kit">KIT</span> ${esc(i.descricao)}${sap ? `<div class="dep">${esc(sap)}</div>` : ''}`, esc(textoQtd(i)))
+      // Por peça: o kit vira título e as peças (já multiplicadas) logo abaixo.
+      const cab = `<tr class="kitcab"><td class="c"><span class="box"></span></td><td colspan="3"><span class="kit">MONTAR KIT</span> <span class="mono">${esc(i.itemCodigo)}</span> ${esc(i.descricao)}${sap ? ` <span class="dep">(${esc(sap)})</span>` : ''}</td><td class="r q">${esc(textoQtd(i))}</td><td></td></tr>`
+      return cab + i.kit.pecas.map((c) => linha(c.localizacao, c.deposito, c.codigo, `↳ ${esc(c.descricao)}`, num(c.total), 'peca')).join('')
+    })
     .join('')
   const w = window.open('', '_blank')
   if (!w) return toast.error('O navegador bloqueou a janela de impressão')
@@ -884,11 +998,12 @@ function imprimirFolha(p: Pedido, itens: ItemDetalhe[]) {
 table{width:100%;border-collapse:collapse;font-size:12.5px}th{font-size:10px;text-transform:uppercase;color:#555;text-align:left;border-bottom:1.5px solid #111;padding:5px}
 td{border-bottom:1px solid #ccc;padding:7px 5px}.c{text-align:center}.r{text-align:right}.q{font-size:15px;font-weight:700}.mono{font-family:monospace}
 .loc{font-family:monospace;font-size:14px}.dep{font-size:10px;color:#666}.box{display:inline-block;width:16px;height:16px;border:1.5px solid #111}.escr{display:inline-block;width:50px;border-bottom:1px solid #111;height:16px}
+.kit{display:inline-block;background:#111;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle}.kitcab td{background:#f3f0ff;border-bottom:1px solid #999}.peca td{padding-left:14px}
 .rod{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px;font-size:10px;text-transform:uppercase;color:#555}.rod span{display:block;border-bottom:1px solid #111;height:24px}
 @page{size:A4;margin:12mm}</style></head><body>
 <div class="topo"><div><h1>Folha de Separação</h1><div class="sub">Gerada pelo CRM com dados do SAP</div></div><div><div class="sub">Picking</div><div class="n">${esc(p.pickListSap)}</div></div></div>
 <div class="info"><div><b>Pedido</b>${esc(p.pedidosSap)}</div><div><b>Data do picking</b>${esc(p.dataPicking.split('-').reverse().join('/'))}</div><div><b>Vendedor</b>${esc(p.vendedorSap)}</div>
-<div style="grid-column:1/-1"><b>Cliente</b>${esc(p.clienteCodigo)} ${esc(p.clienteNome)}</div><div><b>Itens / peças</b>${itens.length} / ${num(total)}</div><div><b>Separador</b>________________</div><div><b>Início / fim</b>____:____ / ____:____</div></div>
+<div style="grid-column:1/-1"><b>Cliente</b>${esc(p.clienteCodigo)} ${esc(p.clienteNome)}</div><div><b>Itens / quantidade</b>${itens.length} / ${num(total)}</div><div><b>Separador</b>________________</div><div><b>Início / fim</b>____:____ / ____:____</div></div>
 ${p.observacaoSap ? `<div class="obs">🚚 ${esc(p.observacaoSap)}</div>` : ''}
 <table><thead><tr><th>✓</th><th>Localização</th><th>Código</th><th>Produto</th><th class="r">Separar</th><th>Separado</th></tr></thead><tbody>${linhas}</tbody></table>
 <div class="rod"><div>Volumes<span></span></div><div>Peso (kg)<span></span></div><div>Conferido por<span></span></div><div>Erros<span></span></div></div>

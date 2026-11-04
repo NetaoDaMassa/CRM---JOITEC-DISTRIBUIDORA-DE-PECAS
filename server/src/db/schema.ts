@@ -4535,6 +4535,13 @@ export const expedicaoItens = sqliteTable(
     // vem de sap_item_localizacao (onde o item foi retirado da última vez
     // nos pickings fechados do SAP); vazio se o SAP nunca registrou.
     localizacao: text('localizacao'),
+    // Kit (estrutura de produção no SAP, ex.: KIT AMORTECEDOR): o picking
+    // manda a quantidade em unidade de ESTOQUE (5 PC4 → 20); a ficha mostra
+    // a do pedido (qtdVenda + unidadeVenda = 5 PC4) e a conferência conta
+    // kits. qtdVenda null = linha ainda não lida do pedido.
+    ehKit: integer('eh_kit', { mode: 'boolean' }).notNull().default(false),
+    qtdVenda: real('qtd_venda'),
+    unidadeVenda: text('unidade_venda'),
     // Conferência item a item, às cegas (pedido do João, 2026-10-29): o
     // conferente digita a quantidade contada sem ver a do pedido; só fica
     // conferido quando bate. Cada contagem que não bateu soma uma tentativa.
@@ -4601,6 +4608,23 @@ export const sapItemLocalizacao = sqliteTable(
 export const sapLocalizacaoPicksLidos = sqliteTable('sap_localizacao_picks_lidos', {
   pickListSap: integer('pick_list_sap').primaryKey(),
   lidoEm: text('lido_em').notNull().default(sql`(datetime('now'))`),
+})
+
+// Kits do SAP (estruturas de produção — ProductTrees) e como o estoque
+// separa cada um (André, 2026-11-04: "montamos na hora da separação";
+// padrão "por kit"): 'kit' = uma linha na ficha; 'peca' = a ficha lista as
+// peças da estrutura (quantidade × kits, com endereço de cada peça).
+export const expedicaoKits = sqliteTable('expedicao_kits', {
+  itemCodigo: text('item_codigo').primaryKey(),
+  descricao: text('descricao').notNull(),
+  modo: text('modo', { enum: ['kit', 'peca'] }).notNull().default('kit'),
+  // Estrutura do SAP: componentes pra `quantidadeBase` unidades do kit.
+  quantidadeBase: real('quantidade_base').notNull().default(1),
+  // JSON: [{ codigo, descricao, quantidade, deposito }]
+  componentes: text('componentes').notNull().default('[]'),
+  atualizadoSapEm: text('atualizado_sap_em'),
+  alteradoPor: integer('alterado_por').references(() => users.id, { onDelete: 'set null' }),
+  alteradoEm: text('alterado_em'),
 })
 
 export const sapPedidosPendentes = sqliteTable(
