@@ -79,8 +79,6 @@ function quemAgora(p: Pedido): string | null {
   return null
 }
 
-const CHAVE_ESTACAO = 'expedicao_estacao'
-
 export default function Expedicao() {
   const { data: fila, isLoading } = trpc.expedicao.fila.useQuery(undefined, { refetchInterval: 30_000 })
   const { data: colaboradores = [] } = trpc.expedicao.colaboradores.useQuery()
@@ -99,20 +97,6 @@ export default function Expedicao() {
       else n.add(id)
       return n
     })
-  const [estacao, setEstacao] = useState<string>(() => {
-    try {
-      return localStorage.getItem(CHAVE_ESTACAO) ?? ''
-    } catch {
-      return ''
-    }
-  })
-  useEffect(() => {
-    try {
-      localStorage.setItem(CHAVE_ESTACAO, estacao)
-    } catch {
-      /* navegador sem localStorage: só não lembra a escolha */
-    }
-  }, [estacao])
 
   const sincronizar = trpc.expedicao.sincronizarAgora.useMutation({
     onSuccess(r) {
@@ -127,7 +111,7 @@ export default function Expedicao() {
     if (!t) return fila ?? []
     return (fila ?? []).filter((p) => `${p.pedidosSap} ${p.clienteNome} ${p.nfNumero ?? ''} ${p.pickListSap}`.toLowerCase().includes(t))
   }, [fila, busca])
-  const colunas = estacao ? COLUNAS.filter((c) => c.etapa === estacao) : COLUNAS
+  const colunas = COLUNAS
   const aberto = fila?.find((p) => p.id === abertoId) ?? null
   const listaAtrasados = (fila ?? []).filter((p) => p.etapa !== 'coletado' && p.horasRestantes < 0).sort((a, b) => a.horasRestantes - b.horasRestantes)
   const atrasados = listaAtrasados.length
@@ -148,12 +132,6 @@ export default function Expedicao() {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <Select
-            label="Este computador"
-            value={estacao}
-            onChange={(e) => setEstacao(e.target.value)}
-            options={[{ value: '', label: 'Todas as etapas' }, ...COLUNAS.slice(0, 5).map((c) => ({ value: c.etapa, label: c.titulo }))]}
-          />
           <Input label="Buscar" placeholder="pedido, cliente, NF" value={busca} onChange={(e) => setBusca(e.target.value)} />
           {podeDescartar && (
             <Button variant={selecionando ? 'primary' : 'ghost'} onClick={() => (setSelecionando((v) => !v), setSelecionados(new Set()))}>
@@ -180,7 +158,6 @@ export default function Expedicao() {
           'Com a NF emitida, agende a coleta (transportadora, dia e hora). Sem NF não dá para agendar.',
           'Quando a transportadora levar, toque em "Coletado". O prazo de 48h conta do picking até aqui.',
         ]}
-        dicas={['Escolha em "Este computador" a etapa feita aqui — a tela mostra só essa coluna.']}
       />
 
       {selecionando && (
@@ -216,7 +193,7 @@ export default function Expedicao() {
       {isLoading ? (
         <div className="h-64 rounded-2xl bg-dark-800 animate-pulse" />
       ) : (
-        <div className={`grid gap-3 ${estacao ? 'grid-cols-1' : 'grid-cols-1 md:grid-cols-3 2xl:grid-cols-6'}`}>
+        <div className={"grid gap-3 grid-cols-1 md:grid-cols-3 2xl:grid-cols-6"}>
           {colunas.map((col) => {
             // Card antigo em 'agendamento' aparece junto na coluna NF.
             const doCol = filtrados.filter((p) => (p.etapa === 'agendamento' ? 'nf' : p.etapa) === col.etapa)
@@ -227,7 +204,7 @@ export default function Expedicao() {
                   <h2 className="text-sm font-semibold text-dark-100">{col.titulo}</h2>
                   <span className="ml-auto text-xs text-dark-400">{doCol.length}</span>
                 </div>
-                <div className={estacao ? 'grid gap-2 sm:grid-cols-2 xl:grid-cols-3' : 'space-y-2'}>
+                <div className="space-y-2">
                   {doCol.length === 0 && <p className="text-xs text-dark-500 px-1">Nada aqui.</p>}
                   {doCol.map((p) => (
                     <button
