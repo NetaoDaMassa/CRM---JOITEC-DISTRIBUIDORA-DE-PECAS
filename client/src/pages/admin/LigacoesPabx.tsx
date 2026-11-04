@@ -511,7 +511,7 @@ function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: number; partes: num
           <div key={u} className="flex items-center gap-2">
             {urls.length > 1 && <span className="text-xs text-dark-400">Parte {i + 1}</span>}
             <audio controls autoPlay={i === 0} src={u} className="h-9 w-full max-w-md" />
-            <a href={u} download={`ligacao-${ligacaoId}${urls.length > 1 ? `-${i + 1}` : ''}.mp3`} className="text-xs text-gold-400 hover:underline whitespace-nowrap">
+            <a href={u} download={`ligacao-${ligacaoId}${urls.length > 1 ? `-${i + 1}` : ''}.wav`} className="text-xs text-gold-400 hover:underline whitespace-nowrap">
               baixar
             </a>
           </div>

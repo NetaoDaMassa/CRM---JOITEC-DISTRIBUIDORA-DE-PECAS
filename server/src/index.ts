@@ -501,12 +501,17 @@ app.get('/pabx-gravacao/:id', async (req, res) => {
     const tipo = resp.headers.get('content-type') ?? ''
     // "Parâmetros inválidos!" / link vencido vem como página HTML, não áudio.
     if (/text\/|json/i.test(tipo)) return res.status(502).json({ error: `PABXONE360 não devolveu o áudio: ${(await resp.text()).replace(/<[^>]+>/g, ' ').trim().slice(0, 120)}` })
-    res.setHeader('Content-Type', /audio/i.test(tipo) ? tipo : 'audio/mpeg')
-    const tamanho = resp.headers.get('content-length')
-    if (tamanho) res.setHeader('Content-Length', tamanho)
-    res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}${parte ? `-${parte + 1}` : ''}.mp3"`)
+    // Vem como application/force-download; o arquivo é WAV ("RIFF") —
+    // descobre pelo começo do arquivo pro navegador tocar.
+    const audio = Buffer.from(await resp.arrayBuffer())
+    const inicio = audio.subarray(0, 4).toString('latin1')
+    const [mime, ext] =
+      inicio === 'RIFF' ? ['audio/wav', 'wav'] : inicio === 'OggS' ? ['audio/ogg', 'ogg'] : /audio/i.test(tipo) ? [tipo, 'mp3'] : ['audio/mpeg', 'mp3']
+    res.setHeader('Content-Type', mime)
+    res.setHeader('Content-Length', String(audio.length))
+    res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}${parte ? `-${parte + 1}` : ''}.${ext}"`)
     res.setHeader('Cache-Control', 'private, max-age=3600')
-    res.end(Buffer.from(await resp.arrayBuffer()))
+    res.end(audio)
   } catch (e) {
     const causa = (e as { cause?: { code?: string } }).cause?.code ?? (e as Error).message
     res.status(502).json({ error: `Não consegui buscar a gravação na PABXONE360 (${causa})` })
