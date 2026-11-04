@@ -495,7 +495,9 @@ function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: number; partes: num
           headers: { Authorization: `Bearer ${token}`, ...(empresa ? { 'x-empresa-id': empresa } : {}) },
         })
         if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `erro ${r.status}`)
-        lista.push(URL.createObjectURL(await r.blob()))
+        const audio = await r.blob()
+        if (!audio.type.startsWith('audio')) throw new Error('O servidor não devolveu o áudio — avise o suporte do CRM')
+        lista.push(URL.createObjectURL(audio))
       }
       setUrls(lista)
     } catch (e) {
