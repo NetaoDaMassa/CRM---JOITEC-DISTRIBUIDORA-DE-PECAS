@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, lte, notInArray } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lte, notInArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoItens, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
@@ -60,6 +60,7 @@ export interface SyncExpedicaoResultado {
   foraDoEscopo: number
   atrasados: number
   localizacoes: number
+  descartadosSap: number
 }
 
 // "2026-10-20" + "09:17:00" (horário de Brasília) → UTC no formato do SQLite.
@@ -107,7 +108,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
     for (const o of e.orderEntriesSap.split(',').map(Number)) porPedido.set(o, [...(porPedido.get(o) ?? []), e])
   }
 
-  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0 }
+  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0 }
 
   await comSessaoSap(async (sap) => {
     const listas = await sap.getTodos<PickListSap>(
@@ -117,6 +118,14 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
     resultado.listasNoSap = listas.length
 
     const qtdLinha = (x: PickListSap['PickListsLines'][number]) => Math.max(x.ReleasedQuantity ?? 0, x.PickedQuantity ?? 0, x.PreviouslyReleasedQuantity ?? 0)
+    // Picking descartado no SAP = fechado sem nada separado (o estoque refaz
+    // e o SAP gera outro número pro mesmo pedido). Visto em 2026-11-04:
+    // 12027 → 12045, 12084 → 12090… — o fechado normal tem PickedQuantity.
+    const canceladoNoSap = (l: PickListSap) => l.Status === 'ps_Closed' && l.PickListsLines.every((x) => !x.PickedQuantity)
+    const pickingNovoDoPedido = (l: PickListSap, ordens: Set<number>) =>
+      listas
+        .filter((x) => x.Absoluteentry > l.Absoluteentry && x.PickListsLines.some((y) => y.BaseObjectType === 17 && ordens.has(y.OrderEntry)))
+        .reduce<number | null>((m, x) => (m == null || x.Absoluteentry > m ? x.Absoluteentry : m), null)
 
     // Quem já está na fila: status no SAP + o SAP mudou os itens do picking?
     const alterados: { id: number; resumo: string }[] = []
@@ -124,6 +133,22 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
       const e = porLista.get(l.Absoluteentry)
       if (!e) continue
       await db.update(expedicaoPedidos).set({ statusPickingSap: l.Status }).where(eq(expedicaoPedidos.id, e.id))
+      // Descartado no SAP: o card sai do quadro sozinho quando o picking
+      // novo do pedido já existe (ele entra abaixo, marcado como alterado).
+      if (!e.historico && !['coletado', 'descartado', 'cancelado'].includes(e.etapa) && canceladoNoSap(l)) {
+        const novo = pickingNovoDoPedido(l, new Set(e.orderEntriesSap.split(',').map(Number)))
+        if (novo) {
+          await db
+            .update(expedicaoPedidos)
+            .set({ etapa: 'descartado', descartadoEm: agoraSqlite(), descartadoPor: null, motivoDescarte: `Picking ${l.Absoluteentry} descartado no SAP — refeito no picking ${novo}`, updatedAt: agoraSqlite() })
+            .where(eq(expedicaoPedidos.id, e.id))
+          e.etapa = 'descartado'
+          resultado.descartadosSap++
+        } else {
+          alterados.push({ id: e.id, resumo: `Picking ${l.Absoluteentry} foi fechado no SAP sem nada separado (descartado?) e ainda não há picking novo pro pedido — confira no SAP.` })
+        }
+        continue
+      }
       if (e.historico || ['coletado', 'descartado', 'cancelado'].includes(e.etapa) || l.Status === 'ps_Closed') continue
       const guardados = await db
         .select({ o: expedicaoItens.orderEntrySap, linha: expedicaoItens.linhaPedidoSap, q: expedicaoItens.quantidade, d: expedicaoItens.descricao })
@@ -150,7 +175,17 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
       await db.update(expedicaoPedidos).set({ alteradoSapEm: agoraSqlite(), alteracaoSap: a.resumo }).where(eq(expedicaoPedidos.id, a.id))
     }
 
-    const novas = listas.filter((l) => !porLista.has(l.Absoluteentry) && l.PickListsLines.some((x) => x.BaseObjectType === 17))
+    // Picking descartado no SAP nunca vira card; e card que o admin
+    // descartou só é recriado se o picking dele ainda está aberto no SAP
+    // (antes um fechado voltava pro quadro depois de descartado).
+    const jaDescartados = new Set(existentes.filter((e) => ['descartado', 'cancelado'].includes(e.etapa)).map((e) => e.pickListSap))
+    const novas = listas.filter(
+      (l) =>
+        !porLista.has(l.Absoluteentry) &&
+        l.PickListsLines.some((x) => x.BaseObjectType === 17) &&
+        !canceladoNoSap(l) &&
+        !(l.Status === 'ps_Closed' && jaDescartados.has(l.Absoluteentry))
+    )
     const entries = [...new Set(novas.flatMap((l) => l.PickListsLines.filter((x) => x.BaseObjectType === 17).map((x) => x.OrderEntry)))]
     const pedidos = new Map<number, PedidoSap>()
     for (let i = 0; i < entries.length; i += 15) {
@@ -201,6 +236,8 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
         dataPicking === hoje ? agoraSqlite() : brParaUtc(dataPicking, dataSap(principal.DocDate) === dataPicking ? principal.DocTime : null)
       const inicioPrazo = anteriores.reduce((m, a) => (a.inicioPrazo < m ? a.inicioPrazo : m), inicioPrazoProprio)
       const substituiId = anteriores.length ? Math.max(...anteriores.map((a) => a.id)) : null
+      const { marcas, mudancas } = await compararComAnterior(anteriores, new Set(doPedido.map((p) => p.DocEntry)), itens)
+      const marcados = itens.map((i, n) => ({ ...i, ...marcas[n] }))
       const cotacao = /Cota[cç][õo]es de vendas ([\d, ]+)/i.exec(principal.Comments ?? '')?.[1]?.trim() ?? null
 
       await db.transaction(async (tx) => {
@@ -224,6 +261,7 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
           etapa: historico ? 'coletado' : 'separacao',
           historico,
           substituiId,
+          mudancasSap: mudancas,
         })
         const id = Number(r.lastInsertRowid)
         // Card antigo do mesmo pedido ainda na fila: avisa pro admin descartar.
@@ -233,10 +271,39 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
             .set({ alteradoSapEm: agoraSqlite(), alteracaoSap: `O SAP gerou um picking novo (${l.Absoluteentry}) para este pedido — descarte este card; o novo já está na fila.` })
             .where(eq(expedicaoPedidos.id, a.id))
         }
-        if (itens.length) await tx.insert(expedicaoItens).values(itens.map((i) => ({ ...i, expedicaoId: id })))
+        if (marcados.length) await tx.insert(expedicaoItens).values(marcados.map((i) => ({ ...i, expedicaoId: id })))
       })
       resultado.novas++
       if (historico) resultado.historicas++
+    }
+
+    // Cards que entraram antes disso existir (ou cujo anterior só foi
+    // descartado depois): marca o que mudou em relação ao anterior.
+    const semMarca = await db
+      .select({ id: expedicaoPedidos.id, orderEntriesSap: expedicaoPedidos.orderEntriesSap })
+      .from(expedicaoPedidos)
+      .where(
+        and(
+          isNull(expedicaoPedidos.mudancasSap),
+          isNotNull(expedicaoPedidos.substituiId),
+          eq(expedicaoPedidos.historico, false),
+          notInArray(expedicaoPedidos.etapa, ['coletado', 'cancelado', 'descartado'])
+        )
+      )
+    for (const c of semMarca) {
+      const ordens = new Set(c.orderEntriesSap.split(',').map(Number))
+      const anteriores = [...ordens].flatMap((o) => (porPedido.get(o) ?? []).filter((a) => a.id < c.id))
+      const itensCard = await db
+        .select({ id: expedicaoItens.id, orderEntrySap: expedicaoItens.orderEntrySap, linhaPedidoSap: expedicaoItens.linhaPedidoSap, quantidade: expedicaoItens.quantidade })
+        .from(expedicaoItens)
+        .where(eq(expedicaoItens.expedicaoId, c.id))
+      if (itensCard.some((i) => i.orderEntrySap == null)) continue
+      const { marcas, mudancas } = await compararComAnterior(anteriores, ordens, itensCard as { id: number; orderEntrySap: number; linhaPedidoSap: number; quantidade: number }[])
+      if (!mudancas) continue
+      await db.transaction(async (tx) => {
+        await tx.update(expedicaoPedidos).set({ mudancasSap: mudancas }).where(eq(expedicaoPedidos.id, c.id))
+        for (const [n, i] of itensCard.entries()) if (marcas[n].mudancaSap) await tx.update(expedicaoItens).set(marcas[n]).where(eq(expedicaoItens.id, i.id))
+      })
     }
 
     // NF-e de quem ainda não tem (nota de venda baseada no pedido da lista).
@@ -392,6 +459,41 @@ export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado>
 
   resultado.atrasados = await avisarAtrasados()
   return resultado
+}
+
+// Compara os itens de um picking novo com o card anterior do mesmo pedido
+// (o mais novo que foi descartado ou ainda está na fila; coletado = outra
+// entrega, não é alteração). Chave = linha do pedido no SAP.
+async function compararComAnterior(
+  anteriores: { id: number; etapa: string; pickListSap: number }[],
+  ordens: Set<number>,
+  itens: { orderEntrySap: number; linhaPedidoSap: number; quantidade: number }[]
+): Promise<{ marcas: { mudancaSap: 'novo' | 'qtd' | null; qtdAnterior: number | null }[]; mudancas: string | null }> {
+  const marcas = itens.map(() => ({ mudancaSap: null as 'novo' | 'qtd' | null, qtdAnterior: null as number | null }))
+  const validos = anteriores.filter((a) => !['coletado', 'cancelado'].includes(a.etapa))
+  if (!validos.length) return { marcas, mudancas: null }
+  const ultimo = validos.reduce((m, a) => (a.id > m.id ? a : m))
+  const velhos = (
+    await db
+      .select({ o: expedicaoItens.orderEntrySap, linha: expedicaoItens.linhaPedidoSap, q: expedicaoItens.quantidade, d: expedicaoItens.descricao })
+      .from(expedicaoItens)
+      .where(eq(expedicaoItens.expedicaoId, ultimo.id))
+  ).filter((v) => v.o == null || ordens.has(v.o))
+  if (!velhos.length || velhos.some((v) => v.o == null)) return { marcas, mudancas: null }
+  const antes = new Map(velhos.map((v) => [`${v.o}:${v.linha}`, v]))
+  itens.forEach((i, n) => {
+    const v = antes.get(`${i.orderEntrySap}:${i.linhaPedidoSap}`)
+    if (!v) marcas[n].mudancaSap = 'novo'
+    else if (Math.abs(v.q - i.quantidade) > 0.0001) marcas[n] = { mudancaSap: 'qtd', qtdAnterior: v.q }
+  })
+  const agora = new Set(itens.map((i) => `${i.orderEntrySap}:${i.linhaPedidoSap}`))
+  const mudancas = JSON.stringify({
+    pickingAnterior: ultimo.pickListSap,
+    novos: marcas.filter((m) => m.mudancaSap === 'novo').length,
+    alterados: marcas.filter((m) => m.mudancaSap === 'qtd').length,
+    removidos: [...antes.entries()].filter(([k]) => !agora.has(k)).map(([, v]) => ({ descricao: v.d, quantidade: v.q })),
+  })
+  return { marcas, mudancas }
 }
 
 // Passou das 48h do picking sem coleta: avisa (uma vez por pedido) quem tem

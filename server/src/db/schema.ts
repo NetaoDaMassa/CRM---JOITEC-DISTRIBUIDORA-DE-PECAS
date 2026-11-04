@@ -4492,6 +4492,12 @@ export const expedicaoPedidos = sqliteTable(
     // Card anterior do mesmo pedido (descartado/substituído) — o prazo de
     // 48h continua contando do primeiro picking (João, 2026-10-29).
     substituiId: integer('substitui_id'),
+    // Picking refeito no SAP (o antigo foi fechado sem separar e veio outro
+    // pro mesmo pedido): o que mudou em relação ao card anterior, em JSON
+    // { pickingAnterior, novos, alterados, removidos: [{ descricao, quantidade }] }
+    // (João, 2026-11-04: "só muda o número do picking — queremos que mostre
+    // que foi alterado").
+    mudancasSap: text('mudancas_sap'),
     // Descartado pelo admin (permissão expedicao_descartar): sai da fila e
     // das contas de prazo, fica na lista "Descartados" com o motivo.
     descartadoEm: text('descartado_em'),
@@ -4542,6 +4548,10 @@ export const expedicaoItens = sqliteTable(
     ehKit: integer('eh_kit', { mode: 'boolean' }).notNull().default(false),
     qtdVenda: real('qtd_venda'),
     unidadeVenda: text('unidade_venda'),
+    // Picking refeito: 'novo' = linha que não estava no picking anterior;
+    // 'qtd' = quantidade mudou (qtdAnterior = a de antes, unidade de estoque).
+    mudancaSap: text('mudanca_sap', { enum: ['novo', 'qtd'] }),
+    qtdAnterior: real('qtd_anterior'),
     // Conferência item a item, às cegas (pedido do João, 2026-10-29): o
     // conferente digita a quantidade contada sem ver a do pedido; só fica
     // conferido quando bate. Cada contagem que não bateu soma uma tentativa.

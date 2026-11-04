@@ -48,6 +48,27 @@ const qtdSeparar = (i: QtdItem) => (i.kit && i.qtdVenda != null ? i.qtdVenda : i
 const textoQtd = (i: QtdItem) => (i.kit ? `${num(qtdSeparar(i))} kit${qtdSeparar(i) === 1 ? '' : 's'}` : num(i.quantidade))
 const unidadesSap = (i: QtdItem) =>
   i.kit && i.qtdVenda != null && Math.abs(i.qtdVenda - i.quantidade) > 0.0001 ? `pedido: ${num(i.qtdVenda)} ${i.unidadeVenda ?? ''} · SAP: ${num(i.quantidade)} un.`.replace('  ', ' ') : null
+// Picking refeito no SAP (João, 2026-11-04): o card novo mostra o que mudou
+// em relação ao anterior — antes só mudava o número do picking.
+type Mudancas = { pickingAnterior: number; novos: number; alterados: number; removidos: { descricao: string; quantidade: number }[] }
+function lerMudancas(p: { mudancasSap: string | null }): Mudancas | null {
+  try {
+    return p.mudancasSap ? (JSON.parse(p.mudancasSap) as Mudancas) : null
+  } catch {
+    return null
+  }
+}
+function resumoMudancas(m: Mudancas): string {
+  const partes = [
+    m.novos ? `${m.novos} item${m.novos > 1 ? 's' : ''} novo${m.novos > 1 ? 's' : ''}` : '',
+    m.alterados ? `${m.alterados} quantidade${m.alterados > 1 ? 's' : ''} alterada${m.alterados > 1 ? 's' : ''}` : '',
+    m.removidos.length ? `${m.removidos.length} item${m.removidos.length > 1 ? 's' : ''} retirado${m.removidos.length > 1 ? 's' : ''}` : '',
+  ].filter(Boolean)
+  return partes.length ? partes.join(' · ') : 'itens e quantidades iguais'
+}
+// Quantidade de antes na mesma unidade que a ficha mostra (kit = kits).
+const textoAntes = (i: QtdItem & { qtdAnterior: number | null }) =>
+  i.qtdAnterior == null ? '' : num(i.kit && i.qtdVenda != null && i.quantidade ? Math.round((i.qtdAnterior * i.qtdVenda) / i.quantidade * 1000) / 1000 : i.qtdAnterior)
 function hora(utc: string | null): string {
   if (!utc) return '—'
   return new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -246,7 +267,14 @@ export default function Expedicao() {
                       {p.pausadoEm && (
                         <p className="text-[11px] font-semibold text-dark-200 bg-dark-700 border border-dark-500 rounded px-1.5 py-0.5 mt-1">⏸ Pausado — {p.pausaMotivo}</p>
                       )}
-                      {p.substituiId && <p className="text-[10px] text-dark-400 mt-1">↻ recriado (substitui um card descartado)</p>}
+                      {lerMudancas(p) ? (
+                        <p className="text-[11px] font-semibold text-sky-100 bg-sky-900/40 border border-sky-600/60 rounded px-1.5 py-0.5 mt-1">
+                          ✎ PEDIDO ALTERADO — picking {lerMudancas(p)!.pickingAnterior} → {p.pickListSap}
+                          <span className="block font-normal text-sky-200/90">{resumoMudancas(lerMudancas(p)!)}</span>
+                        </p>
+                      ) : (
+                        p.substituiId && <p className="text-[10px] text-dark-400 mt-1">↻ recriado (substitui um card descartado)</p>
+                      )}
                       {p.observacaoSap && <p className="text-[11px] text-amber-300/90 mt-1 line-clamp-1">🚚 {p.observacaoSap}</p>}
                       {quemAgora(p) && <p className="text-[11px] text-cyan-300 mt-1">{quemAgora(p)}</p>}
                       {(p.separacaoFim || p.conferenciaFim || p.embalagemFim) && (
@@ -315,6 +343,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const removerErro = trpc.expedicao.removerErro.useMutation(opts)
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
   const [descartando, setDescartando] = useState(false)
+  const mudancas = lerMudancas(p)
   const [motivo, setMotivo] = useState(p.alteracaoSap ? 'Pedido alterado no SAP — picking refeito' : '')
   const descartar = trpc.expedicao.descartar.useMutation({
     onSuccess(r) {
@@ -392,6 +421,20 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             <p className="text-xs text-orange-200/90">
               {podeDescartar ? 'Descarte este pedido: ele vai para "Descartados" e o card novo é criado com o picking atual do SAP.' : 'Chame um administrador para descartar este pedido e recriar com o picking atual.'}
             </p>
+          </div>
+        )}
+        {mudancas && (
+          <div className="text-sm text-sky-100 bg-sky-900/25 border border-sky-600/50 rounded-lg px-3 py-2 space-y-1">
+            <p className="font-semibold">
+              ✎ Pedido alterado — refeito no SAP (picking {mudancas.pickingAnterior} → {p.pickListSap}): {resumoMudancas(mudancas)}
+            </p>
+            <p className="text-xs text-sky-200/90">Os itens novos e as quantidades que mudaram estão marcados na lista abaixo e na ficha impressa.</p>
+            {mudancas.removidos.length > 0 && (
+              <p className="text-xs text-red-200">
+                Retirado{mudancas.removidos.length > 1 ? 's' : ''} do pedido (não separar / devolver se já separou):{' '}
+                {mudancas.removidos.map((r) => `${r.descricao} (${num(r.quantidade)})`).join('; ')}
+              </p>
+            )}
           </div>
         )}
         {p.observacaoSap && <p className="text-sm font-medium text-amber-200 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2">🚚 {p.observacaoSap}</p>}
@@ -606,6 +649,8 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                             KIT · {i.kit.modo === 'peca' ? 'montar com as peças' : 'por kit'}
                           </span>
                         )}
+                        {i.mudancaSap === 'novo' && <span className="mr-1.5 rounded bg-sky-700 px-1.5 py-0.5 text-[10px] font-bold text-white">NOVO</span>}
+                        {i.mudancaSap === 'qtd' && <span className="mr-1.5 rounded bg-sky-700 px-1.5 py-0.5 text-[10px] font-bold text-white">QTD ALTERADA</span>}
                         {i.descricao}
                       </td>
                       <td className="py-1.5 pr-3 text-dark-400">{i.deposito}</td>
@@ -613,6 +658,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                         {conferindo && !i.conferidoEm ? <span className="text-dark-500">?</span> : textoQtd(i)}
                         {i.conferidoEm && <span className="ml-1 text-green-400">✓</span>}
                         {i.kit && !conferindo && unidadesSap(i) && <span className="block text-[10px] text-dark-500">{unidadesSap(i)}</span>}
+                        {i.mudancaSap === 'qtd' && !conferindo && <span className="block text-[10px] text-sky-300">antes: {textoAntes(i)}</span>}
                       </td>
                     </tr>
                     {i.kit?.modo === 'peca' &&
@@ -833,7 +879,7 @@ function DescartadosModal({ onClose }: { onClose: () => void }) {
                   <b>Pedido {d.pedidosSap}</b> · picking {d.pickListSap} · {d.clienteNome}
                 </p>
                 <p className="text-xs text-dark-400">
-                  {hora(d.descartadoEm)} · {d.por ?? '—'}
+                  {hora(d.descartadoEm)} · {d.por ?? 'SAP (automático)'}
                 </p>
               </div>
               <p className="text-sm text-red-300">Motivo: {d.motivoDescarte}</p>
@@ -977,14 +1023,17 @@ function imprimirFolha(p: Pedido, itens: ItemDetalhe[]) {
   const total = itens.reduce((s, i) => s + qtdSeparar(i), 0)
   const linha = (loc: string | null, dep: string | null, cod: string | null, desc: string, qtd: string, cls = '') =>
     `<tr class="${cls}"><td class="c"><span class="box"></span></td><td><b class="loc">${esc(loc ?? '—')}</b><div class="dep">${esc(dep)}</div></td><td class="mono">${esc(cod)}</td><td>${desc}</td><td class="r q">${qtd}</td><td class="c"><span class="escr"></span></td></tr>`
+  const mud = lerMudancas(p)
+  const marca = (i: ItemDetalhe) =>
+    i.mudancaSap === 'novo' ? '<span class="alt">NOVO</span> ' : i.mudancaSap === 'qtd' ? `<span class="alt">QTD ALTERADA · antes ${esc(textoAntes(i))}</span> ` : ''
   const linhas = itens
     .map((i) => {
-      if (!i.kit) return linha(i.localizacao, i.deposito, i.itemCodigo, esc(i.descricao), num(i.quantidade))
+      if (!i.kit) return linha(i.localizacao, i.deposito, i.itemCodigo, marca(i) + esc(i.descricao), num(i.quantidade), i.mudancaSap ? 'mud' : '')
       const sap = unidadesSap(i)
       if (i.kit.modo === 'kit')
-        return linha(i.localizacao, i.deposito, i.itemCodigo, `<span class="kit">KIT</span> ${esc(i.descricao)}${sap ? `<div class="dep">${esc(sap)}</div>` : ''}`, esc(textoQtd(i)))
+        return linha(i.localizacao, i.deposito, i.itemCodigo, `${marca(i)}<span class="kit">KIT</span> ${esc(i.descricao)}${sap ? `<div class="dep">${esc(sap)}</div>` : ''}`, esc(textoQtd(i)))
       // Por peça: o kit vira título e as peças (já multiplicadas) logo abaixo.
-      const cab = `<tr class="kitcab"><td class="c"><span class="box"></span></td><td colspan="3"><span class="kit">MONTAR KIT</span> <span class="mono">${esc(i.itemCodigo)}</span> ${esc(i.descricao)}${sap ? ` <span class="dep">(${esc(sap)})</span>` : ''}</td><td class="r q">${esc(textoQtd(i))}</td><td></td></tr>`
+      const cab = `<tr class="kitcab"><td class="c"><span class="box"></span></td><td colspan="3">${marca(i)}<span class="kit">MONTAR KIT</span> <span class="mono">${esc(i.itemCodigo)}</span> ${esc(i.descricao)}${sap ? ` <span class="dep">(${esc(sap)})</span>` : ''}</td><td class="r q">${esc(textoQtd(i))}</td><td></td></tr>`
       return cab + i.kit.pecas.map((c) => linha(c.localizacao, c.deposito, c.codigo, `↳ ${esc(c.descricao)}`, num(c.total), 'peca')).join('')
     })
     .join('')
@@ -999,11 +1048,14 @@ table{width:100%;border-collapse:collapse;font-size:12.5px}th{font-size:10px;tex
 td{border-bottom:1px solid #ccc;padding:7px 5px}.c{text-align:center}.r{text-align:right}.q{font-size:15px;font-weight:700}.mono{font-family:monospace}
 .loc{font-family:monospace;font-size:14px}.dep{font-size:10px;color:#666}.box{display:inline-block;width:16px;height:16px;border:1.5px solid #111}.escr{display:inline-block;width:50px;border-bottom:1px solid #111;height:16px}
 .kit{display:inline-block;background:#111;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle}.kitcab td{background:#f3f0ff;border-bottom:1px solid #999}.peca td{padding-left:14px}
+.alt{display:inline-block;background:#0369a1;color:#fff;font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;vertical-align:middle}.mud td{background:#e0f2fe}
+.altbox{border:2px solid #0369a1;background:#e0f2fe;padding:6px 10px;margin-bottom:10px;font-size:13px}.altbox b{font-size:14px}
 .rod{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:20px;font-size:10px;text-transform:uppercase;color:#555}.rod span{display:block;border-bottom:1px solid #111;height:24px}
 @page{size:A4;margin:12mm}</style></head><body>
 <div class="topo"><div><h1>Folha de Separação</h1><div class="sub">Gerada pelo CRM com dados do SAP</div></div><div><div class="sub">Picking</div><div class="n">${esc(p.pickListSap)}</div></div></div>
 <div class="info"><div><b>Pedido</b>${esc(p.pedidosSap)}</div><div><b>Data do picking</b>${esc(p.dataPicking.split('-').reverse().join('/'))}</div><div><b>Vendedor</b>${esc(p.vendedorSap)}</div>
 <div style="grid-column:1/-1"><b>Cliente</b>${esc(p.clienteCodigo)} ${esc(p.clienteNome)}</div><div><b>Itens / quantidade</b>${itens.length} / ${num(total)}</div><div><b>Separador</b>________________</div><div><b>Início / fim</b>____:____ / ____:____</div></div>
+${mud ? `<div class="altbox"><b>✎ PEDIDO ALTERADO</b> — refeito no SAP: substitui o picking ${esc(mud.pickingAnterior)}. ${esc(resumoMudancas(mud))}.${mud.removidos.length ? `<br><b>Retirado${mud.removidos.length > 1 ? 's' : ''}:</b> ${mud.removidos.map((r) => `${esc(r.descricao)} (${num(r.quantidade)})`).join('; ')}` : ''}</div>` : ''}
 ${p.observacaoSap ? `<div class="obs">🚚 ${esc(p.observacaoSap)}</div>` : ''}
 <table><thead><tr><th>✓</th><th>Localização</th><th>Código</th><th>Produto</th><th class="r">Separar</th><th>Separado</th></tr></thead><tbody>${linhas}</tbody></table>
 <div class="rod"><div>Volumes<span></span></div><div>Peso (kg)<span></span></div><div>Conferido por<span></span></div><div>Erros<span></span></div></div>

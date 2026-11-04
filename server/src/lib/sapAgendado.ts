@@ -97,7 +97,7 @@ export async function rodarExpedicaoSap(): Promise<void> {
   rodandoExpedicao = true
   try {
     const r = await sincronizarExpedicaoSap()
-    if (r.novas || r.nfs || r.freteSap || r.localizacoes) console.log(`[sap-expedicao] ${r.novas} picking(s) novo(s), ${r.nfs} NF(s), ${r.freteSap} volume/transportadora atualizados, ${r.localizacoes} item(ns) com endereço`)
+    if (r.novas || r.nfs || r.freteSap || r.localizacoes || r.descartadosSap) console.log(`[sap-expedicao] ${r.novas} picking(s) novo(s), ${r.descartadosSap} descartado(s) no SAP, ${r.nfs} NF(s), ${r.freteSap} volume/transportadora atualizados, ${r.localizacoes} item(ns) com endereço`)
   } catch (err) {
     console.error('[sap-expedicao] erro:', err instanceof Error ? err.message : err)
   } finally {
