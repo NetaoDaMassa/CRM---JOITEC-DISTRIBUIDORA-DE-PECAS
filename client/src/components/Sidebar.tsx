@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -109,6 +109,16 @@ export const ADMIN_LINKS = [
   // vendedor concedido usa a de VENDOR_LINKS. Pedido do João, 2026-09-23.
   { to: '/admin/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
   { to: '/admin/compras', label: 'Compras', icon: Ship, feature: 'compras' },
+  // Setor de Compras — processo completo (solicitação → cotação → negociação
+  // → aprovação → pedido → recebimento → finalizado). Setor único do grupo:
+  // quem tem gestão/aprovação/relatórios vê as compras de todas as empresas.
+  // Pedido do João, 2026-11-04.
+  { to: '/admin/compras-solicitar', label: 'Solicitar compra', icon: ShoppingBag, feature: 'compras_solicitar' },
+  { to: '/admin/compras-quadro', label: 'Compras — quadro', icon: KanbanSquare, feature: 'compras_gestao' },
+  { to: '/admin/compras-aprovar', label: 'Aprovar compras', icon: ShieldCheck, feature: 'compras_aprovar' },
+  { to: '/admin/compras-fornecedores', label: 'Fornecedores', icon: Building2, feature: 'compras_gestao' },
+  { to: '/admin/compras-dashboard', label: 'Dashboard de Compras', icon: LayoutDashboard, feature: 'compras_relatorios' },
+  { to: '/admin/compras-relatorios', label: 'Relatórios de Compras', icon: FileBarChart, feature: 'compras_relatorios' },
   { to: '/admin/lixeira', label: 'Lixeira', icon: Trash2, feature: 'lixeira' },
   { to: '/admin/configuracoes', label: 'Configurações', icon: Settings, feature: 'configuracoes' },
   { to: '/admin/backup', label: 'Backup', icon: DatabaseBackup, feature: 'backup' },
@@ -242,6 +252,14 @@ export const VENDOR_LINKS = [
   // Odin Compressores (diferente do Cartão de Crédito acima). Mesma chave
   // de ADMIN_LINKS (ver comentário lá). Pedido do João, 2026-10-01.
   { to: '/vendedor/solicitacao-credito', label: 'Consulta/Solicitação de Crédito', icon: HandCoins, feature: 'solicitacao_credito' },
+  // Setor de Compras — mesmas telas/chaves do ADMIN_LINKS (vendedor pode
+  // pedir compra; se liberado, até ser comprador/aprovador).
+  { to: '/vendedor/compras-solicitar', label: 'Solicitar compra', icon: ShoppingBag, feature: 'compras_solicitar' },
+  { to: '/vendedor/compras-quadro', label: 'Compras — quadro', icon: KanbanSquare, feature: 'compras_gestao' },
+  { to: '/vendedor/compras-aprovar', label: 'Aprovar compras', icon: ShieldCheck, feature: 'compras_aprovar' },
+  { to: '/vendedor/compras-fornecedores', label: 'Fornecedores', icon: Building2, feature: 'compras_gestao' },
+  { to: '/vendedor/compras-dashboard', label: 'Dashboard de Compras', icon: LayoutDashboard, feature: 'compras_relatorios' },
+  { to: '/vendedor/compras-relatorios', label: 'Relatórios de Compras', icon: FileBarChart, feature: 'compras_relatorios' },
   { to: '/vendedor/devolucoes', label: 'Devolução', icon: RotateCcw, feature: 'devolucoes' },
   { to: '/vendedor/devolucoes-mecanica', label: 'Mecânica (Devolução)', icon: Cog, feature: 'devolucoes_mecanica' },
   { to: '/vendedor/devolucoes-demonstracao', label: 'Demonstração', icon: PackageOpen, feature: 'devolucoes_demonstracao' },
@@ -260,6 +278,8 @@ export const VENDOR_LINKS = [
 // transferir/excluir dependem do que foi liberado.
 const GESTOR_LINKS: { to: string; label: string; icon: LucideIcon; end?: boolean }[] = [
   { to: '/vendedor/leads', label: 'Leads', icon: UserPlus },
+  // Gestor sempre pode pedir compra (comprasProcesso.ts libera o papel).
+  { to: '/vendedor/compras-solicitar', label: 'Solicitar compra', icon: ShoppingBag },
 ]
 
 // Paleta da sidebar colorida (pedido do João, 2026-10-20). Grupo sem cor

@@ -41,6 +41,13 @@ export const FEATURES_ADMIN = [
   'mensagens',
   'caixa',
   'compras',
+  // Setor de Compras — processo completo (solicitação → cotação →
+  // negociação → aprovação → pedido → recebimento). Ver comprasProcesso.ts.
+  // Pedido do João, 2026-11-04.
+  'compras_solicitar',
+  'compras_gestao',
+  'compras_aprovar',
+  'compras_relatorios',
   'lixeira',
   'configuracoes',
   'backup',
@@ -259,6 +266,12 @@ export const FEATURES_VENDEDOR = [
   // Consulta/Solicitação de Crédito — mesma chave de FEATURES_ADMIN acima
   // (lá controla quem responde, aqui quem pode abrir um pedido).
   'solicitacao_credito',
+  // Setor de Compras — mesmas chaves de FEATURES_ADMIN (vendedor também pode
+  // pedir compra, ou até ser comprador/aprovador, se liberado).
+  'compras_solicitar',
+  'compras_gestao',
+  'compras_aprovar',
+  'compras_relatorios',
   // Chat Grupo Odin — mesma chave de FEATURES_ADMIN acima.
   'chat',
 ] as const

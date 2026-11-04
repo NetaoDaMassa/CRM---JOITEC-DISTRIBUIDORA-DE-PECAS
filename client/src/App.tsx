@@ -104,6 +104,14 @@ import DevolucaoMecanica from './pages/DevolucaoMecanica'
 import DevolucaoDemonstracao from './pages/DevolucaoDemonstracao'
 import DevolucaoRelatorios from './pages/DevolucaoRelatorios'
 import DevolucaoEcommerce from './pages/DevolucaoEcommerce'
+// Setor de Compras — processo completo (2026-11-04)
+import SolicitarCompra from './pages/compras/SolicitarCompra'
+import ComprasQuadro from './pages/compras/ComprasQuadro'
+import CompraDetalhe from './pages/compras/CompraDetalhe'
+import AprovarCompras from './pages/compras/AprovarCompras'
+import FornecedoresCompras from './pages/compras/Fornecedores'
+import DashboardCompras from './pages/compras/DashboardCompras'
+import RelatoriosCompras from './pages/compras/RelatoriosCompras'
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useAuth()
@@ -311,6 +319,13 @@ export default function App() {
           <Route path="admin/faturamento-geral" element={<AdminGuard><FeatureGuard feature="faturamento_geral"><FaturamentoGeral /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cartao-credito" element={<AdminGuard><FeatureGuard feature="cartao_credito"><CartaoCredito /></FeatureGuard></AdminGuard>} />
           <Route path="admin/compras" element={<AdminGuard><FeatureGuard feature="compras"><AdminCompras /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras-solicitar" element={<AdminGuard><FeatureGuard feature={['compras_solicitar', 'compras_gestao', 'compras_aprovar', 'compras_relatorios']}><SolicitarCompra /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras-quadro" element={<AdminGuard><FeatureGuard feature={['compras_gestao', 'compras_aprovar', 'compras_relatorios']}><ComprasQuadro /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras-aprovar" element={<AdminGuard><FeatureGuard feature="compras_aprovar"><AprovarCompras /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras-fornecedores" element={<AdminGuard><FeatureGuard feature={['compras_gestao', 'compras_aprovar', 'compras_relatorios']}><FornecedoresCompras /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras-dashboard" element={<AdminGuard><FeatureGuard feature={['compras_gestao', 'compras_aprovar', 'compras_relatorios']}><DashboardCompras /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras-relatorios" element={<AdminGuard><FeatureGuard feature={['compras_gestao', 'compras_aprovar', 'compras_relatorios']}><RelatoriosCompras /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/compras/:id" element={<AdminGuard><FeatureGuard feature={['compras_solicitar', 'compras_gestao', 'compras_aprovar', 'compras_relatorios']}><CompraDetalhe /></FeatureGuard></AdminGuard>} />
           <Route path="admin/backup" element={<AdminGuard><FeatureGuard feature="backup"><AdminBackup /></FeatureGuard></AdminGuard>} />
           <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/pos-venda" element={<AdminGuard><FeatureGuard feature="pos_venda"><FilaPosVenda /></FeatureGuard></AdminGuard>} />
@@ -391,6 +406,13 @@ export default function App() {
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
           <Route path="vendedor/cartao-credito" element={<CartaoCredito />} />
           <Route path="vendedor/solicitacao-credito" element={<SolicitacaoCreditoVendor />} />
+          <Route path="vendedor/compras-solicitar" element={<SolicitarCompra />} />
+          <Route path="vendedor/compras-quadro" element={<ComprasQuadro />} />
+          <Route path="vendedor/compras-aprovar" element={<AprovarCompras />} />
+          <Route path="vendedor/compras-fornecedores" element={<FornecedoresCompras />} />
+          <Route path="vendedor/compras-dashboard" element={<DashboardCompras />} />
+          <Route path="vendedor/compras-relatorios" element={<RelatoriosCompras />} />
+          <Route path="vendedor/compras/:id" element={<CompraDetalhe />} />
           <Route path="vendedor/chat" element={<Chat />} />
           <Route path="vendedor/devolucoes" element={<Devolucoes />} />
           <Route path="vendedor/devolucoes-mecanica" element={<DevolucaoMecanica />} />

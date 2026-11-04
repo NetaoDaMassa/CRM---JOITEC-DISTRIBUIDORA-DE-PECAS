@@ -18,7 +18,16 @@ import { textoContem } from '../../lib/utils'
 // existe em ADMIN_LINKS. Achado do João, 2026-09-29: sem isso aqui, a
 // permissão existia no backend mas não tinha como marcar pra ninguém na
 // tela.
-const FEATURES = [
+// Mesma chave em mais de um item do menu (ex: Compras — quadro e
+// Fornecedores usam 'compras_gestao') vira UMA caixinha só, com os nomes
+// juntos — antes aparecia uma caixinha repetida por item.
+function juntarRepetidas(lista: { feature: string; label: string }[]) {
+  const porFeature = new Map<string, string[]>()
+  for (const { feature, label } of lista) porFeature.set(feature, [...(porFeature.get(feature) ?? []), label])
+  return [...porFeature].map(([feature, labels]) => ({ feature, label: [...new Set(labels)].join(' / ') }))
+}
+
+const FEATURES = juntarRepetidas([
   ...ADMIN_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'painel_financeiro', label: 'Painel Financeiro' },
   { feature: 'painel_tv', label: 'Painel de TV' },
@@ -39,13 +48,13 @@ const FEATURES = [
   // igual Painel Financeiro. Pedido do João, 2026-10-02: controlar pessoa
   // por pessoa antes de mandar pra produção.
   { feature: 'chat', label: 'Chat Grupo Odin' },
-]
+])
 
-const FEATURES_VENDEDOR = [
+const FEATURES_VENDEDOR = juntarRepetidas([
   ...VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
   { feature: 'chat', label: 'Chat Grupo Odin' },
   { feature: 'garantias_oficina', label: 'Garantias — Oficina (avaliação técnica)' },
-]
+])
 
 const FEATURES_RELATORIOS = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },

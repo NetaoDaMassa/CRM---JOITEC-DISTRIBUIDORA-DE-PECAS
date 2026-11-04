@@ -4660,3 +4660,171 @@ export const sapGarantias = sqliteTable(
     clienteIdx: index('idx_sap_garantias_cliente').on(t.clienteId, t.dataPedido),
   })
 )
+
+// ─────────────────────────────────────────────────────────────────────────
+// Setor de Compras — processo completo (pedido do João, 2026-11-04):
+// Solicitação → Cotação → Negociação → Aprovação → Pedido de compra →
+// Recebimento → Finalizado. Setor único do Grupo Odin (igual
+// compras_invoices): quem tem a permissão vê as compras de todas as
+// empresas; `empresaId` diz pra qual empresa é cada compra. Toda compra é
+// Revenda ou Uso e Consumo (dashboard/relatórios separam os dois).
+// Diferente de compras_invoices/compras_nacionais (tela "Compras" antiga,
+// importação/container), que continuam como estão.
+// ─────────────────────────────────────────────────────────────────────────
+export const comprasFornecedores = sqliteTable('compras_fornecedores', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nome: text('nome').notNull(),
+  razaoSocial: text('razao_social'),
+  cnpj: text('cnpj'),
+  contato: text('contato'),
+  telefone: text('telefone'),
+  email: text('email'),
+  cidade: text('cidade'),
+  uf: text('uf'),
+  // O que esse fornecedor costuma fornecer (texto livre — ex: "Tubos PPR, conexões")
+  fornece: text('fornece'),
+  condicaoPagamento: text('condicao_pagamento'),
+  prazoEntregaDias: integer('prazo_entrega_dias'),
+  // Avaliação interna 1-5 (preço/prazo/atendimento), opcional
+  avaliacao: integer('avaliacao'),
+  observacoes: text('observacoes'),
+  ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  deletedAt: text('deleted_at'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Categorias de compra (relatório por categoria). `tipo` sugere em qual lado
+// a categoria costuma cair — 'ambos' aparece nos dois.
+export const comprasCategorias = sqliteTable('compras_categorias', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  nome: text('nome').notNull(),
+  tipo: text('tipo', { enum: ['revenda', 'uso_consumo', 'ambos'] }).notNull().default('ambos'),
+  ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const COMPRAS_ETAPAS = ['solicitacao', 'cotacao', 'negociacao', 'aprovacao', 'pedido', 'recebimento', 'finalizado', 'reprovado', 'cancelado'] as const
+
+export const comprasSolicitacoes = sqliteTable(
+  'compras_solicitacoes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    tipo: text('tipo', { enum: ['revenda', 'uso_consumo'] }).notNull(),
+    categoriaId: integer('categoria_id').references(() => comprasCategorias.id, { onDelete: 'set null' }),
+    titulo: text('titulo').notNull(),
+    justificativa: text('justificativa'),
+    prioridade: text('prioridade', { enum: ['baixa', 'normal', 'urgente'] }).notNull().default('normal'),
+    // YYYY-MM-DD — pra quando o solicitante precisa
+    dataNecessidade: text('data_necessidade'),
+    // Setor/centro de custo de quem pediu (texto livre — "Expedição", "Loja"...)
+    setor: text('setor'),
+    etapa: text('etapa', { enum: COMPRAS_ETAPAS }).notNull().default('solicitacao'),
+    // Quando entrou na etapa atual (pra "parado há X dias")
+    etapaDesde: text('etapa_desde').notNull().default(sql`(datetime('now'))`),
+    solicitanteId: integer('solicitante_id').references(() => users.id, { onDelete: 'set null' }),
+    compradorId: integer('comprador_id').references(() => users.id, { onDelete: 'set null' }),
+    // Valor que o solicitante imagina (opcional)
+    valorEstimado: real('valor_estimado'),
+    // Cotação escolhida na negociação → fornecedor e valor final da compra
+    cotacaoEscolhidaId: integer('cotacao_escolhida_id'),
+    fornecedorId: integer('fornecedor_id').references(() => comprasFornecedores.id, { onDelete: 'set null' }),
+    // Valor que conta como gasto (cotação escolhida, já negociada). Ajustável
+    // no recebimento se a nota vier diferente.
+    valorFinal: real('valor_final'),
+    // Primeiro preço da cotação escolhida antes de negociar (economia)
+    valorInicial: real('valor_inicial'),
+    // Aprovação
+    aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+    aprovadoEm: text('aprovado_em'),
+    observacaoAprovacao: text('observacao_aprovacao'),
+    // Pedido de compra
+    numeroPedido: text('numero_pedido'),
+    // YYYY-MM-DD — mês em que a compra conta no "total gasto"
+    dataPedido: text('data_pedido'),
+    previsaoEntrega: text('previsao_entrega'),
+    condicaoPagamento: text('condicao_pagamento'),
+    formaPagamento: text('forma_pagamento'),
+    // Recebimento
+    dataRecebimento: text('data_recebimento'),
+    notaFiscal: text('nota_fiscal'),
+    recebimentoSituacao: text('recebimento_situacao', { enum: ['completo', 'parcial', 'com_problema'] }),
+    recebimentoObs: text('recebimento_obs'),
+    recebidoPor: integer('recebido_por').references(() => users.id, { onDelete: 'set null' }),
+    finalizadoEm: text('finalizado_em'),
+    motivoEncerramento: text('motivo_encerramento'),
+    deletedAt: text('deleted_at'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    etapaIdx: index('idx_compras_sol_etapa').on(t.etapa),
+    solicitanteIdx: index('idx_compras_sol_solicitante').on(t.solicitanteId),
+    dataPedidoIdx: index('idx_compras_sol_data_pedido').on(t.dataPedido),
+  })
+)
+
+export const comprasItens = sqliteTable('compras_itens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  solicitacaoId: integer('solicitacao_id').notNull().references(() => comprasSolicitacoes.id, { onDelete: 'cascade' }),
+  descricao: text('descricao').notNull(),
+  quantidade: real('quantidade').notNull().default(1),
+  unidade: text('unidade').notNull().default('un'),
+  codigo: text('codigo'),
+  observacao: text('observacao'),
+  // Recebimento item a item (null = ainda não conferido)
+  quantidadeRecebida: real('quantidade_recebida'),
+  ordem: integer('ordem').notNull().default(0),
+})
+
+export const comprasCotacoes = sqliteTable('compras_cotacoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  solicitacaoId: integer('solicitacao_id').notNull().references(() => comprasSolicitacoes.id, { onDelete: 'cascade' }),
+  fornecedorId: integer('fornecedor_id').notNull().references(() => comprasFornecedores.id, { onDelete: 'restrict' }),
+  // Preço que o fornecedor passou (com frete)
+  valorTotal: real('valor_total').notNull(),
+  frete: real('frete'),
+  // Preço depois de negociar (null = não negociou)
+  valorNegociado: real('valor_negociado'),
+  prazoEntregaDias: integer('prazo_entrega_dias'),
+  condicaoPagamento: text('condicao_pagamento'),
+  validade: text('validade'),
+  observacoes: text('observacoes'),
+  anexoUrl: text('anexo_url'),
+  anexoNome: text('anexo_nome'),
+  registradoPor: integer('registrado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Preço unitário de cada item em cada cotação (opcional — dá pra lançar só o total)
+export const comprasCotacaoItens = sqliteTable(
+  'compras_cotacao_itens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    cotacaoId: integer('cotacao_id').notNull().references(() => comprasCotacoes.id, { onDelete: 'cascade' }),
+    itemId: integer('item_id').notNull().references(() => comprasItens.id, { onDelete: 'cascade' }),
+    valorUnitario: real('valor_unitario').notNull(),
+  },
+  (t) => ({ unico: unique('compras_cotacao_itens_unique').on(t.cotacaoId, t.itemId) })
+)
+
+// Linha do tempo da compra (mudança de etapa, comentário, anexo)
+export const comprasHistorico = sqliteTable(
+  'compras_historico',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    solicitacaoId: integer('solicitacao_id').notNull().references(() => comprasSolicitacoes.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    tipo: text('tipo', { enum: ['etapa', 'comentario', 'edicao', 'anexo'] }).notNull(),
+    deEtapa: text('de_etapa'),
+    paraEtapa: text('para_etapa'),
+    texto: text('texto'),
+    anexoUrl: text('anexo_url'),
+    anexoNome: text('anexo_nome'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ solIdx: index('idx_compras_hist_sol').on(t.solicitacaoId) })
+)
