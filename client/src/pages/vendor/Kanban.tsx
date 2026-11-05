@@ -30,6 +30,7 @@ export default function VendorKanban() {
         mostrarFaturamento={ehCompretecLojaFisica}
         mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
         mostrarOutrasLinhas={ehOdinTubos}
+        mostrarPedidosCarteira={ehOdinTubos}
       />
     </div>
   )

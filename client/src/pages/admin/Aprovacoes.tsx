@@ -3,19 +3,13 @@ import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { Pencil, X, MessageCircle, Trash2 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
-import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import PastaPicker from '../../components/PastaPicker'
 import { buildDesignFinalizadoWaLink } from '../../lib/designWhatsapp'
+import PedidoCarteiraAcoes, { TIPO_PEDIDO_CARTEIRA_LABEL } from '../../components/PedidoCarteiraAcoes'
 
-const BANCO_CLIENTES_VALUE = 'banco'
-const BANCO_ESPECIFICO_PREFIXO = 'banco:'
-
-const TIPO_LABELS: Record<string, string> = {
-  descartar: 'Descartar cliente',
-  transferir: 'Transferir de carteira',
-}
+const TIPO_LABELS = TIPO_PEDIDO_CARTEIRA_LABEL
 
 const TIPO_LABELS_DESIGN: Record<string, string> = {
   comunicado: 'Comunicado',
@@ -25,40 +19,7 @@ const TIPO_LABELS_DESIGN: Record<string, string> = {
 }
 
 function CarteiraTab() {
-  const utils = trpc.useUtils()
   const { data: pedidos, isLoading } = trpc.aprovacoes.listarPendentes.useQuery()
-  const { data: vendedores } = trpc.users.vendors.useQuery()
-  // Bancos que já existem (mesmo resumo da tela Banco de Clientes) — pedido
-  // do João, 2026-09-30: além do genérico "sem vendedor", poder mandar
-  // direto pra um banco específico já existente, sem digitar de novo.
-  const { data: bancosExistentes } = trpc.clientes.bancoResumo.useQuery()
-  const [destinoPorPedido, setDestinoPorPedido] = useState<Record<number, string>>({})
-
-  function invalidar() {
-    utils.aprovacoes.listarPendentes.invalidate()
-    utils.funil.meuFunil.invalidate()
-    utils.funil.funilPorVendedor.invalidate()
-  }
-
-  const aprovarMut = trpc.aprovacoes.aprovar.useMutation({
-    onSuccess() {
-      toast.success('Pedido aprovado')
-      invalidar()
-    },
-    onError(err) {
-      toast.error(err.message)
-    },
-  })
-
-  const recusarMut = trpc.aprovacoes.recusar.useMutation({
-    onSuccess() {
-      toast.success('Pedido recusado')
-      invalidar()
-    },
-    onError(err) {
-      toast.error(err.message)
-    },
-  })
 
   return (
     <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
@@ -91,53 +52,7 @@ function CarteiraTab() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            {p.tipo === 'transferir' && (
-              <div className="w-64">
-                <Select
-                  value={destinoPorPedido[p.id] ?? ''}
-                  onChange={(e) => setDestinoPorPedido((prev) => ({ ...prev, [p.id]: e.target.value }))}
-                  placeholder="Escolha o destino..."
-                  options={[
-                    { value: BANCO_CLIENTES_VALUE, label: '📥 Banco de Clientes (rotulado com o vendedor anterior)' },
-                    ...(bancosExistentes ?? []).map((b) => ({
-                      value: `${BANCO_ESPECIFICO_PREFIXO}${b.origemBanco}`,
-                      label: `📥 ${b.origemBanco} (${b.quantidade})`,
-                    })),
-                    ...(vendedores ?? []).map((v) => ({ value: String(v.id), label: v.name })),
-                  ]}
-                />
-              </div>
-            )}
-            <Button
-              size="sm"
-              loading={aprovarMut.isPending}
-              onClick={() => {
-                if (p.tipo === 'transferir' && !destinoPorPedido[p.id]) {
-                  return toast.error('Escolha o destino (um vendedor ou Banco de Clientes) antes de aprovar.')
-                }
-                const destino = destinoPorPedido[p.id]
-                const ehBancoEspecifico = destino?.startsWith(BANCO_ESPECIFICO_PREFIXO)
-                aprovarMut.mutate({
-                  id: p.id,
-                  paraBanco: destino === BANCO_CLIENTES_VALUE,
-                  rotuloBanco: ehBancoEspecifico ? destino!.slice(BANCO_ESPECIFICO_PREFIXO.length) : undefined,
-                  vendedorDestinoId:
-                    destino && destino !== BANCO_CLIENTES_VALUE && !ehBancoEspecifico ? Number(destino) : undefined,
-                })
-              }}
-            >
-              Aprovar
-            </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              loading={recusarMut.isPending}
-              onClick={() => recusarMut.mutate({ id: p.id })}
-            >
-              Recusar
-            </Button>
-          </div>
+          <PedidoCarteiraAcoes pedidoId={p.id} tipo={p.tipo} />
         </div>
       ))}
     </div>

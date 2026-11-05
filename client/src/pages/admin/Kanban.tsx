@@ -65,6 +65,7 @@ export default function AdminKanban() {
           mostrarFaturamento={ehCompretecLojaFisica}
           mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
           mostrarOutrasLinhas={ehOdinTubos}
+          mostrarPedidosCarteira={ehOdinTubos}
         />
       )}
     </div>

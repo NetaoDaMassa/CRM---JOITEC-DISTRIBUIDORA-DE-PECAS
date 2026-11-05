@@ -116,6 +116,22 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       })
     : []
   const pedidoPorCliente = new Map(pedidosPendentes.map((p) => [p.clienteId, p.tipo]))
+  // Detalhe do pedido pra coluna "Descarte / Transferência" do Kanban da
+  // Odin Tubos (pedido do João, 2026-11-05): o gestor lê o motivo e já
+  // aprova/recusa ali mesmo, na visão de todos os vendedores.
+  const solicitantes = pedidosPendentes.length
+    ? await db.query.users.findMany({
+        where: (u, { inArray }) => inArray(u.id, [...new Set(pedidosPendentes.map((p) => p.vendedorSolicitanteId))]),
+        columns: { id: true, name: true },
+      })
+    : []
+  const nomeSolicitante = new Map(solicitantes.map((u) => [u.id, u.name]))
+  const pedidoCarteiraPorCliente = new Map(
+    pedidosPendentes.map((p) => [
+      p.clienteId,
+      { id: p.id, tipo: p.tipo, motivo: p.motivo, comprovantePath: p.comprovantePath, createdAt: p.createdAt, solicitante: nomeSolicitante.get(p.vendedorSolicitanteId) ?? null },
+    ]),
+  )
 
   // Próximo compromisso agendado (não concluído) de cada cliente — pra
   // aparecer já no card do Kanban (não só no Calendário), pedido direto do
@@ -254,6 +270,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     novoDoSapEm: f.cliente.novoDoSapEm,
     classificacaoComercial: f.cliente.classificacaoComercial,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
+    pedidoCarteira: pedidoCarteiraPorCliente.get(f.cliente.id) ?? null,
     proximoCompromisso: (() => {
       const c = proximoCompromissoPorCliente.get(f.cliente.id)
       return c ? { id: c.id, tipo: c.tipo, titulo: c.titulo, dataHora: c.dataHora } : null

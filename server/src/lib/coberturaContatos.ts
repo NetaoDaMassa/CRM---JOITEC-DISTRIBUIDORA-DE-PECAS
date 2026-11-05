@@ -21,10 +21,33 @@
 
 import { and, eq, inArray, isNotNull, isNull, lte, or } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, funilMensal, registroContato, clienteVinculos } from '../db/schema.js'
+import { clientes, funilMensal, registroContato, clienteVinculos, empresas, solicitacoesCarteira } from '../db/schema.js'
 import { mesReferenciaAtual, diasUteisNoMes, diasUteisDecorridos } from './dataBr.js'
 
 const ETAPAS_PARADAS = ['consumidor_final', 'consumidor_final_loja', 'faturamento']
+
+// Cliente com pedido de descarte/transferência esperando o gestor sai da
+// cobrança de contato (pedido do João, 2026-11-05) — o vendedor já pediu
+// pra tirar da carteira dele, não faz sentido cobrar contato. Por enquanto
+// só na Odin Tubos (é onde fica a coluna "Descarte / Transferência" no
+// Kanban). Aprovado: o cliente sai da carteira de vez; recusado: volta a
+// contar normalmente.
+export const SLUGS_PEDIDO_CARTEIRA_FORA_DA_COBRANCA = ['odin-tubos']
+
+export async function clientesComPedidoCarteiraPendente(empresaId: number, clienteIds: number[]): Promise<Set<number>> {
+  if (!clienteIds.length) return new Set()
+  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
+  if (!empresa || !SLUGS_PEDIDO_CARTEIRA_FORA_DA_COBRANCA.includes(empresa.slug)) return new Set()
+  const fora = new Set<number>()
+  for (let i = 0; i < clienteIds.length; i += 900) {
+    const rows = await db
+      .select({ clienteId: solicitacoesCarteira.clienteId })
+      .from(solicitacoesCarteira)
+      .where(and(inArray(solicitacoesCarteira.clienteId, clienteIds.slice(i, i + 900)), eq(solicitacoesCarteira.status, 'pendente')))
+    for (const r of rows) fora.add(r.clienteId)
+  }
+  return fora
+}
 
 // Registro automático ainda não confirmado não conta como contato.
 const contatoValido = or(eq(registroContato.origem, 'manual'), isNotNull(registroContato.resultado))
@@ -115,10 +138,12 @@ export async function coberturaContatosVendedor(
     isNull(clientes.deletedAt),
   ]
   if (regiao) filtros.push(eq(clientes.regiao, regiao as 'norte' | 'nordeste' | 'centro_oeste' | 'sudeste' | 'sul'))
-  const carteira = await db.query.clientes.findMany({
+  const carteiraBruta = await db.query.clientes.findMany({
     where: and(...filtros),
     columns: { id: true },
   })
+  const comPedidoPendente = await clientesComPedidoCarteiraPendente(empresaId, carteiraBruta.map((c) => c.id))
+  const carteira = carteiraBruta.filter((c) => !comPedidoPendente.has(c.id))
   if (carteira.length === 0) {
     return {
       total: 0,

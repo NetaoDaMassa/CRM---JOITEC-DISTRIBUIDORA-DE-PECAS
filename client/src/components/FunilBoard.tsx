@@ -8,6 +8,7 @@ import { trpc } from '../lib/trpc'
 import { timeAgo, hojeBrString } from '../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../lib/moeda'
 import PainelDoDia from './PainelDoDia'
+import PedidoCarteiraAcoes, { TIPO_PEDIDO_CARTEIRA_LABEL } from './PedidoCarteiraAcoes'
 import type { FiltroPainel } from './PainelDoDia'
 import { parseValorBr, formatarValorInput } from '../lib/valorBr'
 import { useAuth } from '../contexts/AuthContext'
@@ -403,6 +404,7 @@ export default function FunilBoard({
   mostrarConsumidorFinalLoja,
   mostrarOutrasLinhas,
   apenasEtapas,
+  mostrarPedidosCarteira,
   coberturaMes,
   coberturaVendedorId,
   coberturaTodos,
@@ -433,6 +435,12 @@ export default function FunilBoard({
   mostrarConsumidorFinalLoja?: boolean
   // Etapa "Outras Linhas / PPR Verde" — idem, só Odin Tubos e Conexões.
   mostrarOutrasLinhas?: boolean
+  // Coluna "Descarte / Transferência" (só Odin Tubos, pedido do João,
+  // 2026-11-05): cliente com pedido de descarte/transferência esperando o
+  // gestor sai da coluna dele e vem pra cá — com motivo, quem pediu e os
+  // botões de aprovar/recusar pro gestor. Também sai da cobrança de
+  // contato (server/src/lib/coberturaContatos.ts).
+  mostrarPedidosCarteira?: boolean
   // Restringe o board a só essas etapas (ex: ['fechado', 'faturamento'] na
   // visão "Faturamento Geral" da Daniela) — sem isso, mostra tudo (ou tudo
   // exceto Faturamento/Consumidor Final, conforme as flags acima).
@@ -581,7 +589,7 @@ export default function FunilBoard({
     <div>
       {/* Painel do dia (substituiu o quadro "Cobertura de contatos" — pedido do João, 2026-10-22). */}
       {!!coberturaMes && (
-        <PainelDoDia cards={cards} mes={coberturaMes} vendedorId={coberturaVendedorId} todos={coberturaTodos} filtro={filtroPainel} onFiltrar={setFiltroPainel} />
+        <PainelDoDia cards={mostrarPedidosCarteira ? cards.filter((c) => !c.pedidoCarteira) : cards} mes={coberturaMes} vendedorId={coberturaVendedorId} todos={coberturaTodos} filtro={filtroPainel} onFiltrar={setFiltroPainel} />
       )}
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
@@ -644,9 +652,71 @@ export default function FunilBoard({
       </div>
 
       <div ref={boardRef} onScroll={sincronizarDoBoard} className="flex gap-4 overflow-x-auto pb-4">
+        {mostrarPedidosCarteira && (() => {
+          const pedidos = cardsClassificados
+            .filter((c) => c.pedidoCarteira)
+            .sort((a, b) => a.pedidoCarteira!.createdAt.localeCompare(b.pedidoCarteira!.createdAt))
+          if (!pedidos.length) return null
+          const ehAdmin = user?.role === 'admin'
+          return (
+            <div className="shrink-0 w-80">
+              <div className="flex items-center gap-2 mb-3 rounded-xl bg-red-950/30 border border-red-800/50 px-3 py-2 border-t-[3px]" style={{ borderTopColor: '#ef4444' }}>
+                <span className="text-sm font-semibold text-red-200">Descarte / Transferência</span>
+                <span className="text-[11px] font-semibold text-red-200 bg-red-900/50 rounded-full px-2 py-0.5">{pedidos.length}</span>
+                <span className="ml-auto text-[10px] text-red-300/70 cursor-help" title="Clientes que o vendedor pediu pra descartar ou transferir. Enquanto esperam o gestor, não contam na cobrança de contatos.">
+                  fora da cobrança
+                </span>
+              </div>
+              <div className="space-y-2">
+                {pedidos.map((card) => {
+                  const p = card.pedidoCarteira!
+                  return (
+                    <div key={card.funilMensalId} className="bg-dark-800 border border-dark-600 border-l-4 rounded-xl p-3 space-y-2" style={{ borderLeftColor: p.tipo === 'descartar' ? '#ef4444' : '#f59e0b' }}>
+                      <div className="flex items-start gap-2">
+                        <AvatarIniciais nome={card.razaoSocial} tamanho={28} />
+                        <div className="min-w-0 flex-1">
+                          <button onClick={() => setCardAbertoId(card.funilMensalId)} className="text-left text-sm font-medium text-dark-100 leading-tight hover:text-gold-400">
+                            {card.razaoSocial}
+                          </button>
+                          <p className="text-[11px] text-dark-500 leading-tight">
+                            {card.codigo ? `Cód. ${card.codigo} · ` : ''}
+                            {nomeVendedor?.(card.vendedorId) ? `👤 ${nomeVendedor(card.vendedorId)}` : ''}
+                          </p>
+                        </div>
+                      </div>
+                      <span className={`inline-block text-[11px] font-semibold rounded px-1.5 py-0.5 border ${p.tipo === 'descartar' ? 'text-red-300 bg-red-900/20 border-red-700/40' : 'text-amber-300 bg-amber-900/20 border-amber-700/40'}`}>
+                        {p.tipo === 'descartar' ? '🗑 ' : '↔ '}
+                        {TIPO_PEDIDO_CARTEIRA_LABEL[p.tipo]}
+                      </span>
+                      <p className="text-xs text-dark-200 whitespace-pre-wrap rounded-lg bg-dark-900/50 border border-dark-700 px-2 py-1.5">
+                        <span className="text-dark-500">Motivo: </span>
+                        {p.motivo}
+                      </p>
+                      <div className="flex items-center justify-between gap-2 text-[11px] text-dark-500">
+                        <span>
+                          {p.solicitante ? `Pedido por ${p.solicitante}` : 'Pedido'} · {timeAgo(p.createdAt)}
+                        </span>
+                        {p.comprovantePath && (
+                          <a href={p.comprovantePath} target="_blank" rel="noopener noreferrer" className="text-gold-400 hover:underline shrink-0">
+                            Ver comprovante
+                          </a>
+                        )}
+                      </div>
+                      {ehAdmin ? (
+                        <PedidoCarteiraAcoes pedidoId={p.id} tipo={p.tipo} compacto />
+                      ) : (
+                        <p className="text-[11px] text-amber-300/80">⏳ Esperando o gestor decidir</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
         {etapasVisiveis.map((etapa) => {
           const ehBalcao = etapa.value === ETAPA_VENDA_BALCAO
-          const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value)
+          const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value && !(mostrarPedidosCarteira && c.pedidoCarteira))
           if (ehBalcao && ordenacao === 'padrao') colCards.sort((a, b) => dataVendaCard(b).localeCompare(dataVendaCard(a)))
           const resumoDia = new Map<string, { qtd: number; total: number }>()
           if (ehBalcao) {
