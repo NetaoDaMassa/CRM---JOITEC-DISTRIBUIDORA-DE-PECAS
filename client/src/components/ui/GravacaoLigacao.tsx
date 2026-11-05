@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 // navegador recusa. Só baixa quando a pessoa clica em ouvir.
 export default function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: number; partes: number }) {
   const [urls, setUrls] = useState<string[] | null>(null)
+  const [ext, setExt] = useState('mp3')
   const [carregando, setCarregando] = useState(false)
   const [erro, setErro] = useState<string | null>(null)
   useEffect(() => () => urls?.forEach((u) => URL.revokeObjectURL(u)), [urls])
@@ -22,6 +23,7 @@ export default function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: numb
         if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `erro ${r.status}`)
         const audio = await r.blob()
         if (!audio.type.startsWith('audio')) throw new Error('O servidor não devolveu o áudio — avise o suporte do CRM')
+        setExt(audio.type.includes('wav') ? 'wav' : audio.type.includes('ogg') ? 'ogg' : 'mp3')
         lista.push(URL.createObjectURL(audio))
       }
       setUrls(lista)
@@ -38,7 +40,7 @@ export default function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: numb
           <div key={u} className="flex items-center gap-2">
             {urls.length > 1 && <span className="text-xs text-dark-400">Parte {i + 1}</span>}
             <audio controls autoPlay={i === 0} src={u} className="h-9 w-full max-w-md" />
-            <a href={u} download={`ligacao-${ligacaoId}${urls.length > 1 ? `-${i + 1}` : ''}.wav`} className="text-xs text-gold-400 hover:underline whitespace-nowrap">
+            <a href={u} download={`ligacao-${ligacaoId}${urls.length > 1 ? `-${i + 1}` : ''}.${ext}`} className="text-xs text-gold-400 hover:underline whitespace-nowrap">
               baixar
             </a>
           </div>

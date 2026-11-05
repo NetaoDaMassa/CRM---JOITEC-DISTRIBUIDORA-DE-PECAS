@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import express from 'express'
 import { createServer } from 'http'
 import cors from 'cors'
@@ -471,6 +472,21 @@ app.get('/marketing-arquivo/:id/conteudo', async (req, res) => {
 // Gravação de ligação da PABXONE360 (relatório Ligações). O CRM busca o
 // áudio no link da PABXONE360 e repassa, só pra quem pode ver aquela
 // ligação (o link carrega o token da gravação, não vai pro navegador).
+function paraMp3(entrada: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const p = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-ac', '1', '-f', 'mp3', '-b:a', '48k', 'pipe:1'])
+    const saida: Buffer[] = []
+    let erro = ''
+    const timer = setTimeout(() => p.kill('SIGKILL'), 60_000)
+    p.stdout.on('data', (d: Buffer) => saida.push(d))
+    p.stderr.on('data', (d: Buffer) => (erro += d.toString()))
+    p.on('error', (e) => (clearTimeout(timer), reject(e)))
+    p.on('close', (code) => (clearTimeout(timer), code === 0 ? resolve(Buffer.concat(saida)) : reject(new Error(erro.slice(0, 200) || `ffmpeg saiu com ${code}`))))
+    p.stdin.on('error', () => {})
+    p.stdin.end(entrada)
+  })
+}
+
 app.get('/pabx-gravacao/:id', async (req, res) => {
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
@@ -503,10 +519,15 @@ app.get('/pabx-gravacao/:id', async (req, res) => {
     if (/text\/|json/i.test(tipo)) return res.status(502).json({ error: `PABXONE360 não devolveu o áudio: ${(await resp.text()).replace(/<[^>]+>/g, ' ').trim().slice(0, 120)}` })
     // Vem como application/force-download; o arquivo é WAV ("RIFF") —
     // descobre pelo começo do arquivo pro navegador tocar.
-    const audio = Buffer.from(await resp.arrayBuffer())
+    let audio: Buffer = Buffer.from(await resp.arrayBuffer())
     const inicio = audio.subarray(0, 4).toString('latin1')
-    const [mime, ext] =
+    let [mime, ext] =
       inicio === 'RIFF' ? ['audio/wav', 'wav'] : inicio === 'OggS' ? ['audio/ogg', 'ogg'] : /audio/i.test(tipo) ? [tipo, 'mp3'] : ['audio/mpeg', 'mp3']
+    // WAV de telefonia (GSM/µ-law…) o Chrome não toca — converte pra MP3.
+    if (inicio === 'RIFF') {
+      const mp3 = await paraMp3(audio).catch((e) => (console.error('[pabx-gravacao] ffmpeg:', (e as Error).message), null))
+      if (mp3?.length) [audio, mime, ext] = [mp3, 'audio/mpeg', 'mp3']
+    }
     res.setHeader('Content-Type', mime)
     res.setHeader('Content-Length', String(audio.length))
     res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}${parte ? `-${parte + 1}` : ''}.${ext}"`)

@@ -26,6 +26,10 @@ FROM node:20-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 
+# ffmpeg: as gravações da PABXONE360 vêm em WAV de telefonia que o navegador
+# não toca (player 0:00) — o /pabx-gravacao converte pra MP3 (2026-11-05).
+RUN apk add --no-cache ffmpeg
+
 # package.json é necessário para o Node tratar os .js como ESM ("type": "module").
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/node_modules ./node_modules
