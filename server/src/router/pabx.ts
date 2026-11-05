@@ -14,6 +14,7 @@ import {
   registrarLigacoesAutomaticasPabxone360,
 } from '../lib/pabxone360.js'
 import { acompanharLigacao } from '../lib/pabxAcompanhamento.js'
+import { chaveMeta, idsDaPessoa, metaDaPessoa, metaEfetivasHoje, metasPorEmpresa } from '../lib/metaLigacoes.js'
 
 // Telefonia PABXONE360 das 3 empresas Odin (uma conta só) — ver o cabeçalho
 // de lib/pabxone360.ts. Configuração e ramais: só superAdmin (o token nunca
@@ -70,11 +71,6 @@ export async function podeOuvirLigacao(
   return user.role !== 'vendor' && ligacao.empresaId === empresaIdAtual && (await temFeature(user.id, FEATURE_RELATORIO))
 }
 
-async function idsDaPessoa(userId: number): Promise<number[]> {
-  const v = await db.query.contasVinculadas.findMany({ where: eq(contasVinculadas.userId, userId) })
-  return [userId, ...v.map((x) => x.contaVinculadaId)]
-}
-
 async function ultimaLigacaoId(userIds: number[]): Promise<number> {
   const [r] = await db
     .select({ id: max(pabxLigacoesProcessadas.id) })
@@ -83,22 +79,6 @@ async function ultimaLigacaoId(userIds: number[]): Promise<number> {
   return r?.id ?? 0
 }
 
-// Meta diária de LIGAÇÕES EFETIVAS por vendedor (pedido do João, 2026-11-05):
-// Ligação entre colegas (ramal → ramal) não conta (João, 2026-11-05).
-// Soma toda outra ligação efetiva do ramal — lead, carteira, prospecção ou número
-// fora do CRM. Uma meta por empresa Odin; Odin Tubos começa em 30, as outras
-// em 0 (= sem meta). Quem tem conta em mais de uma empresa fica com a maior.
-const chaveMeta = (empresaId: number) => `pabxone360_meta_efetivas_dia_${empresaId}`
-async function metasPorEmpresa(): Promise<Map<number, number>> {
-  const es = await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_EMPRESAS_PABX), columns: { id: true, slug: true } })
-  const m = new Map<number, number>()
-  for (const e of es) m.set(e.id, await getConfigNumero(chaveMeta(e.id), e.slug === 'odin-tubos' ? 30 : 0))
-  return m
-}
-async function metaDaPessoa(ids: number[], metas: Map<number, number>): Promise<number> {
-  const us = await db.query.users.findMany({ where: inArray(users.id, ids), columns: { empresaId: true } })
-  return Math.max(0, ...us.map((u) => (u.empresaId ? (metas.get(u.empresaId) ?? 0) : 0)))
-}
 type TipoLigacao = 'lead' | 'carteira' | 'prospeccao' | 'cliente' | 'nao_identificado' | 'colega'
 // Tem ramal e nenhum número externo = ramal falando com ramal (PABXONE360:
 // origem e destino são ramais; GoTo: sem participante PHONE_NUMBER).
@@ -316,27 +296,7 @@ export const pabxRouter = router({
 
   // Contador do topo da tela: ligações efetivas de hoje × meta do dia.
   // null = pessoa sem ramal ou empresa sem meta (não mostra nada).
-  minhaMetaHoje: protectedProcedure.query(async ({ ctx }) => {
-    const ids = await idsDaPessoa(ctx.user.id)
-    const temRamal = await db.query.pabxRamais.findFirst({ where: inArray(pabxRamais.userId, ids), columns: { id: true } })
-    if (!temRamal) return null
-    const meta = await metaDaPessoa(ids, await metasPorEmpresa())
-    if (!meta) return null
-    const hoje = hojeBrString()
-    const [r] = await db
-      .select({ n: sql<number>`count(*)` })
-      .from(pabxLigacoesProcessadas)
-      .where(
-        and(
-          inArray(pabxLigacoesProcessadas.userId, ids),
-          eq(pabxLigacoesProcessadas.efetiva, true),
-          isNotNull(pabxLigacoesProcessadas.numeroExterno),
-          gte(pabxLigacoesProcessadas.dataHora, paraSqlite(inicioDiaBr(hoje))),
-          lte(pabxLigacoesProcessadas.dataHora, paraSqlite(fimDiaBr(hoje)))
-        )
-      )
-    return { meta, efetivas: Number(r?.n ?? 0) }
-  }),
+  minhaMetaHoje: protectedProcedure.query(({ ctx }) => metaEfetivasHoje(ctx.user.id)),
 
   minhaUltimaLigacao: protectedProcedure.query(async ({ ctx }) => ({ id: await ultimaLigacaoId(await idsDaPessoa(ctx.user.id)) })),
 

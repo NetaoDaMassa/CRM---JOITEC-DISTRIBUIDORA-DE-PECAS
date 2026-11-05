@@ -233,7 +233,7 @@ export default function PainelDoDia({
             {titulo(<Sun size={14} />, `Hoje, ${nomeHoje}`)}
             <div className="flex items-baseline gap-2 mt-2">
               <span className="text-3xl font-bold text-dark-50 tabular-nums">{hojeInfo.ligacoes}</span>
-              <span className="text-xs text-dark-400">de {metaHoje} ligações (meta do dia)</span>
+              <span className="text-xs text-dark-400">de {metaHoje} ligações {hojeInfo.metaEfetivasPabx ? 'efetivas ' : ''}(meta do dia)</span>
             </div>
             <div className="mt-2">
               <Barra percentual={pctHoje} cor={pctHoje >= 100 ? '#34c46a' : '#f2a516'} />

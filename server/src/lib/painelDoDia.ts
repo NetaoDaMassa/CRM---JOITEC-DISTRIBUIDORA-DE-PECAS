@@ -4,6 +4,7 @@ import { clientes, compromissos, funilMensal, leads, registroContato, sapImporta
 import { toLocalDateKey, toUtcISO } from './businessHours.js'
 import { diasUteisDecorridos, diasUteisNoMes, ehDiaNaoUtil, hojeBr, hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { metasVigentesPorVendedor } from './metasVigentes.js'
+import { metaEfetivasHoje, metasPorEmpresa } from './metaLigacoes.js'
 import { coberturaContatosEmpresa, coberturaContatosVendedor } from './coberturaContatos.js'
 import { dataSapComoDatetime, pedidosPorCliente } from '../router/reports.js'
 
@@ -84,6 +85,14 @@ export async function painelDoDia(empresaId: number, alvo: { vendedorId?: number
   const [vMes, vAnt, pMes, pAnt, metas] = await Promise.all([vendasDoMes(mes), vendasDoMes(mesAnterior(mes)), perdidosDoMes(mes), perdidosDoMes(mesAnterior(mes)), metasVigentesPorVendedor(mes)])
   const metaFaturamento = vendedorIds.reduce((s, id) => s + (metas.get(id)?.metaFaturamento ?? 0), 0) || null
   const metaLigacoesDia = vendedorIds.reduce((s, id) => s + (metas.get(id)?.metaLigacoesDia ?? 25), 0)
+  // Quem tem meta de ligações efetivas (Odin Tubos: 30/dia por vendedor) vê ela
+  // aqui, o mesmo número do contador do topo. "Todos" soma só quem tem meta.
+  // Sem meta/ramal, segue a meta antiga (ligações registradas). lib/metaLigacoes.ts
+  const metasPabx = await metasPorEmpresa()
+  const comMetaPabx = (await Promise.all(vendedorIds.map((id) => metaEfetivasHoje(id, metasPabx)))).filter((m): m is { meta: number; efetivas: number } => !!m)
+  const metaPabx = comMetaPabx.length
+    ? { meta: comMetaPabx.reduce((t, m) => t + m.meta, 0), efetivas: comMetaPabx.reduce((t, m) => t + m.efetivas, 0) }
+    : null
   const diasUteisMes = diasUteisNoMes(mes)
   const diasUteisAteHoje = Math.min(diasUteisMes, diasUteisDecorridos(mes))
   // Dias úteis que ainda sobram contando hoje (hoje ainda dá pra vender).
@@ -202,9 +211,10 @@ export async function painelDoDia(empresaId: number, alvo: { vendedorId?: number
     conversao: { atual: conversao(vMes.qtd, pMes), anterior: conversao(vAnt.qtd, pAnt) },
     positivacao: { compraram: comprouNoMes.size, carteira: carteira.length },
     hojeInfo: {
-      ligacoes: ligacoesHoje,
+      ligacoes: metaPabx ? metaPabx.efetivas : ligacoesHoje,
       contatos: deHoje.length,
-      metaLigacoesDia,
+      metaLigacoesDia: metaPabx ? metaPabx.meta : metaLigacoesDia,
+      metaEfetivasPabx: !!metaPabx,
       sequenciaDiasVendendo: sequencia,
       diaUtil: !ehDiaNaoUtil(hojeBr()),
     },
