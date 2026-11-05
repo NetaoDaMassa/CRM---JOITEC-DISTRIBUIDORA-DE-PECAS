@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { UserPlus, RefreshCw, EyeOff, Undo2, Link2, Wand2, Save, Power } from 'lucide-react'
+import { UserPlus, RefreshCw, EyeOff, Undo2, Link2, Wand2, Save, Power, UserCheck } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { formatarMoeda } from '../lib/moeda'
 import Button from '../components/ui/Button'
 import ComoUsar from '../components/ui/ComoUsar'
+import Modal from '../components/ui/Modal'
 
 // Clientes do SAP pra cadastrar (pedido do João, 2026-11-01) — ver
 // server/src/lib/sapClientes.ts. Gestor de cada empresa: quem tem venda no
 // SAP e não está no CRM + cadastros novos do SAP que não entraram sozinhos.
 // SuperAdmin: liga os vendedores do SAP aos do CRM e o cadastro automático.
 
-type Aba = 'comVenda' | 'novos' | 'vendedores'
+type Aba = 'comVenda' | 'novos' | 'vendedoresNovos' | 'vendedores'
 
 function dataBr(iso: string | null): string {
   if (!iso) return '—'
@@ -42,6 +43,7 @@ export default function ClientesSap() {
   const utils = trpc.useUtils()
   const comVenda = trpc.clientesSap.comVenda.useQuery(undefined, { staleTime: 5 * 60_000, retry: false })
   const novos = trpc.clientesSap.novos.useQuery(undefined, { staleTime: 5 * 60_000, retry: false })
+  const vendedoresNovos = trpc.clientesSap.vendedoresNovos.useQuery(undefined, { staleTime: 60_000, retry: false })
   const { data: vendedores } = trpc.users.vendors.useQuery()
 
   const recarregar = () => {
@@ -154,6 +156,7 @@ export default function ClientesSap() {
   const ABAS: { id: Aba; label: string; n?: number; valor?: number }[] = [
     { id: 'comVenda', label: 'Têm venda no SAP e não estão no CRM', n: pendVenda.length, valor: pendVenda.reduce((s, c) => s + c.valor, 0) },
     { id: 'novos', label: 'Cadastros novos do SAP', n: pendNovos.length },
+    { id: 'vendedoresNovos', label: 'Vendedores novos', n: (vendedoresNovos.data?.lista ?? []).filter((v) => !v.ignorado).length },
     ...(superAdmin ? [{ id: 'vendedores' as Aba, label: 'Vendedores SAP × CRM' }] : []),
   ]
 
@@ -200,6 +203,7 @@ export default function ClientesSap() {
         ]}
         dicas={[
           'Cliente que já está no CRM nunca é mexido: a carteira e a empresa continuam as do CRM.',
+          'Vendedor novo no SAP aparece na aba "Vendedores novos" para criar a conta com um clique.',
           'Cadastros novos no SAP entram sozinhos na carteira do vendedor ligado. Os que não têm vendedor ligado aparecem na aba "Cadastros novos do SAP".',
         ]}
       />
@@ -268,7 +272,113 @@ export default function ClientesSap() {
           </div>
         ))}
 
+      {aba === 'vendedoresNovos' && <VendedoresNovos verIgnorados={verIgnorados} onAviso={setAviso} />}
+
       {aba === 'vendedores' && superAdmin && <Vendedores onAviso={setAviso} />}
+    </div>
+  )
+}
+
+// Vendedor novo no SAP → conta no CRM (server/src/lib/sapVendedoresNovos.ts).
+function VendedoresNovos({ verIgnorados, onAviso }: { verIgnorados: boolean; onAviso: (a: { ok: boolean; texto: string }) => void }) {
+  const utils = trpc.useUtils()
+  const { data, isLoading, error } = trpc.clientesSap.vendedoresNovos.useQuery(undefined, { staleTime: 60_000, retry: false })
+  const [criando, setCriando] = useState<{ codigo: number; nome: string; username: string } | null>(null)
+  const [senha, setSenha] = useState<{ username: string; senha: string } | null>(null)
+  const recarregar = () => {
+    utils.clientesSap.vendedoresNovos.invalidate()
+    utils.users.vendors.invalidate()
+  }
+  const erro = (e: { message: string }) => onAviso({ ok: false, texto: e.message })
+  const criar = trpc.clientesSap.criarContaVendedor.useMutation({
+    onSuccess: (r) => {
+      setCriando(null)
+      setSenha({ username: r.username, senha: r.senhaTemporaria })
+      recarregar()
+    },
+    onError: erro,
+  })
+  const ligar = trpc.clientesSap.ligarContaVendedor.useMutation({
+    onSuccess: () => {
+      onAviso({ ok: true, texto: 'Vendedor do SAP ligado à conta que já existe.' })
+      recarregar()
+    },
+    onError: erro,
+  })
+  const ignorar = trpc.clientesSap.ignorarVendedor.useMutation({ onSuccess: recarregar, onError: erro })
+
+  if (error) return <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
+  if (isLoading) return <div className="h-40 rounded-2xl bg-dark-800 animate-pulse" />
+  if (!data?.suportada) return <p className="text-sm text-dark-400 bg-dark-800 border border-dark-600 rounded-2xl p-5">Esta empresa não puxa vendedores do SAP.</p>
+  const lista = data.lista.filter((v) => verIgnorados || !v.ignorado)
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-dark-500">Vendedores cadastrados no SAP que ainda não têm conta no CRM. A conta é criada em {data.empresa}, com a função Vendedor e a meta padrão do mês.</p>
+      {lista.length === 0 ? (
+        <p className="text-sm text-dark-400 bg-dark-800 border border-dark-600 rounded-2xl p-5">Nenhum vendedor novo esperando. 👍</p>
+      ) : (
+        lista.map((v) => (
+          <div key={v.codigo} className={`flex flex-wrap items-center gap-3 bg-dark-800 border border-dark-600 rounded-2xl px-4 py-3 ${v.ignorado ? 'opacity-60' : ''}`}>
+            <div className="flex-1 min-w-48">
+              <p className="text-sm font-semibold text-dark-100">{v.nome}</p>
+              <p className="text-xs text-dark-500">
+                código {v.codigo} · visto em {dataBr(v.vistoEm)} · {v.pedidos === 0 ? 'ainda sem pedido, confira se é desta empresa' : `${v.pedidos} pedido${v.pedidos > 1 ? 's' : ''} no SAP`}
+              </p>
+            </div>
+            {v.ignorado ? (
+              <Button variant="ghost" onClick={() => ignorar.mutate({ codigo: v.codigo, ignorar: false })}>
+                <Undo2 size={15} /> Voltar para a lista
+              </Button>
+            ) : (
+              <>
+                {v.parecidos.map((u) => (
+                  <Button key={u.id} variant="secondary" loading={ligar.isPending} onClick={() => ligar.mutate({ codigo: v.codigo, userId: u.id })}>
+                    <Link2 size={15} /> É {u.nome}
+                  </Button>
+                ))}
+                <Button onClick={() => setCriando({ codigo: v.codigo, nome: v.nomeSugerido, username: v.usernameSugerido })}>
+                  <UserCheck size={15} /> Criar conta
+                </Button>
+                <Button variant="ghost" onClick={() => ignorar.mutate({ codigo: v.codigo, ignorar: true })}>
+                  <EyeOff size={15} /> Ignorar
+                </Button>
+              </>
+            )}
+          </div>
+        ))
+      )}
+
+      <Modal open={!!criando} onClose={() => setCriando(null)} title="Criar conta do vendedor" size="sm">
+        {criando && (
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault()
+              criar.mutate(criando)
+            }}
+          >
+            <label className="block text-sm text-dark-300">
+              Nome
+              <input value={criando.nome} onChange={(e) => setCriando({ ...criando, nome: e.target.value })} className="mt-1 w-full h-10 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 focus:outline-none focus:border-gold-500" />
+            </label>
+            <label className="block text-sm text-dark-300">
+              Usuário de login
+              <input value={criando.username} onChange={(e) => setCriando({ ...criando, username: e.target.value })} className="mt-1 w-full h-10 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 focus:outline-none focus:border-gold-500" />
+            </label>
+            <Button type="submit" loading={criar.isPending} className="w-full">
+              Criar conta
+            </Button>
+          </form>
+        )}
+      </Modal>
+
+      <Modal open={!!senha} onClose={() => setSenha(null)} title="Conta criada" size="sm">
+        <p className="text-sm text-dark-300">
+          Passe ao vendedor. O usuário <strong className="text-dark-100">{senha?.username}</strong> troca a senha no primeiro login. Esta senha não aparece de novo.
+        </p>
+        <p className="mt-3 font-mono text-lg text-center text-gold-400 bg-dark-900 border border-dark-600 rounded-lg py-3 select-all">{senha?.senha}</p>
+      </Modal>
     </div>
   )
 }

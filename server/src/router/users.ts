@@ -4,9 +4,8 @@ import * as XLSX from 'xlsx'
 import { and, eq, isNull, inArray } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, clientes, metasMensais, permissoesAdmin, funcaoTemplates, logAcessoUsuario, atividadeDiariaUsuario } from '../db/schema.js'
-import { mesReferenciaAtual } from '../lib/dataBr.js'
-import { getConfigNumero } from '../lib/configuracoes.js'
+import { users, clientes, permissoesAdmin, funcaoTemplates, logAcessoUsuario, atividadeDiariaUsuario } from '../db/schema.js'
+import { criarUsuario, gerarSenhaTemporaria, REGIAO_VALUES } from '../lib/criarUsuario.js'
 import { toUtcISO, toLocalDateKey, toLocalTimeKey } from '../lib/businessHours.js'
 
 // Ping considerado "ao vivo" se chegou há menos de 2 min — um pouco acima do
@@ -38,12 +37,6 @@ function diasUteisMesAtual(): string[] {
     lista.push(d.toISOString().slice(0, 10))
   }
   return lista
-}
-
-const REGIAO_VALUES = ['norte', 'nordeste', 'centro_oeste', 'sudeste', 'sul'] as const
-
-function gerarSenhaTemporaria(): string {
-  return `Joitec${Math.random().toString(36).slice(2, 8)}9x`
 }
 
 export const usersRouter = router({
@@ -89,51 +82,7 @@ export const usersRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      // username é único globalmente (o login não sabe de qual empresa é
-      // antes de autenticar), então essa checagem não leva empresaId.
-      const existing = await db.query.users.findFirst({ where: eq(users.username, input.username) })
-      if (existing) throw new Error('Nome de usuário já existe')
-
-      const template = await db.query.funcaoTemplates.findFirst({
-        where: and(eq(funcaoTemplates.id, input.funcaoTemplateId), eq(funcaoTemplates.empresaId, ctx.empresaId)),
-        with: { features: true },
-      })
-      if (!template) throw new Error('Função inválida')
-
-      const senhaTemporaria = gerarSenhaTemporaria()
-      const hash = await bcrypt.hash(senhaTemporaria, 12)
-      const result = await db.insert(users).values({
-        empresaId: ctx.empresaId,
-        name: input.name,
-        username: input.username,
-        passwordHash: hash,
-        role: template.role,
-        funcaoTemplateId: template.id,
-        regiao: input.regiao,
-        senhaTrocarNoLogin: true,
-      })
-      const id = Number(result.lastInsertRowid)
-
-      // Já nasce com as telas do template escolhido, em vez de nascer cego
-      // até o superAdmin configurar manualmente em Permissões.
-      if (template.features.length > 0) {
-        await db.insert(permissoesAdmin).values(template.features.map((f) => ({ userId: id, feature: f.feature })))
-      }
-
-      // Vendedor novo já nasce com meta do mês corrente (padrão configurável
-      // em Configurações) — evita aparecer sem meta no dashboard/TV.
-      if (template.role === 'vendor') {
-        const metaFaturamento = await getConfigNumero('meta_faturamento_padrao', 100000)
-        const metaLigacoesDia = await getConfigNumero('meta_ligacoes_dia_padrao', 25)
-        await db.insert(metasMensais).values({
-          vendedorId: id,
-          mesReferencia: mesReferenciaAtual(),
-          metaFaturamento,
-          metaLigacoesDia,
-        })
-      }
-
-      return { id, senhaTemporaria }
+      return criarUsuario({ ...input, empresaId: ctx.empresaId })
     }),
 
   update: adminProcedure

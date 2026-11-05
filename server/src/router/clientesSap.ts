@@ -15,6 +15,7 @@ import {
   vendedoresLigados,
   vendedoresSap,
 } from '../lib/sapClientes.js'
+import { criarContaVendedorSap, ignorarVendedorSap, ligarContaVendedorSap, vendedoresNovosDaEmpresa } from '../lib/sapVendedoresNovos.js'
 
 // Clientes do SAP pra cadastrar no CRM (ver lib/sapClientes.ts). Gestor
 // (admin) vê e cadastra só na empresa ativa; ligar vendedores do SAP aos do
@@ -36,6 +37,22 @@ export const clientesSapRouter = router({
 
   ignorar: adminProcedure.input(z.object({ codigo: z.string().min(2), ignorar: z.boolean() })).mutation(async ({ ctx, input }) => {
     await ignorarCodigo(ctx.empresaId, input.codigo, input.ignorar)
+    return { ok: true }
+  }),
+
+  // Vendedor novo no SAP → conta no CRM (ver lib/sapVendedoresNovos.ts).
+  vendedoresNovos: adminProcedure.query(async ({ ctx }) => vendedoresNovosDaEmpresa(ctx.empresaId)),
+
+  criarContaVendedor: adminProcedure
+    .input(z.object({ codigo: z.number(), nome: z.string().trim().min(2), username: z.string().trim().min(3) }))
+    .mutation(async ({ ctx, input }) => criarContaVendedorSap(input, ctx.empresaId, ctx.user.id)),
+
+  ligarContaVendedor: adminProcedure
+    .input(z.object({ codigo: z.number(), userId: z.number() }))
+    .mutation(async ({ ctx, input }) => ligarContaVendedorSap(input.codigo, input.userId, ctx.empresaId, ctx.user.id)),
+
+  ignorarVendedor: adminProcedure.input(z.object({ codigo: z.number(), ignorar: z.boolean() })).mutation(async ({ input }) => {
+    await ignorarVendedorSap(input.codigo, input.ignorar)
     return { ok: true }
   }),
 

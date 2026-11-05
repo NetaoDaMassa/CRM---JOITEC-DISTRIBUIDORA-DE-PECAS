@@ -9,6 +9,7 @@ import { sincronizarVendasSap } from './sapVendasAuto.js'
 import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
 import { sincronizarExpedicaoSap } from './sapExpedicao.js'
 import { sincronizarClientesNovosSap } from './sapClientes.js'
+import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -83,6 +84,13 @@ export async function rodarClientesSap(): Promise<void> {
     if (r?.criados) console.log(`[sap-clientes] ${r.criados} cliente(s) novo(s) do SAP cadastrado(s), ${r.pendentes} esperando o gestor`)
   } catch (err) {
     console.error('[sap-clientes] erro:', err instanceof Error ? err.message : err)
+  }
+  try {
+    const v = await verificarVendedoresNovosSap()
+    if (v.baseCriada) console.log('[sap-vendedores] base criada: quem já está no SAP não entra na lista de novos')
+    if (v.novos) console.log(`[sap-vendedores] ${v.novos} vendedor(es) novo(s) no SAP esperando o gestor`)
+  } catch (err) {
+    console.error('[sap-vendedores] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoClientes = false
   }
