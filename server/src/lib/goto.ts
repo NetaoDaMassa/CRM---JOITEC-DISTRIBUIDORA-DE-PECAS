@@ -1,7 +1,7 @@
 import WebSocket from 'ws'
-import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm'
+import { and, eq, gte, inArray, isNull, lt, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { empresas, gotoLigacoesProcessadas, gotoLogIntegracao, gotoRamais } from '../db/schema.js'
+import { empresas, gotoLigacoesProcessadas, gotoLogIntegracao, gotoRamais, pabxLigacoesProcessadas } from '../db/schema.js'
 import { getConfigTexto, getConfigNumero, setConfig, apagarConfig } from './configuracoes.js'
 import { agoraSqlite } from './dataBr.js'
 import { registrarChamadasNoCrm, type ChamadaPabx } from './pabxone360.js'
@@ -70,7 +70,9 @@ function redirectUri(): string {
 // pra descobrir o accountKey da conta, ver buscarAccountKey) passou a dar
 // 403 AUTHZ_INSUFFICIENT_SCOPE assim que paramos de mandar "todos os
 // escopos configurados" por omissão. Confirmado em teste real de produção.
-const GOTO_SCOPES = 'cr.v1.read call-events.v1.notifications.manage users.v1.read'
+// recording.v1.read (2026-11-05) = baixar a gravação pra ouvir no CRM;
+// calls.v2.initiate fica pedido já pro botão Ligar (próxima etapa).
+const GOTO_SCOPES = 'cr.v1.read call-events.v1.notifications.manage users.v1.read recording.v1.read calls.v2.initiate'
 
 export function montarUrlAutorizacao(): string {
   const params = new URLSearchParams({
@@ -274,10 +276,35 @@ async function buscarAccountKey(accessToken: string): Promise<string> {
   return accountKey
 }
 
-export async function statusConexao(): Promise<{ conectado: boolean; email: string | null }> {
+export async function statusConexao(): Promise<{ conectado: boolean; email: string | null; gravacoes: boolean }> {
   const email = await getConfigTexto('goto_email')
   const refreshToken = await getConfigTexto('goto_refresh_token')
-  return { conectado: !!refreshToken, email }
+  const escopo = (await getConfigTexto('goto_scope')) ?? ''
+  return { conectado: !!refreshToken, email, gravacoes: escopo.includes('recording.v1.read') }
+}
+
+// Áudio de uma gravação da GoTo (recording.v1.read). A API devolve o
+// arquivo direto ou redireciona pra um link temporário; alguns ambientes
+// devolvem JSON com a URL — trata os três.
+export async function baixarGravacaoGoto(recordingId: string): Promise<{ audio: Buffer; tipo: string }> {
+  const token = await obterAccessTokenValido()
+  const r = await fetch(`https://api.goto.com/recording/v1/recordings/${encodeURIComponent(recordingId)}/content`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
+  })
+  if (r.status === 403) throw new Error('A GoTo não liberou as gravações — reconecte a GoTo em Configurações (permissão de gravações)')
+  if (r.status === 404) throw new Error('Gravação ainda não disponível na GoTo — tente em alguns minutos')
+  if (!r.ok) throw new Error(`GoTo não devolveu a gravação (${r.status})`)
+  const tipo = r.headers.get('content-type') ?? ''
+  if (/json/i.test(tipo)) {
+    const j = (await r.json()) as Record<string, unknown>
+    const url = [j.url, j.contentUrl, j.downloadUrl, j.token].find((v): v is string => typeof v === 'string' && v.startsWith('http'))
+    if (!url) throw new Error('GoTo devolveu a gravação num formato que o CRM não conhece')
+    const a = await fetch(url, { signal: AbortSignal.timeout(30_000) })
+    if (!a.ok) throw new Error(`GoTo não devolveu o áudio (${a.status})`)
+    return { audio: Buffer.from(await a.arrayBuffer()), tipo: a.headers.get('content-type') ?? '' }
+  }
+  return { audio: Buffer.from(await r.arrayBuffer()), tipo }
 }
 
 export async function desconectar(): Promise<void> {
@@ -391,6 +418,8 @@ export function relatorioParaChamada(relatorio: RelatorioChamada, segundosAtendi
   const conversa = ativo && fim ? Math.max(0, Math.round((new Date(fim).getTime() - new Date(ativo).getTime()) / 1000)) : 0
   const conectou = !!ativo
   const efetiva = conectou && conversa >= segundosAtendida
+  // Gravação: a do ramal (pega a ligação toda); senão a do lado externo.
+  const gravacao = linha?.recordings?.[0]?.id ?? telefone?.recordings?.[0]?.id ?? null
   return {
     chamadaId: `goto:${relatorio.conversationSpaceId}`,
     dataHora: relatorio.callCreated,
@@ -402,7 +431,7 @@ export function relatorioParaChamada(relatorio: RelatorioChamada, segundosAtendi
     duracaoSegundos: conectou ? conversa : total,
     efetiva,
     status: efetiva ? 'atendida' : conectou ? 'curta' : 'nao_atendida',
-    linkGravacao: null,
+    linkGravacao: conectou && gravacao ? `goto:${gravacao}` : null,
     resumo: null,
     transcricao: null,
     fonte: 'GoTo',
@@ -473,6 +502,34 @@ async function processarRelatorioDeChamada(conversationSpaceId: string, reproces
       .set({ status: 'erro', motivoNaoRegistrado: mensagem, tentativas: sql`${gotoLigacoesProcessadas.tentativas} + 1`, atualizadoEm: agoraSqlite() })
       .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
   }
+}
+
+// Ligações da GoTo que entraram antes de guardar a gravação (Etapa 1,
+// 2026-11-05): pega o id da gravação do relatório já salvo.
+export async function completarGravacoesGoto(): Promise<number> {
+  const semLink = await db
+    .select({ id: pabxLigacoesProcessadas.id, chamadaId: pabxLigacoesProcessadas.chamadaId })
+    .from(pabxLigacoesProcessadas)
+    .where(
+      and(
+        sql`${pabxLigacoesProcessadas.chamadaId} like 'goto:%'`,
+        isNull(pabxLigacoesProcessadas.linkGravacao),
+        inArray(pabxLigacoesProcessadas.statusChamada, ['atendida', 'curta'])
+      )
+    )
+    .limit(500)
+  let n = 0
+  for (const l of semLink) {
+    const [g] = await db
+      .select({ p: gotoLigacoesProcessadas.payloadBruto })
+      .from(gotoLigacoesProcessadas)
+      .where(eq(gotoLigacoesProcessadas.conversationSpaceId, l.chamadaId.slice(5)))
+    const id = g?.p?.match(/"recordings":\[\{"id":"([^"]+)"/)?.[1]
+    if (!id) continue
+    await db.update(pabxLigacoesProcessadas).set({ linkGravacao: `goto:${id}` }).where(eq(pabxLigacoesProcessadas.id, l.id))
+    n++
+  }
+  return n
 }
 
 // Ligação que deu erro ao buscar (rede, relatório ainda não pronto): tenta

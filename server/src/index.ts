@@ -18,7 +18,7 @@ import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propos
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
-import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
+import { trocarCodigoPorToken, iniciarListener, baixarGravacaoGoto } from './lib/goto.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
@@ -497,6 +497,21 @@ app.get('/pabx-gravacao/:id', async (req, res) => {
   if (!lig || !link) return res.status(404).json({ error: 'Gravação não encontrada' })
   const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
   if (!(await podeOuvirLigacao(user, empresaId, lig))) return res.status(403).json({ error: 'Sem permissão' })
+  // GoTo (Joitec): "goto:<recordingId>" — baixa pela API da GoTo.
+  if (link.startsWith('goto:')) {
+    try {
+      const { audio } = await baixarGravacaoGoto(link.slice(5))
+      const mp3 = await paraMp3(audio).catch(() => null)
+      const final = mp3?.length ? mp3 : audio
+      res.setHeader('Content-Type', mp3?.length ? 'audio/mpeg' : 'audio/wav')
+      res.setHeader('Content-Length', String(final.length))
+      res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}.${mp3?.length ? 'mp3' : 'wav'}"`)
+      res.setHeader('Cache-Control', 'private, max-age=3600')
+      return res.end(final)
+    } catch (e) {
+      return res.status(502).json({ error: (e as Error).message })
+    }
+  }
   let url: URL
   try {
     url = new URL(link)

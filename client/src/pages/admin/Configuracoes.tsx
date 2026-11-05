@@ -160,6 +160,13 @@ function IntegracaoGoTo() {
           Conectar com a GoTo
         </Button>
       )}
+      {status?.conectado && !status.gravacoes && (
+        <p className="text-xs text-amber-300 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2">
+          Pra ouvir as gravações da GoTo no CRM: clique em <b>Desconectar</b> e depois em <b>Conectar com a GoTo</b> de novo (com a conta
+          do Marcio) — a GoTo vai pedir a permissão de gravações.
+        </p>
+      )}
+      {status?.conectado && status.gravacoes && <p className="text-xs text-green-400/80">✓ Gravações liberadas — dá pra ouvir as ligações da GoTo no CRM.</p>}
       {status?.conectado && <RamaisGoTo />}
     </div>
   )

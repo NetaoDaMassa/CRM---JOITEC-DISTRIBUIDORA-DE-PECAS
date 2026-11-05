@@ -11,7 +11,7 @@ import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
 import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
 import { sincronizarStatusNotion } from './pollNotionStatus.js'
-import { reprocessarErrosGoto } from './goto.js'
+import { completarGravacoesGoto, reprocessarErrosGoto } from './goto.js'
 import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoAbandonadoPoller.js'
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
@@ -184,6 +184,7 @@ export function startScheduler() {
   cron.schedule('*/5 * * * *', () => {
     reprocessarErrosGoto()
       .then((n) => n && console.log(`[goto] ${n} ligação(ões) com erro buscadas de novo`))
+      .then(() => completarGravacoesGoto())
       .catch((err) => console.error('[goto] reprocessar erros:', err))
   })
   cron.schedule('* * * * *', () => {
