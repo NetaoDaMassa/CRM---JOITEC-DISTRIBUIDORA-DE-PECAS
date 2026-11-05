@@ -18,6 +18,7 @@ import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { soDigitos, usePabxDiscar } from '../components/ui/ContatoButtons'
 import { hojeBrString, primeiroDiaMesString, timeAgo } from '../lib/utils'
+import GravacoesDoContato from '../components/ui/GravacoesDoContato'
 
 type Etapa = 'novo' | 'tentando' | 'conversando' | 'orcamento' | 'ganho' | 'perdido' | 'desqualificado'
 const ETAPAS: { id: Etapa; nome: string; dica: string }[] = [
@@ -416,6 +417,8 @@ function FichaProspect({
             )}
           </form>
         )}
+
+        <GravacoesDoContato clienteId={p.id} />
 
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-dark-400 mb-2">Histórico</p>

@@ -1,3 +1,4 @@
+import GravacoesDoContato from '../../components/ui/GravacoesDoContato'
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -694,6 +695,8 @@ export default function LeadDetail() {
             )}
           </div>
         </div>
+
+        <GravacoesDoContato leadId={lead.id} className="bg-dark-800 border border-dark-600 rounded-2xl p-5" />
 
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
           <p className="text-sm font-semibold text-dark-100 mb-3">Histórico</p>

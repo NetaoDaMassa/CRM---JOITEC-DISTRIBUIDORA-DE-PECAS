@@ -42,7 +42,7 @@ const paraSqlite = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19)
 export async function podeOuvirLigacao(
   user: { id: number; role: string; superAdmin: boolean },
   empresaIdAtual: number | null,
-  ligacao: { userId: number | null; empresaId: number | null; registroContatoId?: number | null }
+  ligacao: { userId: number | null; empresaId: number | null; registroContatoId?: number | null; leadId?: number | null; clienteId?: number | null }
 ): Promise<boolean> {
   if (user.superAdmin) return true
   const meus = await idsDaPessoa(user.id)
@@ -57,6 +57,15 @@ export async function podeOuvirLigacao(
       .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
       .where(eq(registroContato.id, ligacao.registroContatoId))
     if (card && (meus.includes(card.vendedorId) || (user.role !== 'vendor' && card.empresaId === empresaIdAtual))) return true
+  }
+  // Lead / prospect: o vendedor responsável ouve; admin da empresa também.
+  if (ligacao.leadId) {
+    const l = await db.query.leads.findFirst({ where: eq(leads.id, ligacao.leadId), columns: { vendorId: true, empresaId: true } })
+    if (l && ((l.vendorId && meus.includes(l.vendorId)) || (user.role !== 'vendor' && l.empresaId === empresaIdAtual))) return true
+  }
+  if (ligacao.clienteId) {
+    const c = await db.query.clientes.findFirst({ where: eq(clientes.id, ligacao.clienteId), columns: { vendedorAtualId: true, empresaId: true } })
+    if (c && ((c.vendedorAtualId && meus.includes(c.vendedorAtualId)) || (user.role !== 'vendor' && c.empresaId === empresaIdAtual))) return true
   }
   return user.role !== 'vendor' && ligacao.empresaId === empresaIdAtual && (await temFeature(user.id, FEATURE_RELATORIO))
 }
@@ -229,6 +238,42 @@ export const pabxRouter = router({
 
   // A tela, depois do clique em Ligar, pergunta isto a cada poucos segundos:
   // quando o id muda, a ligação foi gravada e ela recarrega os dados.
+  // Ligações gravadas de um lead ou prospect (ficha do lead / da
+  // prospecção). Só as que a pessoa pode ouvir.
+  gravacoesDoContato: protectedProcedure
+    .input(z.object({ leadId: z.number().optional(), clienteId: z.number().optional() }))
+    .query(async ({ ctx, input }) => {
+      if (!input.leadId && !input.clienteId) return []
+      const linhas = await db
+        .select({
+          id: pabxLigacoesProcessadas.id,
+          userId: pabxLigacoesProcessadas.userId,
+          empresaId: pabxLigacoesProcessadas.empresaId,
+          leadId: pabxLigacoesProcessadas.leadId,
+          clienteId: pabxLigacoesProcessadas.clienteId,
+          registroContatoId: pabxLigacoesProcessadas.registroContatoId,
+          dataHora: pabxLigacoesProcessadas.dataHora,
+          direcao: pabxLigacoesProcessadas.direcao,
+          duracao: pabxLigacoesProcessadas.duracaoSegundos,
+          efetiva: pabxLigacoesProcessadas.efetiva,
+          ramal: pabxLigacoesProcessadas.ramal,
+          link: pabxLigacoesProcessadas.linkGravacao,
+          quem: users.name,
+        })
+        .from(pabxLigacoesProcessadas)
+        .leftJoin(users, eq(users.id, pabxLigacoesProcessadas.userId))
+        .where(input.leadId ? eq(pabxLigacoesProcessadas.leadId, input.leadId) : eq(pabxLigacoesProcessadas.clienteId, input.clienteId!))
+        .orderBy(desc(pabxLigacoesProcessadas.dataHora))
+        .limit(50)
+      const out = []
+      for (const l of linhas) {
+        if (!(await podeOuvirLigacao(ctx.user, ctx.empresaId, l))) continue
+        const { link, ...resto } = l
+        out.push({ ...resto, partes: (link ?? '').split('\n').filter(Boolean).length })
+      }
+      return out
+    }),
+
   minhaUltimaLigacao: protectedProcedure.query(async ({ ctx }) => ({ id: await ultimaLigacaoId(await idsDaPessoa(ctx.user.id)) })),
 
   // Relatório de ligações: tentativas x efetivas por vendedor + lista.

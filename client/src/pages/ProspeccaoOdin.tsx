@@ -1,3 +1,4 @@
+import GravacoesDoContato from '../components/ui/GravacoesDoContato'
 import { useState } from 'react'
 import { Plus, Search, Download, RefreshCw, ChevronDown, ChevronUp, Pencil, Trash2, Send } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -517,6 +518,7 @@ function Timeline({ clienteId }: { clienteId: number }) {
         <Textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={1} placeholder="O retorno da empresa, o que ficou combinado..." className="flex-1" />
         <Button type="submit" size="sm" loading={registrarMut.isPending} className="shrink-0">Registrar</Button>
       </form>
+      <GravacoesDoContato clienteId={clienteId} />
       <div className="space-y-1.5 max-h-56 overflow-y-auto">
         {isLoading && <p className="text-xs text-dark-500">Carregando...</p>}
         {!isLoading && !registros?.length && <p className="text-xs text-dark-500">Nenhum registro ainda.</p>}
