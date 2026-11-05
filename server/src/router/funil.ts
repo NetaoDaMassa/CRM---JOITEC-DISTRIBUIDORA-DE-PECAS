@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, pabxLigacoesProcessadas, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString, dataFechamentoDoCard } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
@@ -100,6 +100,16 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
         orderBy: (c, { desc }) => [desc(c.dataHora)],
       })
     : []
+  // Gravação das ligações do PABX (o link chega uns minutos depois).
+  const idsAuto = contatos.filter((c) => c.origem === 'ligacao_automatica').map((c) => c.id)
+  const gravacaoPorContato = new Map<number, { ligacaoId: number; partes: number }>()
+  for (let i = 0; i < idsAuto.length; i += 500) {
+    for (const l of await db
+      .select({ id: pabxLigacoesProcessadas.id, registroContatoId: pabxLigacoesProcessadas.registroContatoId, link: pabxLigacoesProcessadas.linkGravacao })
+      .from(pabxLigacoesProcessadas)
+      .where(inArray(pabxLigacoesProcessadas.registroContatoId, idsAuto.slice(i, i + 500))))
+      if (l.registroContatoId && l.link) gravacaoPorContato.set(l.registroContatoId, { ligacaoId: l.id, partes: l.link.split('\n').filter(Boolean).length })
+  }
   const contatosPorFunil = new Map<number, typeof contatos>()
   for (const c of contatos) {
     const lista = contatosPorFunil.get(c.funilMensalId) ?? []
@@ -313,6 +323,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       observacao: c.observacao,
       dataHora: c.dataHora,
       editavel: ctxIsAdmin || c.vendedorId === ctxUserId,
+      gravacao: gravacaoPorContato.get(c.id) ?? null,
     })),
   }))
 }

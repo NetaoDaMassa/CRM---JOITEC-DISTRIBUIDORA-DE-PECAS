@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, desc, eq, gte, inArray, lte, max } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, contasVinculadas, empresas, leads, pabxLigacoesProcessadas, pabxRamais, users } from '../db/schema.js'
+import { clientes, contasVinculadas, empresas, funilMensal, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
 import { getConfigBool, getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import {
@@ -42,10 +42,22 @@ const paraSqlite = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19)
 export async function podeOuvirLigacao(
   user: { id: number; role: string; superAdmin: boolean },
   empresaIdAtual: number | null,
-  ligacao: { userId: number | null; empresaId: number | null }
+  ligacao: { userId: number | null; empresaId: number | null; registroContatoId?: number | null }
 ): Promise<boolean> {
   if (user.superAdmin) return true
-  if (ligacao.userId && (await idsDaPessoa(user.id)).includes(ligacao.userId)) return true
+  const meus = await idsDaPessoa(user.id)
+  if (ligacao.userId && meus.includes(ligacao.userId)) return true
+  // Ligação registrada num card do Kanban: o dono do card ouve; admin da
+  // empresa do card também (é ele quem acompanha a carteira).
+  if (ligacao.registroContatoId) {
+    const [card] = await db
+      .select({ vendedorId: funilMensal.vendedorId, empresaId: clientes.empresaId })
+      .from(registroContato)
+      .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+      .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+      .where(eq(registroContato.id, ligacao.registroContatoId))
+    if (card && (meus.includes(card.vendedorId) || (user.role !== 'vendor' && card.empresaId === empresaIdAtual))) return true
+  }
   return user.role !== 'vendor' && ligacao.empresaId === empresaIdAtual && (await temFeature(user.id, FEATURE_RELATORIO))
 }
 

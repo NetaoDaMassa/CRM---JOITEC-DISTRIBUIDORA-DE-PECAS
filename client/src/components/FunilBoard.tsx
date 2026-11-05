@@ -32,6 +32,7 @@ import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import LegendaIcones from './LegendaIcones'
 import { AvatarIniciais, dispararConfete } from './ui/Visual'
 import ColunaAgendamentosPecas from './agendamentos/ColunaAgendamentosPecas'
+import GravacaoLigacao from './ui/GravacaoLigacao'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
 // urgência na lateral do card (verde/amarelo/vermelho pelos dias sem contato).
@@ -2911,6 +2912,15 @@ function ContatoItem({
         )}
       </div>
       <p className="text-dark-100">{contato.observacao}</p>
+      {/* Gravação da ligação do PABX: o link chega uns minutos depois da ligação. */}
+      {contato.gravacao ? (
+        <div className="mt-1 text-xs">
+          <GravacaoLigacao ligacaoId={contato.gravacao.ligacaoId} partes={contato.gravacao.partes} />
+        </div>
+      ) : (
+        contato.origem === 'ligacao_automatica' &&
+        contato.resultado === 'respondeu' && <p className="mt-1 text-[11px] text-dark-500">🎧 A gravação aparece aqui alguns minutos depois da ligação.</p>
+      )}
     </div>
   )
 }
