@@ -6,11 +6,7 @@ import { trpc } from '../lib/trpc'
 import Avatar from '../components/chat/Avatar'
 
 interface ChatContextValue {
-  // Se a pessoa logada já tem o Chat liberado em Permissões (ver
-  // chatProcedure no server) — superAdmin e role 'gestor' sempre têm.
-  // Usado pra esconder os botões (popup, flutuante, "Conversar sobre
-  // isso") de quem ainda não foi liberado. Pedido do João, 2026-10-02:
-  // escolher pessoa por pessoa antes de mandar pro ar.
+  // Todo mundo logado tem o Chat desde 2026-11-05 (pedido do João).
   temAcesso: boolean
   socket: Socket | null
   // userId -> está online agora. Começa vazio e vai sendo preenchido pelos
@@ -74,12 +70,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setPopupAberto(true)
   }
 
-  // Mesma condição de enabled do Sidebar pra 'minhasFeatures': superAdmin e
-  // gestor nunca dependem dessa tabela, então nem precisam chamar a query.
-  const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
-    enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
-  })
-  const temAcesso = !!user && (user.superAdmin || user.role === 'gestor' || !!minhasFeatures?.includes('chat'))
+  const temAcesso = !!user
 
   const { data: conversas } = trpc.chat.conversas.listar.useQuery(undefined, {
     enabled: !!token && temAcesso,

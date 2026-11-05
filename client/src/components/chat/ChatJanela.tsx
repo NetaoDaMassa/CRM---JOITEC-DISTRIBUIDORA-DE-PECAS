@@ -9,6 +9,7 @@ import { formatDateTime } from '../../lib/utils'
 import Avatar from './Avatar'
 import PessoaPicker from './PessoaPicker'
 import CameraCapture from './CameraCapture'
+import ProcessoExpedicaoChat from './ProcessoExpedicaoChat'
 
 // wa.me só aceita dígitos — mesmo padrão simples já usado em
 // designWhatsapp.ts/creditoWhatsapp.ts.
@@ -351,6 +352,8 @@ export default function ChatJanela({ conversaId, onExcluida }: { conversaId: num
           </div>
         </div>
       )}
+
+      {detalhe?.tipoOrigem === 'expedicao' && <ProcessoExpedicaoChat conversaId={conversaId} />}
 
       {!!participantes?.length && (
         <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-dark-700 shrink-0">

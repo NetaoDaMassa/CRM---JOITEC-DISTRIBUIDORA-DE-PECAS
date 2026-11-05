@@ -17,6 +17,7 @@ const TIPO_ORIGEM_LABEL: Record<string, string> = {
   pedido: '📦 Pedido',
   visita: '🚗 Visita',
   consulta_credito: '💳 Consulta de crédito',
+  expedicao: '📦 Expedição',
   direta: '',
   grupo: '👥 Grupo',
 }

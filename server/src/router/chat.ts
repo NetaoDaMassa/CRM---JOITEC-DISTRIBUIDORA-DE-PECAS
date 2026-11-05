@@ -1,12 +1,15 @@
 import { z } from 'zod'
 import { and, asc, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm'
-import { router, chatProcedure } from './_base.js'
+import { router, chatProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito, empresas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { emitirNovaMensagem, emitirParaUsuario, emitirParaConversa } from '../lib/chatSocket.js'
+import { cardsDoPedidoSap, contasDoEstoque, podeConversarSobrePedido, processoDoPedido, vendedorDonoDoPedido } from '../lib/expedicaoChat.js'
 
-const TIPO_ORIGEM_VALUES = ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito'] as const
+const TIPO_REGISTRO_VALUES = ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito'] as const
+// 'expedicao': idOrigem é o DocEntry do pedido no SAP (ver lib/expedicaoChat.ts).
+const TIPO_ORIGEM_VALUES = [...TIPO_REGISTRO_VALUES, 'expedicao'] as const
 
 // Resolve o "do que se trata" + quem é o responsável atual do registro, pra
 // auto-adicionar como participante na hora de criar a conversa e pra
@@ -21,7 +24,7 @@ const TIPO_ORIGEM_VALUES = ['lead', 'cliente', 'pedido', 'visita', 'consulta_cre
 // 2026-10-02: "mostrar primeiro quem tá de funcionário, depois o nome do
 // cliente/lead".
 async function resolverOrigem(
-  tipoOrigem: (typeof TIPO_ORIGEM_VALUES)[number],
+  tipoOrigem: (typeof TIPO_REGISTRO_VALUES)[number],
   idOrigem: number
 ): Promise<{ titulo: string; vendedorId: number | null; vendedorNome: string | null } | null> {
   switch (tipoOrigem) {
@@ -85,6 +88,36 @@ async function garantirParticipante(conversaId: number, userId: number) {
   if (!existente) await db.insert(chatParticipantes).values({ conversaId, userId })
 }
 
+// Com o chat aberto pra todos, vendedor só entra pela origem em conversa de
+// registro que ele pode ver — mesmas regras das telas de cada registro.
+// Quem já participa (foi convidado) continua entrando.
+async function vendedorPodeVerOrigem(tipoOrigem: (typeof TIPO_REGISTRO_VALUES)[number], idOrigem: number, userId: number): Promise<boolean> {
+  switch (tipoOrigem) {
+    case 'lead': {
+      const l = await db.query.leads.findFirst({ where: eq(leads.id, idOrigem), columns: { vendorId: true } })
+      if (!l) return false
+      if (l.vendorId === null || l.vendorId === userId) return true
+      return (await temFeature(userId, 'leads_transferir')) || (await temFeature(userId, 'leads_excluir')) || (await temFeature(userId, 'leads_gerenciar_todos'))
+    }
+    case 'cliente': {
+      const c = await db.query.clientes.findFirst({ where: eq(clientes.id, idOrigem), columns: { vendedorAtualId: true } })
+      return c?.vendedorAtualId === userId
+    }
+    case 'pedido': {
+      const o = await db.query.ordens.findFirst({ where: eq(ordens.id, idOrigem), columns: { vendedorId: true } })
+      return o?.vendedorId === userId
+    }
+    case 'visita': {
+      const v = await db.query.visitas.findFirst({ where: eq(visitas.id, idOrigem), columns: { vendedorId: true } })
+      return v?.vendedorId === userId
+    }
+    case 'consulta_credito': {
+      const s = await db.query.solicitacoesCredito.findFirst({ where: eq(solicitacoesCredito.id, idOrigem), columns: { vendedorSolicitanteId: true } })
+      return s?.vendedorSolicitanteId === userId
+    }
+  }
+}
+
 export const chatRouter = router({
   // Cross-empresa de propósito — "todo mundo, grupo inteiro" (pedido do
   // João, 2026-10-02): qualquer um pode começar uma conversa direta com
@@ -116,6 +149,40 @@ export const chatRouter = router({
         const existente = await db.query.chatConversas.findFirst({
           where: and(eq(chatConversas.tipoOrigem, input.tipoOrigem), eq(chatConversas.idOrigem, input.idOrigem)),
         })
+        const jaParticipa = existente
+          ? !!(await db.query.chatParticipantes.findFirst({ where: and(eq(chatParticipantes.conversaId, existente.id), eq(chatParticipantes.userId, ctx.user.id)) }))
+          : false
+
+        // Pedido na expedição: a conversa já nasce com a conta do estoque
+        // daquela empresa e o vendedor dono do cliente, sem escolher pessoa.
+        if (input.tipoOrigem === 'expedicao') {
+          const cards = await cardsDoPedidoSap(input.idOrigem)
+          if (!cards.length) throw new Error('Pedido não encontrado na expedição.')
+          if (!jaParticipa && !(await podeConversarSobrePedido(ctx.user, cards))) throw new Error('Esse pedido é de um cliente de outro vendedor.')
+          const estoque = await contasDoEstoque(cards[0].empresaId)
+          if (!estoque.length) throw new Error('Essa empresa ainda não tem conta do estoque no CRM.')
+          const dono = await vendedorDonoDoPedido(cards)
+          let id = existente?.id
+          if (!id) {
+            const r = await db.insert(chatConversas).values({
+              tipoOrigem: 'expedicao',
+              idOrigem: input.idOrigem,
+              tituloSnapshot: `${dono ? `${dono.nome} — ` : ''}Pedido ${cards[0].pedidosSap}${cards[0].clienteNome ? ` — ${cards[0].clienteNome}` : ''}`,
+              criadoPor: ctx.user.id,
+            })
+            id = Number(r.lastInsertRowid)
+          }
+          for (const userId of new Set([ctx.user.id, ...estoque, ...(dono ? [dono.id] : [])])) {
+            await garantirParticipante(id, userId)
+            if (userId !== ctx.user.id) emitirParaUsuario(userId, 'chat:conversaAtualizada', { conversaId: id })
+          }
+          return { id, precisaEscolherComQuemFalar: false }
+        }
+
+        if (ctx.user.role === 'vendor' && !ctx.user.superAdmin && !jaParticipa && !(await vendedorPodeVerOrigem(input.tipoOrigem, input.idOrigem, ctx.user.id))) {
+          throw new Error('Esse registro é de outro vendedor.')
+        }
+
         let conversaId: number
         if (existente) {
           conversaId = existente.id
@@ -291,6 +358,17 @@ export const chatRouter = router({
           vendedorNome: vendedor?.name ?? null,
         },
       }
+    }),
+
+    // Situação atual do pedido na expedição, pro quadro no topo da conversa.
+    processoExpedicao: chatProcedure.input(z.object({ conversaId: z.number() })).query(async ({ ctx, input }) => {
+      const souParticipante = await db.query.chatParticipantes.findFirst({
+        where: and(eq(chatParticipantes.conversaId, input.conversaId), eq(chatParticipantes.userId, ctx.user.id)),
+      })
+      if (!souParticipante) throw new Error('Você não participa dessa conversa.')
+      const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId) })
+      if (conversa?.tipoOrigem !== 'expedicao' || !conversa.idOrigem) return null
+      return processoDoPedido(conversa.idOrigem)
     }),
 
     // Quem participa de uma conversa — alimenta o cabeçalho da janela de

@@ -7,7 +7,7 @@ import Modal from '../ui/Modal'
 import ChatJanela from './ChatJanela'
 import PessoaPicker from './PessoaPicker'
 
-type TipoOrigem = 'lead' | 'cliente' | 'pedido' | 'visita' | 'consulta_credito'
+type TipoOrigem = 'lead' | 'cliente' | 'pedido' | 'visita' | 'consulta_credito' | 'expedicao'
 
 // Botão de zero fricção: clica e já abre a conversa vinculada a ESTE
 // registro (cria na hora se ainda não existir) — sem formulário, sem
@@ -24,11 +24,13 @@ export default function ConversarSobreIssoButton({
   idOrigem,
   titulo,
   className,
+  rotulo = 'Conversar sobre isso',
 }: {
   tipoOrigem: TipoOrigem
   idOrigem: number
   titulo?: string
   className?: string
+  rotulo?: string
 }) {
   const { temAcesso } = useChat()
   const [conversaId, setConversaId] = useState<number | null>(null)
@@ -64,7 +66,7 @@ export default function ConversarSobreIssoButton({
           'inline-flex items-center gap-1.5 text-xs text-gold-400 hover:text-gold-300 border border-gold-600/30 hover:border-gold-500/60 rounded-lg px-2.5 py-1.5 transition-colors'
         }
       >
-        <MessageCircleMore size={13} /> Conversar sobre isso
+        <MessageCircleMore size={13} /> {rotulo}
       </button>
 
       {conversaId !== null && (

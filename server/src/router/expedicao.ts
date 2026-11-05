@@ -81,7 +81,7 @@ const NOME_ETAPA: Record<EtapaPessoa, string> = { separacao: 'separando', confer
 // Jornada do pedido pro vendedor (pedido do João, 2026-10-29): do "aguardando
 // financeiro" até "coletado", de todos os pedidos em andamento do cliente
 // (código do SAP = mesmo nas empresas do grupo). Coletado some depois de 3 dias.
-type PassoJornada = { pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean }
+type PassoJornada = { pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean; entrySap?: number }
 
 async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJornada[]>> {
   const mapa = new Map<string, PassoJornada[]>()
@@ -138,7 +138,7 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
           return ['Coletado', [nf, p.transportadora].filter(Boolean).join(' · ') || null]
       }
     })()
-    add(p.clienteCodigo ?? '', { pedido: p.pedidosSap, empresaSlug: null, etapa: p.etapa, texto, detalhe, data: p.coletadoEm ?? p.inicioPrazo, atrasado })
+    add(p.clienteCodigo ?? '', { pedido: p.pedidosSap, empresaSlug: null, etapa: p.etapa, texto, detalhe, data: p.coletadoEm ?? p.inicioPrazo, atrasado, entrySap: Number(p.orderEntriesSap.split(',')[0]) })
   }
   return mapa
 }

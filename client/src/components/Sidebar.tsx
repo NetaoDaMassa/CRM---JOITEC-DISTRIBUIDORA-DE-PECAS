@@ -55,7 +55,7 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // 'boletos_carteira' (2026-10-30): cada vendedor só vê os boletos dos
 // próprios clientes, então fica liberado pra todos (Joitec e Odin Tubos).
 // 'conferencia_sap' (2026-10-30): idem — o vendedor só vê as próprias vendas.
-export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira', 'conferencia_sap'])
+export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira', 'conferencia_sap', 'chat'])
 
 // Guia do Financeiro (pedido do João, 2026-10-20) — só aparece/abre pra quem
 // tem pelo menos UMA das telas do Financeiro liberada.

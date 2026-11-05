@@ -43,16 +43,10 @@ const FEATURES = juntarRepetidas([
   // próprio (fica numa aba dentro do processo), entra na mão igual
   // 'funil_excluir_card'. Pedido do João, 2026-10-02.
   { feature: 'garantias_oficina', label: 'Garantias — Oficina (avaliação técnica)' },
-  // Chat Grupo Odin saiu do menu lateral (virou popup + botão flutuante),
-  // então não tem mais item em ADMIN_LINKS/VENDOR_LINKS — entra na mão,
-  // igual Painel Financeiro. Pedido do João, 2026-10-02: controlar pessoa
-  // por pessoa antes de mandar pra produção.
-  { feature: 'chat', label: 'Chat Grupo Odin' },
 ])
 
 const FEATURES_VENDEDOR = juntarRepetidas([
   ...VENDOR_LINKS.filter((l) => !FEATURES_SEMPRE_LIBERADAS.has(l.feature)).map((l) => ({ feature: l.feature, label: l.label })),
-  { feature: 'chat', label: 'Chat Grupo Odin' },
   { feature: 'garantias_oficina', label: 'Garantias — Oficina (avaliação técnica)' },
 ])
 

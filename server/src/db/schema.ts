@@ -4047,7 +4047,7 @@ export const chatConversas = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     tipoOrigem: text('tipo_origem', {
-      enum: ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito', 'direta', 'grupo'],
+      enum: ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito', 'expedicao', 'direta', 'grupo'],
     }).notNull(),
     // Null quando tipoOrigem = 'direta' ou 'grupo' (conversas sem vínculo com
     // registro, só entre pessoas). Pra todo o resto é o id do registro de

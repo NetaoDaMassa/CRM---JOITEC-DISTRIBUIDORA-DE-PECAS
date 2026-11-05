@@ -9,6 +9,7 @@ import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
 import Select from '../../components/ui/Select'
 import ComoUsar from '../../components/ui/ComoUsar'
+import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
 import { useAuth } from '../../contexts/AuthContext'
 import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerTamanho, salvarTamanho } from '../../lib/etiquetasTermicas'
 
@@ -112,6 +113,12 @@ export default function Expedicao() {
   const { data: colaboradores = [] } = trpc.expedicao.colaboradores.useQuery()
   const utils = trpc.useUtils()
   const [abertoId, setAbertoId] = useState<number | null>(null)
+  // Mensagem nova sobre o pedido (conversa "Falar com a expedição") → etiqueta no card.
+  const { data: conversas } = trpc.chat.conversas.listar.useQuery(undefined, { refetchInterval: 30_000 })
+  const naoLidasPorPedido = useMemo(
+    () => new Map((conversas ?? []).filter((c) => c.tipoOrigem === 'expedicao' && c.idOrigem).map((c) => [c.idOrigem as number, c.naoLidas])),
+    [conversas]
+  )
   const [verDescartados, setVerDescartados] = useState(false)
   const [verKits, setVerKits] = useState(false)
   const [busca, setBusca] = useState('')
@@ -256,6 +263,9 @@ export default function Expedicao() {
                         <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap ${corPrazo(p)}`}>{textoPrazo(p)}</span>
                       </div>
                       <p className="text-xs text-dark-300 leading-tight mt-0.5 line-clamp-2">{p.clienteNome}</p>
+                      {p.orderEntriesSap.split(',').some((e) => (naoLidasPorPedido.get(Number(e)) ?? 0) > 0) && (
+                        <p className="text-[11px] font-semibold text-gold-300 mt-1">💬 Mensagem nova do vendedor</p>
+                      )}
                       <p className="text-[11px] text-dark-500 mt-1">
                         {p.itens} itens · {num(p.pecas)} peças · picking {p.pickListSap}
                       </p>
@@ -414,6 +424,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
           <span>Vendedor <b className="text-dark-100">{p.vendedorSap ?? '—'}</b></span>
           <span>{p.itens} itens · {num(p.pecas)} peças</span>
           <span className={`text-xs font-semibold rounded-full px-2 py-0.5 ${corPrazo(p)}`}>{textoPrazo(p)}</span>
+          <ConversarSobreIssoButton tipoOrigem="expedicao" idOrigem={Number(p.orderEntriesSap.split(',')[0])} titulo={`Pedido ${p.pedidosSap} — expedição`} rotulo="Conversa sobre o pedido" />
         </div>
         {p.alteradoSapEm && (
           <div className="text-sm text-orange-100 bg-orange-900/25 border border-orange-700/50 rounded-lg px-3 py-2 space-y-1">
