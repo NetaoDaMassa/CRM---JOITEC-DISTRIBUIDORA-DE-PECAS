@@ -4624,6 +4624,25 @@ export const expedicaoErros = sqliteTable(
   })
 )
 
+// Histórico das pausas (expedicaoPedidos só guarda a pausa atual): tipo pro
+// relatório de vendedores — falta de item / troca de item / outro.
+export const expedicaoPausas = sqliteTable(
+  'expedicao_pausas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    expedicaoId: integer('expedicao_id').notNull().references(() => expedicaoPedidos.id, { onDelete: 'cascade' }),
+    tipo: text('tipo', { enum: ['falta_item', 'troca_item', 'outro'] }).notNull(),
+    motivo: text('motivo'),
+    pausadoEm: text('pausado_em').notNull(),
+    pausadoPor: integer('pausado_por').references(() => users.id, { onDelete: 'set null' }),
+    retomadoEm: text('retomado_em'),
+  },
+  (t) => ({
+    expedicaoIdx: index('idx_expedicao_pausas_expedicao').on(t.expedicaoId),
+    pausadoEmIdx: index('idx_expedicao_pausas_pausado_em').on(t.pausadoEm),
+  })
+)
+
 // Pedidos do SAP ANTES do picking (pedido do João, 2026-10-29: o vendedor vê
 // a jornada inteira do pedido no card) — foto refeita a cada rodada da
 // fila (lib/sapExpedicao.ts): 'aprovacao' = esboço de pedido aguardando o

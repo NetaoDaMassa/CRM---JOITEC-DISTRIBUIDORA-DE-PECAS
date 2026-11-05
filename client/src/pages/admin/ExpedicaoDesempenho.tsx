@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
@@ -121,6 +121,80 @@ export default function ExpedicaoDesempenho() {
           Erro achado na conferência conta para o separador; na embalagem, para o conferente; na expedição, para o embalador. Elegível = erros ÷ pedidos até o limite da pessoa.
         </p>
       </div>
+
+      <VendedoresProblemas de={de} ate={ate} />
+    </div>
+  )
+}
+
+const ROTULO_OCORRENCIA = { picking: 'Voltou picking', falta_item: 'Falta de item', troca_item: 'Troca de item' } as const
+
+// Vendedores que mais voltam picking ou têm pedido travado por falta de item
+// ou troca (ver server/src/lib/expedicaoVendedores.ts).
+function VendedoresProblemas({ de, ate }: { de: string; ate: string }) {
+  const { data, isLoading, error } = trpc.expedicao.vendedoresProblemas.useQuery({ de, ate })
+  const [aberto, setAberto] = useState<string | null>(null)
+  const dataHora = (utc: string) => new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
+      <div>
+        <h2 className="text-base font-semibold text-dark-100">Vendedores: picking que volta e pedido travado</h2>
+        <p className="text-xs text-dark-400">
+          {data ? `${num(data.voltouPicking)} picking(s) voltaram · ${num(data.faltaItem)} travado(s) por falta de item · ${num(data.trocaItem)} por troca de item. ` : ''}Clique no vendedor para ver os pedidos.
+        </p>
+      </div>
+      {error ? (
+        <p className="text-sm text-red-300">{error.message}</p>
+      ) : isLoading || !data ? (
+        <div className="h-32 animate-pulse" />
+      ) : data.linhas.length === 0 ? (
+        <p className="text-sm text-dark-400">Nenhum pedido neste período.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-xs text-dark-400 text-left">
+                <th className="py-2 pr-3 font-medium">Vendedor</th>
+                <th className="py-2 pr-3 font-medium text-right">Pedidos</th>
+                <th className="py-2 pr-3 font-medium text-right">Voltou picking</th>
+                <th className="py-2 pr-3 font-medium text-right">Falta de item</th>
+                <th className="py-2 pr-3 font-medium text-right">Troca de item</th>
+                <th className="py-2 pr-3 font-medium text-right">Total</th>
+                <th className="py-2 font-medium text-right">% dos pedidos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.linhas.map((l) => (
+                <Fragment key={l.vendedor}>
+                  <tr className={`border-t border-dark-700/70 ${l.total ? 'cursor-pointer hover:bg-dark-700/40' : ''}`} onClick={() => l.total && setAberto(aberto === l.vendedor ? null : l.vendedor)}>
+                    <td className="py-2 pr-3 text-dark-100 font-medium">
+                      {l.total > 0 && <span className="text-dark-500 mr-1">{aberto === l.vendedor ? '▾' : '▸'}</span>}
+                      {l.vendedor}
+                    </td>
+                    <td className="py-2 pr-3 text-right font-mono">{num(l.pedidos)}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{num(l.voltouPicking)}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{num(l.faltaItem)}</td>
+                    <td className="py-2 pr-3 text-right font-mono">{num(l.trocaItem)}</td>
+                    <td className={`py-2 pr-3 text-right font-mono font-semibold ${l.total ? 'text-red-300' : 'text-dark-500'}`}>{num(l.total)}</td>
+                    <td className="py-2 text-right font-mono text-dark-300">{l.pedidos ? pct(l.pedidosAfetados / l.pedidos) : '—'}</td>
+                  </tr>
+                  {aberto === l.vendedor &&
+                    l.ocorrencias.map((o) => (
+                      <tr key={`${o.tipo}-${o.expedicaoId}-${o.data}`} className="bg-dark-900/40 text-xs">
+                        <td colSpan={7} className="py-2 px-3 text-dark-300">
+                          <b className="text-dark-100">{ROTULO_OCORRENCIA[o.tipo]}</b> · Pedido {o.pedido} · {o.cliente ?? '—'} · {dataHora(o.data)} · {o.detalhe}
+                        </td>
+                      </tr>
+                    ))}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="text-xs text-dark-500">
+        Voltou picking = o SAP gerou um picking novo para o mesmo pedido. Travado = o estoque pausou o pedido marcando falta ou troca de item; o motivo é registrado assim desde esta versão. % dos pedidos = pedidos com algum desses problemas.
+      </p>
     </div>
   )
 }

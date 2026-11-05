@@ -1,12 +1,13 @@
 import { z } from 'zod'
-import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, ne, notInArray, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, ne, notInArray, or, sql } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
+import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
 // empresa vê só a própria fila e a própria equipe (estoques separados). Os 3
@@ -143,6 +144,36 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
   return mapa
 }
 
+const POR_PAGINA_COLETADOS = 100
+
+// Nomes de quem fez cada etapa, erros e prazo: o que a tela usa de cada pedido.
+async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.$inferSelect)[]) {
+  const ids = pedidos.map((p) => p.id)
+  const erros = ids.length
+    ? await db
+        .select({ id: expedicaoErros.expedicaoId, n: sql<number>`count(*)` })
+        .from(expedicaoErros)
+        .where(inArray(expedicaoErros.expedicaoId, ids))
+        .groupBy(expedicaoErros.expedicaoId)
+    : []
+  const errosPor = new Map(erros.map((e) => [e.id, Number(e.n)]))
+  const pessoas = new Map((await db.query.expedicaoColaboradores.findMany({ where: eq(expedicaoColaboradores.empresaId, empresaId) })).map((c) => [c.id, c.nome]))
+  const agora = Date.now()
+  return pedidos.map((p) => {
+    const limite = prazoLimite(p.inicioPrazo)
+    return {
+      ...p,
+      separador: p.separacaoColaboradorId ? pessoas.get(p.separacaoColaboradorId) ?? null : null,
+      conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
+      embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
+      erros: errosPor.get(p.id) ?? 0,
+      prazoLimite: new Date(limite).toISOString(),
+      horasRestantes: Math.round((limite - (p.coletadoEm ? ms(p.coletadoEm) : agora)) / 360_000) / 10,
+      noPrazo: p.coletadoEm ? ms(p.coletadoEm) <= limite : null,
+    }
+  })
+}
+
 export const expedicaoRouter = router({
   // Card aberto / ficha do cliente — o vendedor só vê cliente da carteira dele.
   jornadaCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
@@ -230,33 +261,49 @@ export const expedicaoRouter = router({
         )
       )
       .orderBy(asc(expedicaoPedidos.inicioPrazo))
-    const ids = pedidos.map((p) => p.id)
-    const erros = ids.length
-      ? await db
-          .select({ id: expedicaoErros.expedicaoId, n: sql<number>`count(*)` })
-          .from(expedicaoErros)
-          .where(inArray(expedicaoErros.expedicaoId, ids))
-          .groupBy(expedicaoErros.expedicaoId)
-      : []
-    const errosPor = new Map(erros.map((e) => [e.id, Number(e.n)]))
-    const pessoas = new Map(
-      (await db.query.expedicaoColaboradores.findMany({ where: eq(expedicaoColaboradores.empresaId, ctx.empresaId) })).map((c) => [c.id, c.nome])
-    )
-    const agora = Date.now()
-    return pedidos.map((p) => {
-      const limite = prazoLimite(p.inicioPrazo)
-      return {
-        ...p,
-        separador: p.separacaoColaboradorId ? pessoas.get(p.separacaoColaboradorId) ?? null : null,
-        conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
-        embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
-        erros: errosPor.get(p.id) ?? 0,
-        prazoLimite: new Date(limite).toISOString(),
-        horasRestantes: Math.round((limite - (p.coletadoEm ? ms(p.coletadoEm) : agora)) / 360_000) / 10,
-        noPrazo: p.coletadoEm ? ms(p.coletadoEm) <= limite : null,
-      }
-    })
+    return comCalculos(ctx.empresaId, pedidos)
   }),
+
+  // Aba "Coletados": todos os pedidos que já saíram, do mais recente pro mais antigo.
+  coletados: featureProcedure(FEATURE)
+    .input(
+      z.object({
+        busca: z.string().trim().optional(),
+        de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+        pagina: z.number().int().min(1).default(1),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      const termo = input.busca ? `%${input.busca}%` : null
+      const filtro = and(
+        eq(expedicaoPedidos.empresaId, ctx.empresaId),
+        eq(expedicaoPedidos.etapa, 'coletado'),
+        // Sem data = já estava fechado no SAP ao entrar na fila: ninguém anotou a coleta.
+        isNotNull(expedicaoPedidos.coletadoEm),
+        input.de ? gte(expedicaoPedidos.coletadoEm, new Date(`${input.de}T00:00:00-03:00`).toISOString().replace('T', ' ').slice(0, 19)) : undefined,
+        input.ate ? lte(expedicaoPedidos.coletadoEm, new Date(`${input.ate}T23:59:59-03:00`).toISOString().replace('T', ' ').slice(0, 19)) : undefined,
+        termo
+          ? or(
+              like(expedicaoPedidos.pedidosSap, termo),
+              like(expedicaoPedidos.clienteNome, termo),
+              like(expedicaoPedidos.nfNumero, termo),
+              like(expedicaoPedidos.vendedorSap, termo),
+              like(expedicaoPedidos.transportadora, termo),
+              sql`cast(${expedicaoPedidos.pickListSap} as text) like ${termo}`
+            )
+          : undefined
+      )
+      const [{ total }] = await db.select({ total: sql<number>`count(*)` }).from(expedicaoPedidos).where(filtro)
+      const pedidos = await db
+        .select()
+        .from(expedicaoPedidos)
+        .where(filtro)
+        .orderBy(desc(expedicaoPedidos.coletadoEm), desc(expedicaoPedidos.id))
+        .limit(POR_PAGINA_COLETADOS)
+        .offset((input.pagina - 1) * POR_PAGINA_COLETADOS)
+      return { total: Number(total), porPagina: POR_PAGINA_COLETADOS, lista: await comCalculos(ctx.empresaId, pedidos) }
+    }),
 
   detalhe: featureProcedure(FEATURE)
     .input(z.object({ id: z.number() }))
@@ -569,21 +616,30 @@ export const expedicaoRouter = router({
     }),
 
   pausar: featureProcedure(FEATURE)
-    .input(z.object({ id: z.number(), motivo: z.string().trim().min(3, 'Escreva o motivo da pausa') }))
+    .input(z.object({ id: z.number(), tipo: z.enum(TIPOS_PAUSA), motivo: z.string().trim().optional() }))
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
       if (['coletado', 'cancelado', 'descartado'].includes(p.etapa)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse pedido já saiu da fila.' })
-      await db
-        .update(expedicaoPedidos)
-        .set({ pausadoEm: agoraSqlite(), pausadoPor: ctx.user.id, pausaMotivo: input.motivo, updatedAt: agoraSqlite() })
-        .where(eq(expedicaoPedidos.id, p.id))
+      if (p.pausadoEm) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse pedido já está pausado.' })
+      const detalhe = input.motivo || null
+      if (input.tipo === 'outro' && (detalhe?.length ?? 0) < 3) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escreva o motivo da pausa' })
+      const agora = agoraSqlite()
+      const texto = input.tipo === 'outro' ? detalhe : `${ROTULO_PAUSA[input.tipo]}${detalhe ? ` — ${detalhe}` : ''}`
+      await db.transaction(async (tx) => {
+        await tx.update(expedicaoPedidos).set({ pausadoEm: agora, pausadoPor: ctx.user.id, pausaMotivo: texto, updatedAt: agora }).where(eq(expedicaoPedidos.id, p.id))
+        await tx.insert(expedicaoPausas).values({ expedicaoId: p.id, tipo: input.tipo, motivo: texto, pausadoEm: agora, pausadoPor: ctx.user.id })
+      })
     }),
 
   retomar: featureProcedure(FEATURE)
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      await db.update(expedicaoPedidos).set({ pausadoEm: null, pausadoPor: null, pausaMotivo: null, updatedAt: agoraSqlite() }).where(eq(expedicaoPedidos.id, p.id))
+      const agora = agoraSqlite()
+      await db.transaction(async (tx) => {
+        await tx.update(expedicaoPedidos).set({ pausadoEm: null, pausadoPor: null, pausaMotivo: null, updatedAt: agora }).where(eq(expedicaoPedidos.id, p.id))
+        await tx.update(expedicaoPausas).set({ retomadoEm: agora }).where(and(eq(expedicaoPausas.expedicaoId, p.id), isNull(expedicaoPausas.retomadoEm)))
+      })
     }),
 
   // Corrige o que foi anotado errado. Trocar quem fez uma etapa muda o
@@ -855,6 +911,10 @@ export const expedicaoRouter = router({
       .limit(200)
     return lista
   }),
+
+  vendedoresProblemas: featureProcedure(FEATURE)
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(({ ctx, input }) => vendedoresComProblemas(ctx.empresaId, input.de, input.ate)),
 
   // Substitui o "Painel Diário"/"Painel Mensal" da planilha. Cada etapa
   // terminada no período conta 1 pedido pra quem fez; peças/itens do

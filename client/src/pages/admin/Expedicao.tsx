@@ -119,6 +119,8 @@ export default function Expedicao() {
     () => new Map((conversas ?? []).filter((c) => c.tipoOrigem === 'expedicao' && c.idOrigem).map((c) => [c.idOrigem as number, c.naoLidas])),
     [conversas]
   )
+  const [aba, setAba] = useState<'quadro' | 'coletados'>('quadro')
+  const [coletadoAberto, setColetadoAberto] = useState<Pedido | null>(null)
   const [verDescartados, setVerDescartados] = useState(false)
   const [verKits, setVerKits] = useState(false)
   const [busca, setBusca] = useState('')
@@ -168,8 +170,8 @@ export default function Expedicao() {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-2">
-          <Input label="Buscar" placeholder="pedido, cliente, NF" value={busca} onChange={(e) => setBusca(e.target.value)} />
-          {podeDescartar && (
+          {aba === 'quadro' && <Input label="Buscar" placeholder="pedido, cliente, NF" value={busca} onChange={(e) => setBusca(e.target.value)} />}
+          {aba === 'quadro' && podeDescartar && (
             <Button variant={selecionando ? 'primary' : 'ghost'} onClick={() => (setSelecionando((v) => !v), setSelecionados(new Set()))}>
               {selecionando ? 'Sair da seleção' : '☑ Selecionar vários'}
             </Button>
@@ -196,10 +198,31 @@ export default function Expedicao() {
           'Na embalagem, informe volumes, cabeçotes e paletes. A NF aparece sozinha quando sai no SAP.',
           'Com a NF emitida, agende a coleta (transportadora, dia e hora). Sem NF não dá para agendar.',
           'Quando a transportadora levar, toque em "Coletado". O prazo de 48h conta do picking até aqui.',
+          'Pedido coletado fica no quadro só no dia. Depois, consulte na aba "Coletados".',
         ]}
       />
 
-      {selecionando && (
+      <div className="flex flex-wrap gap-2">
+        {(
+          [
+            { id: 'quadro', label: 'Em andamento' },
+            { id: 'coletados', label: 'Coletados' },
+          ] as const
+        ).map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            onClick={() => setAba(a.id)}
+            className={`rounded-xl border px-4 py-2 text-sm transition-colors ${aba === a.id ? 'border-gold-600 bg-gold-900/10 text-dark-100' : 'border-dark-600 bg-dark-800 text-dark-300 hover:border-dark-500'}`}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'coletados' && <ColetadosLista onAbrir={setColetadoAberto} />}
+
+      {aba === 'quadro' && selecionando && (
         <AcoesEmLote
           ids={[...selecionados]}
           todosDaTela={filtrados.filter((p) => p.etapa !== 'coletado').map((p) => p.id)}
@@ -208,7 +231,7 @@ export default function Expedicao() {
         />
       )}
 
-      {listaAtrasados.length > 0 && (
+      {aba === 'quadro' && listaAtrasados.length > 0 && (
         <div className="rounded-2xl border border-red-700/50 bg-red-900/15 p-4 space-y-2">
           <p className="text-sm font-semibold text-red-200">⚠️ {listaAtrasados.length} pedido(s) passaram das 48h sem coleta</p>
           <div className="flex flex-wrap gap-2">
@@ -229,7 +252,7 @@ export default function Expedicao() {
         </div>
       )}
 
-      {isLoading ? (
+      {aba !== 'quadro' ? null : isLoading ? (
         <div className="h-64 rounded-2xl bg-dark-800 animate-pulse" />
       ) : (
         <div className={"grid gap-3 grid-cols-1 md:grid-cols-3 2xl:grid-cols-6"}>
@@ -330,6 +353,16 @@ export default function Expedicao() {
       )}
 
       {aberto && <PedidoModal pedido={aberto} colaboradores={colaboradores} onClose={() => setAbertoId(null)} />}
+      {coletadoAberto && (
+        <PedidoModal
+          pedido={fila?.find((x) => x.id === coletadoAberto.id) ?? coletadoAberto}
+          colaboradores={colaboradores}
+          onClose={() => {
+            setColetadoAberto(null)
+            utils.expedicao.coletados.invalidate()
+          }}
+        />
+      )}
       {verDescartados && <DescartadosModal onClose={() => setVerDescartados(false)} />}
       {verKits && <KitsModal podeAlterar={!!podeDescartar} onClose={() => setVerKits(false)} />}
     </div>
@@ -869,6 +902,78 @@ function KitsModal({ podeAlterar, onClose }: { podeAlterar: boolean; onClose: ()
   )
 }
 
+// Todos os pedidos que já foram coletados (o quadro só mostra os de hoje).
+function ColetadosLista({ onAbrir }: { onAbrir: (p: Pedido) => void }) {
+  const [busca, setBusca] = useState('')
+  const [de, setDe] = useState('')
+  const [ate, setAte] = useState('')
+  const [pagina, setPagina] = useState(1)
+  const { data, isLoading, error } = trpc.expedicao.coletados.useQuery({ busca: busca.trim() || undefined, de: de || undefined, ate: ate || undefined, pagina })
+  const totalPaginas = data ? Math.max(1, Math.ceil(data.total / data.porPagina)) : 1
+  const filtrar = (fn: () => void) => (fn(), setPagina(1))
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="flex-1 min-w-[220px]">
+          <Input label="Buscar" placeholder="pedido, cliente, NF, vendedor, transportadora" value={busca} onChange={(e) => filtrar(() => setBusca(e.target.value))} />
+        </div>
+        <Input label="Coletado de" type="date" value={de} onChange={(e) => filtrar(() => setDe(e.target.value))} />
+        <Input label="Até" type="date" value={ate} onChange={(e) => filtrar(() => setAte(e.target.value))} />
+        {data && <p className="text-sm text-dark-400 pb-2">{data.total.toLocaleString('pt-BR')} pedido(s)</p>}
+      </div>
+      {error ? (
+        <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
+      ) : isLoading || !data ? (
+        <div className="h-40 rounded-2xl bg-dark-800 animate-pulse" />
+      ) : data.lista.length === 0 ? (
+        <p className="text-sm text-dark-400 bg-dark-800 border border-dark-600 rounded-2xl p-5">Nenhum pedido coletado encontrado.</p>
+      ) : (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
+          {data.lista.map((p) => (
+            <button key={p.id} type="button" onClick={() => onAbrir(p)} className="w-full text-left flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-dark-700/40">
+              <div className="flex-1 min-w-[220px]">
+                <p className="text-sm text-dark-100">
+                  <b>Pedido {p.pedidosSap}</b>
+                  {p.nfNumero && <span className="text-dark-300"> · NF {p.nfNumero}</span>}
+                </p>
+                <p className="text-xs text-dark-400 break-words">{p.clienteNome ?? '—'}</p>
+              </div>
+              <div className="min-w-[160px] flex-1">
+                <p className="text-xs text-dark-300 break-words">{p.vendedorSap ?? 'Sem vendedor'}</p>
+                <p className="text-xs text-dark-500 break-words">
+                  {p.transportadora ?? p.transportadoraSap ?? 'Sem transportadora'}
+                  {p.volumes != null ? ` · ${p.volumes} vol.` : ''}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-dark-200">{hora(p.coletadoEm)}</p>
+                {p.finalizadoManual ? (
+                  <span className="text-[11px] font-semibold rounded px-1.5 py-0.5 bg-dark-700 text-dark-300">finalizado na mão</span>
+                ) : (
+                  <span className={`text-[11px] font-semibold rounded px-1.5 py-0.5 ${p.noPrazo ? 'bg-green-900/30 text-green-300' : 'bg-red-900/30 text-red-300'}`}>{p.noPrazo ? 'no prazo' : 'fora do prazo'}</span>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+      {totalPaginas > 1 && (
+        <div className="flex items-center justify-center gap-3">
+          <Button size="sm" variant="ghost" disabled={pagina <= 1} onClick={() => setPagina((n) => n - 1)}>
+            Anterior
+          </Button>
+          <span className="text-sm text-dark-400">
+            Página {pagina} de {totalPaginas}
+          </span>
+          <Button size="sm" variant="ghost" disabled={pagina >= totalPaginas} onClick={() => setPagina((n) => n + 1)}>
+            Próxima
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DescartadosModal({ onClose }: { onClose: () => void }) {
   const { data = [] } = trpc.expedicao.descartados.useQuery()
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
@@ -1114,6 +1219,7 @@ function MaisAcoes({
 
   const [aberto, setAberto] = useState<null | 'pausar' | 'editar' | 'finalizar' | 'cancelar'>(null)
   const [motivo, setMotivo] = useState('')
+  const [tipoPausa, setTipoPausa] = useState<'falta_item' | 'troca_item' | 'outro' | null>(null)
   const [etapaDestino, setEtapaDestino] = useState<EtapaMover | ''>('')
   const [ed, setEd] = useState({
     volumes: p.volumes == null ? '' : String(p.volumes),
@@ -1137,7 +1243,7 @@ function MaisAcoes({
             ▶ Retomar
           </Button>
         ) : (
-          <Button size="sm" variant="secondary" onClick={() => (setAberto(aberto === 'pausar' ? null : 'pausar'), setMotivo(''))}>
+          <Button size="sm" variant="secondary" onClick={() => (setAberto(aberto === 'pausar' ? null : 'pausar'), setMotivo(''), setTipoPausa(null))}>
             ⏸ Pausar
           </Button>
         )}
@@ -1169,16 +1275,39 @@ function MaisAcoes({
 
       {(aberto === 'pausar' || aberto === 'finalizar' || aberto === 'cancelar') && (
         <div className="flex flex-wrap items-end gap-2">
+          {aberto === 'pausar' && (
+            <div className="w-full">
+              <p className="text-sm text-dark-300 mb-1">Por que está parado?</p>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ['falta_item', 'Falta de item'],
+                    ['troca_item', 'Troca de item'],
+                    ['outro', 'Outro motivo'],
+                  ] as const
+                ).map(([id, rotulo]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setTipoPausa(id)}
+                    className={`rounded-lg border px-3 py-2 text-sm ${tipoPausa === id ? 'border-gold-600 bg-gold-900/10 text-dark-100' : 'border-dark-600 text-dark-300 hover:border-dark-500'}`}
+                  >
+                    {rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <div className="flex-1 min-w-[240px]">
             <Input
-              label={aberto === 'pausar' ? 'Motivo da pausa' : aberto === 'cancelar' ? 'Motivo do cancelamento' : 'Observação (opcional)'}
-              placeholder={aberto === 'pausar' ? 'ex.: aguardando cliente / falta material' : aberto === 'cancelar' ? 'ex.: cliente desistiu' : 'ex.: já tinha saído antes da fila'}
+              label={aberto === 'pausar' ? (tipoPausa === 'outro' ? 'Qual o motivo?' : 'Qual item? (opcional)') : aberto === 'cancelar' ? 'Motivo do cancelamento' : 'Observação (opcional)'}
+              placeholder={aberto === 'pausar' ? (tipoPausa === 'outro' ? 'ex.: aguardando cliente' : 'ex.: código ou nome do item') : aberto === 'cancelar' ? 'ex.: cliente desistiu' : 'ex.: já tinha saído antes da fila'}
               value={motivo}
               onChange={(e) => setMotivo(e.target.value)}
             />
           </div>
           {aberto === 'pausar' && (
-            <Button disabled={motivo.trim().length < 3} loading={pausar.isPending} onClick={() => pausar.mutate({ id: p.id, motivo })}>
+            <Button disabled={!tipoPausa || (tipoPausa === 'outro' && motivo.trim().length < 3)} loading={pausar.isPending} onClick={() => tipoPausa && pausar.mutate({ id: p.id, tipo: tipoPausa, motivo: motivo.trim() || undefined })}>
               Pausar
             </Button>
           )}
@@ -1193,7 +1322,7 @@ function MaisAcoes({
             </Button>
           )}
           <p className="text-xs text-dark-400 w-full">
-            {aberto === 'pausar' && 'Ninguém inicia etapa enquanto estiver pausado. O prazo de 48h continua contando.'}
+            {aberto === 'pausar' && 'Ninguém inicia etapa enquanto estiver pausado. O prazo de 48h continua contando. Falta e troca de item entram no relatório do vendedor.'}
             {aberto === 'finalizar' && 'Fecha o pedido como coletado sem passar pelas etapas. Fica fora do desempenho e do % no prazo.'}
             {aberto === 'cancelar' && 'Sai da fila sem ser recriado. Fica em "Descartados / cancelados", de onde dá para reabrir.'}
           </p>
