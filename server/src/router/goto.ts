@@ -1,8 +1,8 @@
 import { z } from 'zod'
-import { and, asc, eq, inArray } from 'drizzle-orm'
+import { and, asc, eq, gte, inArray, isNotNull, sql } from 'drizzle-orm'
 import { router, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { empresas, gotoRamais, users } from '../db/schema.js'
+import { empresas, gotoLigacoesProcessadas, gotoRamais, users } from '../db/schema.js'
 import { montarUrlAutorizacao, statusConexao, desconectar, pararListener } from '../lib/goto.js'
 
 // Nome do ramal na GoTo × nome do usuário: sugere quando o primeiro nome e
@@ -38,6 +38,19 @@ export const gotoRouter = router({
 
   // Ramais que já apareceram nas ligações + quem é cada um no CRM.
   ramais: adminProcedure.query(async () => {
+    // Primeira vez: puxa os ramais das ligações já recebidas (últimos 60 dias).
+    const [{ n }] = await db.select({ n: sql<number>`count(*)` }).from(gotoRamais)
+    if (!n) {
+      const limite = new Date(Date.now() - 60 * 86400_000).toISOString().replace('T', ' ').slice(0, 19)
+      const payloads = await db
+        .select({ p: gotoLigacoesProcessadas.payloadBruto })
+        .from(gotoLigacoesProcessadas)
+        .where(and(isNotNull(gotoLigacoesProcessadas.payloadBruto), gte(gotoLigacoesProcessadas.criadoEm, limite)))
+      const vistos = new Map<string, string>()
+      for (const { p } of payloads)
+        for (const m of (p ?? '').matchAll(/"extensionNumber":"(\d+)","name":"([^"]*)"/g)) vistos.set(m[1], m[2])
+      for (const [ramal, nome] of vistos) await db.insert(gotoRamais).values({ ramal, nome }).onConflictDoNothing()
+    }
     const lista = await db.select().from(gotoRamais).orderBy(asc(gotoRamais.ramal))
     const usuarios = await db
       .select({ id: users.id, name: users.name, empresa: empresas.nome })
