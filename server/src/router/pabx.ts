@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, desc, eq, gte, inArray, lte, max } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, contasVinculadas, empresas, funilMensal, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
+import { clientes, contasVinculadas, empresas, funilMensal, gotoRamais, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
 import { getConfigBool, getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import {
@@ -371,12 +371,20 @@ export const pabxRouter = router({
 
   // Opções de filtro do relatório (empresas Odin + vendedores com ramal).
   filtrosRelatorio: protectedProcedure.query(async ({ ctx }) => {
-    const empresasOdin = await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_EMPRESAS_PABX), columns: { id: true, nome: true } })
+    const empresasOdin = await db.query.empresas.findMany({ where: inArray(empresas.slug, [...SLUGS_EMPRESAS_PABX, 'joitec']), columns: { id: true, nome: true } })
     const comRamal = await db
       .select({ id: users.id, name: users.name, ramal: pabxRamais.ramal, empresaId: users.empresaId })
       .from(pabxRamais)
       .innerJoin(users, eq(users.id, pabxRamais.userId))
       .orderBy(users.name)
+    // + ramais da GoTo (Joitec)
+    comRamal.push(
+      ...(await db
+        .select({ id: users.id, name: users.name, ramal: gotoRamais.ramal, empresaId: users.empresaId })
+        .from(gotoRamais)
+        .innerJoin(users, eq(users.id, gotoRamais.userId))
+        .orderBy(users.name))
+    )
     return {
       empresas: ctx.user.superAdmin ? empresasOdin : empresasOdin.filter((e) => e.id === ctx.empresaId),
       vendedores: ctx.user.superAdmin ? comRamal : comRamal.filter((v) => v.empresaId === ctx.empresaId),

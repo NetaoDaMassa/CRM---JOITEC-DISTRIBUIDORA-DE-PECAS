@@ -11,6 +11,7 @@ import { ensureStarted as iniciarSessaoWhatsapp } from './whatsapp/session.js'
 import { getAvisoLeadsConfig, seedAvisoLeadsConfigFromEnv, getAvisoLeadsEmpresasAtivas } from './avisoLeadsConfig.js'
 import { runLeadsSlaChecks } from './leadsSlaScheduler.js'
 import { sincronizarStatusNotion } from './pollNotionStatus.js'
+import { reprocessarErrosGoto } from './goto.js'
 import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoAbandonadoPoller.js'
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
@@ -179,6 +180,12 @@ export function startScheduler() {
   runChecks().catch((err) => console.error('[scheduler] erro ao processar checagens iniciais:', err))
   console.log('[scheduler] reset mensal + notificações rodando a cada hora')
 
+  // GoTo (Joitec): ligação cujo relatório deu erro ao buscar → tenta de novo.
+  cron.schedule('*/5 * * * *', () => {
+    reprocessarErrosGoto()
+      .then((n) => n && console.log(`[goto] ${n} ligação(ões) com erro buscadas de novo`))
+      .catch((err) => console.error('[goto] reprocessar erros:', err))
+  })
   cron.schedule('* * * * *', () => {
     sincronizarPabxone360().catch(registrarErroPabx)
   })

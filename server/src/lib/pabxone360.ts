@@ -62,6 +62,12 @@ export interface ChamadaPabx {
   linkGravacao: string | null
   resumo: string | null
   transcricao: string | null
+  // Outras centrais (GoTo da Joitec, 2026-11-05) já mandam isso pronto:
+  // nome da central no texto do contato, número externo, direção e hora UTC.
+  fonte?: string
+  numeroExterno?: string | null
+  direcao?: 'INBOUND' | 'OUTBOUND'
+  dataHoraUtc?: string
 }
 
 // A PABXONE360 espera data/hora em horário de Brasília (BRT, UTC-3) nos
@@ -404,6 +410,19 @@ export async function registrarLigacoesAutomaticasPabxone360(
 
   const chamadas = await buscarChamadasPabxone360(cred, dataInicio, dataFim, duracaoMinimaSegundos, comResumo)
   if (!chamadas.length) return []
+  const ramais = new Map((await db.query.pabxRamais.findMany()).map((r) => [r.ramal, r.userId]))
+  return registrarChamadasNoCrm(chamadas, idsOdin, ramais)
+}
+
+// Motor comum (PABXONE360 das Odin e GoTo da Joitec): descobre quem ligou
+// pelo ramal e o cliente/lead/prospect pelo telefone e registra o contato.
+export async function registrarChamadasNoCrm(
+  chamadas: ChamadaPabx[],
+  empresaIds: number[],
+  ramais: Map<string, number | null>
+): Promise<ResultadoRegistroPabx[]> {
+  if (!chamadas.length) return []
+  const idsOdin = empresaIds
 
   // Só processa o que ainda não foi visto — evita montar o índice à toa.
   const jaVistas = new Set(
@@ -417,7 +436,6 @@ export async function registrarLigacoesAutomaticasPabxone360(
   const novas = chamadas.filter((c) => !jaVistas.has(c.chamadaId))
   if (!novas.length) return []
 
-  const ramais = new Map((await db.query.pabxRamais.findMany()).map((r) => [r.ramal, r.userId]))
   const { porTelCliente, porTelLead } = await montarIndiceTelefones(idsOdin)
   const resultados: ResultadoRegistroPabx[] = []
 
@@ -427,14 +445,15 @@ export async function registrarLigacoesAutomaticasPabxone360(
     const claim = await db.insert(pabxLigacoesProcessadas).values({ chamadaId: chamada.chamadaId }).onConflictDoNothing()
     if (claim.rowsAffected === 0) continue
 
-    const dataHora = paraDataHoraSqlite(chamada.dataHora) ?? agoraSqlite()
+    const dataHora = chamada.dataHoraUtc ?? paraDataHoraSqlite(chamada.dataHora) ?? agoraSqlite()
+    const fonte = chamada.fonte ?? 'PABXONE360'
     const userIdRamal = chamada.ramal ? (ramais.get(chamada.ramal) ?? null) : null
     const contas = userIdRamal ? await contasDaPessoa(userIdRamal) : []
     const empresasDaPessoa = new Set(contas.map((c) => c.empresaId))
     const contaNaEmpresa = (empresaId: number) => contas.find((c) => c.empresaId === empresaId)?.id ?? null
 
-    const numeroExterno = extrairNumeroExterno(chamada)
-    const direcao = /-\d+$/.test(chamada.origem) ? ('OUTBOUND' as const) : ('INBOUND' as const)
+    const numeroExterno = chamada.numeroExterno !== undefined ? chamada.numeroExterno : extrairNumeroExterno(chamada)
+    const direcao = chamada.direcao ?? (/-\d+$/.test(chamada.origem) ? ('OUTBOUND' as const) : ('INBOUND' as const))
 
     async function finalizar(campos: { empresaId?: number | null; clienteId?: number; leadId?: number; registroContatoId?: number; motivoNaoRegistrado?: string }) {
       await db
@@ -549,8 +568,8 @@ export async function registrarLigacoesAutomaticasPabxone360(
         // ligação vai pro histórico dele em vez de ser ignorada.
         const quem = contaNaEmpresa(cliente.empresaId) ?? cliente.vendedorAtualId ?? 0
         const obsProspect = chamada.efetiva
-          ? `Ligação ${detalhe} — atendida, ${formatarDuracao(chamada.duracaoSegundos)} (PABXONE360).${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
-          : `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (PABXONE360, ${formatarDuracao(chamada.duracaoSegundos)}).`
+          ? `Ligação ${detalhe} — atendida, ${formatarDuracao(chamada.duracaoSegundos)} (${fonte}).${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
+          : `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (${fonte}, ${formatarDuracao(chamada.duracaoSegundos)}).`
         if (await registrarLigacaoPabxNoProspect({ clienteId: cliente.id, userId: quem, efetiva: chamada.efetiva, observacao: obsProspect, dataHora })) {
           await finalizar({ empresaId: cliente.empresaId, clienteId: cliente.id })
           continue
@@ -559,8 +578,8 @@ export async function registrarLigacoesAutomaticasPabxone360(
         continue
       }
       let observacao = chamada.efetiva
-        ? `Ligação ${detalhe} — captada pela PABXONE360, duração ${formatarDuracao(chamada.duracaoSegundos)}.${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
-        : `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (PABXONE360, ${formatarDuracao(chamada.duracaoSegundos)}).`
+        ? `Ligação ${detalhe} — captada pela ${fonte}, duração ${formatarDuracao(chamada.duracaoSegundos)}.${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
+        : `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (${fonte}, ${formatarDuracao(chamada.duracaoSegundos)}).`
       observacao += avisoDuplicado
       const [registro] = await db
         .insert(registroContato)
@@ -592,14 +611,14 @@ export async function registrarLigacoesAutomaticasPabxone360(
     if (lead) {
       const quem = contaNaEmpresa(lead.empresaId) ?? lead.vendorId
       if (chamada.efetiva) {
-        await registrarLigacaoEfetivaNoLead(lead.id, quem, dataHora, `Ligação ${detalhe} atendida — PABXONE360, ${formatarDuracao(chamada.duracaoSegundos)}`)
+        await registrarLigacaoEfetivaNoLead(lead.id, quem, dataHora, `Ligação ${detalhe} atendida — ${fonte}, ${formatarDuracao(chamada.duracaoSegundos)}`)
       } else {
         await db.insert(leadHistory).values({
           empresaId: lead.empresaId,
           leadId: lead.id,
           userId: quem,
           action: 'ligacao_nao_atendida',
-          details: `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (PABXONE360). Não conta como contato.`,
+          details: `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (${fonte}). Não conta como contato.`,
           createdAt: dataHora,
         })
       }
@@ -670,7 +689,7 @@ async function registrarLigacaoEfetivaNoLead(leadId: number, userId: number | nu
       action: 'status_alterado',
       fromStatus: 'novo',
       toStatus: 'abordagem',
-      details: 'Movido automaticamente para Abordagem — ligação atendida (PABXONE360)',
+      details: 'Movido automaticamente para Abordagem — ligação atendida (central telefônica)',
     })
   }
 }

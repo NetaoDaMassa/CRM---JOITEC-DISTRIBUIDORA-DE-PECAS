@@ -796,6 +796,8 @@ export const gotoLigacoesProcessadas = sqliteTable('goto_ligacoes_processadas', 
   // precisar cruzar com goto_log_integracao.
   motivoNaoRegistrado: text('motivo_nao_registrado'),
   payloadBruto: text('payload_bruto'),
+  // Quantas vezes já tentou buscar o relatório (erro de rede → tenta de novo).
+  tentativas: integer('tentativas').notNull().default(0),
   criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
   atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
 })
@@ -869,6 +871,16 @@ export const pabxRamais = sqliteTable('pabx_ramais', {
   nome: text('nome'), // nome do ramal lá no PABX
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+// Ramais da GoTo Connect (Joitec) → vendedor do CRM (João, 2026-11-05:
+// "mesma coisa da 360one"). Preenchido sozinho com ramal + nome que vêm em
+// cada ligação; o admin liga cada ramal a um usuário em Configurações.
+export const gotoRamais = sqliteTable('goto_ramais', {
+  ramal: text('ramal').primaryKey(),
+  nome: text('nome'),
+  userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+  atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
 })
 
 export const notifications = sqliteTable('notifications', {

@@ -160,6 +160,63 @@ function IntegracaoGoTo() {
           Conectar com a GoTo
         </Button>
       )}
+      {status?.conectado && <RamaisGoTo />}
+    </div>
+  )
+}
+
+// Ramal da GoTo → vendedor (2026-11-05): a ligação passa a contar pra quem
+// ligou (antes ia sempre pro dono do card). Os ramais aparecem sozinhos
+// conforme as ligações chegam; o sistema sugere pelo nome.
+function RamaisGoTo() {
+  const utils = trpc.useUtils()
+  const { data } = trpc.goto.ramais.useQuery()
+  const definir = trpc.goto.definirRamal.useMutation({
+    onSuccess: () => utils.goto.ramais.invalidate(),
+    onError: (e) => toast.error(e.message),
+  })
+  if (!data) return null
+  const pendentesSugestao = data.ramais.filter((r) => !r.userId && r.sugestao)
+  return (
+    <div className="border-t border-dark-700 pt-3 space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-semibold text-dark-100">Ramais → vendedor</p>
+        {pendentesSugestao.length > 0 && (
+          <Button size="sm" variant="secondary" loading={definir.isPending} onClick={() => pendentesSugestao.forEach((r) => definir.mutate({ ramal: r.ramal, userId: r.sugestao }))}>
+            Aceitar {pendentesSugestao.length} sugestão(ões)
+          </Button>
+        )}
+      </div>
+      <p className="text-xs text-dark-400">
+        A ligação conta pra quem ligou (o ramal). Ramal sem vendedor: a ligação fica com o dono do card/lead. Novos ramais aparecem aqui sozinhos quando ligam.
+      </p>
+      {!data.ramais.length ? (
+        <p className="text-xs text-dark-500">Nenhum ramal ainda — eles aparecem depois da primeira ligação de cada um.</p>
+      ) : (
+        <div className="divide-y divide-dark-700">
+          {data.ramais.map((r) => (
+            <div key={r.ramal} className="flex flex-wrap items-center gap-2 py-1.5 text-sm">
+              <span className="w-12 font-mono text-dark-300">{r.ramal}</span>
+              <span className="flex-1 min-w-[140px] text-dark-200">{r.nome ?? '—'}</span>
+              <select
+                className="bg-dark-900 border border-dark-600 rounded-lg px-2 py-1 text-sm text-dark-100 min-w-[200px]"
+                value={r.userId ?? ''}
+                onChange={(e) => definir.mutate({ ramal: r.ramal, userId: e.target.value ? Number(e.target.value) : null })}
+              >
+                <option value="">— sem vendedor —</option>
+                {data.usuarios.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name} ({u.empresa})
+                  </option>
+                ))}
+              </select>
+              {!r.userId && r.sugestao && (
+                <span className="text-xs text-amber-300">sugestão: {data.usuarios.find((u) => u.id === r.sugestao)?.name}</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -702,15 +759,15 @@ export default function AdminConfiguracoes() {
         <div>
           <h2 className="text-sm font-semibold text-dark-100 mb-2">Ligações automáticas (GoTo Connect)</h2>
           <Input
-            label="Duração mínima pra considerar que pode ter atendido (segundos)"
+            label="Segundos de conversa pra contar como atendida"
             type="number"
             value={gotoDuracaoMinima}
             onChange={(e) => setGotoDuracaoMinima(e.target.value)}
           />
           <p className="text-xs text-dark-500 mt-1.5">
-            Ligações mais curtas que isso são marcadas automaticamente como "Não respondeu" (não deu tempo de
-            conversar). Ligações mais longas que isso sempre ficam pendentes, pedindo pro vendedor confirmar se
-            falou com o cliente ou caiu na caixa postal — a duração sozinha não prova que teve conversa de verdade.
+            O CRM vê quando o cliente atendeu e quanto tempo durou a conversa. Atendida com pelo menos esse tempo de
+            conversa conta sozinha como contato (sem precisar confirmar); não atendida ou muito curta fica no histórico
+            e não conta. 0 = usa 15s. Caixa postal longa também conta como atendida (a GoTo não diferencia).
           </p>
         </div>
         )}

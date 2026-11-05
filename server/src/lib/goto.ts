@@ -1,9 +1,10 @@
 import WebSocket from 'ws'
-import { and, eq, inArray, isNull } from 'drizzle-orm'
+import { and, eq, gte, inArray, lt, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, funilMensal, registroContato, empresas, gotoLigacoesProcessadas, gotoLogIntegracao } from '../db/schema.js'
+import { empresas, gotoLigacoesProcessadas, gotoLogIntegracao, gotoRamais } from '../db/schema.js'
 import { getConfigTexto, getConfigNumero, setConfig, apagarConfig } from './configuracoes.js'
-import { mesReferenciaAtual, agoraSqlite } from './dataBr.js'
+import { agoraSqlite } from './dataBr.js'
+import { registrarChamadasNoCrm, type ChamadaPabx } from './pabxone360.js'
 
 // O telefone físico GoTo Connect atende tanto a Joitec Distribuidora quanto
 // a Joitec Automação (mesma linha/recepção) — por isso o casamento de
@@ -39,14 +40,6 @@ const RENOVAR_CANAL_MS = 18 * 60 * 1000
 
 let wsAtual: WebSocket | null = null
 let timerRenovacao: NodeJS.Timeout | null = null
-
-// Segunda camada de proteção contra duplicata, além da idempotência por
-// conversationSpaceId persistida em banco (ver processarRelatorioDeChamada):
-// durante instabilidade de rede a GoTo já mandou o mesmo relatório mais de
-// uma vez em janelas curtas — por isso também não registra duas ligações
-// automáticas pro mesmo cliente dentro dessa janela de tempo.
-const JANELA_DEDUP_MS = 3 * 60 * 1000
-const ultimoRegistroPorCliente = new Map<number, number>()
 
 function clientId(): string {
   const id = process.env.GOTO_CLIENT_ID
@@ -361,225 +354,140 @@ function extrairNumeroExternoDoRelatorio(relatorio: RelatorioChamada): string | 
   return telefone.type.caller?.number ?? telefone.type.number ?? null
 }
 
-function soDigitos(v: string): string {
-  return v.replace(/\D/g, '')
+// --- Ligação da GoTo → motor comum da central (pabxone360.ts) ------------
+// Desde 2026-11-05 a GoTo usa o mesmo motor da PABXONE360 das Odin: quem
+// ligou pelo ramal (goto_ramais), atendida/não atendida sozinha, cliente da
+// carteira, lead ou prospect, número em mais de um cadastro, e a ligação vai
+// pro relatório "Ligações" e pro card (pabx_ligacoes_processadas, id
+// "goto:<conversationSpaceId>"). Antes: registrava sempre no dono do card,
+// tudo "aguardando confirmação", sem leads/prospecção.
+
+interface ParticipanteCompleto {
+  id?: string
+  recordings?: { id: string; startTimestamp?: string }[]
+  type?: RelatorioParticipante['type'] & { extensionNumber?: string; name?: string }
+}
+interface EstadoChamada {
+  type?: string
+  timestamp?: string
+  participants?: { id?: string; status?: { value?: string } }[]
 }
 
-interface ResultadoRegistro {
-  clienteId?: number
-  registroContatoId?: number
-  motivoNaoRegistrado?: string
+const paraSqliteUtc = (iso: string) => new Date(iso).toISOString().replace('T', ' ').slice(0, 19)
+
+export function relatorioParaChamada(relatorio: RelatorioChamada, segundosAtendida: number): ChamadaPabx {
+  const participantes = (relatorio.participants ?? []) as ParticipanteCompleto[]
+  const estados = ((relatorio as unknown as { callStates?: EstadoChamada[] }).callStates ?? [])
+  const linhas = participantes.filter((p) => p.type?.value === 'LINE')
+  const telefone = participantes.find((p) => p.type?.value === 'PHONE_NUMBER')
+  // Ramal de quem falou: a linha com gravação (atendeu/ligou de verdade);
+  // senão a primeira linha (ligação recebida que tocou em vários ramais).
+  const linha = linhas.find((l) => l.recordings?.length) ?? linhas[0]
+  // Atendeu = a chamada ficou ACTIVE (o lado externo começa a gravar no
+  // atendimento). Tempo de conversa = do atendimento até o fim.
+  const ativo = estados.find((e) => e.type === 'ACTIVE')?.timestamp ?? telefone?.recordings?.[0]?.startTimestamp ?? null
+  const fim = relatorio.callEnded ?? null
+  const total = fim ? Math.max(0, Math.round((new Date(fim).getTime() - new Date(relatorio.callCreated).getTime()) / 1000)) : 0
+  const conversa = ativo && fim ? Math.max(0, Math.round((new Date(fim).getTime() - new Date(ativo).getTime()) / 1000)) : 0
+  const conectou = !!ativo
+  const efetiva = conectou && conversa >= segundosAtendida
+  return {
+    chamadaId: `goto:${relatorio.conversationSpaceId}`,
+    dataHora: relatorio.callCreated,
+    dataHoraUtc: paraSqliteUtc(relatorio.callCreated),
+    ramal: linha?.type?.extensionNumber ?? null,
+    origem: '',
+    destino: '',
+    sipCode: '',
+    duracaoSegundos: conectou ? conversa : total,
+    efetiva,
+    status: efetiva ? 'atendida' : conectou ? 'curta' : 'nao_atendida',
+    linkGravacao: null,
+    resumo: null,
+    transcricao: null,
+    fonte: 'GoTo',
+    numeroExterno: extrairNumeroExternoDoRelatorio(relatorio),
+    direcao: relatorio.direction ?? 'OUTBOUND',
+  }
 }
 
-// Casa o número da GoTo com o telefone salvo do cliente comparando os
-// últimos 8 dígitos — a planilha importada nem sempre tem o DDI/DDD
-// completo, então uma comparação exata falharia com frequência.
-//
-// NÃO ALTERAR esta lógica de matching (numeroBate) — mantida exatamente como
-// estava antes da migração pra Call Events Report API.
-async function registrarLigacaoAutomatica(numeroExterno: string, duracaoMs: number | null): Promise<ResultadoRegistro[]> {
-  // A API da GoTo não diz se a ligação foi atendida por uma pessoa ou caiu
-  // na caixa postal — só dá pra medir a duração. Isso já causou o problema
-  // de caixa postal (que costuma durar mais que a saudação + recado) sendo
-  // contada como "ligação efetiva" só por ter passado dos 15s. Duração
-  // curta continua um sinal confiável de "não atendeu" (auto-resolvida, sem
-  // precisar o vendedor confirmar); duração longa (ou não medida) vira
-  // sempre pendente — só conta como efetiva quando o vendedor confirma
-  // "Respondeu" no card, porque só ele sabe se falou com o cliente de
-  // verdade ou ouviu a gravação da caixa postal.
-  const duracaoMinimaMs = (await getConfigNumero('goto_duracao_minima_segundos', 15)) * 1000
-  const provavelmenteNaoAtendida = duracaoMs !== null && duracaoMs < duracaoMinimaMs
-  const efetiva = false
-  const resultadoAuto = provavelmenteNaoAtendida ? ('nao_respondeu' as const) : undefined
-
-  const digitos = soDigitos(numeroExterno)
-
-  // Comparar só os últimos 8 dígitos (sem DDD) já causou uma ligação
-  // registrada no cliente ERRADO na prática: dois clientes com DDDs
-  // diferentes (ex: 47 e 18) podem ter o mesmo final de 8 dígitos por
-  // coincidência, e o `.find()` pegava o primeiro que batesse, às cegas.
-  // Agora exige pelo menos 10 dígitos em comum (DDD + número) — se o
-  // telefone salvo do cliente ainda não tem DDD completo, ele simplesmente
-  // não entra na comparação (mais seguro não casar do que casar errado).
-  if (digitos.length < 10) {
-    console.log(`[goto] número da chamada com menos de 10 dígitos ("${digitos}") — não dá pra casar com segurança, ignorando`)
-    return [{ motivoNaoRegistrado: 'numero_invalido' }]
+// Ramal + nome que vieram na ligação: entra na lista de ramais sozinho
+// (o admin só escolhe o vendedor).
+async function anotarRamais(relatorio: RelatorioChamada): Promise<void> {
+  for (const p of (relatorio.participants ?? []) as ParticipanteCompleto[]) {
+    const ramal = p.type?.value === 'LINE' ? p.type.extensionNumber : undefined
+    if (!ramal) continue
+    await db
+      .insert(gotoRamais)
+      .values({ ramal, nome: p.type?.name ?? null })
+      .onConflictDoUpdate({ target: gotoRamais.ramal, set: { nome: p.type?.name ?? null, atualizadoEm: agoraSqlite() } })
   }
-  const sufixo11 = digitos.length >= 11 ? digitos.slice(-11) : null
-  const sufixo10 = digitos.slice(-10)
-  console.log(`[goto] relatório de chamada recebido — número bruto "${numeroExterno}", comparando pelos últimos 10-11 dígitos ("${sufixo10}")`)
+}
 
-  function numeroBate(numeroCliente: string): boolean {
-    const d = soDigitos(numeroCliente)
-    if (d.length < 10) return false // telefone do cliente ainda incompleto — não arrisca casar
-    if (sufixo11 && d.length >= 11 && d.slice(-11) === sufixo11) return true
-    return d.slice(-10) === sufixo10
-  }
-
-  // O telefone físico GoTo Connect atende Joitec Distribuidora e Joitec
-  // Automação (mesma linha) — o casamento de ligação busca cliente nas duas
-  // empresas, mas nunca em Odin Tubos/Odin Compressores (linha separada).
-  const empresaIds = await obterEmpresaIdsIntegracao()
-  const todosClientes = await db.query.clientes.findMany({
-    where: and(isNull(clientes.deletedAt), inArray(clientes.empresaId, empresaIds)),
-    columns: { id: true, empresaId: true, telefoneWhatsapp: true, vendedorAtualId: true },
-    with: { telefonesExtras: { columns: { numero: true } } },
-  })
-  const clientesQueBatem = todosClientes.filter(
-    (c) => (c.telefoneWhatsapp && numeroBate(c.telefoneWhatsapp)) || c.telefonesExtras.some((t) => numeroBate(t.numero))
-  )
-  if (clientesQueBatem.length === 0) {
-    console.log(`[goto] nenhum cliente da Joitec com telefone batendo com "${sufixo10}" — ligação não registrada`)
-    return [{ motivoNaoRegistrado: 'cliente_nao_encontrado' }]
-  }
-
-  // Joitec Distribuidora e Joitec Automação podem legitimamente atender o
-  // mesmo cliente real, cada uma com seu próprio vendedor — nesse caso
-  // registra em cada uma separadamente (não é ambiguidade de verdade, é
-  // duplicidade esperada entre empresas). Só permanece bloqueado quando MAIS
-  // DE UM cliente da MESMA empresa bate com o telefone — aí sim não dá pra
-  // saber qual dos dois é o certo, e arriscar registrar no errado é pior do
-  // que não registrar.
-  const porEmpresa = new Map<number, typeof clientesQueBatem>()
-  for (const c of clientesQueBatem) {
-    if (!porEmpresa.has(c.empresaId)) porEmpresa.set(c.empresaId, [])
-    porEmpresa.get(c.empresaId)!.push(c)
-  }
-
-  async function registrarParaCliente(cliente: (typeof clientesQueBatem)[number]): Promise<ResultadoRegistro> {
-    if (!cliente.vendedorAtualId) {
-      console.log(`[goto] cliente ${cliente.id} encontrado pelo telefone, mas sem vendedor atribuído — ligação não registrada`)
-      return { clienteId: cliente.id, motivoNaoRegistrado: 'cliente_sem_vendedor' }
-    }
-
-    const agora = Date.now()
-    const ultimoRegistro = ultimoRegistroPorCliente.get(cliente.id)
-    if (ultimoRegistro !== undefined && agora - ultimoRegistro < JANELA_DEDUP_MS) {
-      console.log(`[goto] ligação duplicada pro cliente ${cliente.id} ignorada (dentro da janela de dedup)`)
-      return { clienteId: cliente.id, motivoNaoRegistrado: 'duplicada_janela_dedup' }
-    }
-    ultimoRegistroPorCliente.set(cliente.id, agora)
-
-    const funil = await db.query.funilMensal.findFirst({
-      where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferenciaAtual()), isNull(funilMensal.deletedAt)),
-    })
-    if (!funil) return { clienteId: cliente.id, motivoNaoRegistrado: 'sem_funil_mes_atual' }
-
-    const duracaoTexto = duracaoMs !== null ? ` (duração: ${Math.round(duracaoMs / 1000)}s)` : ''
-    const [registro] = await db
-      .insert(registroContato)
-      .values({
-        funilMensalId: funil.id,
-        vendedorId: funil.vendedorId,
-        tipo: 'ligacao',
-        origem: 'ligacao_automatica',
-        duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
-        efetiva,
-        resultado: resultadoAuto,
-        observacao: provavelmenteNaoAtendida
-          ? `Ligação muito curta — provavelmente não atendida.${duracaoTexto}`
-          : `Ligação captada automaticamente pela integração GoTo Connect — confirme se você conversou com o cliente ou se caiu na caixa postal.${duracaoTexto}`,
-      })
-      .returning({ id: registroContato.id })
-    // `efetiva` aqui é sempre false (GoTo não confirma sozinho se rolou
-    // conversa de verdade) — não conta como tentativa ainda; só quando o
-    // vendedor confirmar/editar esse registro (ver contatos.ts) é que
-    // funilMensal é atualizado. Senão uma ligação perdida sozinha já
-    // destrava sair de "Novo" e infla a Cobertura de Contatos sem ninguém
-    // ter conversado com o cliente (achado do João, 2026-08-28).
-
-    console.log(`[goto] ligação registrada automaticamente pro cliente ${cliente.id} (aguardando confirmação)`)
-    return { clienteId: cliente.id, registroContatoId: registro?.id }
-  }
-
-  const resultados: ResultadoRegistro[] = []
-  for (const [empresaId, lista] of porEmpresa) {
-    if (lista.length > 1) {
-      console.log(
-        `[goto] AMBÍGUO dentro da empresa ${empresaId}: ${lista.length} clientes com telefone batendo com "${sufixo10}" (ids: ${lista.map((c) => c.id).join(', ')}) — não registra nessa empresa pra não arriscar atribuir errado`
-      )
-      resultados.push({ motivoNaoRegistrado: 'numero_ambiguo_na_empresa' })
-      continue
-    }
-    resultados.push(await registrarParaCliente(lista[0]))
-  }
-  return resultados
+async function segundosParaAtendida(): Promise<number> {
+  const v = await getConfigNumero('goto_duracao_minima_segundos', 15)
+  return v > 0 ? v : 15
 }
 
 // Idempotência via banco (não em memória): a "reserva" do conversationSpaceId
 // é feita com onConflictDoNothing() ANTES de qualquer processamento — se
 // rowsAffected vier 0, é porque outra notificação (reconexão do canal,
 // reenvio da GoTo) já reservou esse mesmo id antes, então ignora sem
-// reprocessar. Isso sobrevive a restart do container, ao contrário do Set em
-// memória usado antes.
-async function processarRelatorioDeChamada(conversationSpaceId: string): Promise<void> {
-  const claim = await db.insert(gotoLigacoesProcessadas).values({ conversationSpaceId }).onConflictDoNothing()
-  if (claim.rowsAffected === 0) {
-    console.log(`[goto] conversationSpaceId ${conversationSpaceId} já processado, ignorando duplicata`)
-    return
+// reprocessar. `reprocessar` = nova tentativa de uma que deu erro.
+async function processarRelatorioDeChamada(conversationSpaceId: string, reprocessar = false): Promise<void> {
+  if (!reprocessar) {
+    const claim = await db.insert(gotoLigacoesProcessadas).values({ conversationSpaceId }).onConflictDoNothing()
+    if (claim.rowsAffected === 0) {
+      console.log(`[goto] conversationSpaceId ${conversationSpaceId} já processado, ignorando duplicata`)
+      return
+    }
   }
 
   try {
     const accessToken = await obterAccessTokenValido()
     const relatorio = await buscarRelatorioChamada(accessToken, conversationSpaceId)
-    const numeroExterno = extrairNumeroExternoDoRelatorio(relatorio)
-    const duracaoMs =
-      relatorio.callEnded && relatorio.callCreated
-        ? new Date(relatorio.callEnded).getTime() - new Date(relatorio.callCreated).getTime()
-        : null
-
-    if (!numeroExterno) {
-      await db
-        .update(gotoLigacoesProcessadas)
-        .set({
-          direcao: relatorio.direction ?? null,
-          duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
-          status: 'concluido',
-          motivoNaoRegistrado: 'numero_externo_nao_encontrado_no_relatorio',
-          payloadBruto: redigir(relatorio),
-          atualizadoEm: agoraSqlite(),
-        })
-        .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
-      console.log(`[goto] relatório ${conversationSpaceId} não trouxe número externo, ignorando`)
-      return
-    }
-
-    // Pode registrar em mais de um cliente quando o mesmo telefone é de um
-    // cliente na Joitec Distribuidora E de outro na Joitec Automação (cada
-    // uma com seu próprio vendedor) — as colunas únicas clienteId/
-    // registroContatoId guardam só o primeiro registro bem-sucedido; quando
-    // há mais de um resultado, o detalhe de todos fica resumido aqui.
-    const resultados = await registrarLigacaoAutomatica(numeroExterno, duracaoMs)
-    const primeiroSucesso = resultados.find((r) => r.registroContatoId) ?? resultados[0]
-    const resumoMotivo =
-      resultados.length > 1
-        ? resultados
-            .map((r) => (r.registroContatoId ? `cliente ${r.clienteId} registrado (contato ${r.registroContatoId})` : `cliente ${r.clienteId ?? '-'}: ${r.motivoNaoRegistrado}`))
-            .join(' | ')
-        : (primeiroSucesso?.motivoNaoRegistrado ?? null)
+    await anotarRamais(relatorio).catch((e) => console.error('[goto] ramais:', e))
+    const chamada = relatorioParaChamada(relatorio, await segundosParaAtendida())
+    const ramais = new Map((await db.select().from(gotoRamais)).map((r) => [r.ramal, r.userId]))
+    const [resultado] = await registrarChamadasNoCrm([chamada], await obterEmpresaIdsIntegracao(), ramais)
 
     await db
       .update(gotoLigacoesProcessadas)
       .set({
-        direcao: relatorio.direction ?? null,
-        numeroExterno,
-        duracaoSegundos: duracaoMs !== null ? Math.round(duracaoMs / 1000) : null,
-        clienteId: primeiroSucesso?.clienteId ?? null,
-        registroContatoId: primeiroSucesso?.registroContatoId ?? null,
+        direcao: chamada.direcao ?? null,
+        numeroExterno: chamada.numeroExterno ?? null,
+        duracaoSegundos: chamada.duracaoSegundos,
+        clienteId: resultado?.clienteId ?? null,
+        registroContatoId: resultado?.registroContatoId ?? null,
         status: 'concluido',
-        motivoNaoRegistrado: resumoMotivo,
+        motivoNaoRegistrado: resultado ? (resultado.motivoNaoRegistrado ?? null) : 'ja_registrada',
         payloadBruto: redigir(relatorio),
         atualizadoEm: agoraSqlite(),
       })
       .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : String(err)
-    console.error(`[goto] erro ao processar relatório ${conversationSpaceId}:`, err)
+    console.error(`[goto] erro ao processar relatório ${conversationSpaceId}:`, mensagem)
     await db
       .update(gotoLigacoesProcessadas)
-      .set({ status: 'erro', motivoNaoRegistrado: mensagem, atualizadoEm: agoraSqlite() })
+      .set({ status: 'erro', motivoNaoRegistrado: mensagem, tentativas: sql`${gotoLigacoesProcessadas.tentativas} + 1`, atualizadoEm: agoraSqlite() })
       .where(eq(gotoLigacoesProcessadas.conversationSpaceId, conversationSpaceId))
   }
+}
+
+// Ligação que deu erro ao buscar (rede, relatório ainda não pronto): tenta
+// de novo a cada rodada, até 5 vezes, nas últimas 48h (scheduler, 5 min).
+export async function reprocessarErrosGoto(): Promise<number> {
+  const { conectado } = await statusConexao()
+  if (!conectado) return 0
+  const limite = new Date(Date.now() - 48 * 3600_000).toISOString().replace('T', ' ').slice(0, 19)
+  const comErro = await db
+    .select({ id: gotoLigacoesProcessadas.conversationSpaceId })
+    .from(gotoLigacoesProcessadas)
+    .where(and(eq(gotoLigacoesProcessadas.status, 'erro'), lt(gotoLigacoesProcessadas.tentativas, 5), gte(gotoLigacoesProcessadas.criadoEm, limite)))
+    .limit(50)
+  for (const c of comErro) await processarRelatorioDeChamada(c.id, true)
+  return comErro.length
 }
 
 interface EnvelopeNotificacaoGoTo {
