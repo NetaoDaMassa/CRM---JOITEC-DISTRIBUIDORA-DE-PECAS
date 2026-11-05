@@ -501,7 +501,9 @@ app.get('/pabx-gravacao/:id', async (req, res) => {
   if (link.startsWith('goto:')) {
     try {
       const { audio } = await baixarGravacaoGoto(link.slice(5))
-      const mp3 = await paraMp3(audio).catch(() => null)
+      // Já vem em MP3 ("ID3" ou cabeçalho de quadro 0xFFEx) — só converte se não for.
+      const jaMp3 = audio.subarray(0, 3).toString('latin1') === 'ID3' || (audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0)
+      const mp3 = jaMp3 ? audio : await paraMp3(audio).catch(() => null)
       const final = mp3?.length ? mp3 : audio
       res.setHeader('Content-Type', mp3?.length ? 'audio/mpeg' : 'audio/wav')
       res.setHeader('Content-Length', String(final.length))

@@ -283,28 +283,30 @@ export async function statusConexao(): Promise<{ conectado: boolean; email: stri
   return { conectado: !!refreshToken, email, gravacoes: escopo.includes('recording.v1.read') }
 }
 
-// Áudio de uma gravação da GoTo (recording.v1.read). A API devolve o
-// arquivo direto ou redireciona pra um link temporário; alguns ambientes
-// devolvem JSON com a URL — trata os três.
+// Áudio de uma gravação da GoTo (recording.v1.read). Dois passos (spec
+// oficial, confirmado em produção 2026-11-05): GET /content devolve um
+// ticket curto {token: {token, expires}}; GET /content/{ticket} (com o
+// login) redireciona (302) pro arquivo — MP3.
 export async function baixarGravacaoGoto(recordingId: string): Promise<{ audio: Buffer; tipo: string }> {
-  const token = await obterAccessTokenValido()
-  const r = await fetch(`https://api.goto.com/recording/v1/recordings/${encodeURIComponent(recordingId)}/content`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const accessToken = await obterAccessTokenValido()
+  const base = `https://api.goto.com/recording/v1/recordings/${encodeURIComponent(recordingId)}/content`
+  const r = await fetch(base, { headers: { Authorization: `Bearer ${accessToken}` }, signal: AbortSignal.timeout(30_000) })
+  if (r.status === 403) throw new Error('A GoTo não liberou as gravações — reconecte a GoTo em Configurações (permissão de gravações)')
+  if (r.status === 400 || r.status === 404) throw new Error('Gravação ainda não disponível na GoTo — tente em alguns minutos')
+  if (!r.ok) throw new Error(`GoTo não devolveu a gravação (${r.status})`)
+  const corpo = (await r.json()) as { token?: { token?: string } | string }
+  const ticket = typeof corpo.token === 'string' ? corpo.token : corpo.token?.token
+  if (!ticket) throw new Error('GoTo não mandou o acesso à gravação')
+  const link = await fetch(`${base}/${encodeURIComponent(ticket)}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    redirect: 'manual',
     signal: AbortSignal.timeout(30_000),
   })
-  if (r.status === 403) throw new Error('A GoTo não liberou as gravações — reconecte a GoTo em Configurações (permissão de gravações)')
-  if (r.status === 404) throw new Error('Gravação ainda não disponível na GoTo — tente em alguns minutos')
-  if (!r.ok) throw new Error(`GoTo não devolveu a gravação (${r.status})`)
-  const tipo = r.headers.get('content-type') ?? ''
-  if (/json/i.test(tipo)) {
-    const j = (await r.json()) as Record<string, unknown>
-    const url = [j.url, j.contentUrl, j.downloadUrl, j.token].find((v): v is string => typeof v === 'string' && v.startsWith('http'))
-    if (!url) throw new Error('GoTo devolveu a gravação num formato que o CRM não conhece')
-    const a = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!a.ok) throw new Error(`GoTo não devolveu o áudio (${a.status})`)
-    return { audio: Buffer.from(await a.arrayBuffer()), tipo: a.headers.get('content-type') ?? '' }
-  }
-  return { audio: Buffer.from(await r.arrayBuffer()), tipo }
+  const destino = link.headers.get('location')
+  if (!destino) throw new Error(`GoTo não devolveu o link da gravação (${link.status})`)
+  const arq = await fetch(destino, { signal: AbortSignal.timeout(60_000) })
+  if (!arq.ok) throw new Error(`Não consegui baixar a gravação (${arq.status})`)
+  return { audio: Buffer.from(await arq.arrayBuffer()), tipo: arq.headers.get('content-type') ?? '' }
 }
 
 export async function desconectar(): Promise<void> {
