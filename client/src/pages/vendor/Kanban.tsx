@@ -3,6 +3,7 @@ import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import FunilBoard from '../../components/FunilBoard'
 import { primeiroDiaMesString } from '../../lib/utils'
+import { SLUGS_COLUNA_PEDIDOS_CARTEIRA } from '../../components/PedidoCarteiraAcoes'
 
 export default function VendorKanban() {
   const [mesReferencia, setMesReferencia] = useState(primeiroDiaMesString())
@@ -30,7 +31,7 @@ export default function VendorKanban() {
         mostrarFaturamento={ehCompretecLojaFisica}
         mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
         mostrarOutrasLinhas={ehOdinTubos}
-        mostrarPedidosCarteira={ehOdinTubos}
+        mostrarPedidosCarteira={SLUGS_COLUNA_PEDIDOS_CARTEIRA.includes(empresas?.find((e) => e.id === empresaAtivaId)?.slug ?? '')}
       />
     </div>
   )

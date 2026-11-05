@@ -28,11 +28,11 @@ const ETAPAS_PARADAS = ['consumidor_final', 'consumidor_final_loja', 'faturament
 
 // Cliente com pedido de descarte/transferência esperando o gestor sai da
 // cobrança de contato (pedido do João, 2026-11-05) — o vendedor já pediu
-// pra tirar da carteira dele, não faz sentido cobrar contato. Por enquanto
-// só na Odin Tubos (é onde fica a coluna "Descarte / Transferência" no
-// Kanban). Aprovado: o cliente sai da carteira de vez; recusado: volta a
+// pra tirar da carteira dele, não faz sentido cobrar contato. Vale nas
+// empresas com a coluna "Descarte / Transferência" no Kanban: Odin Tubos,
+// Joitec e Odin Automação (mesma lista do front, PedidoCarteiraAcoes.tsx). Aprovado: o cliente sai da carteira de vez; recusado: volta a
 // contar normalmente.
-export const SLUGS_PEDIDO_CARTEIRA_FORA_DA_COBRANCA = ['odin-tubos']
+export const SLUGS_PEDIDO_CARTEIRA_FORA_DA_COBRANCA = ['odin-tubos', 'joitec', 'joitec-automacao']
 
 export async function clientesComPedidoCarteiraPendente(empresaId: number, clienteIds: number[]): Promise<Set<number>> {
   if (!clienteIds.length) return new Set()

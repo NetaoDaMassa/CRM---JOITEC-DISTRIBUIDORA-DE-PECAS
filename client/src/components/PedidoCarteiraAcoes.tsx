@@ -9,6 +9,12 @@ import Button from './ui/Button'
 // do Kanban da Odin Tubos (pedido do João, 2026-11-05), pra as duas
 // fazerem exatamente a mesma coisa.
 
+// Empresas com a coluna "Descarte / Transferência" no Kanban (e cliente
+// pendente fora da cobrança de contato) — mesma lista do servidor
+// (SLUGS_PEDIDO_CARTEIRA_FORA_DA_COBRANCA em lib/coberturaContatos.ts).
+// 'joitec-automacao' é a Odin Automação (só o nome mudou).
+export const SLUGS_COLUNA_PEDIDOS_CARTEIRA = ['odin-tubos', 'joitec', 'joitec-automacao']
+
 const BANCO_CLIENTES_VALUE = 'banco'
 const BANCO_ESPECIFICO_PREFIXO = 'banco:'
 

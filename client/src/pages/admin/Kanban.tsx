@@ -4,6 +4,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import Select from '../../components/ui/Select'
 import FunilBoard from '../../components/FunilBoard'
 import { primeiroDiaMesString } from '../../lib/utils'
+import { SLUGS_COLUNA_PEDIDOS_CARTEIRA } from '../../components/PedidoCarteiraAcoes'
 
 // Coluna com mais cards que isso no modo "Todos" mostra o resto sob demanda
 // ("Mostrar mais") — Joitec/Tubos passam de 3 mil cards/mês somando todo mundo.
@@ -65,7 +66,7 @@ export default function AdminKanban() {
           mostrarFaturamento={ehCompretecLojaFisica}
           mostrarConsumidorFinalLoja={ehCompretecLojaFisica}
           mostrarOutrasLinhas={ehOdinTubos}
-          mostrarPedidosCarteira={ehOdinTubos}
+          mostrarPedidosCarteira={SLUGS_COLUNA_PEDIDOS_CARTEIRA.includes(empresas?.find((e) => e.id === empresaAtivaId)?.slug ?? '')}
         />
       )}
     </div>
