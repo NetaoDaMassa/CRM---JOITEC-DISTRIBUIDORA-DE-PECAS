@@ -477,11 +477,45 @@ export async function registrarLigacoesAutomaticasPabxone360(
     const daPessoa = (empresaId: number) => !contas.length || empresasDaPessoa.has(empresaId)
     const clientesTel = porTelCliente.get(chave) ?? []
     const leadsTel = porTelLead.get(chave) ?? []
-    const escolherCliente = (lista: ClienteIdx[]): ClienteIdx | 'ambiguo' | null => {
+    // Mesmo telefone em mais de um cadastro (cliente duplicado, filiais com
+    // a mesma central): antes virava 'numero_ambiguo' e a ligação não era
+    // registrada em lugar nenhum. João, 2026-11-05: "preciso ter toda
+    // informação de ligação registrada". Agora escolhe o mais provável:
+    // da carteira de quem ligou > com card no mês > contato mais recente >
+    // cadastro mais antigo. Os outros cadastros vão citados na observação.
+    let outrosCadastros: number[] = []
+    const escolherCliente = async (lista: ClienteIdx[]): Promise<ClienteIdx | null> => {
       if (!lista.length) return null
       if (lista.length === 1) return lista[0]
       const doVendedor = lista.filter((c) => c.vendedorAtualId && contas.some((x) => x.id === c.vendedorAtualId))
-      return doVendedor.length === 1 ? doVendedor[0] : 'ambiguo'
+      const candidatos = doVendedor.length ? doVendedor : lista
+      const ids = candidatos.map((c) => c.id)
+      const comCard = new Set(
+        (
+          await db
+            .select({ clienteId: funilMensal.clienteId })
+            .from(funilMensal)
+            .where(and(inArray(funilMensal.clienteId, ids), eq(funilMensal.mesReferencia, mesReferenciaAtual()), isNull(funilMensal.deletedAt)))
+        ).map((r) => r.clienteId)
+      )
+      const ultimoContato = new Map(
+        (
+          await db
+            .select({ clienteId: funilMensal.clienteId, ultimo: sql<string | null>`max(${registroContato.dataHora})` })
+            .from(registroContato)
+            .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+            .where(inArray(funilMensal.clienteId, ids))
+            .groupBy(funilMensal.clienteId)
+        ).map((r) => [r.clienteId, r.ultimo ?? ''])
+      )
+      const escolhido = [...candidatos].sort(
+        (a, b) =>
+          Number(comCard.has(b.id)) - Number(comCard.has(a.id)) ||
+          (ultimoContato.get(b.id) ?? '').localeCompare(ultimoContato.get(a.id) ?? '') ||
+          a.id - b.id
+      )[0]
+      outrosCadastros = lista.filter((c) => c.id !== escolhido.id).map((c) => c.id)
+      return escolhido
     }
     const escolherLead = (lista: LeadIdx[]): LeadIdx | null => {
       if (!lista.length) return null
@@ -492,18 +526,16 @@ export async function registrarLigacoesAutomaticasPabxone360(
       return ordenada[0]
     }
 
-    let cliente = escolherCliente(clientesTel.filter((c) => daPessoa(c.empresaId)))
+    let cliente = await escolherCliente(clientesTel.filter((c) => daPessoa(c.empresaId)))
     let lead: LeadIdx | null = null
     if (!cliente) lead = escolherLead(leadsTel.filter((l) => daPessoa(l.empresaId)))
     if (!cliente && !lead && contas.length) {
-      cliente = escolherCliente(clientesTel.filter((c) => !daPessoa(c.empresaId)))
+      cliente = await escolherCliente(clientesTel.filter((c) => !daPessoa(c.empresaId)))
       if (!cliente) lead = escolherLead(leadsTel.filter((l) => !daPessoa(l.empresaId)))
     }
-
-    if (cliente === 'ambiguo') {
-      await finalizar({ motivoNaoRegistrado: 'numero_ambiguo' })
-      continue
-    }
+    const avisoDuplicado = outrosCadastros.length
+      ? `\nObs.: este telefone também está nos cadastros ${outrosCadastros.map((id) => `#${id}`).join(', ')} — confira se é cliente duplicado.`
+      : ''
 
     const detalhe = `${direcao === 'OUTBOUND' ? 'feita' : 'recebida'}, ramal ${chamada.ramal ?? '?'}`
 
@@ -515,9 +547,10 @@ export async function registrarLigacoesAutomaticasPabxone360(
         await finalizar({ empresaId: cliente.empresaId, clienteId: cliente.id, motivoNaoRegistrado: 'sem_funil_mes_atual' })
         continue
       }
-      const observacao = chamada.efetiva
+      let observacao = chamada.efetiva
         ? `Ligação ${detalhe} — captada pela PABXONE360, duração ${formatarDuracao(chamada.duracaoSegundos)}.${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
         : `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (PABXONE360, ${formatarDuracao(chamada.duracaoSegundos)}).`
+      observacao += avisoDuplicado
       const [registro] = await db
         .insert(registroContato)
         .values({
