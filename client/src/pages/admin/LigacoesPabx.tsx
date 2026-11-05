@@ -28,6 +28,7 @@ const TIPO: Record<string, { label: string; classe: string }> = {
   prospeccao: { label: 'Prospecção', classe: 'text-violet-300' },
   cliente: { label: 'Cliente (fora do mês)', classe: 'text-dark-300' },
   nao_identificado: { label: 'Fora do CRM', classe: 'text-dark-500' },
+  colega: { label: 'Entre colegas · não conta', classe: 'text-dark-500' },
 }
 
 function BarraMeta({ feito, meta }: { feito: number; meta: number }) {
@@ -143,7 +144,7 @@ function Configuracao() {
             />
           ))}
         </div>
-        <p className="text-xs text-dark-500">Soma todas as ligações efetivas do ramal: lead, carteira, prospecção e número fora do CRM. 0 = sem meta.</p>
+        <p className="text-xs text-dark-500">Soma as ligações efetivas do ramal: lead, carteira, prospecção e número fora do CRM. Ligação entre colegas não conta. 0 = sem meta.</p>
       </div>
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm text-dark-200">
@@ -282,7 +283,7 @@ export default function LigacoesPabx() {
   })
 
   const chamadas = useMemo(
-    () => (data?.chamadas ?? []).filter((c) => (filtro === 'efetivas' ? c.efetiva : filtro === 'tentativas' ? !c.efetiva : true)),
+    () => (data?.chamadas ?? []).filter((c) => (filtro === 'todas' ? true : c.tipo === 'colega' ? false : filtro === 'efetivas' ? c.efetiva : !c.efetiva)),
     [data, filtro]
   )
   const totais = useMemo(() => {
@@ -380,7 +381,7 @@ export default function LigacoesPabx() {
               <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-2">
                 <h2 className="text-sm font-semibold text-dark-100">Por vendedor</h2>
                 <p className="text-xs text-dark-500">
-                  Meta conta só ligações efetivas — de qualquer tipo (lead, carteira, prospecção, fora do CRM). Meta do período = meta do dia × {data?.diasUteis ?? 0} dia(s) útil(eis) até hoje.
+                  Meta conta só ligações efetivas (lead, carteira, prospecção, fora do CRM). Ligação entre colegas não entra em nenhum número. Meta do período = meta do dia × {data?.diasUteis ?? 0} dia(s) útil(eis) até hoje.
                 </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
@@ -470,7 +471,7 @@ export default function LigacoesPabx() {
                     </thead>
                     <tbody>
                       {chamadas.map((c) => {
-                        const st = STATUS[c.status ?? ''] ?? { label: c.efetiva ? 'Efetiva' : 'Tentativa', classe: 'bg-dark-700 text-dark-300 border-dark-600' }
+                        const st = c.tipo === 'colega' ? { label: 'Interna', classe: 'bg-dark-700 text-dark-300 border-dark-600' } : STATUS[c.status ?? ''] ?? { label: c.efetiva ? 'Efetiva' : 'Tentativa', classe: 'bg-dark-700 text-dark-300 border-dark-600' }
                         const temDetalhe = !!(c.resumo || c.transcricao || c.linkGravacao || c.motivo)
                         return (
                           <Fragment key={c.id}>
@@ -487,7 +488,7 @@ export default function LigacoesPabx() {
                               <td className="py-1.5 pr-3 whitespace-nowrap">{c.vendedor ?? (c.ramal ? `Ramal ${c.ramal}` : '—')}</td>
                               <td className="py-1.5 pr-3 whitespace-nowrap font-mono text-dark-300">{telefone(c.numero)}</td>
                               <td className="py-1.5 pr-3">
-                                {c.contato ?? <span className="text-dark-500">não encontrado no CRM</span>}
+                                {c.contato ?? (c.tipo !== 'colega' && <span className="text-dark-500">não encontrado no CRM</span>)}
                                 <span className={`ml-1.5 text-[10px] uppercase ${TIPO[c.tipo]?.classe ?? ''}`}>{TIPO[c.tipo]?.label ?? ''}</span>
                               </td>
                               <td className="py-1.5 pr-3 whitespace-nowrap">

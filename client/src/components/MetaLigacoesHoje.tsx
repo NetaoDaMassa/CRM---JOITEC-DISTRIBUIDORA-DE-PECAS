@@ -23,7 +23,7 @@ export default function MetaLigacoesHoje() {
     </>
   )
   const classe = `flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs font-semibold ${cor}`
-  const dica = 'Ligações efetivas hoje (lead, carteira, prospecção e outras) × meta do dia'
+  const dica = 'Ligações efetivas hoje (lead, carteira, prospecção e fora do CRM, sem colegas) × meta do dia'
   // Vendedor não abre /admin/ligacoes (AdminGuard) — pra ele é só o contador.
   if (user?.role !== 'admin')
     return (

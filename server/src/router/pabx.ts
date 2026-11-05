@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, lte, max, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lte, max, sql } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, contasVinculadas, empresas, funilMensal, gotoRamais, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
@@ -84,7 +84,8 @@ async function ultimaLigacaoId(userIds: number[]): Promise<number> {
 }
 
 // Meta diária de LIGAÇÕES EFETIVAS por vendedor (pedido do João, 2026-11-05):
-// soma toda ligação efetiva do ramal — lead, carteira, prospecção ou número
+// Ligação entre colegas (ramal → ramal) não conta (João, 2026-11-05).
+// Soma toda outra ligação efetiva do ramal — lead, carteira, prospecção ou número
 // fora do CRM. Uma meta por empresa Odin; Odin Tubos começa em 30, as outras
 // em 0 (= sem meta). Quem tem conta em mais de uma empresa fica com a maior.
 const chaveMeta = (empresaId: number) => `pabxone360_meta_efetivas_dia_${empresaId}`
@@ -98,11 +99,17 @@ async function metaDaPessoa(ids: number[], metas: Map<number, number>): Promise<
   const us = await db.query.users.findMany({ where: inArray(users.id, ids), columns: { empresaId: true } })
   return Math.max(0, ...us.map((u) => (u.empresaId ? (metas.get(u.empresaId) ?? 0) : 0)))
 }
-type TipoLigacao = 'lead' | 'carteira' | 'prospeccao' | 'cliente' | 'nao_identificado'
+type TipoLigacao = 'lead' | 'carteira' | 'prospeccao' | 'cliente' | 'nao_identificado' | 'colega'
+// Tem ramal e nenhum número externo = ramal falando com ramal (PABXONE360:
+// origem e destino são ramais; GoTo: sem participante PHONE_NUMBER).
+function ehEntreColegas(l: { ramal: string | null; numero: string | null }) {
+  return !!l.ramal && !l.numero
+}
 // pabxone360.ts grava: lead → leadId; carteira → registroContatoId (card do
 // mês); prospect → clienteId sem registro e sem motivo; cliente sem card do
 // mês nem prospecção → clienteId + motivo.
-function tipoLigacao(l: { leadId: number | null; registroContatoId: number | null; clienteId: number | null; motivo: string | null }): TipoLigacao {
+function tipoLigacao(l: { ramal: string | null; numero: string | null; leadId: number | null; registroContatoId: number | null; clienteId: number | null; motivo: string | null }): TipoLigacao {
+  if (ehEntreColegas(l)) return 'colega'
   if (l.leadId) return 'lead'
   if (l.registroContatoId) return 'carteira'
   if (l.clienteId) return l.motivo ? 'cliente' : 'prospeccao'
@@ -323,6 +330,7 @@ export const pabxRouter = router({
         and(
           inArray(pabxLigacoesProcessadas.userId, ids),
           eq(pabxLigacoesProcessadas.efetiva, true),
+          isNotNull(pabxLigacoesProcessadas.numeroExterno),
           gte(pabxLigacoesProcessadas.dataHora, paraSqlite(inicioDiaBr(hoje))),
           lte(pabxLigacoesProcessadas.dataHora, paraSqlite(fimDiaBr(hoje)))
         )
@@ -408,13 +416,16 @@ export const pabxRouter = router({
         segundosFalados: number
         feitas: number
         recebidas: number
-        efetivasPorTipo: Record<TipoLigacao, number>
+        efetivasPorTipo: Record<Exclude<TipoLigacao, 'colega'>, number>
         efetivasHoje: number
         metaDia: number
         metaPeriodo: number
       }
       const porVendedor = new Map<string, PorVendedor>()
       for (const l of linhas) {
+        // Entre colegas só aparece na lista; não soma em nada.
+        const tipo = tipoLigacao(l)
+        if (tipo === 'colega') continue
         const chave = l.userId ? `u${l.userId}` : `r${l.ramal ?? '?'}`
         const p = porVendedor.get(chave) ?? {
           userId: l.userId,
@@ -434,7 +445,7 @@ export const pabxRouter = router({
         if (l.efetiva) {
           p.efetivas++
           p.segundosFalados += l.duracao ?? 0
-          p.efetivasPorTipo[tipoLigacao(l)]++
+          p.efetivasPorTipo[tipo]++
           if (l.dataHora && l.dataHora >= inicioHoje) p.efetivasHoje++
         }
         if (l.direcao === 'OUTBOUND') p.feitas++
