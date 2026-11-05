@@ -11,6 +11,7 @@ import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { transferirCliente, validarVendedorDaEmpresa } from './carteira.js'
+import { assumirParaProspeccao } from '../lib/prospeccaoNova.js'
 
 const PAGE_SIZE = 20
 // Rótulo pra cliente sem vendedor que não veio de nenhuma importação com
@@ -650,7 +651,7 @@ export const clientesRouter = router({
   // carteira de alguém usando `carteira.transferirIndividual`, que já existe.
   bancoResumo: adminOrFeatureProcedure('banco_clientes').query(async ({ ctx }) => {
     const origensLiberadas = await origensLiberadasPara(ctx)
-    const filtros = [eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)]
+    const filtros = [eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt), isNull(clientes.bancoDesqualificado)]
     aplicarFiltroLiberacao(filtros, origensLiberadas)
     const linhas = await db
       .select({ origemBanco: sql<string>`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`, quantidade: count() })
@@ -671,6 +672,7 @@ export const clientesRouter = router({
       isNull(clientes.vendedorAtualId),
       isNull(clientes.deletedAt),
       isNotNull(clientes.estado),
+      isNull(clientes.bancoDesqualificado),
     ]
     aplicarFiltroLiberacao(filtros, origensLiberadas)
     const linhas = await db.selectDistinct({ estado: clientes.estado }).from(clientes).where(and(...filtros)).orderBy(asc(clientes.estado))
@@ -683,6 +685,9 @@ export const clientesRouter = router({
         q: z.string().optional(),
         origemBanco: z.string().optional(),
         estado: z.string().optional(),
+        // Desqualificados na Prospecção voltam pro banco escondidos — só
+        // aparecem com esse filtro ligado (2026-11-05).
+        desqualificados: z.boolean().optional(),
         pagina: z.number().min(1).default(1),
       })
     )
@@ -711,6 +716,7 @@ export const clientesRouter = router({
         q: z.string().optional(),
         origemBanco: z.string().optional(),
         estado: z.string().optional(),
+        desqualificados: z.boolean().optional(),
       })
     )
     .query(async ({ ctx, input }) => {
@@ -754,6 +760,24 @@ export const clientesRouter = router({
       throw new Error('Esse banco de clientes não está liberado pra você')
     }
 
+    // Prospecção nova (João, 2026-11-05): fora da Odin Compressores, o
+    // "Pegar cliente" do vendedor manda pra PROSPECÇÃO dele (etapa Novo,
+    // origem Banco), não direto pra carteira. Ele trabalha o cliente lá e
+    // envia pra carteira quando fechar; Perdido/Desqualificado volta pro
+    // banco. Admin atribuindo/transferindo continua indo direto pra carteira.
+    const empresa = await db.query.empresas.findFirst({ where: (t, { eq }) => eq(t.id, ctx.empresaId), columns: { slug: true } })
+    if (empresa && empresa.slug !== 'odin-compressores') {
+      const ok = await assumirParaProspeccao({
+        clienteId: input.clienteId,
+        vendedorId: ctx.user.id,
+        origem: 'banco',
+        info: cliente.origemBanco ?? SEM_ORIGEM,
+        alteradoPor: ctx.user.id,
+      })
+      if (!ok) throw new Error('Esse cliente acabou de ser pego por outro vendedor — escolha outro cliente do banco.')
+      return { success: true, prospeccao: true }
+    }
+
     // `seAindaSemVendedor: true` fecha a corrida entre vendedores clicando
     // em "pegar" o mesmo cliente ao mesmo tempo — ver comentário completo em
     // carteira.ts (transferirCliente). Achado do João, 2026-09-02.
@@ -761,7 +785,15 @@ export const clientesRouter = router({
     if (!resultado.ok) {
       throw new Error('Esse cliente acabou de ser pego por outro vendedor — escolha outro cliente do banco.')
     }
-    return { success: true }
+    return { success: true, prospeccao: false }
+  }),
+
+  bancoDesqualificadosTotal: adminOrFeatureProcedure('banco_clientes').query(async ({ ctx }) => {
+    const origensLiberadas = await origensLiberadasPara(ctx)
+    const filtros = [eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt), isNotNull(clientes.bancoDesqualificado)]
+    aplicarFiltroLiberacao(filtros, origensLiberadas)
+    const [{ total }] = await db.select({ total: count() }).from(clientes).where(and(...filtros))
+    return total
   }),
 
   // ── Gerenciar liberação de bancos (só admin) ────────────────────────────
@@ -772,7 +804,7 @@ export const clientesRouter = router({
     const bancos = await db
       .select({ origemBanco: sql<string>`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`, quantidade: count() })
       .from(clientes)
-      .where(and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)))
+      .where(and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt), isNull(clientes.bancoDesqualificado)))
       .groupBy(sql`coalesce(${clientes.origemBanco}, ${SEM_ORIGEM})`)
       .orderBy(desc(count()))
 
@@ -913,9 +945,14 @@ function aplicarFiltroLiberacao(filtros: unknown[], origensLiberadas: string[] |
 
 function bancoFiltros(
   empresaId: number,
-  input: { q?: string; origemBanco?: string; estado?: string }
+  input: { q?: string; origemBanco?: string; estado?: string; desqualificados?: boolean }
 ) {
-  const filtros = [eq(clientes.empresaId, empresaId), isNull(clientes.vendedorAtualId), isNull(clientes.deletedAt)]
+  const filtros = [
+    eq(clientes.empresaId, empresaId),
+    isNull(clientes.vendedorAtualId),
+    isNull(clientes.deletedAt),
+    input.desqualificados ? isNotNull(clientes.bancoDesqualificado) : isNull(clientes.bancoDesqualificado),
+  ]
   if (input.origemBanco === SEM_ORIGEM) filtros.push(isNull(clientes.origemBanco))
   else if (input.origemBanco) filtros.push(eq(clientes.origemBanco, input.origemBanco))
   if (input.estado) filtros.push(eq(clientes.estado, input.estado))

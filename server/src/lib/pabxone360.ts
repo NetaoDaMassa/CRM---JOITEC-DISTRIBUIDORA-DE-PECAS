@@ -31,6 +31,7 @@ import { agoraSqlite, mesReferenciaAtual } from './dataBr.js'
 import { getConfigBool, getConfigNumero, getConfigTexto } from './configuracoes.js'
 import { TERMINAL_STATUSES, type LeadStatus } from './leadsStatus.js'
 import { contarTentativaSePendente } from '../router/contatos.js'
+import { registrarLigacaoPabxNoProspect } from './prospeccaoNova.js'
 
 const BASE_URL = 'https://pabxone360.com.br/suite/api'
 export const SLUGS_EMPRESAS_PABX = ['odin-compressores', 'odin-tubos', 'joitec-automacao']
@@ -544,6 +545,16 @@ export async function registrarLigacoesAutomaticasPabxone360(
         where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferenciaAtual()), isNull(funilMensal.deletedAt)),
       })
       if (!funil) {
+        // Prospect (Prospecção nova, 2026-11-05) não tem card no Kanban — a
+        // ligação vai pro histórico dele em vez de ser ignorada.
+        const quem = contaNaEmpresa(cliente.empresaId) ?? cliente.vendedorAtualId ?? 0
+        const obsProspect = chamada.efetiva
+          ? `Ligação ${detalhe} — atendida, ${formatarDuracao(chamada.duracaoSegundos)} (PABXONE360).${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
+          : `Ligação ${detalhe} — ${ROTULO_STATUS[chamada.status]} (PABXONE360, ${formatarDuracao(chamada.duracaoSegundos)}).`
+        if (await registrarLigacaoPabxNoProspect({ clienteId: cliente.id, userId: quem, efetiva: chamada.efetiva, observacao: obsProspect, dataHora })) {
+          await finalizar({ empresaId: cliente.empresaId, clienteId: cliente.id })
+          continue
+        }
         await finalizar({ empresaId: cliente.empresaId, clienteId: cliente.id, motivoNaoRegistrado: 'sem_funil_mes_atual' })
         continue
       }

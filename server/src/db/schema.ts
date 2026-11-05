@@ -360,6 +360,26 @@ export const clientes = sqliteTable('clientes', {
   prospeccaoSituacao: text('prospeccao_situacao', {
     enum: ['novo', 'em_negociacao', 'sem_interesse', 'retornar_depois', 'pronto_carteira'],
   }).notNull().default('novo'),
+  // ── Prospecção nova (2026-11-05, migração 0144) — Joitec, Odin Tubos,
+  // Odin Automação e Compretec (a Odin Compressores segue com a da Bruna,
+  // acima). Só vale com emProspeccao=true E prospeccaoOrigem preenchida:
+  // origem nula = cliente de balcão (venda rápida também nasce em
+  // prospecção) ou prospect da Bruna — fica fora da tela nova.
+  prospeccaoEtapa: text('prospeccao_etapa', {
+    enum: ['novo', 'tentando', 'conversando', 'orcamento', 'ganho', 'perdido', 'desqualificado'],
+  }),
+  // manual = cadastrado pelo vendedor | banco = "Pegar cliente" do Banco de
+  // Clientes | sap_grupo = compra de outra empresa do grupo | sap_parou /
+  // crm_parou = parou de comprar (SAP ou vendas do CRM, ex. Compretec)
+  prospeccaoOrigem: text('prospeccao_origem', { enum: ['manual', 'banco', 'sap_grupo', 'sap_parou', 'crm_parou'] }),
+  prospeccaoProximoContato: text('prospeccao_proximo_contato'), // YYYY-MM-DD (BR)
+  prospeccaoMotivo: text('prospeccao_motivo'), // motivo de Perdido/Desqualificado
+  prospeccaoInfo: text('prospeccao_info'), // de onde veio a sugestão (ex. "Compra da Odin Tubos · R$ 38.200 em 12 meses")
+  prospeccaoDesde: text('prospeccao_desde'),
+  prospeccaoEncerradoEm: text('prospeccao_encerrado_em'),
+  // Motivo, quando um cliente do Banco foi desqualificado na prospecção —
+  // volta pro banco escondido (a tela do banco só mostra com filtro).
+  bancoDesqualificado: text('banco_desqualificado'),
   versao: integer('versao').notNull().default(1),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
@@ -435,6 +455,11 @@ export const prospeccaoRegistros = sqliteTable('prospeccao_registros', {
   tipo: text('tipo', { enum: ['ligacao', 'whatsapp', 'email', 'visita', 'nota'] }).notNull(),
   observacao: text('observacao').notNull(),
   registradoPorId: integer('registrado_por_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // Prospecção nova (0144): clique no WhatsApp/E-mail/Ligar (sem PABX) fica
+  // pendente até o vendedor confirmar se respondeu — igual card da carteira.
+  resultado: text('resultado', { enum: ['respondeu', 'nao_respondeu'] }),
+  pendente: integer('pendente', { mode: 'boolean' }).notNull().default(false),
+  origem: text('origem', { enum: ['manual', 'clique', 'pabx'] }),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 

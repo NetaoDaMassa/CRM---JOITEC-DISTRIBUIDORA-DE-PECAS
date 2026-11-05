@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm'
+import { concluirProspeccaoPorVenda } from './prospeccaoNova.js'
 import { db } from '../db/client.js'
 import { clientes, empresas, funilMensal, itensPedido, ordemDetalhes, ordens, sapGarantias, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
@@ -397,7 +398,18 @@ export async function sincronizarVendasSap(
         r.semVendedor.push({ pedido: p.DocNum, cliente: cliente.razaoSocial })
         continue
       }
-      const novo = await db.insert(funilMensal).values({ clienteId: cliente.id, vendedorId: cliente.vendedorAtualId, mesReferencia, etapa: 'fechado', dataEntradaEtapa: agoraSqlite() })
+      // Prospect que comprou = virou cliente: sai da prospecção pra carteira
+      // (senão o card ficava escondido do Kanban). Prospecção nova, 2026-11-05.
+      await concluirProspeccaoPorVenda(cliente.id)
+      const jaCriado = await db.query.funilMensal.findFirst({
+        where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferencia), isNull(funilMensal.deletedAt)),
+      })
+      if (jaCriado) {
+        await db.update(funilMensal).set({ etapa: 'fechado', dataEntradaEtapa: agoraSqlite(), updatedAt: agoraSqlite() }).where(eq(funilMensal.id, jaCriado.id))
+      }
+      const novo = jaCriado
+        ? { lastInsertRowid: jaCriado.id }
+        : await db.insert(funilMensal).values({ clienteId: cliente.id, vendedorId: cliente.vendedorAtualId, mesReferencia, etapa: 'fechado', dataEntradaEtapa: agoraSqlite() })
       card = (await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, Number(novo.lastInsertRowid)) }))!
     } else if (card.etapa !== 'fechado') {
       await db

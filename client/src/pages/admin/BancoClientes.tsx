@@ -116,6 +116,8 @@ export default function BancoClientes() {
   const [vendedorPorLinha, setVendedorPorLinha] = useState<Record<number, string>>({})
   const [gerenciando, setGerenciando] = useState(false)
   const [vendedorTransferirBanco, setVendedorTransferirBanco] = useState('')
+  // Desqualificados na Prospecção voltam pro banco escondidos (2026-11-05).
+  const [verDesqualificados, setVerDesqualificados] = useState(false)
   const utils = trpc.useUtils()
 
   const { data: vendors } = trpc.users.vendors.useQuery()
@@ -125,8 +127,10 @@ export default function BancoClientes() {
     q: q || undefined,
     origemBanco: origemBanco || undefined,
     estado: estado || undefined,
+    desqualificados: verDesqualificados || undefined,
     pagina,
   })
+  const { data: totalDesqualificados } = trpc.clientes.bancoDesqualificadosTotal.useQuery()
 
   async function exportarCsv() {
     setExportando(true)
@@ -135,6 +139,7 @@ export default function BancoClientes() {
         q: q || undefined,
         origemBanco: origemBanco || undefined,
         estado: estado || undefined,
+        desqualificados: verDesqualificados || undefined,
       })
       if (!linhas.length) return toast.error('Nenhum cliente pra exportar com esse filtro.')
       baixarCsv(
@@ -173,8 +178,8 @@ export default function BancoClientes() {
   // Vendedor não escolhe destino (só pra admin) — sempre atribui pra própria
   // carteira, o backend nem aceita outro id.
   const autoAtribuirMut = trpc.clientes.bancoAutoAtribuir.useMutation({
-    onSuccess() {
-      toast.success('Cliente adicionado à sua carteira')
+    onSuccess(r) {
+      toast.success(r.prospeccao ? 'Cliente foi pra sua Prospecção (etapa Novo) — trabalhe ele lá e envie pra carteira quando fechar' : 'Cliente adicionado à sua carteira')
       utils.clientes.banco.invalidate()
       utils.clientes.bancoResumo.invalidate()
     },
@@ -222,7 +227,7 @@ export default function BancoClientes() {
           <h1 className="font-heading text-xl text-dark-50">Banco de Clientes</h1>
           <p className="text-sm text-dark-400">
             Todo cliente ativo sem vendedor atribuído ({totalBanco} no total) —{' '}
-            {user?.role === 'vendor' ? 'pegue um cliente pra sua carteira.' : 'escolha um vendedor e atribua pra carteira.'}
+            {user?.role === 'vendor' ? 'pegue um cliente: ele vai pra sua Prospecção.' : 'escolha um vendedor e atribua pra carteira.'}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -240,6 +245,19 @@ export default function BancoClientes() {
       {gerenciando && <GerenciarLiberacoes onClose={() => setGerenciando(false)} vendorOptions={vendorOptions} />}
 
       <div className="flex flex-wrap gap-2">
+        {(totalDesqualificados ?? 0) > 0 && (
+          <button
+            onClick={() => {
+              setVerDesqualificados((v) => !v)
+              setPagina(1)
+            }}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors ${
+              verDesqualificados ? 'border-red-400 bg-red-900/20 text-red-300' : 'border-dark-600 text-dark-400 hover:bg-dark-800'
+            }`}
+          >
+            {verDesqualificados ? 'Vendo desqualificados — voltar' : `Desqualificados na prospecção (${totalDesqualificados})`}
+          </button>
+        )}
         <button
           onClick={() => {
             setOrigemBanco('')
@@ -322,6 +340,7 @@ export default function BancoClientes() {
               <p className="text-dark-400 text-xs">
                 Cód. {c.codigo}
                 {c.cidade ? ` · ${c.cidade}/${c.estado}` : ''} · {c.origemBanco ?? 'Sem origem definida'}
+                {c.bancoDesqualificado ? <span className="text-red-400"> · Desqualificado: {c.bancoDesqualificado}</span> : null}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
