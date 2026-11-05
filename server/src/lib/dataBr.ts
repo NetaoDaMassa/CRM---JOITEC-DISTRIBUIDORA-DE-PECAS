@@ -116,7 +116,7 @@ export function ehDiaNaoUtil(d: Date): boolean {
 // (meta mensal / dias úteis do mês × dias úteis já passados), pra rateio de
 // meta não "resetar" todo dia: se o vendedor não bate num dia, a meta
 // acumulada dos dias seguintes cresce e carrega o déficit.
-function contarDiasUteis(inicio: Date, fim: Date): number {
+export function contarDiasUteis(inicio: Date, fim: Date): number {
   let total = 0
   const d = new Date(inicio)
   while (d <= fim) {

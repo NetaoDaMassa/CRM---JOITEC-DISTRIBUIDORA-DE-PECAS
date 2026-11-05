@@ -22,6 +22,30 @@ const STATUS: Record<string, { label: string; classe: string }> = {
   falha: { label: 'Falhou', classe: 'bg-red-500/15 text-red-300 border-red-500/30' },
 }
 
+const TIPO: Record<string, { label: string; classe: string }> = {
+  lead: { label: 'Lead', classe: 'text-sky-300' },
+  carteira: { label: 'Carteira', classe: 'text-gold-300' },
+  prospeccao: { label: 'Prospecção', classe: 'text-violet-300' },
+  cliente: { label: 'Cliente (fora do mês)', classe: 'text-dark-300' },
+  nao_identificado: { label: 'Fora do CRM', classe: 'text-dark-500' },
+}
+
+function BarraMeta({ feito, meta }: { feito: number; meta: number }) {
+  if (!meta) return <span className="text-dark-500">—</span>
+  const pct = Math.min(100, Math.round((feito / meta) * 100))
+  const cor = feito >= meta ? 'bg-green-500' : pct >= 60 ? 'bg-amber-400' : 'bg-red-400'
+  return (
+    <div className="flex items-center gap-2 justify-end">
+      <span className={`font-mono ${feito >= meta ? 'text-green-300' : ''}`}>
+        {feito}/{meta}
+      </span>
+      <div className="w-16 h-1.5 rounded-full bg-dark-700 overflow-hidden">
+        <div className={`h-full ${cor}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  )
+}
+
 function hojeBr() {
   return new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)
 }
@@ -49,14 +73,16 @@ function telefone(n: string | null) {
 function Configuracao() {
   const utils = trpc.useUtils()
   const { data: st } = trpc.pabx.status.useQuery()
-  const [form, setForm] = useState<{ usuario: string; token: string; ligada: boolean; click2call: boolean; duracaoMinima: string; prefixo: string } | null>(null)
-  const f = form ?? (st ? { usuario: st.usuario, token: '', ligada: st.ligada, click2call: st.click2call, duracaoMinima: String(st.duracaoMinima), prefixo: st.prefixoDiscagem } : null)
+  const [form, setForm] = useState<{ usuario: string; token: string; ligada: boolean; click2call: boolean; duracaoMinima: string; prefixo: string; metas: Record<number, string> } | null>(null)
+  const f = form ?? (st ? { usuario: st.usuario, token: '', ligada: st.ligada, click2call: st.click2call, duracaoMinima: String(st.duracaoMinima), prefixo: st.prefixoDiscagem, metas: Object.fromEntries(st.metas.map((m) => [m.empresaId, String(m.meta)])) } : null)
   const salvar = trpc.pabx.salvarConfig.useMutation({
     onSuccess: () => {
       toast.success('Configuração salva')
       setForm(null)
       utils.pabx.status.invalidate()
       utils.pabx.meuRamal.invalidate()
+      utils.pabx.minhaMetaHoje.invalidate()
+      utils.pabx.relatorio.invalidate()
     },
     onError: (e) => toast.error(e.message),
   })
@@ -103,6 +129,22 @@ function Configuracao() {
         </div>
       </div>
       <p className="text-xs text-dark-500">Ligação efetiva = atendida e com pelo menos a duração mínima. Abaixo disso conta só como tentativa.</p>
+      <div className="space-y-2">
+        <p className="text-sm text-dark-200">Meta diária de ligações efetivas, por vendedor</p>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {st.metas.map((m) => (
+            <Input
+              key={m.empresaId}
+              label={m.nome}
+              type="number"
+              min={0}
+              value={f.metas[m.empresaId] ?? '0'}
+              onChange={(e) => set({ metas: { ...f.metas, [m.empresaId]: e.target.value } })}
+            />
+          ))}
+        </div>
+        <p className="text-xs text-dark-500">Soma todas as ligações efetivas do ramal: lead, carteira, prospecção e número fora do CRM. 0 = sem meta.</p>
+      </div>
       <div className="flex flex-wrap items-center gap-4">
         <label className="flex items-center gap-2 text-sm text-dark-200">
           <input type="checkbox" checked={f.ligada} onChange={(e) => set({ ligada: e.target.checked })} />
@@ -125,6 +167,7 @@ function Configuracao() {
               click2call: f.click2call,
               duracaoMinima: Number(f.duracaoMinima) || 0,
               prefixoDiscagem: f.prefixo,
+              metas: Object.entries(f.metas).map(([empresaId, meta]) => ({ empresaId: Number(empresaId), meta: Math.max(0, Math.round(Number(meta) || 0)) })),
             })
           }
         >
@@ -336,6 +379,9 @@ export default function LigacoesPabx() {
             <>
               <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5 space-y-2">
                 <h2 className="text-sm font-semibold text-dark-100">Por vendedor</h2>
+                <p className="text-xs text-dark-500">
+                  Meta conta só ligações efetivas — de qualquer tipo (lead, carteira, prospecção, fora do CRM). Meta do período = meta do dia × {data?.diasUteis ?? 0} dia(s) útil(eis) até hoje.
+                </p>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -345,6 +391,9 @@ export default function LigacoesPabx() {
                         <th className="py-1.5 pr-3 font-medium text-right">Tentativas</th>
                         <th className="py-1.5 pr-3 font-medium text-right">Efetivas</th>
                         <th className="py-1.5 pr-3 font-medium text-right">% efetivas</th>
+                        {data?.hojeNoPeriodo && <th className="py-1.5 pr-3 font-medium text-right">Meta hoje</th>}
+                        <th className="py-1.5 pr-3 font-medium text-right">Meta do período</th>
+                        <th className="py-1.5 pr-3 font-medium text-right" title="Efetivas: lead / carteira / prospecção / outras">Lead · Cart. · Prosp. · Outras</th>
                         <th className="py-1.5 pr-3 font-medium text-right">Feitas / recebidas</th>
                         <th className="py-1.5 font-medium text-right">Tempo falado</th>
                       </tr>
@@ -357,6 +406,19 @@ export default function LigacoesPabx() {
                           <td className="py-1.5 pr-3 text-right font-mono">{v.tentativas}</td>
                           <td className="py-1.5 pr-3 text-right font-mono text-green-300">{v.efetivas}</td>
                           <td className="py-1.5 pr-3 text-right font-mono">{v.tentativas ? Math.round((v.efetivas / v.tentativas) * 100) : 0}%</td>
+                          {data?.hojeNoPeriodo && (
+                            <td className="py-1.5 pr-3">
+                              <BarraMeta feito={v.efetivasHoje} meta={v.metaDia} />
+                            </td>
+                          )}
+                          <td className="py-1.5 pr-3">
+                            <BarraMeta feito={v.efetivas} meta={v.metaPeriodo} />
+                          </td>
+                          <td className="py-1.5 pr-3 text-right font-mono whitespace-nowrap">
+                            <span className="text-sky-300">{v.efetivasPorTipo.lead}</span> · <span className="text-gold-300">{v.efetivasPorTipo.carteira}</span> ·{' '}
+                            <span className="text-violet-300">{v.efetivasPorTipo.prospeccao}</span> ·{' '}
+                            <span className="text-dark-400">{v.efetivasPorTipo.cliente + v.efetivasPorTipo.nao_identificado}</span>
+                          </td>
                           <td className="py-1.5 pr-3 text-right font-mono text-dark-300">
                             {v.feitas} / {v.recebidas}
                           </td>
@@ -365,7 +427,7 @@ export default function LigacoesPabx() {
                       ))}
                       {!data?.porVendedor.length && (
                         <tr>
-                          <td colSpan={7} className="py-3 text-dark-400">
+                          <td colSpan={11} className="py-3 text-dark-400">
                             Nenhuma ligação no período.
                           </td>
                         </tr>
@@ -426,7 +488,7 @@ export default function LigacoesPabx() {
                               <td className="py-1.5 pr-3 whitespace-nowrap font-mono text-dark-300">{telefone(c.numero)}</td>
                               <td className="py-1.5 pr-3">
                                 {c.contato ?? <span className="text-dark-500">não encontrado no CRM</span>}
-                                {c.leadId && <span className="ml-1 text-[10px] uppercase text-sky-300">lead</span>}
+                                <span className={`ml-1.5 text-[10px] uppercase ${TIPO[c.tipo]?.classe ?? ''}`}>{TIPO[c.tipo]?.label ?? ''}</span>
                               </td>
                               <td className="py-1.5 pr-3 whitespace-nowrap">
                                 <span className={`text-xs rounded-full border px-2 py-0.5 ${st.classe}`}>{st.label}</span>

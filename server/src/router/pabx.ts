@@ -1,10 +1,10 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, lte, max } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lte, max, sql } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, contasVinculadas, empresas, funilMensal, gotoRamais, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
 import { getConfigBool, getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
-import { agoraSqlite } from '../lib/dataBr.js'
+import { agoraSqlite, contarDiasUteis, hojeBrString } from '../lib/dataBr.js'
 import {
   SLUGS_EMPRESAS_PABX,
   buscarChamadasPabxone360,
@@ -83,6 +83,32 @@ async function ultimaLigacaoId(userIds: number[]): Promise<number> {
   return r?.id ?? 0
 }
 
+// Meta diária de LIGAÇÕES EFETIVAS por vendedor (pedido do João, 2026-11-05):
+// soma toda ligação efetiva do ramal — lead, carteira, prospecção ou número
+// fora do CRM. Uma meta por empresa Odin; Odin Tubos começa em 30, as outras
+// em 0 (= sem meta). Quem tem conta em mais de uma empresa fica com a maior.
+const chaveMeta = (empresaId: number) => `pabxone360_meta_efetivas_dia_${empresaId}`
+async function metasPorEmpresa(): Promise<Map<number, number>> {
+  const es = await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_EMPRESAS_PABX), columns: { id: true, slug: true } })
+  const m = new Map<number, number>()
+  for (const e of es) m.set(e.id, await getConfigNumero(chaveMeta(e.id), e.slug === 'odin-tubos' ? 30 : 0))
+  return m
+}
+async function metaDaPessoa(ids: number[], metas: Map<number, number>): Promise<number> {
+  const us = await db.query.users.findMany({ where: inArray(users.id, ids), columns: { empresaId: true } })
+  return Math.max(0, ...us.map((u) => (u.empresaId ? (metas.get(u.empresaId) ?? 0) : 0)))
+}
+type TipoLigacao = 'lead' | 'carteira' | 'prospeccao' | 'cliente' | 'nao_identificado'
+// pabxone360.ts grava: lead → leadId; carteira → registroContatoId (card do
+// mês); prospect → clienteId sem registro e sem motivo; cliente sem card do
+// mês nem prospecção → clienteId + motivo.
+function tipoLigacao(l: { leadId: number | null; registroContatoId: number | null; clienteId: number | null; motivo: string | null }): TipoLigacao {
+  if (l.leadId) return 'lead'
+  if (l.registroContatoId) return 'carteira'
+  if (l.clienteId) return l.motivo ? 'cliente' : 'prospeccao'
+  return 'nao_identificado'
+}
+
 export const pabxRouter = router({
   status: superAdminProcedure.query(async () => {
     const [usuario, token, ligada, click2call, duracaoMinima, ultimaSync, ultimoErro, prefixo, atrasoApi] = await Promise.all([
@@ -106,6 +132,11 @@ export const pabxRouter = router({
       ultimaSync,
       ultimoErro,
       atrasoApi,
+      metas: await (async () => {
+        const metas = await metasPorEmpresa()
+        const es = await db.query.empresas.findMany({ where: inArray(empresas.id, [...metas.keys()]), columns: { id: true, nome: true } })
+        return es.map((e) => ({ empresaId: e.id, nome: e.nome, meta: metas.get(e.id) ?? 0 }))
+      })(),
     }
   }),
 
@@ -118,6 +149,7 @@ export const pabxRouter = router({
         click2call: z.boolean(),
         duracaoMinima: z.number().int().min(0).max(600),
         prefixoDiscagem: z.string().max(4),
+        metas: z.array(z.object({ empresaId: z.number(), meta: z.number().int().min(0).max(500) })).optional(),
       })
     )
     .mutation(async ({ input }) => {
@@ -128,6 +160,7 @@ export const pabxRouter = router({
       await setConfig('pabxone360_click2call', input.click2call ? '1' : '0')
       await setConfig('pabxone360_duracao_minima_segundos', input.duracaoMinima)
       await setConfig('pabxone360_prefixo_discagem', input.prefixoDiscagem.replace(/\D/g, ''))
+      for (const m of input.metas ?? []) await setConfig(chaveMeta(m.empresaId), m.meta)
       if (input.ligada) await setConfig('pabxone360_ultimo_erro', '')
       return { ok: true }
     }),
@@ -274,6 +307,29 @@ export const pabxRouter = router({
       return out
     }),
 
+  // Contador do topo da tela: ligações efetivas de hoje × meta do dia.
+  // null = pessoa sem ramal ou empresa sem meta (não mostra nada).
+  minhaMetaHoje: protectedProcedure.query(async ({ ctx }) => {
+    const ids = await idsDaPessoa(ctx.user.id)
+    const temRamal = await db.query.pabxRamais.findFirst({ where: inArray(pabxRamais.userId, ids), columns: { id: true } })
+    if (!temRamal) return null
+    const meta = await metaDaPessoa(ids, await metasPorEmpresa())
+    if (!meta) return null
+    const hoje = hojeBrString()
+    const [r] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(pabxLigacoesProcessadas)
+      .where(
+        and(
+          inArray(pabxLigacoesProcessadas.userId, ids),
+          eq(pabxLigacoesProcessadas.efetiva, true),
+          gte(pabxLigacoesProcessadas.dataHora, paraSqlite(inicioDiaBr(hoje))),
+          lte(pabxLigacoesProcessadas.dataHora, paraSqlite(fimDiaBr(hoje)))
+        )
+      )
+    return { meta, efetivas: Number(r?.n ?? 0) }
+  }),
+
   minhaUltimaLigacao: protectedProcedure.query(async ({ ctx }) => ({ id: await ultimaLigacaoId(await idsDaPessoa(ctx.user.id)) })),
 
   // Relatório de ligações: tentativas x efetivas por vendedor + lista.
@@ -309,6 +365,7 @@ export const pabxRouter = router({
           empresaId: pabxLigacoesProcessadas.empresaId,
           clienteId: pabxLigacoesProcessadas.clienteId,
           leadId: pabxLigacoesProcessadas.leadId,
+          registroContatoId: pabxLigacoesProcessadas.registroContatoId,
           motivo: pabxLigacoesProcessadas.motivoNaoRegistrado,
           linkGravacao: pabxLigacoesProcessadas.linkGravacao,
           resumo: pabxLigacoesProcessadas.resumo,
@@ -333,8 +390,30 @@ export const pabxRouter = router({
       }
       const nomesEmpresa = new Map((await db.query.empresas.findMany({ columns: { id: true, nome: true } })).map((e) => [e.id, e.nome]))
 
+      // Meta do período = meta/dia × dias úteis do período até hoje.
+      const hoje = hojeBrString()
+      const fimMeta = input.dataFim < hoje ? input.dataFim : hoje
+      const diasUteis = input.dataInicio <= fimMeta ? contarDiasUteis(new Date(`${input.dataInicio}T00:00:00Z`), new Date(`${fimMeta}T00:00:00Z`)) : 0
+      const hojeNoPeriodo = input.dataInicio <= hoje && hoje <= input.dataFim
+      const inicioHoje = paraSqlite(inicioDiaBr(hoje))
+      const metas = await metasPorEmpresa()
+
       // Por vendedor (ligação sem ramal cadastrado fica em "Sem vendedor").
-      const porVendedor = new Map<string, { userId: number | null; vendedor: string; ramal: string | null; tentativas: number; efetivas: number; segundosFalados: number; feitas: number; recebidas: number }>()
+      type PorVendedor = {
+        userId: number | null
+        vendedor: string
+        ramal: string | null
+        tentativas: number
+        efetivas: number
+        segundosFalados: number
+        feitas: number
+        recebidas: number
+        efetivasPorTipo: Record<TipoLigacao, number>
+        efetivasHoje: number
+        metaDia: number
+        metaPeriodo: number
+      }
+      const porVendedor = new Map<string, PorVendedor>()
       for (const l of linhas) {
         const chave = l.userId ? `u${l.userId}` : `r${l.ramal ?? '?'}`
         const p = porVendedor.get(chave) ?? {
@@ -346,22 +425,63 @@ export const pabxRouter = router({
           segundosFalados: 0,
           feitas: 0,
           recebidas: 0,
+          efetivasPorTipo: { lead: 0, carteira: 0, prospeccao: 0, cliente: 0, nao_identificado: 0 },
+          efetivasHoje: 0,
+          metaDia: 0,
+          metaPeriodo: 0,
         }
         p.tentativas++
         if (l.efetiva) {
           p.efetivas++
           p.segundosFalados += l.duracao ?? 0
+          p.efetivasPorTipo[tipoLigacao(l)]++
+          if (l.dataHora && l.dataHora >= inicioHoje) p.efetivasHoje++
         }
         if (l.direcao === 'OUTBOUND') p.feitas++
         if (l.direcao === 'INBOUND') p.recebidas++
         porVendedor.set(chave, p)
       }
+      // Quem tem ramal e não ligou nada no período também aparece (0 / meta).
+      const meusIds = veTudo ? null : await idsDaPessoa(ctx.user.id)
+      const empresaFiltro = veTudo ? (ctx.user.superAdmin ? (input.empresaId ?? null) : ctx.empresaId) : null
+      const comRamal = await db
+        .select({ userId: users.id, nome: users.name, ramal: pabxRamais.ramal, empresaId: users.empresaId, ativo: users.isActive })
+        .from(pabxRamais)
+        .innerJoin(users, eq(users.id, pabxRamais.userId))
+      for (const r of comRamal) {
+        if (!r.ativo || porVendedor.has(`u${r.userId}`)) continue
+        if (meusIds && !meusIds.includes(r.userId)) continue
+        if (veTudo && input.userId && input.userId !== r.userId) continue
+        if (empresaFiltro && r.empresaId !== empresaFiltro) continue
+        porVendedor.set(`u${r.userId}`, {
+          userId: r.userId,
+          vendedor: r.nome,
+          ramal: r.ramal,
+          tentativas: 0,
+          efetivas: 0,
+          segundosFalados: 0,
+          feitas: 0,
+          recebidas: 0,
+          efetivasPorTipo: { lead: 0, carteira: 0, prospeccao: 0, cliente: 0, nao_identificado: 0 },
+          efetivasHoje: 0,
+          metaDia: 0,
+          metaPeriodo: 0,
+        })
+      }
+      for (const p of porVendedor.values()) {
+        if (!p.userId) continue
+        p.metaDia = await metaDaPessoa(await idsDaPessoa(p.userId), metas)
+        p.metaPeriodo = p.metaDia * diasUteis
+      }
 
       return {
         veTudo,
-        porVendedor: [...porVendedor.values()].sort((a, b) => b.tentativas - a.tentativas),
+        porVendedor: [...porVendedor.values()].sort((a, b) => b.efetivas - a.efetivas || b.tentativas - a.tentativas),
+        diasUteis,
+        hojeNoPeriodo,
         chamadas: linhas.slice(0, 3000).map((l) => ({
           ...l,
+          tipo: tipoLigacao(l),
           empresa: l.empresaId ? (nomesEmpresa.get(l.empresaId) ?? null) : null,
           contato: l.clienteId ? (nomesCliente.get(l.clienteId) ?? null) : l.leadId ? (nomesLead.get(l.leadId) ?? null) : null,
         })),

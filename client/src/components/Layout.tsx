@@ -10,6 +10,7 @@ import BuscaRapida, { BotaoBuscaRapida } from './BuscaRapida'
 import { useAuth } from '../contexts/AuthContext'
 import { trpc } from '../lib/trpc'
 import { useAtualizarAoGravarLigacao } from './ui/ContatoButtons'
+import MetaLigacoesHoje from './MetaLigacoesHoje'
 
 // Cor de destaque de cada empresa (design novo, teste) — ver
 // html[data-empresa] no index.css. Fica no <html> pra valer no app todo.
@@ -113,6 +114,7 @@ export default function Layout() {
             <BotaoBuscaRapida />
           </div>
           <div className="flex items-center gap-1">
+            <MetaLigacoesHoje />
             <ChatPopup />
             <NotificationBell />
           </div>
