@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { trpc } from '../lib/trpc'
 import { TelaColetas, TelaEmpresasExpedicao, TelaEquipeEstoque } from '../components/PainelExpedicaoTelas'
+import { corTexto } from '../lib/corTexto'
 
 // Painel de TV "Controle Logístico" (pedido do João, 2026-10-29) — pro
 // Financeiro, TV de 75". Quantidade e pedidos/clientes em cada etapa da
@@ -166,7 +167,7 @@ export default function PainelTvLogistica() {
                   <div key={c.id} className="rounded-3xl bg-dark-900 border-2 border-dark-700 overflow-hidden flex flex-col min-h-0">
                     <div className="h-[10px]" style={{ background: c.cor }} />
                     <div className="px-5 pt-4 pb-3 border-b-2 border-dark-800">
-                      <p className="text-[22px] font-bold uppercase whitespace-nowrap" style={{ color: c.cor }}>
+                      <p className="text-[22px] font-bold uppercase whitespace-nowrap" style={{ color: corTexto(c.cor) }}>
                         {c.titulo}
                       </p>
                       <div className="flex items-end gap-3">

@@ -10,6 +10,7 @@ import { PrioridadeBadge, TipoBadge } from '../../components/compras/ui'
 import { ETAPA_INFO, dataBr, useBaseCompras, type EtapaCompra } from '../../lib/comprasShared'
 import { formatarMoeda } from '../../lib/moeda'
 import { usePersistedState } from '../../lib/usePersistedState'
+import { corTexto } from '../../lib/corTexto'
 
 const COLUNAS: EtapaCompra[] = ['solicitacao', 'cotacao', 'negociacao', 'aprovacao', 'pedido', 'recebimento', 'finalizado']
 
@@ -89,7 +90,7 @@ export default function ComprasQuadro() {
               <div key={etapa} className="w-72 shrink-0 bg-dark-900/50 border border-dark-700 rounded-2xl flex flex-col max-h-[calc(100vh-260px)] min-h-48">
                 <div className="px-3 pt-3 pb-2 border-b border-dark-700">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold flex items-center gap-2" style={{ color: info.cor }}>
+                    <p className="text-sm font-semibold flex items-center gap-2" style={{ color: corTexto(info.cor) }}>
                       <span className="w-2 h-2 rounded-full" style={{ background: info.cor }} />
                       {info.label}
                       <span className="text-dark-400 font-normal">{cards.length}</span>

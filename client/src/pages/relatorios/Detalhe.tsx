@@ -15,6 +15,7 @@ import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/
 import { Contatos, Ligacoes } from './detalhes/Contatos'
 import { ItensSap } from './detalhes/ItensSap'
 import type { PropsDetalhe } from './detalhes/tipos'
+import { corTexto } from '../../lib/corTexto'
 
 const COMPONENTES: Record<string, ComponentType<PropsDetalhe>> = {
   positivacao: Positivacao,
@@ -89,7 +90,7 @@ export default function DetalheRelatorio() {
         </nav>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${rel.cor}1f`, color: rel.cor }}>
+            <span className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${rel.cor}1f`, color: corTexto(rel.cor) }}>
               <rel.icone size={22} />
             </span>
             <div>

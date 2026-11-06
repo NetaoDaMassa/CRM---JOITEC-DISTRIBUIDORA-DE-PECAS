@@ -12,6 +12,7 @@ import { BarraSegmentada, KpiCard, Medidor, MiniNumero, OrigemVendas, Ranking, S
 import { contarCategorias, ehAtivado } from '../../components/relatorios/atividade'
 import { baseRelatorios, relatoriosPermitidos } from '../../components/relatorios/catalogo'
 import ExplicacaoMetricas from '../../components/relatorios/ExplicacaoMetricas'
+import { corTexto } from '../../lib/corTexto'
 
 // Resumo dos relatórios (pedido do João, 2026-10-20): o que antes era uma
 // página comprida de abas virou um painel de uma tela — números grandes com
@@ -281,7 +282,7 @@ export function ResumoConteudo({ f, naExportacao }: { f: Filtros; naExportacao?:
             {detalhados.map((r) => (
               <Link key={r.slug} to={`${base}/${r.slug}`} className="group bg-dark-800 border border-dark-600 rounded-2xl p-4 hover:border-gold-500/60 hover:-translate-y-0.5 hover:shadow-lg transition-all">
                 <div className="flex items-center gap-2.5">
-                  <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${r.cor}1f`, color: r.cor }}>
+                  <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${r.cor}1f`, color: corTexto(r.cor) }}>
                     <r.icone size={18} />
                   </span>
                   <p className="text-sm font-semibold text-dark-50 flex-1">{r.titulo}</p>

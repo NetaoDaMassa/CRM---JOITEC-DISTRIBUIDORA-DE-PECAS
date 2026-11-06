@@ -10,6 +10,7 @@ import BotaoImprimir from '../components/relatorios/BotaoImprimir'
 import { BarraSegmentada, Carregando, KpiCard, Medidor, Ranking, Secao, numero, pct } from '../components/relatorios/blocos'
 import { datasDoPreset, periodoAnterior } from '../components/relatorios/filtros'
 import type { Preset } from '../components/relatorios/filtros'
+import { corTexto } from '../lib/corTexto'
 
 // Relatório de Devolução no visual dos relatórios novos (pedido do João,
 // 2026-10-22: "deixar dinâmico, mais visual, igual as últimas
@@ -277,7 +278,7 @@ export default function DevolucaoRelatorios() {
                 .map((c) => (
                   <li key={c.id}>
                     <Link to={`${basePath}/devolucoes?chamado=${c.id}`} className="flex items-center gap-3 px-3 py-2 hover:bg-dark-700/40 transition-colors">
-                      <span className="w-16 shrink-0 whitespace-nowrap text-xs font-bold tabular-nums" style={{ color: etapaAberta === 'finalizado' ? COR_TICK : corDosDias(c.dias) }}>
+                      <span className="w-16 shrink-0 whitespace-nowrap text-xs font-bold tabular-nums" style={{ color: corTexto(etapaAberta === 'finalizado' ? COR_TICK : corDosDias(c.dias)) }}>
                         há {c.dias}d
                       </span>
                       <span className="min-w-0 flex-1 text-sm text-dark-100 truncate">{c.clienteNome ?? 'Cliente sem nome'}</span>
@@ -310,7 +311,7 @@ export default function DevolucaoRelatorios() {
                       <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg space-y-0.5">
                         <p className="text-dark-100 font-medium">{label}</p>
                         {payload.map((p) => (
-                          <p key={String(p.dataKey)} style={{ color: p.color }}>
+                          <p key={String(p.dataKey)} style={{ color: corTexto(p.color) }}>
                             {p.name}: <span className="font-semibold">{p.value}</span>
                           </p>
                         ))}
@@ -333,13 +334,13 @@ export default function DevolucaoRelatorios() {
               <Medidor percentual={data.taxaPositiva ?? 0} cor={(data.taxaPositiva ?? 0) >= 50 ? COR_POSITIVO : COR_ALERTA} rotulo="positivas" />
               <div className="grid grid-cols-2 gap-2 mt-4 text-center">
                 <div className="rounded-xl bg-dark-900 border border-dark-700 py-2">
-                  <p className="text-lg font-bold" style={{ color: COR_POSITIVO }}>
+                  <p className="text-lg font-bold" style={{ color: corTexto(COR_POSITIVO) }}>
                     {numero(data.resultadoAnalises.positivas)}
                   </p>
                   <p className="text-[11px] text-dark-400">positivas</p>
                 </div>
                 <div className="rounded-xl bg-dark-900 border border-dark-700 py-2">
-                  <p className="text-lg font-bold" style={{ color: COR_ALERTA }}>
+                  <p className="text-lg font-bold" style={{ color: corTexto(COR_ALERTA) }}>
                     {numero(data.resultadoAnalises.negativas)}
                   </p>
                   <p className="text-[11px] text-dark-400">negativas</p>
@@ -366,7 +367,7 @@ export default function DevolucaoRelatorios() {
               {data.maisAntigosEmAberto.map((c) => (
                 <li key={c.id}>
                   <Link to={`${basePath}/devolucoes?chamado=${c.id}`} className="flex items-center gap-3 py-2 -mx-2 px-2 rounded-lg hover:bg-dark-700/50 transition-colors">
-                    <span className="w-12 shrink-0 rounded-lg py-1 text-center text-sm font-bold tabular-nums" style={{ color: corDosDias(c.dias), background: `${corDosDias(c.dias)}1f` }}>
+                    <span className="w-12 shrink-0 rounded-lg py-1 text-center text-sm font-bold tabular-nums" style={{ color: corTexto(corDosDias(c.dias)), background: `${corDosDias(c.dias)}1f` }}>
                       {c.dias}d
                     </span>
                     <span className="min-w-0 flex-1">
@@ -377,7 +378,7 @@ export default function DevolucaoRelatorios() {
                         {temVisaoGlobal && c.empresa ? ` · ${c.empresa}` : ''}
                       </span>
                     </span>
-                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: STATUS[c.status]?.cor, background: `${STATUS[c.status]?.cor ?? '#94a3b8'}1f` }}>
+                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: corTexto(STATUS[c.status]?.cor), background: `${STATUS[c.status]?.cor ?? '#94a3b8'}1f` }}>
                       {STATUS[c.status]?.rotulo ?? c.status}
                     </span>
                   </Link>
@@ -426,7 +427,7 @@ export default function DevolucaoRelatorios() {
                       <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg space-y-0.5">
                         <p className="text-dark-100 font-medium">{label}</p>
                         {payload.map((p) => (
-                          <p key={String(p.dataKey)} style={{ color: p.color }}>
+                          <p key={String(p.dataKey)} style={{ color: corTexto(p.color) }}>
                             {p.name}: <span className="font-semibold">{formatarMoeda(Number(p.value))}</span>
                           </p>
                         ))}

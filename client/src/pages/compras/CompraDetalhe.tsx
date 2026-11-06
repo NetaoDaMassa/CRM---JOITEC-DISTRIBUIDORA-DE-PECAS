@@ -18,6 +18,7 @@ import { ETAPA_INFO, dataBr, dataHoraBr, uploadAnexoCompra, useBaseCompras } fro
 import { formatarMoeda } from '../../lib/moeda'
 import { parseValorBr, formatarValorInput } from '../../lib/valorBr'
 import { hojeBrString } from '../../lib/utils'
+import { corTexto } from '../../lib/corTexto'
 
 type Compra = inferRouterOutputs<AppRouter>['comprasProcesso']['detalhe']
 type Cotacao = Compra['cotacoes'][number]
@@ -499,7 +500,7 @@ function ProximoPasso({
 
   return (
     <section className="rounded-2xl p-4 sm:p-5 space-y-3" style={{ background: `${info.cor}14`, boxShadow: `inset 0 0 0 1px ${info.cor}55` }}>
-      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: info.cor }}>
+      <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: corTexto(info.cor) }}>
         Etapa atual: {info.label}
       </p>
       {conteudo}

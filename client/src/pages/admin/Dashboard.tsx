@@ -10,6 +10,7 @@ import AvatarMeta from '../../components/ui/AvatarMeta'
 import { useCelebrarMeta } from '../../lib/useCelebrarMeta'
 import CelebracaoPopup from '../../components/ui/CelebracaoPopup'
 import { primeiroNome, saudacao } from '../../components/ui/Visual'
+import { corTexto } from '../../lib/corTexto'
 
 const COR_VENDAS = '#3987e5'
 const COR_CONTATOS = '#c2691a'
@@ -25,7 +26,7 @@ function TooltipHistorico({ active, payload, label }: { active?: boolean; payloa
     <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
       <p className="text-dark-100 font-medium mb-1">{label}</p>
       {payload.map((p) => (
-        <p key={p.name} style={{ color: p.color }}>
+        <p key={p.name} style={{ color: corTexto(p.color) }}>
           {p.name}: {p.value}
         </p>
       ))}

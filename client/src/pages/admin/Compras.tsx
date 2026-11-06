@@ -8,6 +8,7 @@ import { Input, Textarea } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import Modal from '../../components/ui/Modal'
+import { corTexto } from '../../lib/corTexto'
 
 // Mesma paleta fixa do resto do app (Reports.tsx/PainelTV.tsx) — azul já é
 // "medida principal" em todo gráfico de magnitude, laranja é o par
@@ -27,7 +28,7 @@ function TooltipMoeda({ active, payload, label }: { active?: boolean; payload?: 
     <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
       {label && <p className="text-dark-100 font-medium mb-1">{label}</p>}
       {payload.map((p) => (
-        <p key={p.name} style={{ color: p.color }}>
+        <p key={p.name} style={{ color: corTexto(p.color) }}>
           {p.name}: {formatarMoedaCompacta(p.value)}
         </p>
       ))}

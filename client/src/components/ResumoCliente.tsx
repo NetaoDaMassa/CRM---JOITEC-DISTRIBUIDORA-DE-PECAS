@@ -2,6 +2,7 @@ import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { trpc } from '../lib/trpc'
 import { formatarMoeda } from '../lib/moeda'
 import { Esqueleto } from './ui/Visual'
+import { corTexto } from '../lib/corTexto'
 
 // Topo da ficha do cliente no design novo (teste): etiquetas, 4 números e
 // as compras dos últimos 12 meses (CRM + SAP).
@@ -29,7 +30,7 @@ export function EtiquetasCliente({ clienteId }: { clienteId: number }) {
         <span
           key={e.texto}
           className="text-[11px] font-semibold rounded-full px-2.5 py-0.5"
-          style={{ color: e.cor, background: `${e.cor}1f`, boxShadow: `inset 0 0 0 1px ${e.cor}55` }}
+          style={{ color: corTexto(e.cor), background: `${e.cor}1f`, boxShadow: `inset 0 0 0 1px ${e.cor}55` }}
         >
           {e.texto}
         </span>

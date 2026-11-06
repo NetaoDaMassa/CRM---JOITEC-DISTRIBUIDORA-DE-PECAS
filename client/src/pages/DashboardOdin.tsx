@@ -16,6 +16,7 @@ import Select from '../components/ui/Select'
 import { Carregando, KpiCard, Secao, moeda, numero } from '../components/relatorios/blocos'
 import { PRESETS, datasDoPreset, formatarDataCurta, type Preset } from '../components/relatorios/filtros'
 import { PRIORIDADE_CONFIG, STAGE_COLORS, STAGE_DOT_COLORS, STAGE_LABELS, STAGE_SEQUENCE_MAQUINA, STAGE_SEQUENCE_PECA, etapaFinal, type Stage } from '../lib/ordensShared'
+import { corTexto } from '../lib/corTexto'
 
 type Dados = inferRouterOutputs<AppRouter>['dashboardOdin']['controlePedidos']
 type Pedido = Dados['agora']['lista'][number]
@@ -115,7 +116,7 @@ function Mini({ rotulo, valor, sub, icone: Icone, cor }: { rotulo: string; valor
   return (
     <div className="bg-dark-900/60 border border-dark-700 rounded-xl p-3">
       <p className="flex items-center gap-1.5 text-xs text-dark-400">
-        <Icone size={14} style={{ color: cor }} /> {rotulo}
+        <Icone size={14} style={{ color: corTexto(cor) }} /> {rotulo}
       </p>
       <p className="text-xl font-bold text-dark-50 mt-1 tabular-nums">{valor}</p>
       {sub && <p className="text-xs text-dark-500 mt-0.5">{sub}</p>}

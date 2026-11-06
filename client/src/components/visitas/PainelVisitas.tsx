@@ -3,6 +3,7 @@ import { Activity, PieChart as IconePizza } from 'lucide-react'
 import { AvatarIniciais } from '../ui/Visual'
 import { Pilula } from '../painel/PainelVisual'
 import type { Novidade, SecaoLegenda } from '../painel/PainelVisual'
+import { corTexto } from '../../lib/corTexto'
 
 // Painel das Visitas de campo (visual novo, pedido do João 2026-10-22):
 // ritmo dos últimos 14 dias, resultados do mês, situação de cada visita
@@ -184,7 +185,7 @@ export function EquipeVisitas({ linhas }: { linhas: { vendedorId: number; nome: 
             <div className="flex items-baseline gap-1.5 mt-3">
               <span className="text-2xl font-bold text-dark-50 tabular-nums">{v.total}</span>
               <span className="text-xs text-dark-400">visitas</span>
-              <span className="ml-auto text-xs font-semibold" style={{ color: '#a855f7' }}>
+              <span className="ml-auto text-xs font-semibold" style={{ color: corTexto('#a855f7') }}>
                 {v.gerouProposta} propostas · {taxa}%
               </span>
             </div>

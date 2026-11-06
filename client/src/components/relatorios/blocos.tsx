@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { ArrowDownRight, ArrowUpRight, ChevronRight } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Dica } from './ExplicacaoMetricas'
+import { corTexto } from '../../lib/corTexto'
 
 // Peças visuais dos relatórios novos (resumo + detalhados) — pedido do João,
 // 2026-10-20, a partir de 3 referências: números grandes com "vs período
@@ -74,7 +75,7 @@ export function KpiCard({
           <Dica texto={ajuda} />
         </p>
         {Icone && (
-          <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: cor }}>
+          <span className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: corTexto(cor) }}>
             <Icone size={16} />
           </span>
         )}
@@ -229,7 +230,7 @@ export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick, aj
   const corpo = (
     <>
       <div className="flex items-center gap-3">
-        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: cor }}>
+        <span className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: corTexto(cor) }}>
           <Icone size={19} />
         </span>
         <p data-kpi-valor className="text-xl font-bold text-dark-50 ml-auto">
@@ -237,7 +238,7 @@ export function MiniNumero({ icone: Icone, valor, rotulo, cor, href, onClick, aj
         </p>
         {(href || onClick) && <ChevronRight size={15} className="text-dark-500 group-hover:text-gold-400 print:hidden" />}
       </div>
-      <p className="text-[13px] mt-2 font-medium flex items-center gap-1.5" style={{ color: cor }}>
+      <p className="text-[13px] mt-2 font-medium flex items-center gap-1.5" style={{ color: corTexto(cor) }}>
         <span data-kpi-titulo>{rotulo}</span>
         <Dica texto={ajuda} />
       </p>
@@ -292,7 +293,7 @@ export function Ranking({ itens, formatar = numero, cor = '#24aff4', vazio = 'Na
 
 export function Etiqueta({ cor, children }: { cor: string; children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap" style={{ background: `${cor}1f`, color: cor }}>
+    <span className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium whitespace-nowrap" style={{ background: `${cor}1f`, color: corTexto(cor) }}>
       {children}
     </span>
   )

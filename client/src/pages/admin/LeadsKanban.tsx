@@ -10,6 +10,7 @@ import LeadKanbanBoard from '../../components/LeadKanbanBoard'
 import { DIAS_ESFRIANDO, diasEsquecido, LegendaLeads, NovidadesLeads, RankingSemana, TabelaLeads } from '../../components/leads/KanbanLeadsExtras'
 import { Esqueleto } from '../../components/ui/Visual'
 import { getLeadContactUrgency, isLeadTerminalStatus } from '../../lib/leadsShared'
+import { corTexto } from '../../lib/corTexto'
 
 // Painel no topo do Kanban de Leads (pedido do João, 2026-10-22): números
 // do que precisa de atenção, cada um clicável — filtra o quadro logo abaixo.
@@ -43,7 +44,7 @@ function Indicador({
       }`}
       style={ativo ? { borderColor: cor, boxShadow: `0 0 0 1px ${cor}` } : undefined}
     >
-      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: cor }}>
+      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: corTexto(cor) }}>
         <Icone size={18} />
       </span>
       <span className="min-w-0">

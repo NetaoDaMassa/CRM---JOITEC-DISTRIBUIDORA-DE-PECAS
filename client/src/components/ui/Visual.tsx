@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { corTexto } from '../../lib/corTexto'
 
 // Peças visuais compartilhadas do "design novo" (teste, 2026-10-22): anel de
 // progresso, esqueleto de carregamento, avatar colorido, saudação e confete.
@@ -26,7 +27,7 @@ export function AvatarIniciais({ nome, tamanho = 28 }: { nome: string; tamanho?:
   return (
     <div
       className="rounded-full font-bold flex items-center justify-center shrink-0 select-none"
-      style={{ width: tamanho, height: tamanho, fontSize: tamanho * 0.38, background: `${cor}26`, color: cor, boxShadow: `inset 0 0 0 1px ${cor}55` }}
+      style={{ width: tamanho, height: tamanho, fontSize: tamanho * 0.38, background: `${cor}26`, color: corTexto(cor), boxShadow: `inset 0 0 0 1px ${cor}55` }}
       aria-hidden
     >
       {iniciaisDe(nome)}

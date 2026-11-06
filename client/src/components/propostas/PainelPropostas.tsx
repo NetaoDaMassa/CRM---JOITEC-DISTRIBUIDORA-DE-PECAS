@@ -7,6 +7,7 @@ import { AvatarIniciais } from '../ui/Visual'
 import { COR_ETAPA_PROPOSTA, DIAS_PARADA_ALERTA, DIAS_PARADA_ATENCAO, ETAPAS_ABERTAS_PROPOSTA, type PropostaCard } from '../PropostasBoard'
 import { Pilula, baixarCsv, corIdade, diasDesdeData } from '../painel/PainelVisual'
 import type { Novidade, SecaoLegenda } from '../painel/PainelVisual'
+import { corTexto } from '../../lib/corTexto'
 
 // Painel das Propostas (visual novo, pedido do João 2026-10-22): filtros
 // rápidos, ranking do mês, motivos de perda, modo lista, novidades e legenda.
@@ -223,13 +224,13 @@ export function TabelaPropostas({ lista, mostrarVendedor, aoAbrir }: { lista: Pr
                     </div>
                   </td>
                   <td className="py-2 px-3">
-                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: cor, background: `${cor}1f` }}>
+                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: corTexto(cor), background: `${cor}1f` }}>
                       {PROPOSTA_STAGE_LABELS[p.stage as PropostaStage] ?? p.stage}
                     </span>
                   </td>
                   {mostrarVendedor && <td className="py-2 px-3 text-xs text-dark-400 whitespace-nowrap">{p.vendedor?.name ?? '—'}</td>}
                   <td className="py-2 px-3 text-xs whitespace-nowrap">
-                    <span style={{ color: abertaP ? corIdade(dias, DIAS_PARADA_ATENCAO, DIAS_PARADA_ALERTA) : undefined }} className={abertaP ? 'font-semibold' : 'text-dark-500'}>
+                    <span style={{ color: corTexto(abertaP ? corIdade(dias, DIAS_PARADA_ATENCAO, DIAS_PARADA_ALERTA) : undefined) }} className={abertaP ? 'font-semibold' : 'text-dark-500'}>
                       {dias} {dias === 1 ? 'dia' : 'dias'}
                     </span>
                   </td>

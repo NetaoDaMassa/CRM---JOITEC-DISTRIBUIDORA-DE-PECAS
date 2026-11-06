@@ -7,6 +7,7 @@ import { AvatarIniciais } from '../ui/Visual'
 import { COR_ETAPA_PEDIDO, nivelAlerta, type OrdemCard } from '../OrdensBoard'
 import { Pilula, baixarCsv, diasDesdeData } from '../painel/PainelVisual'
 import type { Novidade, SecaoLegenda } from '../painel/PainelVisual'
+import { corTexto } from '../../lib/corTexto'
 
 // Painel dos Pedidos (visual novo, pedido do João 2026-10-22): filtros
 // rápidos, trilha das etapas, modo lista, novidades e legenda.
@@ -64,7 +65,7 @@ export function TrilhaPedidos({ lista, orderType, aoClicar }: { lista: OrdemCard
                 className={`rounded-lg border px-2.5 py-1.5 text-left transition-colors hover:bg-dark-700 ${qtd ? 'border-dark-600' : 'border-dark-700 opacity-50'}`}
                 style={{ borderBottom: `3px solid ${cor}` }}
               >
-                <span className="block text-lg font-bold leading-none tabular-nums" style={{ color: qtd ? cor : undefined }}>
+                <span className="block text-lg font-bold leading-none tabular-nums" style={{ color: corTexto(qtd ? cor : undefined) }}>
                   {qtd}
                 </span>
                 <span className="block text-[10px] text-dark-400 whitespace-nowrap mt-0.5">{STAGE_LABELS[st as Stage]}</span>
@@ -168,7 +169,7 @@ export function TabelaPedidos({ lista, orderType, aoAbrir }: { lista: OrdemCard[
                     </div>
                   </td>
                   <td className="py-2 px-3">
-                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: cor, background: `${cor}1f` }}>
+                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: corTexto(cor), background: `${cor}1f` }}>
                       {STAGE_LABELS[o.stage as Stage] ?? o.stage}
                     </span>
                   </td>

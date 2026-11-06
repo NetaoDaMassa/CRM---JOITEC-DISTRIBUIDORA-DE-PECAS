@@ -1,5 +1,6 @@
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
+import { corTexto } from '../lib/corTexto'
 
 // Telas da Expedição pros painéis de TV (pedido do João, 2026-11-02): o
 // painel do estoque (/painel-tv-logistica) gira entre elas e o Painel
@@ -62,7 +63,7 @@ export function TelaEmpresasExpedicao({ data, foco = 'estoque' }: { data: Resumo
           <div className="grid grid-cols-5 gap-2">
             {ETAPAS.map((x) => (
               <div key={x.chave} className="rounded-xl bg-dark-800 px-2 py-3 text-center">
-                <p className="text-[46px] font-bold leading-none tabular-nums" style={{ color: e[x.chave] ? x.cor : undefined }}>
+                <p className="text-[46px] font-bold leading-none tabular-nums" style={{ color: corTexto(e[x.chave] ? x.cor : undefined) }}>
                   {e[x.chave]}
                 </p>
                 <p className="text-[15px] text-dark-400 mt-1 leading-tight">{x.titulo}</p>

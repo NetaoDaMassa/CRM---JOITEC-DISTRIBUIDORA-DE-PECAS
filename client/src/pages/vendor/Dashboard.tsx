@@ -6,6 +6,7 @@ import { formatarPercentual } from '../../lib/utils'
 import { hojeBrString } from '../../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import { AnelProgresso, Esqueleto, EsqueletoCards, primeiroNome, saudacao } from '../../components/ui/Visual'
+import { corTexto } from '../../lib/corTexto'
 
 // Mesma paleta validada (skill de dataviz) já usada no Painel de TV — azul
 // neutro pra vendas, âmbar pra contatos/ligações, verde de status só quando
@@ -25,7 +26,7 @@ function TooltipHistorico({ active, payload, label }: { active?: boolean; payloa
     <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg">
       <p className="text-dark-100 font-medium mb-1">{label}</p>
       {payload.map((p) => (
-        <p key={p.name} style={{ color: p.color }}>
+        <p key={p.name} style={{ color: corTexto(p.color) }}>
           {p.name}: {p.value}
         </p>
       ))}
@@ -57,7 +58,7 @@ function AcaoHoje({ to, icone, cor, titulo, valor, detalhe }: { to: string; icon
         <span className="block text-xs text-dark-400">{titulo}</span>
         <span className="block text-xs text-dark-500 truncate">{detalhe}</span>
       </span>
-      <span className="text-2xl font-bold" style={{ color: cor }}>
+      <span className="text-2xl font-bold" style={{ color: corTexto(cor) }}>
         {valor}
       </span>
       <span className="text-dark-500 group-hover:text-dark-200 group-hover:translate-x-0.5 transition-all">›</span>

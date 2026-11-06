@@ -1,12 +1,13 @@
 import { Check, X } from 'lucide-react'
 import { ETAPAS_FLUXO, ETAPA_INFO, PRIORIDADE_INFO, TIPO_INFO, type EtapaCompra } from '../../lib/comprasShared'
+import { corTexto } from '../../lib/corTexto'
 
 export function EtapaBadge({ etapa }: { etapa: EtapaCompra }) {
   const info = ETAPA_INFO[etapa]
   return (
     <span
       className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap"
-      style={{ background: `${info.cor}22`, color: info.cor, boxShadow: `inset 0 0 0 1px ${info.cor}55` }}
+      style={{ background: `${info.cor}22`, color: corTexto(info.cor), boxShadow: `inset 0 0 0 1px ${info.cor}55` }}
       title={info.ajuda}
     >
       {info.label}
@@ -17,7 +18,7 @@ export function EtapaBadge({ etapa }: { etapa: EtapaCompra }) {
 export function TipoBadge({ tipo }: { tipo: 'revenda' | 'uso_consumo' }) {
   const info = TIPO_INFO[tipo]
   return (
-    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: `${info.cor}1f`, color: info.cor }}>
+    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap" style={{ background: `${info.cor}1f`, color: corTexto(info.cor) }}>
       {info.label}
     </span>
   )
@@ -45,7 +46,7 @@ export function TrilhaEtapas({ etapa, compacta }: { etapa: EtapaCompra; compacta
             <div className="flex flex-col items-center gap-1 shrink-0">
               <span
                 className={`rounded-full flex items-center justify-center text-[11px] font-bold ${compacta ? 'w-5 h-5' : 'w-7 h-7'} ${atual ? 'animate-pulse' : ''}`}
-                style={{ background: feita ? cor : atual ? `${cor}33` : 'transparent', color: feita ? '#fff' : cor, boxShadow: `inset 0 0 0 2px ${cor}` }}
+                style={{ background: feita ? cor : atual ? `${cor}33` : 'transparent', color: corTexto(feita ? '#fff' : cor), boxShadow: `inset 0 0 0 2px ${cor}` }}
               >
                 {feita ? <Check size={compacta ? 11 : 14} strokeWidth={3} /> : i + 1}
               </span>
@@ -56,7 +57,7 @@ export function TrilhaEtapas({ etapa, compacta }: { etapa: EtapaCompra; compacta
         )
       })}
       {encerrada && (
-        <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold shrink-0" style={{ color: ETAPA_INFO[etapa].cor }}>
+        <span className="ml-2 inline-flex items-center gap-1 text-xs font-semibold shrink-0" style={{ color: corTexto(ETAPA_INFO[etapa].cor) }}>
           <X size={14} /> {ETAPA_INFO[etapa].label}
         </span>
       )}

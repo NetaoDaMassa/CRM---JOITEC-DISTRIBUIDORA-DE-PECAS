@@ -8,6 +8,7 @@ import Select from '../ui/Select'
 import Button from '../ui/Button'
 import { parseValorBr, formatarValorInput } from '../../lib/valorBr'
 import { TIPO_INFO } from '../../lib/comprasShared'
+import { corTexto } from '../../lib/corTexto'
 
 type Item = { descricao: string; quantidade: string; unidade: string; codigo: string; observacao: string }
 
@@ -120,7 +121,7 @@ export default function FormSolicitacao({ inicial, onPronto, onCancelar }: { ini
               className={`rounded-xl border px-3 py-2.5 text-left transition-colors ${tipo === t ? 'border-transparent' : 'border-dark-600 hover:border-dark-500'}`}
               style={tipo === t ? { background: `${TIPO_INFO[t].cor}22`, boxShadow: `inset 0 0 0 1.5px ${TIPO_INFO[t].cor}` } : undefined}
             >
-              <span className="block text-sm font-semibold" style={{ color: tipo === t ? TIPO_INFO[t].cor : undefined }}>
+              <span className="block text-sm font-semibold" style={{ color: corTexto(tipo === t ? TIPO_INFO[t].cor : undefined) }}>
                 {TIPO_INFO[t].label}
               </span>
               <span className="block text-xs text-dark-400">{t === 'revenda' ? 'Mercadoria que vai ser vendida' : 'Usado aqui dentro (escritório, limpeza, manutenção...)'}</span>

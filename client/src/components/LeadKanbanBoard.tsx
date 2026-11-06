@@ -28,6 +28,7 @@ import {
   leadTelefoneCompleto,
   leadTelefoneFormatado,
 } from '../lib/leadsShared'
+import { corTexto } from '../lib/corTexto'
 
 type LeadCard = {
   id: number
@@ -253,7 +254,7 @@ export default function LeadKanbanBoard({
                 className={`shrink-0 w-11 rounded-xl border bg-dark-800/60 hover:bg-dark-800 flex flex-col items-center gap-2 py-3 transition-colors ${colunaAlvo === status ? 'border-gold-400 bg-gold-500/10' : 'border-dark-700'}`}
                 style={{ borderTop: `3px solid ${cor}` }}
               >
-                <span className="text-xs font-bold rounded-full px-1.5 min-w-6 text-center" style={{ color: cor, background: `${cor}22` }}>
+                <span className="text-xs font-bold rounded-full px-1.5 min-w-6 text-center" style={{ color: corTexto(cor), background: `${cor}22` }}>
                   {cards.length}
                 </span>
                 <span className="text-xs font-semibold text-dark-300 [writing-mode:vertical-rl] rotate-180 whitespace-nowrap">{LEAD_STATUS_LABELS[status]}</span>
@@ -271,7 +272,7 @@ export default function LeadKanbanBoard({
                 <div className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cor }} />
                   <span className="text-sm font-semibold text-dark-100 truncate">{LEAD_STATUS_LABELS[status]}</span>
-                  <span className="text-xs font-bold rounded-full px-2 py-0.5" style={{ color: cor, background: `${cor}22` }}>
+                  <span className="text-xs font-bold rounded-full px-2 py-0.5" style={{ color: corTexto(cor), background: `${cor}22` }}>
                     {cards.length}
                   </span>
                   {atrasadosColuna > 0 && (
@@ -344,7 +345,7 @@ export default function LeadKanbanBoard({
                             {relogio && (
                               <span
                                 className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5"
-                                style={{ color: relogio.cor, background: `${relogio.cor}1f` }}
+                                style={{ color: corTexto(relogio.cor), background: `${relogio.cor}1f` }}
                                 title="Tempo desde que o lead chegou para você, sem nenhum contato registrado. Verde até 1h, amarelo até 4h, vermelho depois."
                               >
                                 <Timer size={10} /> {relogio.texto}

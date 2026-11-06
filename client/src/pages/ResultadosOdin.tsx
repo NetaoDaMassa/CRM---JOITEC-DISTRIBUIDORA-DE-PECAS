@@ -10,6 +10,7 @@ import { Abas, Carregando, KpiCard, Secao, moeda, numero, pct } from '../compone
 import { PRESETS, datasDoPreset, formatarDataCurta, periodoAnterior, type Preset } from '../components/relatorios/filtros'
 import BotaoImprimir from '../components/relatorios/BotaoImprimir'
 import AvatarMeta from '../components/ui/AvatarMeta'
+import { corTexto } from '../lib/corTexto'
 
 type Dados = inferRouterOutputs<AppRouter>['dashboardOdin']['resultados']
 type Frente = 'externos' | 'leads' | 'pecas'
@@ -195,7 +196,7 @@ function AbaGeral({ d, irPara }: { d: Dados; irPara: (a: Aba) => void }) {
               style={{ borderTop: `3px solid ${COR[r.frente]}` }}
             >
               <span className="flex items-center gap-2 text-sm font-semibold text-dark-50">
-                <r.icone size={16} style={{ color: COR[r.frente] }} /> {ROTULO[r.frente]}
+                <r.icone size={16} style={{ color: corTexto(COR[r.frente]) }} /> {ROTULO[r.frente]}
               </span>
               <p className="text-xl font-bold text-dark-50 mt-2">{moeda(g.porFrente[r.frente])}</p>
               <ul className="mt-2 space-y-0.5 text-xs text-dark-400">

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import { Info, Sparkles, X } from 'lucide-react'
+import { corTexto } from '../../lib/corTexto'
 
 // Peças visuais compartilhadas pelas telas de Kanban/lista no "visual novo"
 // (Visitas, Propostas, Pedidos — pedido do João, 2026-10-22: "mesma ideia
@@ -36,7 +37,7 @@ export function Indicador({
       }`}
       style={ativo ? { borderColor: cor, boxShadow: `0 0 0 1px ${cor}` } : undefined}
     >
-      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: cor }}>
+      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: `${cor}1f`, color: corTexto(cor) }}>
         <Icone size={18} />
       </span>
       <span className="min-w-0">
@@ -67,7 +68,7 @@ export function CabecalhoColuna({ rotulo, cor, quantidade, alerta, extra }: { ro
       <div className="flex items-center gap-2">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ background: cor }} />
         <span className="text-sm font-semibold text-dark-100 truncate">{rotulo}</span>
-        <span className="text-xs font-bold rounded-full px-2 py-0.5" style={{ color: cor, background: `${cor}22` }}>
+        <span className="text-xs font-bold rounded-full px-2 py-0.5" style={{ color: corTexto(cor), background: `${cor}22` }}>
           {quantidade}
         </span>
         {alerta && <span className="text-[10px] font-bold text-red-400 bg-red-500/15 rounded-full px-1.5 py-0.5 whitespace-nowrap">{alerta}</span>}
@@ -79,7 +80,7 @@ export function CabecalhoColuna({ rotulo, cor, quantidade, alerta, extra }: { ro
 
 export function Pilula({ cor, children, title }: { cor: string; children: ReactNode; title?: string }) {
   return (
-    <span className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 whitespace-nowrap" style={{ color: cor, background: `${cor}1f` }} title={title}>
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold rounded-full px-2 py-0.5 whitespace-nowrap" style={{ color: corTexto(cor), background: `${cor}1f` }} title={title}>
       {children}
     </span>
   )

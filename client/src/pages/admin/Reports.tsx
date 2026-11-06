@@ -22,6 +22,7 @@ import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
 import { formatDate, hojeBrString, primeiroDiaMesString } from '../../lib/utils'
 import { paraCsv, baixarCsv } from '../../lib/csv'
+import { corTexto } from '../../lib/corTexto'
 
 function BotaoExportar({ onClick }: { onClick: () => void }) {
   return (
@@ -239,7 +240,7 @@ function TooltipPadrao({ active, payload, label }: { active?: boolean; payload?:
     <div className="bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-xs shadow-lg max-w-[240px]">
       {label && <p className="text-dark-100 font-medium mb-1 truncate">{label}</p>}
       {payload.map((p) => (
-        <p key={p.name} style={{ color: p.color }}>
+        <p key={p.name} style={{ color: corTexto(p.color) }}>
           {p.name}: {p.value.toLocaleString('pt-BR')}
         </p>
       ))}

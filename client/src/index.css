@@ -44,22 +44,11 @@ html {
   color-scheme: dark;
 }
 
-/* ── Modo claro: inverte a rampa neutra "dark-*" (mesmos nomes de classe,
-   valores diferentes). O gold/cream da marca não muda entre os temas. ──── */
+/* ── Modo claro: as cores ficam no bloco "Tema claro: cores", no fim do arquivo
+   (precisa vir depois das cores por empresa). ──── */
 html.light,
 .doc-claro {
   color-scheme: light;
-  --color-dark-50:  #0b1520;
-  --color-dark-100: #1a2332;
-  --color-dark-200: #334155;
-  --color-dark-300: #475569;
-  --color-dark-400: #64748b;
-  --color-dark-500: #94a3b3;
-  --color-dark-600: #d7dee6;
-  --color-dark-700: #e7ecf1;
-  --color-dark-800: #ffffff;
-  --color-dark-900: #f7f9fb;
-  --color-dark-950: #eef2f6;
 }
 
 body {
@@ -244,4 +233,169 @@ html.modo-apresentacao main {
 @keyframes modal-entrada {
   from { opacity: 0; transform: translateY(10px) scale(0.98); }
   to { opacity: 1; transform: none; }
+}
+
+/* ── Tema claro: cores (2026-11-06) ────────────────────────────────────────
+   O sistema nasceu escuro: text-red-300, bg-red-900/20, text-gold-400 etc. são
+   tons pensados pra fundo escuro. Em vez de trocar classe em cada tela, aqui a
+   rampa de cada cor é invertida só no modo claro, igual à rampa dark-*:
+   - 50 a 400 (texto): viram tons escuros, legíveis sobre branco.
+   - 500 a 700 (botão, barra, selo sólido): mantêm a cor, e seguem com texto branco.
+   - 800 a 950 (quase sempre fundo translúcido, bg-red-900/20): viram tom vivo,
+     pra dar um fundo limpo em vez de cinza sujo.
+   O tema escuro não muda: nada aqui vale fora de html.light/.doc-claro/impressão.
+   Tela nova: pode usar as classes de sempre. */
+html.light,
+.doc-claro {
+  --color-dark-50:  #0b1520;
+  --color-dark-100: #162130;
+  --color-dark-200: #2b394b;
+  --color-dark-300: #3f4e60;
+  --color-dark-400: #536276;
+  --color-dark-500: #5d6c80;
+  --color-dark-600: #d3dbe4;
+  --color-dark-700: #e6ebf1;
+  --color-dark-800: #ffffff;
+  --color-dark-900: #f6f8fb;
+  --color-dark-950: #edf1f6;
+  --color-red-50: #7f1d1d; --color-red-100: #7f1d1d; --color-red-200: #991b1b; --color-red-300: #b91c1c; --color-red-400: #b91c1c; --color-red-800: #f87171; --color-red-900: #f87171; --color-red-950: #f87171;
+  --color-rose-50: #881337; --color-rose-100: #881337; --color-rose-200: #9f1239; --color-rose-300: #be123c; --color-rose-400: #be123c; --color-rose-800: #fb7185; --color-rose-900: #fb7185; --color-rose-950: #fb7185;
+  --color-pink-50: #831843; --color-pink-100: #831843; --color-pink-200: #9d174d; --color-pink-300: #be185d; --color-pink-400: #be185d; --color-pink-800: #f472b6; --color-pink-900: #f472b6; --color-pink-950: #f472b6;
+  --color-orange-50: #7c2d12; --color-orange-100: #7c2d12; --color-orange-200: #9a3412; --color-orange-300: #c2410c; --color-orange-400: #c2410c; --color-orange-800: #fb923c; --color-orange-900: #fb923c; --color-orange-950: #fb923c;
+  --color-amber-50: #713f12; --color-amber-100: #713f12; --color-amber-200: #78350f; --color-amber-300: #92400e; --color-amber-400: #92400e; --color-amber-800: #fbbf24; --color-amber-900: #fbbf24; --color-amber-950: #fbbf24;
+  --color-yellow-50: #713f12; --color-yellow-100: #713f12; --color-yellow-200: #713f12; --color-yellow-300: #854d0e; --color-yellow-400: #854d0e; --color-yellow-800: #facc15; --color-yellow-900: #facc15; --color-yellow-950: #facc15;
+  --color-lime-50: #1a2e05; --color-lime-100: #1a2e05; --color-lime-200: #365314; --color-lime-300: #3f6212; --color-lime-400: #3f6212; --color-lime-800: #a3e635; --color-lime-900: #a3e635; --color-lime-950: #a3e635;
+  --color-green-50: #052e16; --color-green-100: #052e16; --color-green-200: #14532d; --color-green-300: #166534; --color-green-400: #166534; --color-green-800: #4ade80; --color-green-900: #4ade80; --color-green-950: #4ade80;
+  --color-emerald-50: #022c22; --color-emerald-100: #022c22; --color-emerald-200: #064e3b; --color-emerald-300: #065f46; --color-emerald-400: #065f46; --color-emerald-800: #34d399; --color-emerald-900: #34d399; --color-emerald-950: #34d399;
+  --color-teal-50: #042f2e; --color-teal-100: #042f2e; --color-teal-200: #134e4a; --color-teal-300: #115e59; --color-teal-400: #115e59; --color-teal-800: #2dd4bf; --color-teal-900: #2dd4bf; --color-teal-950: #2dd4bf;
+  --color-cyan-50: #083344; --color-cyan-100: #083344; --color-cyan-200: #164e63; --color-cyan-300: #155e75; --color-cyan-400: #155e75; --color-cyan-800: #22d3ee; --color-cyan-900: #22d3ee; --color-cyan-950: #22d3ee;
+  --color-sky-50: #082f49; --color-sky-100: #082f49; --color-sky-200: #0c4a6e; --color-sky-300: #075985; --color-sky-400: #075985; --color-sky-800: #38bdf8; --color-sky-900: #38bdf8; --color-sky-950: #38bdf8;
+  --color-blue-50: #1e3a8a; --color-blue-100: #1e3a8a; --color-blue-200: #1e40af; --color-blue-300: #1d4ed8; --color-blue-400: #1d4ed8; --color-blue-800: #60a5fa; --color-blue-900: #60a5fa; --color-blue-950: #60a5fa;
+  --color-indigo-50: #312e81; --color-indigo-100: #312e81; --color-indigo-200: #3730a3; --color-indigo-300: #4338ca; --color-indigo-400: #4338ca; --color-indigo-800: #818cf8; --color-indigo-900: #818cf8; --color-indigo-950: #818cf8;
+  --color-violet-50: #4c1d95; --color-violet-100: #4c1d95; --color-violet-200: #5b21b6; --color-violet-300: #6d28d9; --color-violet-400: #6d28d9; --color-violet-800: #a78bfa; --color-violet-900: #a78bfa; --color-violet-950: #a78bfa;
+  --color-purple-50: #581c87; --color-purple-100: #581c87; --color-purple-200: #6b21a8; --color-purple-300: #7e22ce; --color-purple-400: #7e22ce; --color-purple-800: #c084fc; --color-purple-900: #c084fc; --color-purple-950: #c084fc;
+  --color-fuchsia-50: #701a75; --color-fuchsia-100: #701a75; --color-fuchsia-200: #86198f; --color-fuchsia-300: #a21caf; --color-fuchsia-400: #a21caf; --color-fuchsia-800: #e879f9; --color-fuchsia-900: #e879f9; --color-fuchsia-950: #e879f9;
+  --color-gold-50: #003d54; --color-gold-100: #003d54; --color-gold-200: #005270; --color-gold-300: #005f80; --color-gold-400: #005f80; --color-gold-500: #0972a4; --color-gold-800: #24aff4; --color-gold-900: #24aff4;
+}
+html.light[data-empresa="odin-tubos"] {
+  --color-gold-50: #15326b; --color-gold-100: #15326b; --color-gold-200: #1a408c; --color-gold-300: #1f4fb0; --color-gold-400: #1f4fb0; --color-gold-500: #2a60cc; --color-gold-800: #4c84ee; --color-gold-900: #4c84ee;
+}
+html.light[data-empresa="odin-compressores"] {
+  --color-gold-50: #0b4e4b; --color-gold-100: #0b4e4b; --color-gold-200: #0b6561; --color-gold-300: #0a6e69; --color-gold-400: #0a6e69; --color-gold-500: #0a7670; --color-gold-800: #22bdb3; --color-gold-900: #22bdb3;
+  --color-gold-600: #0a7069;
+}
+/* text-*-500 divide o tom com botão/barra sólidos, então escurece só o texto.
+   text-dark-600/700 no claro viram borda; como texto, sobem pra dark-500. Na
+   layer utilities com :where, pra hover:text-* continuar valendo. */
+html { --escurecer-texto: 0%; }
+html.light, .doc-claro { --escurecer-texto: 38%; }
+@layer utilities {
+  html.light :where(.text-red-500) { color: #b91c1c; }
+  html.light :where(.text-rose-500) { color: #be123c; }
+  html.light :where(.text-pink-500) { color: #be185d; }
+  html.light :where(.text-orange-500) { color: #c2410c; }
+  html.light :where(.text-amber-500) { color: #92400e; }
+  html.light :where(.text-yellow-500) { color: #854d0e; }
+  html.light :where(.text-lime-500) { color: #3f6212; }
+  html.light :where(.text-green-500) { color: #166534; }
+  html.light :where(.text-emerald-500) { color: #065f46; }
+  html.light :where(.text-teal-500) { color: #115e59; }
+  html.light :where(.text-cyan-500) { color: #155e75; }
+  html.light :where(.text-sky-500) { color: #075985; }
+  html.light :where(.text-blue-500) { color: #1d4ed8; }
+  html.light :where(.text-indigo-500) { color: #4338ca; }
+  html.light :where(.text-violet-500) { color: #6d28d9; }
+  html.light :where(.text-purple-500) { color: #7e22ce; }
+  html.light :where(.text-fuchsia-500) { color: #a21caf; }
+  html.light :where(.text-dark-600), html.light :where(.text-dark-700) { color: var(--color-dark-500); }
+  html.light :where(.text-gold-500\/70), html.light :where(.text-gold-500\/80) { color: var(--color-gold-400); }
+  .doc-claro :where(.text-red-500) { color: #b91c1c; }
+  .doc-claro :where(.text-rose-500) { color: #be123c; }
+  .doc-claro :where(.text-pink-500) { color: #be185d; }
+  .doc-claro :where(.text-orange-500) { color: #c2410c; }
+  .doc-claro :where(.text-amber-500) { color: #92400e; }
+  .doc-claro :where(.text-yellow-500) { color: #854d0e; }
+  .doc-claro :where(.text-lime-500) { color: #3f6212; }
+  .doc-claro :where(.text-green-500) { color: #166534; }
+  .doc-claro :where(.text-emerald-500) { color: #065f46; }
+  .doc-claro :where(.text-teal-500) { color: #115e59; }
+  .doc-claro :where(.text-cyan-500) { color: #155e75; }
+  .doc-claro :where(.text-sky-500) { color: #075985; }
+  .doc-claro :where(.text-blue-500) { color: #1d4ed8; }
+  .doc-claro :where(.text-indigo-500) { color: #4338ca; }
+  .doc-claro :where(.text-violet-500) { color: #6d28d9; }
+  .doc-claro :where(.text-purple-500) { color: #7e22ce; }
+  .doc-claro :where(.text-fuchsia-500) { color: #a21caf; }
+  .doc-claro :where(.text-dark-600), .doc-claro :where(.text-dark-700) { color: var(--color-dark-500); }
+  .doc-claro :where(.text-gold-500\/70), .doc-claro :where(.text-gold-500\/80) { color: var(--color-gold-400); }
+}
+
+/* Os dois únicos fundos opacos claros do sistema: não podem virar tom escuro. */
+@layer utilities {
+  html.light :where(.bg-amber-50) { background-color: #fffbeb; }
+  html.light :where(.hover\:bg-green-100:hover) { background-color: #dcfce7; }
+}
+
+/* Cartões: no branco a borda sozinha fica chapada, um tico de sombra separa. */
+html.light .bg-dark-800.rounded-2xl,
+html.light .bg-dark-800.rounded-xl {
+  box-shadow: 0 1px 2px rgba(15, 30, 50, 0.05), 0 1px 3px rgba(15, 30, 50, 0.04);
+}
+html.light ::-webkit-scrollbar-track { background: transparent; }
+html.light ::-webkit-scrollbar-thumb { background: #c2ccd8; }
+
+/* Impressão/PDF sai sempre claro, mesmo com a pessoa no tema escuro. */
+@media print {
+  html,
+  html[data-empresa] {
+  --color-red-50: #7f1d1d; --color-red-100: #7f1d1d; --color-red-200: #991b1b; --color-red-300: #b91c1c; --color-red-400: #b91c1c; --color-red-800: #f87171; --color-red-900: #f87171; --color-red-950: #f87171;
+  --color-rose-50: #881337; --color-rose-100: #881337; --color-rose-200: #9f1239; --color-rose-300: #be123c; --color-rose-400: #be123c; --color-rose-800: #fb7185; --color-rose-900: #fb7185; --color-rose-950: #fb7185;
+  --color-pink-50: #831843; --color-pink-100: #831843; --color-pink-200: #9d174d; --color-pink-300: #be185d; --color-pink-400: #be185d; --color-pink-800: #f472b6; --color-pink-900: #f472b6; --color-pink-950: #f472b6;
+  --color-orange-50: #7c2d12; --color-orange-100: #7c2d12; --color-orange-200: #9a3412; --color-orange-300: #c2410c; --color-orange-400: #c2410c; --color-orange-800: #fb923c; --color-orange-900: #fb923c; --color-orange-950: #fb923c;
+  --color-amber-50: #713f12; --color-amber-100: #713f12; --color-amber-200: #78350f; --color-amber-300: #92400e; --color-amber-400: #92400e; --color-amber-800: #fbbf24; --color-amber-900: #fbbf24; --color-amber-950: #fbbf24;
+  --color-yellow-50: #713f12; --color-yellow-100: #713f12; --color-yellow-200: #713f12; --color-yellow-300: #854d0e; --color-yellow-400: #854d0e; --color-yellow-800: #facc15; --color-yellow-900: #facc15; --color-yellow-950: #facc15;
+  --color-lime-50: #1a2e05; --color-lime-100: #1a2e05; --color-lime-200: #365314; --color-lime-300: #3f6212; --color-lime-400: #3f6212; --color-lime-800: #a3e635; --color-lime-900: #a3e635; --color-lime-950: #a3e635;
+  --color-green-50: #052e16; --color-green-100: #052e16; --color-green-200: #14532d; --color-green-300: #166534; --color-green-400: #166534; --color-green-800: #4ade80; --color-green-900: #4ade80; --color-green-950: #4ade80;
+  --color-emerald-50: #022c22; --color-emerald-100: #022c22; --color-emerald-200: #064e3b; --color-emerald-300: #065f46; --color-emerald-400: #065f46; --color-emerald-800: #34d399; --color-emerald-900: #34d399; --color-emerald-950: #34d399;
+  --color-teal-50: #042f2e; --color-teal-100: #042f2e; --color-teal-200: #134e4a; --color-teal-300: #115e59; --color-teal-400: #115e59; --color-teal-800: #2dd4bf; --color-teal-900: #2dd4bf; --color-teal-950: #2dd4bf;
+  --color-cyan-50: #083344; --color-cyan-100: #083344; --color-cyan-200: #164e63; --color-cyan-300: #155e75; --color-cyan-400: #155e75; --color-cyan-800: #22d3ee; --color-cyan-900: #22d3ee; --color-cyan-950: #22d3ee;
+  --color-sky-50: #082f49; --color-sky-100: #082f49; --color-sky-200: #0c4a6e; --color-sky-300: #075985; --color-sky-400: #075985; --color-sky-800: #38bdf8; --color-sky-900: #38bdf8; --color-sky-950: #38bdf8;
+  --color-blue-50: #1e3a8a; --color-blue-100: #1e3a8a; --color-blue-200: #1e40af; --color-blue-300: #1d4ed8; --color-blue-400: #1d4ed8; --color-blue-800: #60a5fa; --color-blue-900: #60a5fa; --color-blue-950: #60a5fa;
+  --color-indigo-50: #312e81; --color-indigo-100: #312e81; --color-indigo-200: #3730a3; --color-indigo-300: #4338ca; --color-indigo-400: #4338ca; --color-indigo-800: #818cf8; --color-indigo-900: #818cf8; --color-indigo-950: #818cf8;
+  --color-violet-50: #4c1d95; --color-violet-100: #4c1d95; --color-violet-200: #5b21b6; --color-violet-300: #6d28d9; --color-violet-400: #6d28d9; --color-violet-800: #a78bfa; --color-violet-900: #a78bfa; --color-violet-950: #a78bfa;
+  --color-purple-50: #581c87; --color-purple-100: #581c87; --color-purple-200: #6b21a8; --color-purple-300: #7e22ce; --color-purple-400: #7e22ce; --color-purple-800: #c084fc; --color-purple-900: #c084fc; --color-purple-950: #c084fc;
+  --color-fuchsia-50: #701a75; --color-fuchsia-100: #701a75; --color-fuchsia-200: #86198f; --color-fuchsia-300: #a21caf; --color-fuchsia-400: #a21caf; --color-fuchsia-800: #e879f9; --color-fuchsia-900: #e879f9; --color-fuchsia-950: #e879f9;
+  }
+  html:not([data-empresa]),
+  html[data-empresa] {
+  --color-gold-50: #003d54; --color-gold-100: #003d54; --color-gold-200: #005270; --color-gold-300: #005f80; --color-gold-400: #005f80; --color-gold-500: #0972a4; --color-gold-800: #24aff4; --color-gold-900: #24aff4;
+  }
+  html[data-empresa="odin-tubos"] {
+  --color-gold-50: #15326b; --color-gold-100: #15326b; --color-gold-200: #1a408c; --color-gold-300: #1f4fb0; --color-gold-400: #1f4fb0; --color-gold-500: #2a60cc; --color-gold-800: #4c84ee; --color-gold-900: #4c84ee;
+  }
+  html[data-empresa="odin-compressores"] {
+  --color-gold-50: #0b4e4b; --color-gold-100: #0b4e4b; --color-gold-200: #0b6561; --color-gold-300: #0a6e69; --color-gold-400: #0a6e69; --color-gold-500: #0a7670; --color-gold-800: #22bdb3; --color-gold-900: #22bdb3;
+  }
+  html { --escurecer-texto: 38%; }
+  @layer utilities {
+    .text-red-500 { color: #b91c1c; }
+    .text-rose-500 { color: #be123c; }
+    .text-pink-500 { color: #be185d; }
+    .text-orange-500 { color: #c2410c; }
+    .text-amber-500 { color: #92400e; }
+    .text-yellow-500 { color: #854d0e; }
+    .text-lime-500 { color: #3f6212; }
+    .text-green-500 { color: #166534; }
+    .text-emerald-500 { color: #065f46; }
+    .text-teal-500 { color: #115e59; }
+    .text-cyan-500 { color: #155e75; }
+    .text-sky-500 { color: #075985; }
+    .text-blue-500 { color: #1d4ed8; }
+    .text-indigo-500 { color: #4338ca; }
+    .text-violet-500 { color: #6d28d9; }
+    .text-purple-500 { color: #7e22ce; }
+    .text-fuchsia-500 { color: #a21caf; }
+    .text-dark-600, .text-dark-700 { color: var(--color-dark-500); }
+    .text-gold-500\/70, .text-gold-500\/80 { color: var(--color-gold-400); }
+  }
 }

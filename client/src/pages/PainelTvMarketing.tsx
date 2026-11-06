@@ -5,6 +5,7 @@ import { trpc } from '../lib/trpc'
 import { formatElapsed, formatarPercentual } from '../lib/utils'
 import { formatarMoeda } from '../lib/moeda'
 import AvatarMeta from '../components/ui/AvatarMeta'
+import { corTexto } from '../lib/corTexto'
 
 type RouterOutputs = inferRouterOutputs<AppRouter>
 type PainelData = RouterOutputs['painelMarketing']['resumo']
@@ -157,7 +158,7 @@ function Kpi({
       style={{ borderTop: `0.5vh solid ${cor}` }}
     >
       <p className="text-[1.7vh] text-dark-300 uppercase tracking-wide font-semibold">{titulo}</p>
-      <p className="text-[7.5vh] leading-none font-bold font-mono tabular-nums mt-[0.8vh]" style={{ color: alerta ? COR_RUIM : undefined }}>
+      <p className="text-[7.5vh] leading-none font-bold font-mono tabular-nums mt-[0.8vh]" style={{ color: corTexto(alerta ? COR_RUIM : undefined) }}>
         {formatar(animado)}
       </p>
       {sub && <p className="text-[1.5vh] text-dark-400 mt-[0.8vh]">{sub}</p>}
@@ -217,7 +218,7 @@ function AnelMeta({
         </div>
       </div>
       <p className="text-[1.8vh] font-semibold text-dark-100 mt-[0.8vh]">{titulo}</p>
-      <p className="text-[1.5vh] mt-[0.3vh]" style={{ color: cor }}>
+      <p className="text-[1.5vh] mt-[0.3vh]" style={{ color: corTexto(cor) }}>
         {!temMeta ? 'meta não definida' : bateu ? '🎯 meta batida' : noRitmo ? '✅ no ritmo' : ritmoEsperado != null ? '⚠️ abaixo do ritmo' : '⚠️ abaixo da meta'}
       </p>
     </div>
@@ -266,7 +267,7 @@ const BlocoNegociacao = memo(function BlocoNegociacao({ data }: { data: PainelDa
           <p className="text-[1.6vh] text-dark-400 mt-[0.4vh]">lead{n.quantidade !== 1 ? 's' : ''}</p>
         </div>
         <div className="min-w-0">
-          <p className="text-[4.4vh] leading-none font-bold font-mono tabular-nums truncate" style={{ color: COR_CONTATOS }}>
+          <p className="text-[4.4vh] leading-none font-bold font-mono tabular-nums truncate" style={{ color: corTexto(COR_CONTATOS) }}>
             {formatarMoeda(valorAnimado, { casas: 0 })}
           </p>
           <p className="text-[1.6vh] text-dark-400 mt-[0.4vh]">
@@ -366,7 +367,7 @@ function BlocoLeadsEmNovo({ data }: { data: PainelData }) {
   return (
     <Card titulo="🚨 Leads em Novo — atender agora" cor={COR_RUIM} alerta className="col-span-4 animate-[tv-aparece_.6s_both]">
       <div className="flex items-baseline gap-[1.4vh] shrink-0 mb-[1.2vh]">
-        <span className="text-[5vh] leading-none font-bold font-mono tabular-nums animate-pulse" style={{ color: COR_RUIM }}>
+        <span className="text-[5vh] leading-none font-bold font-mono tabular-nums animate-pulse" style={{ color: corTexto(COR_RUIM) }}>
           {quantidade}
         </span>
         <span className="text-[1.9vh] text-dark-200">lead{quantidade !== 1 ? 's' : ''} esperando o 1º atendimento</span>
@@ -383,12 +384,12 @@ function BlocoLeadsEmNovo({ data }: { data: PainelData }) {
                 {l.vendedor ? (
                   <span className="text-dark-200">Vendedor: {l.vendedor}</span>
                 ) : (
-                  <span className="font-bold" style={{ color: COR_RUIM }}>⚠ sem vendedor</span>
+                  <span className="font-bold" style={{ color: corTexto(COR_RUIM) }}>⚠ sem vendedor</span>
                 )}
                 <span className="text-dark-500"> · {l.canal}</span>
               </p>
             </div>
-            <span className="text-[1.7vh] font-bold font-mono shrink-0" style={{ color: COR_RUIM }}>
+            <span className="text-[1.7vh] font-bold font-mono shrink-0" style={{ color: corTexto(COR_RUIM) }}>
               há {formatElapsed(l.criadoEm)}
             </span>
           </div>

@@ -5,6 +5,7 @@ import { formatElapsed, timeAgo } from '../../lib/utils'
 import { formatarMoeda } from '../../lib/moeda'
 import { LEAD_STATUS_LABELS, getLeadContactUrgency, isLeadTerminalStatus, leadTelefoneCompleto, leadTelefoneFormatado } from '../../lib/leadsShared'
 import { AvatarIniciais } from '../ui/Visual'
+import { corTexto } from '../../lib/corTexto'
 
 // Peças das ideias novas do Kanban de Leads (pedido do João, 2026-10-22:
 // "pode construir as novas ideias ... tem que explicar o que foi feito e já
@@ -106,7 +107,7 @@ export function SeloTemperatura({ t }: { t: Temperatura }) {
   return (
     <span
       className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide rounded-full px-2 py-0.5 cursor-help"
-      style={{ color: v.cor, background: `${v.cor}1f` }}
+      style={{ color: corTexto(v.cor), background: `${v.cor}1f` }}
       title={`${v.rotulo} (${t.pontos} pontos)\n${t.motivos.join('\n') || 'nenhum ponto'}`}
     >
       {v.emoji} {v.rotulo}
@@ -357,7 +358,7 @@ export function TabelaLeads({ leads, mostrarVendedor, aoAbrir }: { leads: LeadKa
                     </div>
                   </td>
                   <td className="py-2 px-3">
-                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: cor, background: `${cor}1f` }}>
+                    <span className="text-[11px] font-medium rounded-md px-2 py-0.5 whitespace-nowrap" style={{ color: corTexto(cor), background: `${cor}1f` }}>
                       {LEAD_STATUS_LABELS[l.status as keyof typeof LEAD_STATUS_LABELS] ?? l.status}
                     </span>
                   </td>
@@ -445,7 +446,7 @@ function Item({ marca, children }: { marca: ReactNode; children: ReactNode }) {
 
 function Pilula({ cor, children }: { cor: string; children: ReactNode }) {
   return (
-    <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 whitespace-nowrap" style={{ color: cor, background: `${cor}22` }}>
+    <span className="text-[10px] font-bold rounded-full px-1.5 py-0.5 whitespace-nowrap" style={{ color: corTexto(cor), background: `${cor}22` }}>
       {children}
     </span>
   )

@@ -6,6 +6,7 @@ import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { formatarMoeda } from '../lib/moeda'
 import type { Card } from './FunilBoard'
+import { corTexto } from '../lib/corTexto'
 
 // "Painel do dia" no topo do Kanban — substituiu o quadro "Cobertura de
 // contatos" (pedido do João, 2026-10-22, opção A do mockup). Três blocos:
@@ -298,7 +299,7 @@ export default function PainelDoDia({
                 const conteudo = (
                   <>
                     <span className="w-2 h-2 rounded-full shrink-0" style={{ background: u.cor }} />
-                    <span className="text-[17px] font-bold tabular-nums min-w-7" style={{ color: u.cor }}>
+                    <span className="text-[17px] font-bold tabular-nums min-w-7" style={{ color: corTexto(u.cor) }}>
                       {u.n}
                     </span>
                     <span className="text-[13px] text-dark-100 text-left">{u.texto}</span>
