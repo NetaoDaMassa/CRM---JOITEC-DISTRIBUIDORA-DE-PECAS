@@ -36,9 +36,16 @@ interface Pendente {
   vistoEm: string
 }
 
+// Exceção pedida pelo João, 2026-11-06: "Clientes Desqualificados" não é uma
+// pessoa, mas precisa de login. Entra na lista mesmo se já estiver na base.
+export function ehExcecaoComLogin(nome: string): boolean {
+  return /\bCLIENTES?\s+DESQUALIFICAD[OA]S?\b/.test(semAcento(nome).toUpperCase())
+}
+
 // Cadastros do SAP que não são uma pessoa (JOITEC, GARANTIA, BANCO DE CLIENTES
 // SUL…) e representantes externos.
 export function naoEhVendedorPessoa(nome: string): boolean {
+  if (ehExcecaoComLogin(nome)) return false
   const n = semAcento(nome).toUpperCase()
   return /\b(BANCO DE CLIENTES|CLIENTES|GARANTIA|DEMONSTRACAO|REPRESENT\w*|COMERCIAIS|LTDA|EIRELI|JOITEC|COMPRETEC|ODIN)\b/.test(n)
 }
@@ -188,7 +195,7 @@ export async function verificarVendedoresNovosSap(): Promise<{ baseCriada: boole
 }
 
 function candidato(v: { SalesEmployeeCode: number; SalesEmployeeName: string; Active: string }, base: Set<number>, ligados: Record<string, number>): boolean {
-  return v.SalesEmployeeCode > 0 && v.Active !== 'tNO' && !base.has(v.SalesEmployeeCode) && !ligados[String(v.SalesEmployeeCode)] && !naoEhVendedorPessoa(v.SalesEmployeeName)
+  return v.SalesEmployeeCode > 0 && v.Active !== 'tNO' && (!base.has(v.SalesEmployeeCode) || ehExcecaoComLogin(v.SalesEmployeeName)) && !ligados[String(v.SalesEmployeeCode)] && !naoEhVendedorPessoa(v.SalesEmployeeName)
 }
 
 // ── Tela do gestor ──────────────────────────────────────────────────────
