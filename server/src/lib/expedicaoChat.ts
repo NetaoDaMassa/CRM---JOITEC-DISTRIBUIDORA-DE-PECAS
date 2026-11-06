@@ -58,8 +58,9 @@ const ORDEM = ['separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'co
 type EstadoPasso = 'feito' | 'agora' | 'futuro'
 
 // O processo como está AGORA — a janela do chat consulta de novo de tempos em
-// tempos, então quem responde depois já vê a etapa atual.
-export async function processoDoPedido(entry: number) {
+// tempos, então quem responde depois já vê a etapa atual. Erro do estoque é
+// assunto interno (João, 2026-11-06): só vai pra quem pode `verErros`.
+export async function processoDoPedido(entry: number, verErros: boolean) {
   const todos = await cardsDoPedidoSap(entry)
   if (!todos.length) return null
   const ativos = todos.filter((c) => c.etapa !== 'cancelado' && c.etapa !== 'descartado')
@@ -76,7 +77,7 @@ export async function processoDoPedido(entry: number) {
   return cards.map((c) => {
     const encerrado = c.etapa === 'cancelado' || c.etapa === 'descartado'
     const atual = encerrado ? -1 : ORDEM.indexOf(c.etapa)
-    const errosDoCard = erros.filter((e) => e.expedicaoId === c.id)
+    const errosDoCard = verErros ? erros.filter((e) => e.expedicaoId === c.id) : []
     const estado = (etapa: string, concluidoEncerrado: boolean): EstadoPasso => {
       if (encerrado) return concluidoEncerrado ? 'feito' : 'futuro'
       const i = ORDEM.indexOf(etapa)

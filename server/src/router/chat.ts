@@ -368,7 +368,8 @@ export const chatRouter = router({
       if (!souParticipante) throw new Error('Você não participa dessa conversa.')
       const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId) })
       if (conversa?.tipoOrigem !== 'expedicao' || !conversa.idOrigem) return null
-      return processoDoPedido(conversa.idOrigem)
+      const verErros = !!ctx.user.superAdmin || (await temFeature(ctx.user.id, 'controle_estoque'))
+      return processoDoPedido(conversa.idOrigem, verErros)
     }),
 
     // Quem participa de uma conversa — alimenta o cabeçalho da janela de
