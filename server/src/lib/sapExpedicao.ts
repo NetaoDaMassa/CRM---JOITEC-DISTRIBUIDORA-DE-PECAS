@@ -70,7 +70,21 @@ function brParaUtc(data: string, hora: string | null): string {
   return d.toISOString().replace('T', ' ').slice(0, 19)
 }
 
-export async function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado> {
+// Uma rodada por vez (2026-11-06): a lista de cards existentes é lida antes de
+// entrar na fila do SAP. Rodada automática + botão "Sincronizar" ao mesmo tempo
+// liam a lista sem o card e as duas criavam: pedido 9104 / picking 12180 ficou
+// duplicado (cards #134 e #136, 17 s de diferença). Quem chega durante uma
+// rodada recebe o resultado dela.
+let rodadaEmAndamento: Promise<SyncExpedicaoResultado> | null = null
+
+export function sincronizarExpedicaoSap(): Promise<SyncExpedicaoResultado> {
+  rodadaEmAndamento ??= rodarSincronizacaoExpedicao().finally(() => {
+    rodadaEmAndamento = null
+  })
+  return rodadaEmAndamento
+}
+
+async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
   const hoje = hojeBrString()
   const desdeConfig = await getConfigTexto('expedicao_sap_desde')
   const limite = new Date(`${hoje}T12:00:00Z`)
