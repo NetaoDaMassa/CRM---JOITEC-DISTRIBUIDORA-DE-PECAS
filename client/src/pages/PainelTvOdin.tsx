@@ -254,7 +254,7 @@ const SlidePecas = memo(function SlidePecas({ data }: { data: PainelData }) {
     <div className="flex flex-col gap-[2vh] h-full">
       <div className="grid grid-cols-4 gap-[2vh] shrink-0 h-[18vh]">
         <Kpi titulo="Contatos hoje" valor={soma((v) => v.contatosHoje)} sub={`${soma((v) => v.contatosMes)} no mês`} cor={COR_CONTATOS} />
-        <Kpi titulo="Ligações hoje" valor={soma((v) => v.ligacoesHoje)} sub={`${soma((v) => v.ligacoesMes)} no mês`} cor={COR_CONTATOS} />
+        <Kpi titulo="Ligações efetivas hoje" valor={soma((v) => v.ligacoesEfetivasHoje)} sub={`${soma((v) => v.ligacoesHoje)} tentativas · ${soma((v) => v.ligacoesEfetivasMes)} no mês`} cor={COR_CONTATOS} />
         <Kpi titulo="Orçamentos em aberto" valor={soma((v) => v.orcamentosAbertos)} sub="em negociação agora" cor={COR_META} />
         <Kpi titulo="Vendas no mês" valor={soma((v) => v.vendasMes)} sub={`${soma((v) => v.vendasHoje)} hoje`} cor={COR_PEDIDOS} />
       </div>
@@ -273,7 +273,7 @@ const SlidePecas = memo(function SlidePecas({ data }: { data: PainelData }) {
               </div>
             </div>
             <Numero rotulo="Contatos hoje" valor={v.contatosHoje} sub={`${v.contatosMes} no mês`} />
-            <Numero rotulo="Ligações hoje" valor={v.ligacoesHoje} sub={`${v.ligacoesMes} no mês`} />
+            <Numero rotulo="Efetivas hoje" valor={v.ligacoesEfetivasHoje} sub={`${v.ligacoesHoje} tentativas · ${v.ligacoesEfetivasMes} no mês`} />
             <Numero rotulo="Orçamentos" valor={v.orcamentosAbertos} sub="em aberto" />
             <Numero rotulo="Vendas no mês" valor={v.vendasMes} sub={`${v.vendasHoje} hoje`} />
           </CartaoVendedor>

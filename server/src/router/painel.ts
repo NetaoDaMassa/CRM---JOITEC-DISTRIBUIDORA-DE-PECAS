@@ -1,8 +1,9 @@
 import { and, between, count, desc, eq, inArray, isNull, sql, sum } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { users, funilMensal, registroContato, clientes, vendas } from '../db/schema.js'
+import { users, funilMensal, clientes, vendas } from '../db/schema.js'
 import { getConfigNumero } from '../lib/configuracoes.js'
+import { camposLigacoes, efetivasPorDia, ligacoesDosVendedores } from '../lib/ligacoesVendedor.js'
 import { metaVigente, metasVigentesPorVendedor } from '../lib/metasVigentes.js'
 import {
   diasDesde,
@@ -87,7 +88,6 @@ export const painelRouter = router({
     // Negociação/perdidos (pipeline) continuam pelo dono do card.
     const filtroVendedorEmpresa = vendedorIds.length ? inArray(vendas.vendedorId, vendedorIds) : sql`0`
     const filtroFunilEmpresa = vendedorIds.length ? inArray(funilMensal.vendedorId, vendedorIds) : sql`0`
-    const filtroContatoEmpresa = vendedorIds.length ? inArray(registroContato.vendedorId, vendedorIds) : sql`0`
 
     // Meta vigente: a do mês, ou a última definida num mês anterior (ver
     // lib/metasVigentes.ts). Sem isso o painel zerava toda virada de mês.
@@ -102,6 +102,8 @@ export const painelRouter = router({
     // inteiro (não um recorte fixo de dias), senão o foguinho quebrava sozinho
     // ao passar de ~2 semanas mesmo com o vendedor vendendo todo dia útil.
     const inicioStreakString = `${mesAtual} 00:00:00`
+
+    const ligacoes = await ligacoesDosVendedores(vendedorIds, ultimosDias(DIAS_HISTORICO)[0].chave)
 
     const vendedoresComDados = await Promise.all(
       vendedores.map(async (v) => {
@@ -137,17 +139,6 @@ export const painelRouter = router({
             )
           )
 
-        const [{ ligacoesMes }] = await db
-          .select({ ligacoesMes: count() })
-          .from(registroContato)
-          .where(
-            and(
-              eq(registroContato.vendedorId, v.id),
-              eq(registroContato.tipo, 'ligacao'),
-              sql`${registroContato.dataHora} >= ${mesAtual + ' 00:00:00'}`,
-              isNull(registroContato.deletedAt)
-            )
-          )
 
         const diasComVendaVendedor = await db
           .select({ dia: sql<string>`substr(${vendas.dataFechamento}, 1, 10)` })
@@ -163,33 +154,7 @@ export const painelRouter = router({
           mesAtual
         )
 
-        const [{ ligacoesHoje }] = await db
-          .select({ ligacoesHoje: count() })
-          .from(registroContato)
-          .where(
-            and(
-              eq(registroContato.vendedorId, v.id),
-              eq(registroContato.tipo, 'ligacao'),
-              between(registroContato.dataHora, inicioHoje, fimHoje),
-              isNull(registroContato.deletedAt)
-            )
-          )
 
-        // "Tentativa" = toda ligação registrada (ligacoesHoje acima).
-        // "Efetiva" = durou pelo menos o mínimo configurado (GoTo) ou foi
-        // marcada como respondida manualmente — subconjunto de tentativas.
-        const [{ ligacoesEfetivasHoje }] = await db
-          .select({ ligacoesEfetivasHoje: count() })
-          .from(registroContato)
-          .where(
-            and(
-              eq(registroContato.vendedorId, v.id),
-              eq(registroContato.tipo, 'ligacao'),
-              eq(registroContato.efetiva, true),
-              between(registroContato.dataHora, inicioHoje, fimHoje),
-              isNull(registroContato.deletedAt)
-            )
-          )
 
         const [{ qtdVendasMes, valorFechadoMes }] = await db
           .select({ qtdVendasMes: count(), valorFechadoMes: sum(vendas.valorFechado).mapWith(Number) })
@@ -198,7 +163,6 @@ export const painelRouter = router({
           .where(and(eq(vendas.vendedorId, v.id), eq(vendas.mesReferencia, mesAtual), isNull(vendas.deletedAt)))
 
         const meta = metaPorVendedor.get(v.id)
-        const metaLigacoesDia = meta?.metaLigacoesDia ?? 25
         const valorMes = valorFechadoMes ?? 0
 
         // Taxa de conversão = fechados / (fechados + perdidos) — só entre
@@ -215,23 +179,11 @@ export const painelRouter = router({
         const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null
         const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
 
-        // Mesmo esquema de ritmo acumulado da meta de faturamento: a meta de
-        // ligações não é "25 hoje", é "25 × dias úteis já passados no mês" —
-        // quem ficou devendo num dia carrega o déficit pros próximos, em vez
-        // de resetar a cobrança toda manhã.
-        const metaLigacoesAcumulada = Math.round(metaLigacoesDia * diasUteisAteHoje)
-
         return {
           id: v.id,
           nome: v.name,
           fotoUrl: v.fotoUrl,
-          ligacoesHoje,
-          ligacoesEfetivasHoje,
-          percentualEfetividadeHoje: ligacoesHoje > 0 ? Math.round((ligacoesEfetivasHoje / ligacoesHoje) * 1000) / 10 : 0,
-          metaLigacoesDia,
-          metaLigacoesAcumulada,
-          bateuMetaLigacoes: metaLigacoesAcumulada > 0 ? ligacoesMes >= metaLigacoesAcumulada : false,
-          percentualMetaLigacoes: metaLigacoesAcumulada > 0 ? Math.round((ligacoesMes / metaLigacoesAcumulada) * 1000) / 10 : 0,
+          ...camposLigacoes(ligacoes.get(v.id), meta?.metaLigacoesDia ?? 25, diasUteisAteHoje),
           qtdVendasMes,
           qtdPerdidosMes,
           taxaConversao,
@@ -239,7 +191,6 @@ export const painelRouter = router({
           valorFechadoSemana: valorSemana ?? 0,
           valorFechadoSemanaPassada: valorSemanaPassada ?? 0,
           evolucaoSemana: (valorSemana ?? 0) - (valorSemanaPassada ?? 0),
-          ligacoesMes,
           sequenciaDiasVendendo,
           ticketMedioMes: qtdVendasMes > 0 ? valorMes / qtdVendasMes : 0,
           metaFaturamento: meta?.metaFaturamento ?? null,
@@ -327,24 +278,9 @@ export const painelRouter = router({
       .where(and(sql`${vendas.dataFechamento} >= ${inicioHistorico}`, isNull(vendas.deletedAt), filtroVendedorEmpresa))
       .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
 
-    const contatosPorDia = await db
-      .select({
-        dia: sql<string>`substr(${registroContato.dataHora}, 1, 10)`,
-        quantidade: count(),
-      })
-      .from(registroContato)
-      .where(
-        and(
-          eq(registroContato.tipo, 'ligacao'),
-          sql`${registroContato.dataHora} >= ${inicioHistorico}`,
-          isNull(registroContato.deletedAt),
-          filtroContatoEmpresa
-        )
-      )
-      .groupBy(sql`substr(${registroContato.dataHora}, 1, 10)`)
+    const contatosPorDiaMap = efetivasPorDia(ligacoes.values())
 
     const vendasPorDiaMap = new Map(vendasPorDia.map((v) => [v.dia, v]))
-    const contatosPorDiaMap = new Map(contatosPorDia.map((c) => [c.dia, c.quantidade]))
 
     const historico = dias.map(({ chave, rotulo }) => ({
       dia: rotulo,
@@ -380,7 +316,7 @@ export const painelRouter = router({
 
     return {
       vendedores: vendedoresComDados.sort((a, b) => b.valorFechadoMes - a.valorFechadoMes),
-      rankingLigacoes: [...vendedoresComDados].sort((a, b) => b.ligacoesHoje - a.ligacoesHoje),
+      rankingLigacoes: [...vendedoresComDados].sort((a, b) => b.ligacoesEfetivasHoje - a.ligacoesEfetivasHoje || b.ligacoesHoje - a.ligacoesHoje),
       rankingSemanal: [...vendedoresComDados].sort((a, b) => b.valorFechadoSemana - a.valorFechadoSemana),
       rankingConversao: [...vendedoresComDados]
         .filter((v) => v.taxaConversao !== null)
@@ -420,42 +356,8 @@ export const painelRouter = router({
     // "0% de R$ 0" no começo de todo mês.
     const meta = await metaVigente(vendedorId, mesAtual)
 
-    const [{ ligacoesHoje }] = await db
-      .select({ ligacoesHoje: count() })
-      .from(registroContato)
-      .where(
-        and(
-          eq(registroContato.vendedorId, vendedorId),
-          eq(registroContato.tipo, 'ligacao'),
-          between(registroContato.dataHora, inicioHoje, fimHoje),
-          isNull(registroContato.deletedAt)
-        )
-      )
 
-    const [{ ligacoesEfetivasHoje }] = await db
-      .select({ ligacoesEfetivasHoje: count() })
-      .from(registroContato)
-      .where(
-        and(
-          eq(registroContato.vendedorId, vendedorId),
-          eq(registroContato.tipo, 'ligacao'),
-          eq(registroContato.efetiva, true),
-          between(registroContato.dataHora, inicioHoje, fimHoje),
-          isNull(registroContato.deletedAt)
-        )
-      )
 
-    const [{ ligacoesMes }] = await db
-      .select({ ligacoesMes: count() })
-      .from(registroContato)
-      .where(
-        and(
-          eq(registroContato.vendedorId, vendedorId),
-          eq(registroContato.tipo, 'ligacao'),
-          sql`${registroContato.dataHora} >= ${mesAtual + ' 00:00:00'}`,
-          isNull(registroContato.deletedAt)
-        )
-      )
 
     const [{ vendasHojeQtd, vendasHojeValor }] = await db
       .select({ vendasHojeQtd: count(), vendasHojeValor: sum(vendas.valorFechado).mapWith(Number) })
@@ -472,10 +374,6 @@ export const painelRouter = router({
     const diasUteisMes = diasUteisNoMes(mesAtual)
     const diasUteisAteHoje = diasUteisDecorridos(mesAtual)
     const valorMes = vendasMesValor ?? 0
-    const metaLigacoesDia = meta?.metaLigacoesDia ?? 25
-    // Ritmo acumulado, mesmo esquema da meta de faturamento: 25/dia × dias
-    // úteis já passados no mês, não "25 hoje".
-    const metaLigacoesAcumulada = Math.round(metaLigacoesDia * diasUteisAteHoje)
     const metaFaturamentoDia = meta?.metaFaturamento ? meta.metaFaturamento / diasUteisMes : null
     const metaAcumuladaAteHoje = metaFaturamentoDia ? metaFaturamentoDia * diasUteisAteHoje : null
     // Quanto da meta do mês inteiro já deveria ter sido batido a essa altura
@@ -515,21 +413,10 @@ export const painelRouter = router({
       )
       .groupBy(sql`substr(${vendas.dataFechamento}, 1, 10)`)
 
-    const contatosPorDia = await db
-      .select({ dia: sql<string>`substr(${registroContato.dataHora}, 1, 10)`, quantidade: count() })
-      .from(registroContato)
-      .where(
-        and(
-          eq(registroContato.vendedorId, vendedorId),
-          eq(registroContato.tipo, 'ligacao'),
-          sql`${registroContato.dataHora} >= ${inicioHistorico}`,
-          isNull(registroContato.deletedAt)
-        )
-      )
-      .groupBy(sql`substr(${registroContato.dataHora}, 1, 10)`)
+    const minhasLigacoes = (await ligacoesDosVendedores([vendedorId], dias[0].chave)).get(vendedorId)
+    const contatosPorDiaMap = efetivasPorDia(minhasLigacoes ? [minhasLigacoes] : [])
 
     const vendasPorDiaMap = new Map(vendasPorDia.map((v) => [v.dia, v.quantidade]))
-    const contatosPorDiaMap = new Map(contatosPorDia.map((c) => [c.dia, c.quantidade]))
     const historico = dias.map(({ chave, rotulo }) => ({
       dia: rotulo,
       vendas: vendasPorDiaMap.get(chave) ?? 0,
@@ -589,14 +476,7 @@ export const painelRouter = router({
     return {
       vendasHoje: { quantidade: vendasHojeQtd, valor: vendasHojeValorNum, ticketMedio: vendasHojeQtd > 0 ? vendasHojeValorNum / vendasHojeQtd : 0 },
       vendasMes: { quantidade: vendasMesQtd, valor: valorMes, ticketMedio: vendasMesQtd > 0 ? valorMes / vendasMesQtd : 0 },
-      ligacoesHoje,
-      ligacoesEfetivasHoje,
-      percentualEfetividadeHoje: ligacoesHoje > 0 ? Math.round((ligacoesEfetivasHoje / ligacoesHoje) * 1000) / 10 : 0,
-      ligacoesMes,
-      metaLigacoesDia,
-      metaLigacoesAcumulada,
-      bateuMetaLigacoes: metaLigacoesAcumulada > 0 ? ligacoesMes >= metaLigacoesAcumulada : false,
-      percentualMetaLigacoes: metaLigacoesAcumulada > 0 ? Math.round((ligacoesMes / metaLigacoesAcumulada) * 1000) / 10 : 0,
+      ...camposLigacoes(minhasLigacoes, meta?.metaLigacoesDia ?? 25, diasUteisAteHoje),
       metaFaturamento: meta?.metaFaturamento ?? null,
       percentualMetaFaturamento: meta?.metaFaturamento ? Math.round((valorMes / meta.metaFaturamento) * 1000) / 10 : 0,
       metaAcumuladaAteHoje,

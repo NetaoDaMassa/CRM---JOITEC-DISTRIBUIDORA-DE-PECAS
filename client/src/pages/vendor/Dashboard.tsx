@@ -207,12 +207,12 @@ export default function VendorDashboard() {
         <div className="flex items-center justify-between mb-1">
           <p className="text-sm font-semibold text-dark-100">📞 Ligações (ritmo do mês)</p>
           <span className="text-sm font-mono text-dark-300">
-            {data?.ligacoesMes ?? 0}/{data?.metaLigacoesAcumulada ?? 0}
+            {data?.ligacoesNaMeta ?? 0}/{data?.metaLigacoesAcumulada ?? 0}
           </span>
         </div>
         <BarraProgresso percentual={data?.percentualMetaLigacoes ?? 0} destaque={(data?.percentualMetaLigacoes ?? 0) >= 100} />
         <p className="text-xs text-dark-500 mt-1.5">
-          Meta: {data?.metaLigacoesDia ?? 25}/dia útil · hoje: {data?.ligacoesEfetivasHoje ?? 0} efetiva
+          Meta: {data?.metaLigacoesDia ?? 25}{data?.metaEhEfetivas ? ' efetivas' : ''}/dia útil · hoje: {data?.ligacoesEfetivasHoje ?? 0} efetiva
           {(data?.ligacoesEfetivasHoje ?? 0) !== 1 ? 's' : ''} de {data?.ligacoesHoje ?? 0} tentativa
           {(data?.ligacoesHoje ?? 0) !== 1 ? 's' : ''} ({formatarPercentual(data?.percentualEfetividadeHoje)}%)
         </p>
@@ -240,7 +240,7 @@ export default function VendorDashboard() {
           </ResponsiveContainer>
         </div>
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <h2 className="text-sm font-semibold text-dark-100 mb-3">📞 Suas ligações (últimos 14 dias)</h2>
+          <h2 className="text-sm font-semibold text-dark-100 mb-3">📞 Suas ligações efetivas (últimos 14 dias)</h2>
           <ResponsiveContainer width="100%" height={180}>
             <AreaChart data={data?.historico ?? []} margin={{ top: 14, right: 8, bottom: 0, left: 0 }}>
               <defs>
@@ -253,7 +253,7 @@ export default function VendorDashboard() {
               <XAxis dataKey="dia" tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} />
               <YAxis tick={{ fill: '#898781', fontSize: 10 }} tickLine={false} axisLine={false} width={24} />
               <Tooltip content={<TooltipHistorico />} cursor={{ stroke: 'rgba(255,255,255,0.15)' }} />
-              <Area type="monotone" dataKey="contatos" name="Contatos" stroke={COR_CONTATOS} strokeWidth={2.5} fill="url(#grad-contatos)" dot={{ r: 2.5, strokeWidth: 0, fill: COR_CONTATOS }} activeDot={{ r: 5 }}>
+              <Area type="monotone" dataKey="contatos" name="Ligações efetivas" stroke={COR_CONTATOS} strokeWidth={2.5} fill="url(#grad-contatos)" dot={{ r: 2.5, strokeWidth: 0, fill: COR_CONTATOS }} activeDot={{ r: 5 }}>
                 <LabelList dataKey="contatos" position="top" fill="#898781" fontSize={10} />
               </Area>
             </AreaChart>

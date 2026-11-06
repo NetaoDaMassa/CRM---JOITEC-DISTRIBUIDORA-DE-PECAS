@@ -21,6 +21,7 @@ import { db } from '../db/client.js'
 import { funilMensal, leadContactAttempts, leads, ordemDetalhes, ordens, propostas, registroContato, users, vendas, visitas } from '../db/schema.js'
 import { coberturaContatosVendedor } from './coberturaContatos.js'
 import { getConfigNumero } from './configuracoes.js'
+import { ligacoesDosVendedores } from './ligacoesVendedor.js'
 import { diasUteisDecorridos, diasUteisNoMes, hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { metasVigentesPorVendedor } from './metasVigentes.js'
 
@@ -167,11 +168,15 @@ export async function montarPainelTvOdin(empresaId: number) {
     })
     .sort((a, b) => b.percentualMeta - a.percentualMeta || b.pedidosMes - a.pedidosMes || a.nome.localeCompare(b.nome))
 
+  const ligacoesPecas = await ligacoesDosVendedores(membros.filter((m) => m.canalVenda === 'pecas').map((m) => m.id))
   const pecasEquipe = await Promise.all(
     membros
       .filter((m) => m.canalVenda === 'pecas')
       .map(async (m) => {
-        const cont = de(contatosPecas, 'vendedorId', m.id)
+        // Contato = WhatsApp/e-mail/visita do card + as ligações (mesma conta do
+        // contador do topo), senão "Ligações" podia passar de "Contatos".
+        const cont = de(contatosPecas, 'vendedorId', m.id).filter((c) => c.tipo !== 'ligacao')
+        const lig = ligacoesPecas.get(m.id)
         const vendasDele = de(vendasPecas, 'vendedorId', m.id)
         const cobertura = await coberturaContatosVendedor(empresaId, m.id, mes)
         return {
@@ -179,10 +184,11 @@ export async function montarPainelTvOdin(empresaId: number) {
           carteira: cobertura.total,
           coberturaPercentual: cobertura.percentual,
           semContato: cobertura.semContato,
-          contatosHoje: cont.filter((c) => ehHoje(c.dataHora)).length,
-          contatosMes: cont.length,
-          ligacoesHoje: cont.filter((c) => c.tipo === 'ligacao' && ehHoje(c.dataHora)).length,
-          ligacoesMes: cont.filter((c) => c.tipo === 'ligacao').length,
+          contatosHoje: cont.filter((c) => ehHoje(c.dataHora)).length + (lig?.hoje.tentativas ?? 0),
+          contatosMes: cont.length + (lig?.mes.tentativas ?? 0),
+          ligacoesHoje: lig?.hoje.tentativas ?? 0,
+          ligacoesEfetivasHoje: lig?.hoje.efetivas ?? 0,
+          ligacoesEfetivasMes: lig?.mes.efetivas ?? 0,
           orcamentosAbertos: de(orcamentosAbertos, 'vendedorId', m.id).length,
           vendasHoje: vendasDele.filter((v) => ehHoje(v.dataFechamento)).length,
           vendasMes: vendasDele.length,

@@ -216,7 +216,8 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
   const lista = data.rankingLigacoes
   const tentativasHoje = lista.reduce((a, v) => a + v.ligacoesHoje, 0)
   const efetivasHoje = lista.reduce((a, v) => a + v.ligacoesEfetivasHoje, 0)
-  const ligacoesMes = lista.reduce((a, v) => a + v.ligacoesMes, 0)
+  const efetivasMes = lista.reduce((a, v) => a + v.ligacoesEfetivasMes, 0)
+  const metaSoEfetivas = lista.length > 0 && lista.every((v) => v.metaEhEfetivas)
   const batendo = lista.filter((v) => v.bateuMetaLigacoes).length
 
   return (
@@ -229,7 +230,7 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
           cor={COR_CONTATOS}
           sub={tentativasHoje ? `${formatarPercentual((efetivasHoje / tentativasHoje) * 100)}% das tentativas` : 'nenhuma tentativa ainda'}
         />
-        <Kpi titulo="Ligações no mês" valor={ligacoesMes} cor={COR_CONTATOS} sub="equipe toda" />
+        <Kpi titulo="Efetivas no mês" valor={efetivasMes} cor={COR_CONTATOS} sub="equipe toda" />
         <Kpi titulo="No ritmo da meta" valor={`${batendo}/${lista.length}`} cor={COR_META_BATIDA} sub="vendedores 🎉" />
       </div>
 
@@ -239,7 +240,7 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
           <span className="w-[13vh] text-right">Tentat. hoje</span>
           <span className="w-[13vh] text-right">Efetivas hoje</span>
           <span className="w-[11vh] text-right">% efetiva</span>
-          <span className="w-[16vh] text-right">Mês / meta</span>
+          <span className="w-[20vh] text-right">{metaSoEfetivas ? 'Efetivas mês / meta' : 'Mês / meta'}</span>
           <span className="w-[30%] text-right">% da meta</span>
         </div>
         <Linhas
@@ -256,8 +257,8 @@ const SlideLigacoes = memo(function SlideLigacoes({ data }: { data: PainelData }
               <span className="w-[13vh] text-right font-mono tabular-nums text-dark-50 font-semibold">{v.ligacoesHoje}</span>
               <span className="w-[13vh] text-right font-mono tabular-nums text-dark-50 font-semibold">{v.ligacoesEfetivasHoje}</span>
               <span className="w-[11vh] text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</span>
-              <span className="w-[16vh] text-right font-mono tabular-nums text-dark-400">
-                {v.ligacoesMes} / {v.metaLigacoesAcumulada}
+              <span className="w-[20vh] text-right font-mono tabular-nums text-dark-400">
+                {v.ligacoesNaMeta} / {v.metaLigacoesAcumulada}
               </span>
               <div className="w-[30%] flex">
                 <BarraLinha
@@ -382,9 +383,9 @@ const SlideTendencias = memo(function SlideTendencias({ data, escala }: { data: 
           <GraficoHistorico data={data.historico} chave="vendas" nome="Vendas" cor={COR_VENDAS} escala={escala} />
         </div>
       </Card>
-      <Card titulo="📞 Clientes chamados por dia · últimos 14 dias" cor={COR_CONTATOS}>
+      <Card titulo="📞 Ligações efetivas por dia · últimos 14 dias" cor={COR_CONTATOS}>
         <div className="flex-1 min-h-0">
-          <GraficoHistorico data={data.historico} chave="contatos" nome="Contatos" cor={COR_CONTATOS} escala={escala} />
+          <GraficoHistorico data={data.historico} chave="contatos" nome="Ligações efetivas" cor={COR_CONTATOS} escala={escala} />
         </div>
       </Card>
     </div>

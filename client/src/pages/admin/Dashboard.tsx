@@ -295,7 +295,7 @@ export default function AdminDashboard() {
                   <td className="text-right font-mono tabular-nums text-dark-100">{v.ligacoesEfetivasHoje}</td>
                   <td className="text-right font-mono tabular-nums text-dark-300">{formatarPercentual(v.percentualEfetividadeHoje)}%</td>
                   <td className={`text-right font-mono tabular-nums ${v.bateuMetaLigacoes ? 'text-green-400 font-semibold' : 'text-dark-400'}`}>
-                    {v.ligacoesMes}/{v.metaLigacoesAcumulada} ({formatarPercentual(v.percentualMetaLigacoes)}%) {v.bateuMetaLigacoes ? '✅' : ''}
+                    {v.ligacoesNaMeta}/{v.metaLigacoesAcumulada}{v.metaEhEfetivas ? ' efetivas' : ''} ({formatarPercentual(v.percentualMetaLigacoes)}%) {v.bateuMetaLigacoes ? '✅' : ''}
                   </td>
                 </tr>
               ))}
