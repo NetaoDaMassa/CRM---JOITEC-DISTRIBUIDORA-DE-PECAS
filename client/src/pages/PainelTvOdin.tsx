@@ -243,9 +243,32 @@ const SlideLeads = memo(function SlideLeads({ data }: { data: PainelData }) {
         ))}
         {!l.length && <p className="text-dark-500 text-[2.4vh]">Ninguém na equipe de leads.</p>}
       </div>
+      <LegendaLeads />
     </div>
   )
 })
+
+// Como ler a tela de leads (pedido do João, 2026-11-06: a equipe não estava
+// entendendo os números nem como "tirar" o Aguardando).
+function LegendaLeads() {
+  const itens: [string, string][] = [
+    ['% da meta', 'valor dos pedidos do mês ÷ meta; "ideal hoje" = quanto do mês útil já passou'],
+    ['Leads no mês', 'leads que chegaram pra você neste mês'],
+    ['Aguardando', 'leads em "Novo", sem 1º contato — some quando você registra o contato ou muda a etapa'],
+    ['Contatos', 'tentativas registradas nos leads (ligação, WhatsApp…)'],
+    ['Propostas / Pedidos', 'criados por você no mês'],
+    ['Lead → pedido', 'pedidos ÷ leads do mês'],
+  ]
+  return (
+    <div className="shrink-0 grid grid-cols-3 gap-x-[2vh] gap-y-[0.5vh] rounded-[1vh] border border-dark-700 bg-dark-900/60 px-[1.6vh] py-[1vh] text-[1.45vh] leading-snug text-dark-400">
+      {itens.map(([t, d]) => (
+        <p key={t}>
+          <b className="text-dark-200">{t}:</b> {d}
+        </p>
+      ))}
+    </div>
+  )
+}
 
 const SlidePecas = memo(function SlidePecas({ data }: { data: PainelData }) {
   const l = data.pecas

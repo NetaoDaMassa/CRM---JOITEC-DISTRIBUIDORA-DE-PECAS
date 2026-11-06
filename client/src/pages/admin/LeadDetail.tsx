@@ -162,6 +162,8 @@ export default function LeadDetail() {
   const [editarInfoOpen, setEditarInfoOpen] = useState(false)
   const [transferirCarteiraOpen, setTransferirCarteiraOpen] = useState(false)
   const [transferirPropostasOpen, setTransferirPropostasOpen] = useState(false)
+  const [perdidoOpen, setPerdidoOpen] = useState(false)
+  const [motivoPerda, setMotivoPerda] = useState('')
   const [noteContent, setNoteContent] = useState('')
   const [noteType, setNoteType] = useState<'nota' | 'lembrete'>('nota')
   const [noteNextContact, setNoteNextContact] = useState('')
@@ -235,6 +237,18 @@ export default function LeadDetail() {
     },
   })
 
+  const marcarPerdidoMut = trpc.leads.marcarPerdidoPosProposta.useMutation({
+    onSuccess() {
+      toast.success('Lead marcado como Perdido')
+      setPerdidoOpen(false)
+      setMotivoPerda('')
+      utils.leads.get.invalidate({ id: leadId })
+      utils.leads.list.invalidate()
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
   const marcarGanhoMut = trpc.leads.marcarGanhoPosProposta.useMutation({
     onSuccess() {
       toast.success('Lead marcado como Ganho')
@@ -361,6 +375,25 @@ export default function LeadDetail() {
             <Button size="sm" onClick={() => marcarGanhoMut.mutate({ id: lead.id })} disabled={marcarGanhoMut.isPending}>
               Marcar como Ganho
             </Button>
+          )}
+          {(podeGerenciarTudo || isOwner) && lead.convertidoParaProposta && lead.status !== 'perdido' && (
+            <Button size="sm" variant="secondary" onClick={() => setPerdidoOpen(true)}>
+              Marcar como Perdido
+            </Button>
+          )}
+          {perdidoOpen && (
+            <Modal open onClose={() => setPerdidoOpen(false)} title="Marcar lead como Perdido" size="sm">
+              <div className="space-y-3">
+                <p className="text-sm text-dark-300">O lead já foi transferido pra Propostas. Aqui só muda a etapa do lead — a proposta continua como está.</p>
+                <Textarea label="Motivo da perda *" value={motivoPerda} onChange={(e) => setMotivoPerda(e.target.value)} rows={3} />
+                <div className="flex justify-end gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setPerdidoOpen(false)}>Cancelar</Button>
+                  <Button size="sm" variant="danger" loading={marcarPerdidoMut.isPending} onClick={() => marcarPerdidoMut.mutate({ id: lead.id, lossReason: motivoPerda })}>
+                    Marcar como Perdido
+                  </Button>
+                </div>
+              </div>
+            </Modal>
           )}
           {isAdmin && lead.status === 'desqualificado' && (
             <Button size="sm" variant="secondary" onClick={() => setReopenModalOpen(true)}>

@@ -1772,4 +1772,49 @@ export const leadsRouter = router({
 
     return { success: true }
   }),
+
+  // Mesma exceção do marcarGanhoPosProposta, pro outro lado: o lead da Odin
+  // Compressores transferido pra Propostas não tinha como ir pra "Perdido"
+  // (João, 2026-11-06: "queria pôr como perdido mas não tem a opção").
+  marcarPerdidoPosProposta: protectedProcedure
+    .input(z.object({ id: z.number(), lossReason: z.string().trim().min(3, 'Escreva o motivo da perda') }))
+    .mutation(async ({ ctx, input }) => {
+      const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, input.id), isNull(leads.deletedAt)) })
+      if (!lead) throw new Error('Lead não encontrado')
+      if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+      if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && lead.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
+      if (!lead.convertidoParaPropostaId) throw new Error('Use as etapas do lead pra marcar como Perdido')
+      if (lead.status === 'perdido') throw new Error('Este lead já está como Perdido')
+
+      await db
+        .update(leads)
+        .set({
+          status: 'perdido',
+          lossReason: input.lossReason,
+          statusChangedAt: sql`(datetime('now'))`,
+          updatedAt: sql`(datetime('now'))`,
+          nextContactAt: null,
+          idleAlertSentAt: null,
+          autoReassignedAt: null,
+          followUpCount: 0,
+          requiresAttachment: false,
+          attemptCount: 0,
+          slaStatus: null,
+          abordagem4hAlertSentAt: null,
+          lastContactStaleAlertSentAt: null,
+        })
+        .where(eq(leads.id, input.id))
+
+      await db.insert(leadHistory).values({
+        empresaId: ctx.empresaId,
+        leadId: input.id,
+        userId: ctx.user.id,
+        action: 'status_alterado',
+        fromStatus: lead.status,
+        toStatus: 'perdido',
+        details: `Marcado como Perdido por ${ctx.user.name} (já transferido pra Proposta #${lead.convertidoParaPropostaId}) — motivo: ${input.lossReason}`,
+      })
+
+      return { success: true }
+    }),
 })
