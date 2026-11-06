@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, isNull, lte } from 'drizzle-orm'
+import { and, eq, isNull, lte, sql } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { registroContato, funilMensal, compromissos } from '../db/schema.js'
@@ -76,6 +76,7 @@ export const contatosRouter = router({
         .where(eq(funilMensal.id, input.funilMensalId))
 
       await fecharCompromissosAtrasados(funil.clienteId)
+      if (input.tipo === 'ligacao') await moverNovoParaAbordagem(input.funilMensalId)
 
       return { success: true }
     }),
@@ -103,7 +104,7 @@ export const contatosRouter = router({
       await db.update(registroContato).set({ resultado: 'confirmado' }).where(eq(registroContato.id, input.id))
       if (contato.origem !== 'manual') {
         // `contarTentativaSePendente` já resolve o badge "Atrasado" do card.
-        await contarTentativaSePendente(contato.funilMensalId)
+        await contarTentativaSePendente(contato.funilMensalId, contato.tipo)
       } else {
         // Registro manual que estava pendente e agora foi confirmado — não
         // entra em `contarTentativaSePendente` (essa contagem é só pros
@@ -111,6 +112,7 @@ export const contatosRouter = router({
         // também tira o "Atrasado" do card (pedido do João, 2026-09-08).
         const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, contato.funilMensalId) })
         if (funil) await fecharCompromissosAtrasados(funil.clienteId)
+        if (contato.tipo === 'ligacao') await moverNovoParaAbordagem(contato.funilMensalId)
       }
     }
     return { success: true }
@@ -150,12 +152,13 @@ export const contatosRouter = router({
       // comentário lá.
       if (eraPendente && input.resultado) {
         if (contato.origem !== 'manual') {
-          await contarTentativaSePendente(contato.funilMensalId)
+          await contarTentativaSePendente(contato.funilMensalId, contato.tipo)
         } else {
           // Manual pendente que ganhou resultado agora — o contato foi feito,
           // então tira o "Atrasado" do card (pedido do João, 2026-09-08).
           const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, contato.funilMensalId) })
           if (funil) await fecharCompromissosAtrasados(funil.clienteId)
+        if (contato.tipo === 'ligacao') await moverNovoParaAbordagem(contato.funilMensalId)
         }
       }
       return { success: true }
@@ -183,13 +186,14 @@ async function ehMesCorrente(funilMensalId: number): Promise<boolean> {
 // Só chamada pra registro automático que ainda estava sem resultado (nunca
 // tinha sido contado) — resultado não volta pra null depois de definido,
 // então isso nunca conta a mesma tentativa 2x.
-export async function contarTentativaSePendente(funilMensalId: number): Promise<void> {
+export async function contarTentativaSePendente(funilMensalId: number, tipo?: string): Promise<void> {
   const funil = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, funilMensalId) })
   if (!funil) return
   await db
     .update(funilMensal)
     .set({ qtdTentativasContato: funil.qtdTentativasContato + 1, dataUltimoContato: agoraSqlite() })
     .where(eq(funilMensal.id, funilMensalId))
+  if (tipo === 'ligacao') await moverNovoParaAbordagem(funilMensalId)
 
   // Mesma regra de `registrar` abaixo — um automático que acabou de virar
   // tentativa de verdade (confirmar/editar) também resolve o badge
@@ -197,6 +201,16 @@ export async function contarTentativaSePendente(funilMensalId: number): Promise<
   // ligação automática do GoTo Connect confirmada não fechava o compromisso
   // vencido (achado do João, 2026-09-04).
   await fecharCompromissosAtrasados(funil.clienteId)
+}
+
+// Ligação registrada (contando como contato) tira o card de "Novo" e põe
+// em "Abordagem" sozinho (João, 2026-11-06). Só sai de Novo — card em
+// outra etapa não mexe.
+export async function moverNovoParaAbordagem(funilMensalId: number): Promise<void> {
+  await db
+    .update(funilMensal)
+    .set({ etapa: 'abordagem', dataEntradaEtapa: agoraSqlite(), updatedAt: agoraSqlite(), versao: sql`${funilMensal.versao} + 1` })
+    .where(and(eq(funilMensal.id, funilMensalId), eq(funilMensal.etapa, 'novo')))
 }
 
 // Contato de verdade acabou de ser registrado/confirmado — se o cliente

@@ -603,7 +603,7 @@ export async function registrarChamadasNoCrm(
       // sozinha já destrava sair de "Novo" e infla a Cobertura sem ninguém
       // ter conversado com o cliente (achado do João, 2026-08-28).
       // Mesma contagem do "Confirmar" do card (também fecha o "Atrasado").
-      if (chamada.efetiva) await contarTentativaSePendente(funil.id)
+      if (chamada.efetiva) await contarTentativaSePendente(funil.id, 'ligacao')
       await finalizar({ empresaId: cliente.empresaId, clienteId: cliente.id, registroContatoId: registro?.id })
       continue
     }
