@@ -286,6 +286,7 @@ export default function Expedicao() {
                         <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap ${corPrazo(p)}`}>{textoPrazo(p)}</span>
                       </div>
                       <p className="text-xs text-dark-300 leading-tight mt-0.5 line-clamp-2">{p.clienteNome}</p>
+                      {p.clienteIsento && <SeloIsento className="mt-1" />}
                       {p.orderEntriesSap.split(',').some((e) => (naoLidasPorPedido.get(Number(e)) ?? 0) > 0) && (
                         <p className="text-[11px] font-semibold text-gold-300 mt-1">💬 Mensagem nova do vendedor</p>
                       )}
@@ -366,6 +367,14 @@ export default function Expedicao() {
       {verDescartados && <DescartadosModal onClose={() => setVerDescartados(false)} />}
       {verKits && <KitsModal podeAlterar={!!podeDescartar} onClose={() => setVerKits(false)} />}
     </div>
+  )
+}
+
+function SeloIsento({ className = '' }: { className?: string }) {
+  return (
+    <span className={`inline-block text-[11px] font-bold tracking-wide rounded bg-violet-900/40 text-violet-200 border border-violet-600/60 px-1.5 py-0.5 ${className}`}>
+      CLIENTE ISENTO
+    </span>
   )
 }
 
@@ -451,6 +460,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   return (
     <Modal open onClose={onClose} title={`Pedido ${p.pedidosSap} — ${p.clienteNome ?? ''}`} size="xl">
       <div className="space-y-5">
+        {p.clienteIsento && <SeloIsento />}
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-dark-300">
           <span>Picking <b className="text-dark-100">{p.pickListSap}</b> ({STATUS_SAP[p.statusPickingSap ?? ''] ?? p.statusPickingSap})</span>
           {p.cotacaoSap && <span>Cotação <b className="text-dark-100">{p.cotacaoSap}</b></span>}
@@ -937,6 +947,7 @@ function ColetadosLista({ onAbrir }: { onAbrir: (p: Pedido) => void }) {
                   {p.nfNumero && <span className="text-dark-300"> · NF {p.nfNumero}</span>}
                 </p>
                 <p className="text-xs text-dark-400 break-words">{p.clienteNome ?? '—'}</p>
+                {p.clienteIsento && <SeloIsento className="mt-1" />}
               </div>
               <div className="min-w-[160px] flex-1">
                 <p className="text-xs text-dark-300 break-words">{p.vendedorSap ?? 'Sem vendedor'}</p>

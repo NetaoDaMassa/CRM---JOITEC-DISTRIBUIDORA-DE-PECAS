@@ -158,11 +158,29 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
     : []
   const errosPor = new Map(erros.map((e) => [e.id, Number(e.n)]))
   const pessoas = new Map((await db.query.expedicaoColaboradores.findMany({ where: eq(expedicaoColaboradores.empresaId, empresaId) })).map((c) => [c.id, c.nome]))
+  // Selo "CLIENTE ISENTO" no card (João, 2026-11-06): vem do Status fiscal do
+  // cadastro do cliente, achado pelo código do SAP. Vale o cadastro da empresa
+  // do pedido; sem status lá, o de outra empresa com o mesmo código (é o mesmo
+  // parceiro no SAP — ex.: Automação vende pelo cadastro da Joitec).
+  const codigos = [...new Set(pedidos.map((p) => p.clienteCodigo).filter((c): c is string => !!c))]
+  const cadastros = codigos.length
+    ? await db
+        .select({ codigo: clientes.codigo, codigoAntigo: clientes.codigoAntigo, empresaId: clientes.empresaId, statusFiscal: clientes.statusFiscal })
+        .from(clientes)
+        .where(and(isNull(clientes.deletedAt), or(inArray(clientes.codigo, codigos), inArray(clientes.codigoAntigo, codigos))))
+    : []
+  const clienteIsento = (codigo: string | null) => {
+    if (!codigo) return false
+    const doCodigo = cadastros.filter((c) => c.statusFiscal && (c.codigo === codigo || c.codigoAntigo === codigo))
+    const daEmpresa = doCodigo.filter((c) => c.empresaId === empresaId)
+    return (daEmpresa.length ? daEmpresa : doCodigo).some((c) => c.statusFiscal === 'isento')
+  }
   const agora = Date.now()
   return pedidos.map((p) => {
     const limite = prazoLimite(p.inicioPrazo)
     return {
       ...p,
+      clienteIsento: clienteIsento(p.clienteCodigo),
       separador: p.separacaoColaboradorId ? pessoas.get(p.separacaoColaboradorId) ?? null : null,
       conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
