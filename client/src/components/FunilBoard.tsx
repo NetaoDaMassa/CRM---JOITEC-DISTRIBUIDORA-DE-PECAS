@@ -33,6 +33,7 @@ import LegendaIcones from './LegendaIcones'
 import { AvatarIniciais, dispararConfete } from './ui/Visual'
 import ColunaAgendamentosPecas from './agendamentos/ColunaAgendamentosPecas'
 import GravacaoLigacao from './ui/GravacaoLigacao'
+import NotaSapBotoes from './NotaSapBotoes'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
 // urgência na lateral do card (verde/amarelo/vermelho pelos dias sem contato).
@@ -1929,6 +1930,12 @@ function CardModal({
                         Editar
                       </button>
                     </div>
+                    {v.numeroNotaFiscal && v.pedidoSapEntry && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-xs text-dark-400">NF {v.numeroNotaFiscal}</span>
+                        <NotaSapBotoes endereco={`/venda-nota/${v.id}`} compacto />
+                      </div>
+                    )}
                     {card.etapa === 'faturamento' && <ControleFaturamento venda={v} />}
                   </div>
                 )

@@ -12,11 +12,11 @@ import { appRouter } from './router/index.js'
 import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
-import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas } from './db/schema.js'
+import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas, vendas, clientes, funilMensal } from './db/schema.js'
 import { temFeature } from './router/_base.js'
-import { baixarArquivoNotaSap, FILIAL_SAP_POR_SLUG } from './lib/sapDanfe.js'
+import { baixarArquivoNotaSap, baixarArquivoNotaDoPedidoSap, FILIAL_SAP_POR_SLUG, type ArquivoNota } from './lib/sapDanfe.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
@@ -577,8 +577,39 @@ app.get('/expedicao-nota/:id', async (req, res) => {
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, pedido.empresaId), columns: { slug: true } })
   const filial = FILIAL_SAP_POR_SLUG[empresa?.slug ?? '']
   if (!filial) return res.status(404).json({ error: 'Empresa sem filial no SAP' })
+  await enviarArquivoNota(res, formato, () => baixarArquivoNotaSap(filial, pedido.nfNumero!, formato))
+})
+
+// Mesmo arquivo, a partir de uma venda do card do cliente que veio do SAP
+// (pedidoSapEntry + nº da NF). Vê quem vê o card: dono do card, quem tem o
+// crédito da venda, ou admin da empresa do cliente.
+app.get('/venda-nota/:id', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  const formato = req.query.formato === 'xml' ? 'xml' : 'pdf'
+  const venda = await db.query.vendas.findFirst({
+    where: and(eq(vendas.id, Number(req.params.id)), isNull(vendas.deletedAt)),
+    columns: { numeroNotaFiscal: true, pedidoSapEntry: true, vendedorId: true, clienteId: true, funilMensalId: true },
+  })
+  if (!venda) return res.status(404).json({ error: 'Venda não encontrada' })
+  const [cliente, funil] = await Promise.all([
+    db.query.clientes.findFirst({ where: eq(clientes.id, venda.clienteId), columns: { empresaId: true } }),
+    db.query.funilMensal.findFirst({ where: eq(funilMensal.id, venda.funilMensalId), columns: { vendedorId: true } }),
+  ])
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  const pode =
+    user.superAdmin ||
+    (user.role === 'admin' && cliente?.empresaId === empresaId) ||
+    user.id === venda.vendedorId ||
+    user.id === funil?.vendedorId
+  if (!pode) return res.status(403).json({ error: 'Sem permissão' })
+  if (!venda.numeroNotaFiscal || !venda.pedidoSapEntry) return res.status(404).json({ error: 'Essa venda não tem NF do SAP' })
+  await enviarArquivoNota(res, formato, () => baixarArquivoNotaDoPedidoSap(venda.pedidoSapEntry!, venda.numeroNotaFiscal!, formato))
+})
+
+async function enviarArquivoNota(res: express.Response, formato: 'pdf' | 'xml', buscar: () => Promise<ArquivoNota | { erro: string }>) {
   try {
-    const r = await baixarArquivoNotaSap(filial, pedido.nfNumero, formato)
+    const r = await buscar()
     if ('erro' in r) return res.status(404).json({ error: r.erro })
     res.setHeader('Content-Type', r.tipo)
     res.setHeader('Content-Length', String(r.dados.length))
@@ -588,7 +619,7 @@ app.get('/expedicao-nota/:id', async (req, res) => {
   } catch (e) {
     res.status(502).json({ error: `Não consegui buscar no SAP: ${(e as Error).message}` })
   }
-})
+}
 
 // Baixar o anexo de uma proposta com nome amigável ("Proposta - <cliente>.pdf")
 // em vez do nome cru em disco ("prop-<uuid>.pdf"). Público igual /uploads —

@@ -692,7 +692,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             <p className="text-xs text-dark-400">
               Nota fiscal <b className="text-green-300">NF {p.nfNumero}</b> — arquivos do SAP
             </p>
-            <NotaSapBotoes pedidoId={p.id} />
+            <NotaSapBotoes endereco={`/expedicao-nota/${p.id}`} />
           </div>
         )}
         {p.etapa === 'coletado' && p.agendamentos.length > 0 && (

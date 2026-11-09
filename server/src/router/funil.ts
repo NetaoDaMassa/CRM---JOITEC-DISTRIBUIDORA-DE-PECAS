@@ -312,6 +312,9 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       faturado: v.faturado,
       numeroPedido: v.numeroPedido,
       convertidoParaOrdemId: v.convertidoParaOrdemId,
+      // NF do SAP (venda automática) — botões DANFE/XML no card.
+      numeroNotaFiscal: v.numeroNotaFiscal,
+      pedidoSapEntry: v.pedidoSapEntry,
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,
