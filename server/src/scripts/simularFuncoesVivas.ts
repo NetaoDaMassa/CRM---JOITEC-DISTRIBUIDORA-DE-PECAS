@@ -5,7 +5,7 @@
 // Empacotado num .mjs só (esbuild) e rodado dentro do container de produção.
 import { createClient } from '@libsql/client'
 import { CATALOGO, ITEM_POR_ID, NIVEL_LABEL, calcularChavesFinais, chavesDaFuncao, chavesGerenciadas, excecoesParaManter, nivelPorChaves } from '../lib/acessosCatalogo.js'
-import { CHAVES_TIRADAS_DE_VENDEDOR, FUNCOES_DE_VENDEDOR, FUNCOES_INICIAIS, funcaoInicialDoUsuario, itensDaFuncaoInicial } from '../lib/acessosFuncoesIniciais.js'
+import { FUNCOES_INICIAIS, NOME_CORRECAO, correcaoTira, funcaoInicialDoUsuario, itensDaFuncaoInicial } from '../lib/acessosFuncoesIniciais.js'
 
 const db = createClient({ url: process.env.DATABASE_URL ?? 'file:./joitec_crm.db' })
 const rows = async (s: string) => (await db.execute(s)).rows as unknown as Record<string, unknown>[]
@@ -63,19 +63,17 @@ async function main() {
     const funcao = chavesDaFuncao(itensDaFuncaoInicial(chave), slug)
     let exc = excecoesParaManter(atuais, funcao, gerenciadas)
     const tiradas: string[] = []
-    if (FUNCOES_DE_VENDEDOR.has(chave)) {
-      exc = exc.filter((x) => {
-        const tira = x.modo === 'add' && CHAVES_TIRADAS_DE_VENDEDOR.has(x.feature)
-        if (tira) tiradas.push(x.feature)
-        return !tira
-      })
-    }
+    exc = exc.filter((x) => {
+      const tira = x.modo === 'add' && correcaoTira(chave, x.feature)
+      if (tira) tiradas.push(x.feature)
+      return !tira
+    })
     const finais = calcularChavesFinais({ atuais, funcao, excecoes: exc, gerenciadas })
     const perdeu = [...atuais].filter((c) => !finais.has(c))
     const ganhou = [...finais].filter((c) => !atuais.has(c))
     const inesperado = perdeu.filter((c) => !tiradas.includes(c)).length + ganhou.length
     if (inesperado) { erros++; mudancas.push(`ERRO ${rotulo}: perdeu ${perdeu} ganhou ${ganhou}`) }
-    if (tiradas.length) mudancas.push(`${rotulo}: deixa de ter ${tiradas.map((t) => (t === 'devolucoes_ver_comissao' ? 'ver comissão' : 'excluir chamado')).join(' e ')}`)
+    if (tiradas.length) mudancas.push(`${rotulo}: deixa de ter ${tiradas.map((t) => NOME_CORRECAO[t] ?? t).join(' e ')}`)
     const desc = descreverExcecoes(exc, funcao, slug)
     porFuncao.set(chave, [...(porFuncao.get(chave) ?? []), `${rotulo}${desc.length ? ' — exceções: ' + desc.join('; ') : ' — igual à função'}`])
   }

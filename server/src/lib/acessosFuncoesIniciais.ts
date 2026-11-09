@@ -37,9 +37,11 @@ export const FUNCOES_INICIAIS: FuncaoInicial[] = [
 
   // Em cada empresa
   { chave: 'gerente', nome: 'Gerente', camada: 'empresa', tipoConta: 'admin', descricao: 'Responsável pela empresa. Vê tudo da empresa dele.', chaves: [
-    'dashboard', 'kanban', 'funil_excluir_card', 'agenda', 'clientes', 'prospeccao', 'banco_clientes', 'carteira', 'aprovacoes', 'metas', 'mensagens', 'demandas',
+    // Sem Caixa (é do financeiro), Importações (é de compras), Backup (só o
+    // João), excluir card e Devoluções — João, 2026-11-09.
+    'dashboard', 'kanban', 'agenda', 'clientes', 'prospeccao', 'banco_clientes', 'carteira', 'aprovacoes', 'metas', 'mensagens', 'demandas',
     'leads', 'relatorios', ...ABAS_RELATORIO, 'usuarios', 'configuracoes', 'lixeira', 'painel_tv', 'compras_solicitar', 'solicitar_design',
-    'devolucoes', 'devolucoes_mecanica', 'devolucoes_demonstracao', ...ODIN_GERENCIA,
+    ...ODIN_GERENCIA,
   ] },
   { chave: 'administrativo_comercial', nome: 'Administrativo comercial', camada: 'empresa', tipoConta: 'admin', descricao: 'Monta propostas e cuida da parte administrativa do comercial.', chaves: [
     'dashboard', 'kanban', 'agenda', 'clientes', 'banco_clientes', 'carteira', 'mensagens', 'demandas', 'relatorios', ...ABAS_RELATORIO, 'compras_solicitar', 'solicitar_design', 'painel_tv',
@@ -48,6 +50,7 @@ export const FUNCOES_INICIAIS: FuncaoInicial[] = [
   { chave: 'coordenador_vendas', nome: 'Coordenador de vendas', camada: 'empresa', tipoConta: 'vendor', descricao: 'Vende e também coordena uma equipe de vendas.', chaves: [...VENDEDOR_ODIN, 'banco_clientes', 'leads', 'leads_transferir', 'leads_excluir', 'leads_gerenciar_todos', ...ABAS_RELATORIO] },
   { chave: 'vendedor', nome: 'Vendedor', camada: 'empresa', tipoConta: 'vendor', descricao: 'Comercial padrão: trabalha os próprios clientes, leads e agenda.', chaves: VENDEDOR },
   { chave: 'vendedor_odin', nome: 'Vendedor Odin Compressores', camada: 'empresa', tipoConta: 'vendor', descricao: 'Vendedor interno da Odin Compressores.', chaves: VENDEDOR_ODIN },
+  { chave: 'vendedor_leads_odin', nome: 'Vendedor de leads Odin', camada: 'empresa', tipoConta: 'vendor', descricao: 'Equipe de leads da Odin Compressores: leads, propostas e pedidos.', chaves: ['dashboard_odin', 'leads', 'propostas_odin', 'pedidos_odin', 'solicitar_design'] },
   { chave: 'vendedor_externo_odin', nome: 'Vendedor externo Odin', camada: 'empresa', tipoConta: 'vendor', descricao: 'Vendedor de campo da Odin Compressores: visitas, propostas, pedidos e cartão.', chaves: ['dashboard_odin', 'propostas_odin', 'pedidos_odin', 'revendas_odin', 'visitas_odin', 'cartao_credito', 'solicitar_design'] },
   { chave: 'estoque', nome: 'Estoque', camada: 'empresa', tipoConta: 'admin', descricao: 'Separa e expede os pedidos; cuida de garantias e pós-venda.', chaves: ['controle_estoque', 'painel_logistica', 'compras_solicitar', 'pedidos_odin', 'garantias_odin', 'pos_venda', 'estoque_odin'] },
 ]
@@ -64,7 +67,7 @@ export const PESSOAS_INICIAIS: Record<string, string> = {
   'victor.perin': 'gerente', marcio: 'gerente', jaciel: 'gerente', pamela: 'gerente', roberto: 'gerente', andreia: 'gerente', bianca: 'gerente', flavio: 'gerente',
   agatta: 'administrativo_comercial', marcusvinicius: 'administrativo_comercial',
   emily: 'coordenador_vendas', bruna: 'coordenador_vendas',
-  alvaro: 'vendedor_odin', 'guilherme.compressores': 'vendedor_odin', 'sergio.compressores': 'vendedor_odin', wilians: 'vendedor_odin', matheus: 'vendedor_odin', rodrigo: 'vendedor_odin',
+  alvaro: 'vendedor_odin', 'guilherme.compressores': 'vendedor_odin', 'sergio.compressores': 'vendedor_odin', wilians: 'vendedor_odin', matheus: 'vendedor_leads_odin', rodrigo: 'vendedor_leads_odin',
   'douglas.compressores': 'vendedor_externo_odin', edemilson: 'vendedor_externo_odin', hilton: 'vendedor_externo_odin', 'marco.compressores': 'vendedor_externo_odin', pedro: 'vendedor_externo_odin',
   estoque: 'estoque', 'estoque.tubos': 'estoque', 'estoque.automacao': 'estoque', rafa: 'estoque',
 }
@@ -84,8 +87,22 @@ export function funcaoInicialDoUsuario(u: { username: string; role: string; supe
 // Correção aprovada pelo João (2026-11-09): vendedor não exclui chamado de
 // devolução nem vê comissão. Na troca, essas duas NÃO viram exceção pra
 // quem está numa função de vendedor — ou seja, quem tinha, perde.
-export const FUNCOES_DE_VENDEDOR = new Set(['vendedor', 'vendedor_odin', 'vendedor_externo_odin', 'coordenador_vendas'])
+export const FUNCOES_DE_VENDEDOR = new Set(['vendedor', 'vendedor_odin', 'vendedor_leads_odin', 'vendedor_externo_odin', 'coordenador_vendas'])
 export const CHAVES_TIRADAS_DE_VENDEDOR = new Set(['devolucoes_excluir_chamado', 'devolucoes_ver_comissao'])
+// Backup é só do João (superAdmin, que nem entra em função) — sai de todo
+// mundo na troca. João, 2026-11-09.
+export const CHAVES_TIRADAS_DE_TODOS = new Set(['backup'])
+
+// Chaves que, na troca, NÃO viram exceção (ou seja, a pessoa perde).
+export function correcaoTira(funcaoChave: string, feature: string): boolean {
+  return CHAVES_TIRADAS_DE_TODOS.has(feature) || (FUNCOES_DE_VENDEDOR.has(funcaoChave) && CHAVES_TIRADAS_DE_VENDEDOR.has(feature))
+}
+
+export const NOME_CORRECAO: Record<string, string> = {
+  devolucoes_excluir_chamado: 'excluir chamado',
+  devolucoes_ver_comissao: 'ver comissão',
+  backup: 'Backup',
+}
 
 // "Vê tudo": cada item no nível mais baixo dele (só a tela, sem poderes
 // extras), menos Configurações e as telas que só servem pra gerenciar.

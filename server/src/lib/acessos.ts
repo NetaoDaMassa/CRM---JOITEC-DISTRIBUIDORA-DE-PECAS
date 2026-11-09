@@ -20,9 +20,8 @@ import {
   todasChavesDoItem,
 } from './acessosCatalogo.js'
 import {
-  CHAVES_TIRADAS_DE_VENDEDOR,
-  FUNCOES_DE_VENDEDOR,
   FUNCOES_INICIAIS,
+  correcaoTira,
   funcaoInicialDoUsuario,
   itensDaFuncaoInicial,
 } from './acessosFuncoesIniciais.js'
@@ -190,11 +189,9 @@ export async function migrarParaFuncoesVivas() {
     const funcaoId = idPorChave.get(chave)!
     const funcao = chavesDaFuncao(itensDaFuncaoInicial(chave), slug)
     let exc = excecoesParaManter(await chavesAtuais(p.id), funcao, chavesGerenciadas(slug))
-    if (FUNCOES_DE_VENDEDOR.has(chave)) {
-      const antes = exc.length
-      exc = exc.filter((e) => !(e.modo === 'add' && CHAVES_TIRADAS_DE_VENDEDOR.has(e.feature)))
-      correcoes += antes - exc.length
-    }
+    const antes = exc.length
+    exc = exc.filter((e) => !(e.modo === 'add' && correcaoTira(chave, e.feature)))
+    correcoes += antes - exc.length
     await db.update(users).set({ funcaoId }).where(eq(users.id, p.id))
     if (exc.length) await db.insert(usuarioExcecoes).values(exc.map((e) => ({ userId: p.id, feature: e.feature, modo: e.modo })))
     await recalcularPessoa(p.id)
@@ -205,8 +202,8 @@ export async function migrarParaFuncoesVivas() {
     tabela: 'funcoes',
     registroId: 0,
     acao: 'criar',
-    valorNovo: `funções vivas: ${FUNCOES_INICIAIS.length} funções, ${colocadas} pessoas, ${correcoes} permissões de vendedor tiradas`,
+    valorNovo: `funções vivas: ${FUNCOES_INICIAIS.length} funções, ${colocadas} pessoas, ${correcoes} permissões tiradas (correções aprovadas)`,
     alteradoPor: null,
   })
-  console.log(`[acessos] funções vivas criadas: ${FUNCOES_INICIAIS.length} funções, ${colocadas} pessoas, ${correcoes} correções de vendedor`)
+  console.log(`[acessos] funções vivas criadas: ${FUNCOES_INICIAIS.length} funções, ${colocadas} pessoas, ${correcoes} correções aprovadas`)
 }
