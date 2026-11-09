@@ -12,6 +12,7 @@ import ComoUsar from '../../components/ui/ComoUsar'
 import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
 import { useAuth } from '../../contexts/AuthContext'
 import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerTamanho, salvarTamanho } from '../../lib/etiquetasTermicas'
+import HistoricoAgendamentos from '../../components/HistoricoAgendamentos'
 
 // Controle do Estoque / Expedição (pedido do João, 2026-10-29) — fila que
 // nasce do picking gerado no SAP; o estoque anota separação → conferência →
@@ -226,6 +227,7 @@ export default function Expedicao() {
           'Na conferência (e na embalagem), anote cada erro achado: item e tipo. O erro conta para quem fez a etapa anterior.',
           'Na embalagem, informe volumes, cabeçotes e paletes. A NF aparece sozinha quando sai no SAP.',
           'Com a NF emitida, agende a coleta (transportadora, dia e hora). Sem NF não dá para agendar.',
+          'Se a transportadora não vier, abra o pedido e use "Reagendar". Todas as tentativas ficam registradas, e o vendedor também vê.',
           'Quando a transportadora levar, toque em "Coletado". O prazo de 48h conta do picking até aqui, só em dia útil: sábado, domingo e feriado não contam.',
           'Pedido coletado fica no quadro só no dia. Depois, consulte na aba "Coletados".',
         ]}
@@ -281,6 +283,7 @@ export default function Expedicao() {
                 <b className="text-dark-100">Pedido {p.pedidosSap}</b> <span className="text-dark-300">{(p.clienteNome ?? '').slice(0, 28)}</span>
                 <span className="block text-red-300">
                   atrasado {Math.round(-p.horasRestantes)}h · {COLUNAS.find((c) => c.etapa === (p.etapa === 'agendamento' ? 'nf' : p.etapa))?.titulo}
+                  {p.agendamentos.length > 1 ? ` · ${p.agendamentos.length}ª tentativa de coleta` : ''}
                 </span>
               </button>
             ))}
@@ -395,6 +398,9 @@ export default function Expedicao() {
                             🚚 {agendaBr(p.coletaAgendada)}{p.transportadora ? ` · ${p.transportadora}` : ''}
                           </span>
                         )}
+                        {p.agendamentos.length > 1 && (
+                          <span className="text-[10px] font-semibold rounded bg-amber-900/40 text-amber-200 px-1.5 py-0.5">🔁 {p.agendamentos.length}ª tentativa</span>
+                        )}
                         {['separacao', 'conferencia', 'embalagem'].includes(p.etapa) && (p.volumesSap != null || p.transportadoraSap) && (
                           <span className="text-[10px] rounded bg-blue-900/30 text-blue-200 px-1.5 py-0.5" title="Lançado no pedido do SAP">
                             📦 SAP: {[p.volumesSap != null ? `${p.volumesSap} vol.` : null, p.transportadoraSap].filter(Boolean).join(' · ')}
@@ -452,7 +458,14 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const terminar = trpc.expedicao.terminar.useMutation(opts)
   const voltar = trpc.expedicao.voltar.useMutation(opts)
   const coletar = trpc.expedicao.coletar.useMutation(opts)
-  const agendar = trpc.expedicao.agendar.useMutation({ ...opts, onSuccess: () => (toast.success('Coleta agendada'), recarregar()) })
+  const agendar = trpc.expedicao.agendar.useMutation({
+    ...opts,
+    onSuccess(r) {
+      if (r.nova) toast.success(r.tentativa > 1 ? `Coleta reagendada — ${r.tentativa}ª tentativa registrada` : 'Coleta agendada')
+      else toast.success(p.etapa === 'coleta' ? 'Mesma data e transportadora — nada novo registrado' : 'Coleta agendada')
+      recarregar()
+    },
+  })
   const registrarErro = trpc.expedicao.registrarErro.useMutation(opts)
   const removerErro = trpc.expedicao.removerErro.useMutation(opts)
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
@@ -664,6 +677,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                 </div>
               </>
             )}
+            {p.agendamentos.length > 0 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.etapa === 'coleta' && (
               <Button size="lg" loading={coletar.isPending} onClick={() => coletar.mutate({ id: p.id })}>
                 🚚 Coletado agora
@@ -672,6 +686,11 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
           </div>
         )}
 
+        {p.etapa === 'coletado' && p.agendamentos.length > 0 && (
+          <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4">
+            <HistoricoAgendamentos agendamentos={p.agendamentos} />
+          </div>
+        )}
         {p.etapa === 'nf' && !p.nfNumero && (
           <div className="rounded-xl border border-sky-700/40 bg-sky-900/10 p-4 space-y-1">
             <p className="text-sm text-sky-200">⏳ Embalado — aguardando a NF sair no SAP.</p>
@@ -1017,6 +1036,7 @@ function ColetadosLista({ onAbrir }: { onAbrir: (p: Pedido) => void }) {
                   {p.transportadora ?? p.transportadoraSap ?? 'Sem transportadora'}
                   {p.volumes != null ? ` · ${p.volumes} vol.` : ''}
                 </p>
+                {p.agendamentos.length > 1 && <p className="text-[11px] font-semibold text-amber-300">🔁 {p.agendamentos.length} agendamentos</p>}
               </div>
               <div className="text-right">
                 <p className="text-xs text-dark-200">{hora(p.coletadoEm)}</p>

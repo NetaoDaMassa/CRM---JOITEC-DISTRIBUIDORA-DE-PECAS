@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, lte, notInArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoErros, expedicaoItens, expedicaoPausas, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoAgendamentos, expedicaoErros, expedicaoItens, expedicaoPausas, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
@@ -566,6 +566,7 @@ async function herdarTrabalho(anteriorId: number, novoId: number): Promise<boole
     // Erros registrados vão junto (contam uma vez só no desempenho).
     await tx.update(expedicaoErros).set({ expedicaoId: novoId }).where(eq(expedicaoErros.expedicaoId, anteriorId))
     await tx.update(expedicaoPausas).set({ expedicaoId: novoId }).where(eq(expedicaoPausas.expedicaoId, anteriorId))
+    await tx.update(expedicaoAgendamentos).set({ expedicaoId: novoId }).where(eq(expedicaoAgendamentos.expedicaoId, anteriorId))
   })
   return true
 }

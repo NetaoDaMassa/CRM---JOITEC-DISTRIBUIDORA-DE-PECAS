@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { ChevronDown, ChevronUp } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import HistoricoAgendamentos from '../HistoricoAgendamentos'
 
 // SQLite em UTC ("YYYY-MM-DD HH:MM:SS") → "05/11 08:10" no horário do Brasil.
 function dataHora(utc: string | null): string {
@@ -62,6 +63,7 @@ export default function ProcessoExpedicaoChat({ conversaId }: { conversaId: numb
                 <p className="text-dark-400 pt-0.5">
                   {[c.empresa, `picking ${c.picking}`, c.volumes ? `${c.volumes} volume(s)` : null, c.transportadora].filter(Boolean).join(' · ')}
                 </p>
+                {c.agendamentos.length > 1 && <HistoricoAgendamentos agendamentos={c.agendamentos} />}
                 {c.pausa && <p className="text-amber-300">⏸ Pausado desde {dataHora(c.pausa.em)}{c.pausa.motivo ? ` — ${c.pausa.motivo}` : ''}</p>}
                 {c.alteracaoSap && <p className="text-orange-300">✎ {c.alteracaoSap}</p>}
                 {c.encerrado?.motivo && <p className="text-red-300">Motivo: {c.encerrado.motivo}</p>}

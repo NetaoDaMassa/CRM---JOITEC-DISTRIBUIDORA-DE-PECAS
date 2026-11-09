@@ -4643,6 +4643,24 @@ export const expedicaoPausas = sqliteTable(
   })
 )
 
+// Cada tentativa de agendar a coleta (expedicaoPedidos só guarda a atual): a
+// transportadora nem sempre vem e o reagendamento apagava a data anterior.
+// coletaAgendada no horário de Brasília; registradoEm em UTC.
+export const expedicaoAgendamentos = sqliteTable(
+  'expedicao_agendamentos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    expedicaoId: integer('expedicao_id').notNull().references(() => expedicaoPedidos.id, { onDelete: 'cascade' }),
+    transportadora: text('transportadora'),
+    coletaAgendada: text('coleta_agendada').notNull(),
+    registradoEm: text('registrado_em').notNull(),
+    registradoPor: integer('registrado_por').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    expedicaoIdx: index('idx_expedicao_agendamentos_expedicao').on(t.expedicaoId),
+  })
+)
+
 // Pedidos do SAP ANTES do picking (pedido do João, 2026-10-29: o vendedor vê
 // a jornada inteira do pedido no card) — foto refeita a cada rodada da
 // fila (lib/sapExpedicao.ts): 'aprovacao' = esboço de pedido aguardando o

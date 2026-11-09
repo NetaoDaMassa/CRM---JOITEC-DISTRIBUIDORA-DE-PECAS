@@ -3,13 +3,14 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, ne, not
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
+import { agendamentosPorCard, type AgendamentoColeta } from '../lib/expedicaoAgendamentos.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
 // empresa vê só a própria fila e a própria equipe (estoques separados). Os 3
@@ -84,7 +85,7 @@ const NOME_ETAPA: Record<EtapaPessoa, string> = { separacao: 'separando', confer
 // Jornada do pedido pro vendedor (pedido do João, 2026-10-29): do "aguardando
 // financeiro" até "coletado", de todos os pedidos em andamento do cliente
 // (código do SAP = mesmo nas empresas do grupo). Coletado some depois de 3 dias.
-type PassoJornada = { pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean; entrySap?: number }
+type PassoJornada = { pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean; entrySap?: number; agendamentos?: AgendamentoColeta[] }
 
 async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJornada[]>> {
   const mapa = new Map<string, PassoJornada[]>()
@@ -117,8 +118,10 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
   const ids = [...new Set(exp.flatMap((p) => [p.separacaoColaboradorId, p.conferenciaColaboradorId, p.embalagemColaboradorId]).filter((x): x is number => !!x))]
   const nomes = new Map(ids.length ? (await db.select({ id: expedicaoColaboradores.id, nome: expedicaoColaboradores.nome }).from(expedicaoColaboradores).where(inArray(expedicaoColaboradores.id, ids))).map((c) => [c.id, c.nome]) : [])
   const nome = (id: number | null) => (id ? nomes.get(id) ?? '' : '')
+  const agendamentos = await agendamentosPorCard(exp.map((p) => p.id))
   const agora = Date.now()
   for (const p of exp) {
+    const tentativas = agendamentos.get(p.id) ?? []
     const atrasado = p.etapa !== 'coletado' && agora > prazoLimite(p.inicioPrazo)
     const nf = p.nfNumero ? `NF ${p.nfNumero}` : null
     const [texto, detalhe] = ((): [string, string | null] => {
@@ -136,12 +139,12 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
         case 'agendamento':
           return [`Faturado ${nf} — aguardando agendar a coleta`, p.volumes ? `${p.volumes} volume(s)` : null]
         case 'coleta':
-          return [`Coleta agendada ${p.coletaAgendada ? `${p.coletaAgendada.slice(8, 10)}/${p.coletaAgendada.slice(5, 7)} ${p.coletaAgendada.slice(11, 16)}` : ''}`, [nf, p.transportadora].filter(Boolean).join(' · ') || null]
+          return [`Coleta agendada ${p.coletaAgendada ? `${p.coletaAgendada.slice(8, 10)}/${p.coletaAgendada.slice(5, 7)} ${p.coletaAgendada.slice(11, 16)}` : ''}${tentativas.length > 1 ? ` · ${tentativas.length}ª tentativa` : ''}`, [nf, p.transportadora].filter(Boolean).join(' · ') || null]
         default:
-          return ['Coletado', [nf, p.transportadora].filter(Boolean).join(' · ') || null]
+          return [tentativas.length > 1 ? `Coletado · ${tentativas.length} agendamentos` : 'Coletado', [nf, p.transportadora].filter(Boolean).join(' · ') || null]
       }
     })()
-    add(p.clienteCodigo ?? '', { pedido: p.pedidosSap, empresaSlug: null, etapa: p.etapa, texto, detalhe, data: p.coletadoEm ?? p.inicioPrazo, atrasado, entrySap: Number(p.orderEntriesSap.split(',')[0]) })
+    add(p.clienteCodigo ?? '', { pedido: p.pedidosSap, empresaSlug: null, etapa: p.etapa, texto, detalhe, data: p.coletadoEm ?? p.inicioPrazo, atrasado, entrySap: Number(p.orderEntriesSap.split(',')[0]), agendamentos: tentativas })
   }
   return mapa
 }
@@ -190,6 +193,7 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
     : []
   const errosPor = new Map(erros.map((e) => [e.id, Number(e.n)]))
   const pessoas = new Map((await db.query.expedicaoColaboradores.findMany({ where: eq(expedicaoColaboradores.empresaId, empresaId) })).map((c) => [c.id, c.nome]))
+  const agendamentos = await agendamentosPorCard(ids)
   // Selo "CLIENTE ISENTO" no card (João, 2026-11-06): vem do Status fiscal do
   // cadastro do cliente, achado pelo código do SAP. Vale o cadastro da empresa
   // do pedido; sem status lá, o de outra empresa com o mesmo código (é o mesmo
@@ -217,6 +221,7 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
       conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
       erros: errosPor.get(p.id) ?? 0,
+      agendamentos: agendamentos.get(p.id) ?? [],
       prazoLimite: new Date(limite).toISOString(),
       horasRestantes: Math.round(horasUteisEntre(p.coletadoEm ? ms(p.coletadoEm) : agora, limite) * 10) / 10,
       noPrazo: p.coletadoEm ? ms(p.coletadoEm) <= limite : null,
@@ -263,7 +268,9 @@ export const expedicaoRouter = router({
       const passos = mapa.get(c.codigo) ?? []
       // O que está em andamento primeiro; coletado só se não tiver outro.
       const p = passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
-      return p ? [{ clienteId: c.id, total: passos.length, ...p }] : []
+      if (!p) return []
+      const { agendamentos: _lista, ...etiqueta } = p
+      return [{ clienteId: c.id, total: passos.length, ...etiqueta }]
     })
   }),
 
@@ -564,17 +571,35 @@ export const expedicaoRouter = router({
       const p = await acharPedido(ctx.empresaId, input.id)
       if (!['nf', 'agendamento', 'coleta'].includes(p.etapa)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra agendar depois da embalagem.' })
       if (!p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'A NF ainda não saiu no SAP — a coleta só é agendada depois da NF.' })
-      await db
-        .update(expedicaoPedidos)
-        .set({
-          etapa: 'coleta',
+      return db.transaction(async (tx) => {
+        await tx
+          .update(expedicaoPedidos)
+          .set({
+            etapa: 'coleta',
+            transportadora: input.transportadora,
+            coletaAgendada: input.coletaAgendada,
+            agendadoEm: p.agendadoEm ?? agoraSqlite(),
+            observacao: input.observacao?.trim() || null,
+            updatedAt: agoraSqlite(),
+          })
+          .where(eq(expedicaoPedidos.id, p.id))
+        const anteriores = await tx
+          .select({ transportadora: expedicaoAgendamentos.transportadora, coletaAgendada: expedicaoAgendamentos.coletaAgendada })
+          .from(expedicaoAgendamentos)
+          .where(eq(expedicaoAgendamentos.expedicaoId, p.id))
+          .orderBy(asc(expedicaoAgendamentos.id))
+        // Mesma data e transportadora (clique duplo, por exemplo) não é nova tentativa.
+        const ultimo = anteriores[anteriores.length - 1]
+        if (ultimo?.coletaAgendada === input.coletaAgendada && ultimo.transportadora === input.transportadora) return { tentativa: anteriores.length, nova: false }
+        await tx.insert(expedicaoAgendamentos).values({
+          expedicaoId: p.id,
           transportadora: input.transportadora,
           coletaAgendada: input.coletaAgendada,
-          agendadoEm: p.agendadoEm ?? agoraSqlite(),
-          observacao: input.observacao?.trim() || null,
-          updatedAt: agoraSqlite(),
+          registradoEm: agoraSqlite(),
+          registradoPor: ctx.user.id,
         })
-        .where(eq(expedicaoPedidos.id, p.id))
+        return { tentativa: anteriores.length + 1, nova: true }
+      })
     }),
 
   coletar: featureProcedure(FEATURE)

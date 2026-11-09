@@ -1030,6 +1030,13 @@
       "when": 1793540756286,
       "tag": "0146_expedicao_pausas",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "6",
+      "when": 1793540786286,
+      "tag": "0147_expedicao_agendamentos",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoPedidos, permissoesAdmin, users } from '../db/schema.js'
 import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
+import { agendamentosPorCard } from './expedicaoAgendamentos.js'
 
 // "Falar com a expedição" no chat (pedido do João, 2026-11-05): uma conversa
 // por PEDIDO do SAP (idOrigem = DocEntry do pedido de venda), que continua a
@@ -72,6 +73,7 @@ export async function processoDoPedido(entry: number, verErros: boolean) {
     db.select().from(expedicaoErros).where(inArray(expedicaoErros.expedicaoId, ids)).orderBy(expedicaoErros.id),
     db.select({ id: empresas.id, nome: empresas.nome }).from(empresas),
   ])
+  const agendamentos = await agendamentosPorCard(ids)
   const nome = (id: number | null) => (id ? pessoas.find((p) => p.id === id)?.nome ?? null : null)
   const agora = Date.now()
 
@@ -103,6 +105,7 @@ export async function processoDoPedido(entry: number, verErros: boolean) {
         { chave: 'agendamento', nome: 'Agendamento', estado: estado('agendamento', !!c.agendadoEm), quem: null, inicio: null, fim: null, info: c.coletaAgendada, erros: 0 },
         { chave: 'coleta', nome: 'Coleta', estado: estado('coleta', !!c.coletadoEm), quem: nome(c.coletadoColaboradorId), inicio: null, fim: c.coletadoEm, info: null as string | null, erros: nErros('expedicao') },
       ],
+      agendamentos: agendamentos.get(c.id) ?? [],
       volumes: c.volumes ?? c.volumesSap,
       transportadora: c.transportadora ?? c.transportadoraSap,
       pausa: c.pausadoEm ? { em: c.pausadoEm, motivo: c.pausaMotivo } : null,

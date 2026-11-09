@@ -1,5 +1,6 @@
 import { trpc } from '../lib/trpc'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
+import HistoricoAgendamentos from './HistoricoAgendamentos'
 
 const PASSOS = ['aprovacao', 'pedido', 'separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'coleta', 'coletado'] as const
 const ROTULO: Record<(typeof PASSOS)[number], string> = {
@@ -59,6 +60,7 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
                 )
               })}
             </ol>
+            {p.agendamentos && p.agendamentos.length > 1 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.entrySap ? (
               <ConversarSobreIssoButton tipoOrigem="expedicao" idOrigem={p.entrySap} titulo={`Pedido ${p.pedido} — expedição`} rotulo="Falar com a expedição" />
             ) : null}
