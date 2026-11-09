@@ -127,6 +127,29 @@ export default function Expedicao() {
   // Seleção de vários pedidos (admin) pra finalizar/mover/cancelar de uma vez.
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
   const [selecionando, setSelecionando] = useState(false)
+  // Ordem de separação (admin): ▲ ▼ nos cards da coluna Separação.
+  const [ordenando, setOrdenando] = useState(false)
+  const ordenar = trpc.expedicao.ordenarSeparacao.useMutation({
+    onError: (e) => (toast.error(e.message), utils.expedicao.fila.invalidate()),
+    onSettled: () => utils.expedicao.fila.invalidate(),
+  })
+  const moverNaSeparacao = (id: number, para: 'cima' | 'baixo' | 'topo' | 'fim') => {
+    const atual = (fila ?? []).filter((p) => p.etapa === 'separacao').map((p) => p.id)
+    const i = atual.indexOf(id)
+    if (i < 0) return
+    const nova = atual.filter((x) => x !== id)
+    const j = para === 'topo' ? 0 : para === 'fim' ? nova.length : para === 'cima' ? Math.max(0, i - 1) : Math.min(nova.length, i + 1)
+    nova.splice(j, 0, id)
+    // Mostra na hora; o servidor guarda e a fila recarrega.
+    utils.expedicao.fila.setData(undefined, (old) => {
+      if (!old) return old
+      const porId = new Map(old.map((p) => [p.id, p]))
+      const sep = nova.map((x) => porId.get(x)!).filter(Boolean)
+      let k = 0
+      return old.map((p) => (p.etapa === 'separacao' ? sep[k++] ?? p : p))
+    })
+    ordenar.mutate({ ids: nova })
+  }
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set())
   const alternar = (id: number) =>
     setSelecionados((s) => {
@@ -146,9 +169,9 @@ export default function Expedicao() {
 
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase()
-    if (!t) return fila ?? []
+    if (!t || ordenando) return fila ?? []
     return (fila ?? []).filter((p) => `${p.pedidosSap} ${p.clienteNome} ${p.nfNumero ?? ''} ${p.pickListSap}`.toLowerCase().includes(t))
-  }, [fila, busca])
+  }, [fila, busca, ordenando])
   const colunas = COLUNAS
   const aberto = fila?.find((p) => p.id === abertoId) ?? null
   const listaAtrasados = (fila ?? []).filter((p) => p.etapa !== 'coletado' && p.horasRestantes < 0).sort((a, b) => a.horasRestantes - b.horasRestantes)
@@ -172,7 +195,12 @@ export default function Expedicao() {
         <div className="flex flex-wrap items-end gap-2">
           {aba === 'quadro' && <Input label="Buscar" placeholder="pedido, cliente, NF" value={busca} onChange={(e) => setBusca(e.target.value)} />}
           {aba === 'quadro' && podeDescartar && (
-            <Button variant={selecionando ? 'primary' : 'ghost'} onClick={() => (setSelecionando((v) => !v), setSelecionados(new Set()))}>
+            <Button variant={ordenando ? 'primary' : 'ghost'} onClick={() => (setOrdenando((v) => !v), setSelecionando(false), setSelecionados(new Set()))}>
+              {ordenando ? '✓ Pronto' : '↕ Ordem de separação'}
+            </Button>
+          )}
+          {aba === 'quadro' && podeDescartar && (
+            <Button variant={selecionando ? 'primary' : 'ghost'} onClick={() => (setSelecionando((v) => !v), setOrdenando(false), setSelecionados(new Set()))}>
               {selecionando ? 'Sair da seleção' : '☑ Selecionar vários'}
             </Button>
           )}
@@ -193,6 +221,7 @@ export default function Expedicao() {
         titulo="Como funciona"
         passos={[
           'O pedido entra sozinho aqui quando o picking é gerado no SAP.',
+          'Na coluna Separação, separe de cima para baixo: o 1º é o próximo. O admin pode mudar essa ordem em "Ordem de separação".',
           'Abra o pedido, escolha seu nome e toque em "Iniciar". Ao acabar, toque em "Terminar": o horário é anotado sozinho.',
           'Na conferência (e na embalagem), anote cada erro achado: item e tipo. O erro conta para quem fez a etapa anterior.',
           'Na embalagem, informe volumes, cabeçotes e paletes. A NF aparece sozinha quando sai no SAP.',
@@ -229,6 +258,13 @@ export default function Expedicao() {
           onSelecionar={(ids) => setSelecionados(new Set(ids))}
           onFeito={() => (setSelecionados(new Set()), utils.expedicao.fila.invalidate(), utils.expedicao.descartados.invalidate())}
         />
+      )}
+
+      {aba === 'quadro' && ordenando && (
+        <div className="rounded-2xl border border-amber-600/50 bg-amber-900/15 p-3 text-sm text-amber-100">
+          ↕ Mudando a ordem de separação: use ▲ ▼ nos cards da coluna <b>Separação</b> (⤒ manda pro topo, ⤓ pro fim). O estoque vê a ordem nova na hora. Pedido que chegar
+          depois entra no fim da fila. Toque em <b>✓ Pronto</b> ao terminar.
+        </div>
       )}
 
       {aba === 'quadro' && listaAtrasados.length > 0 && (
@@ -268,9 +304,33 @@ export default function Expedicao() {
                 </div>
                 <div className="space-y-2">
                   {doCol.length === 0 && <p className="text-xs text-dark-500 px-1">Nada aqui.</p>}
-                  {doCol.map((p) => (
+                  {doCol.map((p, idx) => (
+                    <Fragment key={p.id}>
+                    {ordenando && col.etapa === 'separacao' && (
+                      <div className="flex items-center gap-1 -mb-1">
+                        <span className="text-xs font-bold text-amber-300 mr-auto">{idx + 1}º</span>
+                        {(
+                          [
+                            ['topo', '⤒', 'Mandar pro topo', idx === 0],
+                            ['cima', '▲', 'Subir um', idx === 0],
+                            ['baixo', '▼', 'Descer um', idx === doCol.length - 1],
+                            ['fim', '⤓', 'Mandar pro fim', idx === doCol.length - 1],
+                          ] as const
+                        ).map(([para, icone, titulo, desabilitado]) => (
+                          <button
+                            key={para}
+                            type="button"
+                            title={titulo}
+                            disabled={desabilitado}
+                            onClick={() => moverNaSeparacao(p.id, para)}
+                            className="w-8 h-7 rounded-lg border border-amber-600/60 bg-dark-800 text-amber-200 text-sm hover:bg-amber-900/40 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            {icone}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     <button
-                      key={p.id}
                       type="button"
                       onClick={() => (selecionando && p.etapa !== 'coletado' ? alternar(p.id) : setAbertoId(p.id))}
                       className={`w-full text-left bg-dark-800 border border-l-4 rounded-xl p-3 hover:border-gold-600/50 transition-colors ${
@@ -281,6 +341,7 @@ export default function Expedicao() {
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-semibold text-dark-100">
                           {selecionando && p.etapa !== 'coletado' && <input type="checkbox" readOnly checked={selecionados.has(p.id)} className="mr-1.5 align-middle" />}
+                          {col.etapa === 'separacao' && !ordenando && <span className="text-amber-300 mr-1">{idx + 1}º</span>}
                           Pedido {p.pedidosSap}
                         </p>
                         <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap ${corPrazo(p)}`}>{textoPrazo(p)}</span>
@@ -345,6 +406,7 @@ export default function Expedicao() {
                         )}
                       </div>
                     </button>
+                    </Fragment>
                   ))}
                 </div>
               </div>

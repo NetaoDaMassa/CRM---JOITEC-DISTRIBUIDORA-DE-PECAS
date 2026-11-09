@@ -7,6 +7,7 @@ import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoIt
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
+import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
@@ -147,6 +148,36 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
 const POR_PAGINA_COLETADOS = 100
 
 // Nomes de quem fez cada etapa, erros e prazo: o que a tela usa de cada pedido.
+// Ordem de separação (pedido do João, 2026-11-09): o admin escolhe qual
+// pedido o estoque separa primeiro. Guardada em configuracoes como a lista de
+// ids da coluna Separação, por empresa (sem migração). Quem não está na lista
+// (picking que chegou depois) vai pro fim, pelo mais antigo — sem ordem
+// salva, fica como sempre foi (mais antigo primeiro).
+const chaveOrdemSeparacao = (empresaId: number) => `expedicao_ordem_separacao_${empresaId}`
+async function lerOrdemSeparacao(empresaId: number): Promise<number[]> {
+  try {
+    const v = JSON.parse((await getConfigTexto(chaveOrdemSeparacao(empresaId))) ?? '[]')
+    return Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []
+  } catch {
+    return []
+  }
+}
+// Reordena só os cards em separação, nas mesmas posições que eles ocupavam
+// (as outras etapas não mudam). Lista de entrada já vem pelo inicioPrazo.
+async function aplicarOrdemSeparacao<T extends { id: number; empresaId: number; etapa: string }>(pedidos: T[]): Promise<T[]> {
+  const empresasIds = [...new Set(pedidos.filter((p) => p.etapa === 'separacao').map((p) => p.empresaId))]
+  if (!empresasIds.length) return pedidos
+  const rank = new Map<number, number>()
+  for (const e of empresasIds) (await lerOrdemSeparacao(e)).forEach((id, i) => rank.set(id, i))
+  const sep = pedidos.filter((p) => p.etapa === 'separacao')
+  const ordenados = sep
+    .map((p, i) => ({ p, i }))
+    .sort((a, b) => (rank.get(a.p.id) ?? Infinity) - (rank.get(b.p.id) ?? Infinity) || a.i - b.i)
+    .map((x) => x.p)
+  let k = 0
+  return pedidos.map((p) => (p.etapa === 'separacao' ? ordenados[k++] : p))
+}
+
 async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.$inferSelect)[]) {
   const ids = pedidos.map((p) => p.id)
   const erros = ids.length
@@ -279,8 +310,24 @@ export const expedicaoRouter = router({
         )
       )
       .orderBy(asc(expedicaoPedidos.inicioPrazo))
-    return comCalculos(ctx.empresaId, pedidos)
+    return comCalculos(ctx.empresaId, await aplicarOrdemSeparacao(pedidos))
   }),
+
+  // Admin muda a ordem da coluna Separação: recebe os ids na ordem nova.
+  ordenarSeparacao: featureProcedure(FEATURE_DESCARTAR)
+    .input(z.object({ ids: z.array(z.number()).max(1000) }))
+    .mutation(async ({ ctx, input }) => {
+      const naFila = input.ids.length
+        ? await db
+            .select({ id: expedicaoPedidos.id })
+            .from(expedicaoPedidos)
+            .where(and(eq(expedicaoPedidos.empresaId, ctx.empresaId), eq(expedicaoPedidos.etapa, 'separacao'), inArray(expedicaoPedidos.id, input.ids)))
+        : []
+      const validos = new Set(naFila.map((p) => p.id))
+      const ids = [...new Set(input.ids)].filter((id) => validos.has(id))
+      await setConfig(chaveOrdemSeparacao(ctx.empresaId), JSON.stringify(ids))
+      return { ok: true }
+    }),
 
   // Aba "Coletados": todos os pedidos que já saíram, do mais recente pro mais antigo.
   coletados: featureProcedure(FEATURE)
@@ -711,6 +758,7 @@ export const expedicaoRouter = router({
         )
       )
       .orderBy(asc(expedicaoPedidos.inicioPrazo))
+      .then(aplicarOrdemSeparacao)
     const ids = [...new Set(pedidos.flatMap((p) => [p.separacaoColaboradorId, p.conferenciaColaboradorId, p.embalagemColaboradorId]).filter((x): x is number => !!x))]
     const nomes = new Map(ids.length ? (await db.select({ id: expedicaoColaboradores.id, nome: expedicaoColaboradores.nome }).from(expedicaoColaboradores).where(inArray(expedicaoColaboradores.id, ids))).map((c) => [c.id, c.nome]) : [])
     const agora = Date.now()
