@@ -4,6 +4,7 @@ import { router, protectedProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { permissoesAdmin, users } from '../db/schema.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
+import { gravarChavesComoExcecoes } from '../lib/acessos.js'
 
 // Chaves fixas — 1:1 com ADMIN_LINKS em client/src/components/Sidebar.tsx.
 // superAdmin nunca depende dessa lista: sempre vê tudo (ver Sidebar/rotas).
@@ -396,9 +397,14 @@ export const permissoesRouter = router({
       const featuresValidas = new Set<string>([...FEATURES_ADMIN, ...FEATURES_VENDEDOR, ...FEATURES_RELATORIOS, ...FEATURES_GESTOR])
       const features = input.features.filter((f) => featuresValidas.has(f))
 
-      await db.delete(permissoesAdmin).where(eq(permissoesAdmin.userId, input.userId))
-      if (features.length > 0) {
-        await db.insert(permissoesAdmin).values(features.map((feature) => ({ userId: input.userId, feature })))
+      // Quem já está numa função viva: o ajuste vira exceção (senão a próxima
+      // mudança na função apagaria). Quem não está: grava direto, como antes.
+      const virouExcecao = await gravarChavesComoExcecoes(input.userId, features, ctx.user.id)
+      if (!virouExcecao) {
+        await db.delete(permissoesAdmin).where(eq(permissoesAdmin.userId, input.userId))
+        if (features.length > 0) {
+          await db.insert(permissoesAdmin).values(features.map((feature) => ({ userId: input.userId, feature })))
+        }
       }
 
       await registrarAuditoria({

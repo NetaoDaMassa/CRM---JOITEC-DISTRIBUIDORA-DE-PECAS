@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { empresas, funcaoTemplates, notifications, permissoesAdmin, users } from '../db/schema.js'
+import { empresas, funcaoTemplates, funcoes, notifications, permissoesAdmin, users } from '../db/schema.js'
 import { registrarAuditoria } from './auditoria.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { criarUsuario } from './criarUsuario.js'
@@ -249,11 +249,23 @@ async function ligar(codigo: number, userId: number, slug: string, ligados: Reco
 
 export async function criarContaVendedorSap(input: { codigo: number; nome: string; username: string }, empresaId: number, autorId: number) {
   const { empresa, ligados } = await pendenteParaEmpresa(input.codigo, empresaId)
-  const template = await db.query.funcaoTemplates.findFirst({
-    where: and(eq(funcaoTemplates.empresaId, empresaId), eq(funcaoTemplates.nome, 'Vendedor'), eq(funcaoTemplates.role, 'vendor')),
+  // Funções vivas (2026-11-09): vendedor novo já entra ligado à função
+  // Vendedor (ou Vendedor Odin Compressores). Sem ela, cai no modelo antigo.
+  const funcaoViva = await db.query.funcoes.findFirst({
+    where: eq(funcoes.nome, empresa.slug === 'odin-compressores' ? 'Vendedor Odin Compressores' : 'Vendedor'),
   })
-  if (!template) throw new Error('Esta empresa não tem a função "Vendedor". Crie em Funções.')
-  const r = await criarUsuario({ empresaId, name: input.nome.trim(), username: input.username.trim().toLowerCase(), funcaoTemplateId: template.id })
+  const template = funcaoViva
+    ? undefined
+    : await db.query.funcaoTemplates.findFirst({
+        where: and(eq(funcaoTemplates.empresaId, empresaId), eq(funcaoTemplates.nome, 'Vendedor'), eq(funcaoTemplates.role, 'vendor')),
+      })
+  if (!funcaoViva && !template) throw new Error('Esta empresa não tem a função "Vendedor". Crie em Funções e permissões.')
+  const r = await criarUsuario({
+    empresaId,
+    name: input.nome.trim(),
+    username: input.username.trim().toLowerCase(),
+    ...(funcaoViva ? { funcaoId: funcaoViva.id } : { funcaoTemplateId: template!.id }),
+  })
   await ligar(input.codigo, r.id, empresa.slug, ligados)
   await registrarAuditoria({ tabela: 'users', registroId: r.id, acao: 'criar', alteradoPor: autorId, campo: 'origem', valorNovo: `Vendedor ${input.codigo} do SAP` })
   return { id: r.id, username: input.username.trim().toLowerCase(), senhaTemporaria: r.senhaTemporaria }

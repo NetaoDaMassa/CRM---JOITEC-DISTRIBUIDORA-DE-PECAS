@@ -34,6 +34,7 @@ import AdminMetas from './pages/admin/Metas'
 import AdminKanban from './pages/admin/Kanban'
 import AdminCalendario from './pages/admin/Calendario'
 import AdminPermissoes from './pages/admin/Permissoes'
+import AdminAcessos from './pages/admin/Acessos'
 import AdminFuncoes from './pages/admin/Funcoes'
 import AdminVagas from './pages/admin/Vagas'
 import AdminCandidatos from './pages/admin/Candidatos'
@@ -330,6 +331,7 @@ export default function App() {
           <Route path="admin/metas" element={<AdminGuard><FeatureGuard feature="metas"><AdminMetas /></FeatureGuard></AdminGuard>} />
           <Route path="admin/pos-venda" element={<AdminGuard><FeatureGuard feature="pos_venda"><FilaPosVenda /></FeatureGuard></AdminGuard>} />
           <Route path="admin/chat" element={<AdminGuard><FeatureGuard feature="chat"><Chat /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/acessos" element={<AdminGuard><SuperAdminGuard><AdminAcessos /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/permissoes" element={<AdminGuard><SuperAdminGuard><AdminPermissoes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/funcoes" element={<AdminGuard><SuperAdminGuard><AdminFuncoes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/vagas" element={<AdminGuard><FeatureGuard feature="vagas"><AdminVagas /></FeatureGuard></AdminGuard>} />

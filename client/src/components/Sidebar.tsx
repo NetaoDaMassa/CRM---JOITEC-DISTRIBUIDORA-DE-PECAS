@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck, MousePointerClick,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, UserCog, Activity, UserPlus, MapPin,
+  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall,
 } from 'lucide-react'
@@ -506,8 +506,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       visivel: user?.role === 'admin' && !!(user.superAdmin || FEATURES_GUIA_FINANCEIRO.some((f) => minhasFeatures?.includes(f))),
     },
     { to: '/painel-tv', label: 'Painel de TV', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv')) },
-    { to: '/admin/permissoes', label: 'Permissões', icon: ShieldCheck, visivel: !!user?.superAdmin },
-    { to: '/admin/funcoes', label: 'Funções', icon: UserCog, visivel: !!user?.superAdmin },
+    // Funções vivas (2026-11-09): uma tela só no lugar de Permissões +
+    // Funções. As antigas continuam no ar pelo endereço (/admin/permissoes,
+    // /admin/funcoes) enquanto o João se acostuma.
+    { to: '/admin/acessos', label: 'Funções e permissões', icon: ShieldCheck, visivel: !!user?.superAdmin },
     { to: '/admin/leads-regioes', label: 'Regiões de Leads', icon: MapPin, visivel: !!user?.superAdmin },
     // Marketing — Geral e Painel de TV Marketing escondidos do menu (João
     // 2026-10-19: "pode tirar, depois construímos") — rotas continuam no App.tsx.

@@ -21,6 +21,7 @@ import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
 import { trocarCodigoPorToken, iniciarListener, baixarGravacaoGoto } from './lib/goto.js'
+import { migrarParaFuncoesVivas } from './lib/acessos.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
@@ -811,6 +812,8 @@ async function start() {
     await backfillPermissoesVendedor()
     await seedFuncaoTemplatesPadrao()
     await backfillFuncaoRh()
+    // Funções vivas (2026-11-09) — roda uma vez só, na primeira subida.
+    await migrarParaFuncoesVivas()
   } catch (err) {
     console.error('[db] falha ao aplicar migrações:', err)
     process.exit(1)

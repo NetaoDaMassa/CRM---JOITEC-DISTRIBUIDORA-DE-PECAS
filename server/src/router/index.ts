@@ -39,6 +39,7 @@ import { comprasRouter } from './compras.js'
 import { comprasProcessoRouter } from './comprasProcesso.js'
 import { metaConversoesRouter } from './metaConversoes.js'
 import { permissoesRouter } from './permissoes.js'
+import { acessosRouter } from './acessos.js'
 import { funcaoTemplatesRouter } from './funcaoTemplates.js'
 import { vagasRouter } from './vagas.js'
 import { candidatosRouter } from './candidatos.js'
@@ -129,6 +130,7 @@ export const appRouter = router({
   comprasProcesso: comprasProcessoRouter,
   metaConversoes: metaConversoesRouter,
   permissoes: permissoesRouter,
+  acessos: acessosRouter,
   funcaoTemplates: funcaoTemplatesRouter,
   vagas: vagasRouter,
   candidatos: candidatosRouter,
