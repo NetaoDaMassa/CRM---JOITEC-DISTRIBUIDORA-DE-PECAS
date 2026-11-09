@@ -8,6 +8,7 @@ import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
+import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
@@ -18,7 +19,6 @@ import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedi
 const FEATURE = 'controle_estoque'
 const FEATURE_DESCARTAR = 'expedicao_descartar'
 const FEATURE_PAINEL = 'painel_logistica'
-const PRAZO_HORAS = 48
 
 const ETAPAS = ['separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'coleta', 'coletado'] as const
 type Etapa = (typeof ETAPAS)[number]
@@ -40,7 +40,8 @@ const campos = {
 
 // SQLite "YYYY-MM-DD HH:MM:SS" (UTC) → ms.
 const ms = (s: string | null) => (s ? Date.parse(`${s.replace(' ', 'T')}Z`) : NaN)
-const prazoLimite = (inicio: string) => ms(inicio) + PRAZO_HORAS * 3600_000
+// 48h contando só dia útil (fim de semana e feriado não contam) — ver lib/expedicaoPrazo.ts.
+const prazoLimite = (inicio: string) => prazoLimiteExpedicao(inicio)
 
 async function acharPedido(empresaId: number, id: number) {
   const p = await db.query.expedicaoPedidos.findFirst({ where: and(eq(expedicaoPedidos.id, id), eq(expedicaoPedidos.empresaId, empresaId)) })
@@ -217,7 +218,7 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
       erros: errosPor.get(p.id) ?? 0,
       prazoLimite: new Date(limite).toISOString(),
-      horasRestantes: Math.round((limite - (p.coletadoEm ? ms(p.coletadoEm) : agora)) / 360_000) / 10,
+      horasRestantes: Math.round(horasUteisEntre(p.coletadoEm ? ms(p.coletadoEm) : agora, limite) * 10) / 10,
       noPrazo: p.coletadoEm ? ms(p.coletadoEm) <= limite : null,
     }
   })

@@ -187,7 +187,7 @@ export default function Expedicao() {
           <div>
             <h1 className="text-xl font-bold text-dark-100">Expedição</h1>
             <p className="text-sm text-dark-400">
-              Pedidos que o SAP mandou separar · prazo de 48h até a coleta
+              Pedidos que o SAP mandou separar · prazo de 48h úteis até a coleta (sábado, domingo e feriado não contam)
               {atrasados > 0 && <span className="text-red-300 font-medium"> · {atrasados} atrasado(s)</span>}
             </p>
           </div>
@@ -226,7 +226,7 @@ export default function Expedicao() {
           'Na conferência (e na embalagem), anote cada erro achado: item e tipo. O erro conta para quem fez a etapa anterior.',
           'Na embalagem, informe volumes, cabeçotes e paletes. A NF aparece sozinha quando sai no SAP.',
           'Com a NF emitida, agende a coleta (transportadora, dia e hora). Sem NF não dá para agendar.',
-          'Quando a transportadora levar, toque em "Coletado". O prazo de 48h conta do picking até aqui.',
+          'Quando a transportadora levar, toque em "Coletado". O prazo de 48h conta do picking até aqui, só em dia útil: sábado, domingo e feriado não contam.',
           'Pedido coletado fica no quadro só no dia. Depois, consulte na aba "Coletados".',
         ]}
       />
@@ -269,7 +269,7 @@ export default function Expedicao() {
 
       {aba === 'quadro' && listaAtrasados.length > 0 && (
         <div className="rounded-2xl border border-red-700/50 bg-red-900/15 p-4 space-y-2">
-          <p className="text-sm font-semibold text-red-200">⚠️ {listaAtrasados.length} pedido(s) passaram das 48h sem coleta</p>
+          <p className="text-sm font-semibold text-red-200">⚠️ {listaAtrasados.length} pedido(s) passaram das 48h úteis sem coleta</p>
           <div className="flex flex-wrap gap-2">
             {listaAtrasados.map((p) => (
               <button

@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoPedidos, permissoesAdmin, users } from '../db/schema.js'
+import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
 
 // "Falar com a expedição" no chat (pedido do João, 2026-11-05): uma conversa
 // por PEDIDO do SAP (idOrigem = DocEntry do pedido de venda), que continua a
@@ -85,7 +86,7 @@ export async function processoDoPedido(entry: number, verErros: boolean) {
       return i === atual ? 'agora' : 'futuro'
     }
     const nErros = (etapa: string) => errosDoCard.filter((e) => e.etapa === etapa).length
-    const prazoMs = Date.parse(`${c.inicioPrazo.replace(' ', 'T')}Z`) + 48 * 3600_000
+    const prazoMs = prazoLimiteExpedicao(c.inicioPrazo)
     return {
       id: c.id,
       pedido: c.pedidosSap,

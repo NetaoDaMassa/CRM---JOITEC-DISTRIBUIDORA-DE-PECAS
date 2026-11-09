@@ -7,6 +7,7 @@ import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { aprenderLocalizacoes } from './sapLocalizacoes.js'
 import { atualizarKits, dadosDaLinha } from './sapKits.js'
+import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
 
 // Fila do Controle do Estoque a partir do SAP (pedido do João, 2026-10-29).
 // Jornada no SAP: cotação → financeiro libera → pedido → estoque gera o
@@ -604,7 +605,7 @@ async function compararComAnterior(
   return { marcas, mudancas }
 }
 
-// Passou das 48h do picking sem coleta: avisa (uma vez por pedido) quem tem
+// Passou das 48h ÚTEIS do picking sem coleta (fim de semana/feriado não contam): avisa (uma vez por pedido) quem tem
 // o Controle do Estoque naquela empresa e o vendedor do cliente.
 async function avisarAtrasados(): Promise<number> {
   const limite = new Date(Date.now() - 48 * 3600_000).toISOString().replace('T', ' ').slice(0, 19)
@@ -616,9 +617,11 @@ async function avisarAtrasados(): Promise<number> {
         eq(expedicaoPedidos.historico, false),
         notInArray(expedicaoPedidos.etapa, ['coletado', 'cancelado', 'descartado']),
         isNull(expedicaoPedidos.alertaAtrasoEm),
+        // 48h corridas é o mínimo; o prazo de verdade (só dia útil) é conferido abaixo.
         lte(expedicaoPedidos.inicioPrazo, limite)
       )
     )
+    .then((l) => l.filter((p) => prazoLimiteExpedicao(p.inicioPrazo) <= Date.now()))
   for (const p of atrasados) {
     const estoque = await db
       .select({ id: users.id })
@@ -638,7 +641,7 @@ async function avisarAtrasados(): Promise<number> {
         clienteId: cliente?.id ?? null,
         type: 'expedicao_atraso',
         title: 'Pedido atrasado na expedição',
-        message: `Pedido ${p.pedidosSap} (${p.clienteNome ?? ''}) passou das 48h desde o picking e ainda não foi coletado.`,
+        message: `Pedido ${p.pedidosSap} (${p.clienteNome ?? ''}) passou das 48h úteis desde o picking e ainda não foi coletado.`,
       })
     }
     await db.update(expedicaoPedidos).set({ alertaAtrasoEm: agoraSqlite() }).where(eq(expedicaoPedidos.id, p.id))

@@ -64,7 +64,7 @@ export default function ExpedicaoDesempenho() {
       {data && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <Kpi titulo="Pedidos coletados" valor={num(data.coletados)} />
-          <Kpi titulo="No prazo (48h)" valor={data.coletados ? pct(data.noPrazo / data.coletados) : '—'} sub={`${data.noPrazo} de ${data.coletados}`} />
+          <Kpi titulo="No prazo (48h úteis)" valor={data.coletados ? pct(data.noPrazo / data.coletados) : '—'} sub={`${data.noPrazo} de ${data.coletados}`} />
           <Kpi titulo="Tempo médio picking → coleta" valor={data.horasMediasAteColeta != null ? `${data.horasMediasAteColeta.toLocaleString('pt-BR')}h` : '—'} />
           <Kpi titulo="Erros anotados" valor={num(data.erros)} />
         </div>
