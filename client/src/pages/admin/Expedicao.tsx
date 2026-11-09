@@ -13,6 +13,7 @@ import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoBu
 import { useAuth } from '../../contexts/AuthContext'
 import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerTamanho, salvarTamanho } from '../../lib/etiquetasTermicas'
 import HistoricoAgendamentos from '../../components/HistoricoAgendamentos'
+import NotaSapBotoes from '../../components/NotaSapBotoes'
 
 // Controle do Estoque / Expedição (pedido do João, 2026-10-29) — fila que
 // nasce do picking gerado no SAP; o estoque anota separação → conferência →
@@ -686,6 +687,14 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
           </div>
         )}
 
+        {p.nfNumero && (
+          <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4 space-y-2">
+            <p className="text-xs text-dark-400">
+              Nota fiscal <b className="text-green-300">NF {p.nfNumero}</b> — arquivos do SAP
+            </p>
+            <NotaSapBotoes pedidoId={p.id} />
+          </div>
+        )}
         {p.etapa === 'coletado' && p.agendamentos.length > 0 && (
           <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4">
             <HistoricoAgendamentos agendamentos={p.agendamentos} />

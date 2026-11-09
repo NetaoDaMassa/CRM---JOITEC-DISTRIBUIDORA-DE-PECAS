@@ -16,6 +16,8 @@ export interface SapSessao {
   // Segue o odata.nextLink até o fim. `porPagina` vira o Prefer:
   // odata.maxpagesize (padrão do Service Layer é 20).
   getTodos<T = unknown>(caminho: string, porPagina?: number): Promise<T[]>
+  // Arquivo binário (anexo: GET Attachments2(id)/$value?filename='x.pdf').
+  getArquivo(caminho: string): Promise<{ dados: Buffer; tipo: string }>
 }
 
 export function sapConfigurado(): boolean {
@@ -93,6 +95,11 @@ async function sessaoSap<T>(fn: (sap: SapSessao) => Promise<T>): Promise<T> {
         url = proximo ? `${base}/${proximo.replace(/^\/?b1s\/v[12]\//, '')}` : null
       }
       return todos
+    },
+    async getArquivo(caminho) {
+      const r = await fetch(`${base}${caminho}`, { headers: { Cookie: cookie } })
+      if (!r.ok) throw new Error(`SAP respondeu HTTP ${r.status} em ${caminho}: ${mensagemErro(await r.text())}`)
+      return { dados: Buffer.from(await r.arrayBuffer()), tipo: r.headers.get('content-type') ?? 'application/octet-stream' }
     },
   }
 

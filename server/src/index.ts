@@ -14,7 +14,9 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
-import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela } from './db/schema.js'
+import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas } from './db/schema.js'
+import { temFeature } from './router/_base.js'
+import { baixarArquivoNotaSap, FILIAL_SAP_POR_SLUG } from './lib/sapDanfe.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
@@ -553,6 +555,38 @@ app.get('/pabx-gravacao/:id', async (req, res) => {
   } catch (e) {
     const causa = (e as { cause?: { code?: string } }).cause?.code ?? (e as Error).message
     res.status(502).json({ error: `Não consegui buscar a gravação na PABXONE360 (${causa})` })
+  }
+})
+
+// DANFE (PDF) ou XML da NF de um pedido da Expedição, buscado no SAP na hora
+// (anexo que o TaxPlus põe na nota). Mesma permissão da tela da Expedição.
+app.get('/expedicao-nota/:id', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!user.superAdmin && !(user.role === 'admin' && (await temFeature(user.id, 'controle_estoque')))) {
+    return res.status(403).json({ error: 'Sem permissão' })
+  }
+  const formato = req.query.formato === 'xml' ? 'xml' : 'pdf'
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  const pedido = await db.query.expedicaoPedidos.findFirst({
+    where: and(eq(expedicaoPedidos.id, Number(req.params.id)), eq(expedicaoPedidos.empresaId, empresaId ?? -1)),
+    columns: { nfNumero: true, empresaId: true },
+  })
+  if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado' })
+  if (!pedido.nfNumero) return res.status(404).json({ error: 'Esse pedido ainda não tem NF' })
+  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, pedido.empresaId), columns: { slug: true } })
+  const filial = FILIAL_SAP_POR_SLUG[empresa?.slug ?? '']
+  if (!filial) return res.status(404).json({ error: 'Empresa sem filial no SAP' })
+  try {
+    const r = await baixarArquivoNotaSap(filial, pedido.nfNumero, formato)
+    if ('erro' in r) return res.status(404).json({ error: r.erro })
+    res.setHeader('Content-Type', r.tipo)
+    res.setHeader('Content-Length', String(r.dados.length))
+    res.setHeader('Content-Disposition', `${formato === 'pdf' ? 'inline' : 'attachment'}; filename="${r.nome}"`)
+    res.setHeader('Cache-Control', 'private, max-age=3600')
+    res.end(r.dados)
+  } catch (e) {
+    res.status(502).json({ error: `Não consegui buscar no SAP: ${(e as Error).message}` })
   }
 })
 
