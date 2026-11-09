@@ -533,7 +533,8 @@ export default function FunilBoard({
     : cardsNoPeriodo
 
   // Ordenação dentro de cada coluna — "padrão" mantém a ordem que já vem do
-  // backend (mais antigo sem contato primeiro, ver buscarFunilDoVendedor).
+  // backend (mais antigo sem contato primeiro, ver buscarFunilDoVendedor),
+  // menos Abordagem (entrada mais recente em cima) e Venda balcão (dia da venda).
   // As demais opções reordenam só a visualização, não mudam nada no banco.
   const cardsOrdenados = [...cardsClassificados].sort((a, b) => {
     switch (ordenacao) {
@@ -720,6 +721,8 @@ export default function FunilBoard({
           const ehBalcao = etapa.value === ETAPA_VENDA_BALCAO
           const colCards = cardsOrdenados.filter((c) => c.etapa === etapa.value && !(mostrarPedidosCarteira && c.pedidoCarteira))
           if (ehBalcao && ordenacao === 'padrao') colCards.sort((a, b) => dataVendaCard(b).localeCompare(dataVendaCard(a)))
+          // Abordagem: quem acabou de sair de Novo fica em cima (João, 2026-11-09).
+          if (etapa.value === 'abordagem' && ordenacao === 'padrao') colCards.sort((a, b) => b.dataEntradaEtapa.localeCompare(a.dataEntradaEtapa))
           const resumoDia = new Map<string, { qtd: number; total: number }>()
           if (ehBalcao) {
             for (const c of colCards) {
