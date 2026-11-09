@@ -64,7 +64,7 @@ async function main() {
     let exc = excecoesParaManter(atuais, funcao, gerenciadas)
     const tiradas: string[] = []
     exc = exc.filter((x) => {
-      const tira = x.modo === 'add' && correcaoTira(chave, x.feature)
+      const tira = x.modo === 'add' && correcaoTira(chave, x.feature, String(p.username))
       if (tira) tiradas.push(x.feature)
       return !tira
     })

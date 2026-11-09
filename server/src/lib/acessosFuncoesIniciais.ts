@@ -93,8 +93,13 @@ export const CHAVES_TIRADAS_DE_VENDEDOR = new Set(['devolucoes_excluir_chamado',
 // mundo na troca. João, 2026-11-09.
 export const CHAVES_TIRADAS_DE_TODOS = new Set(['backup'])
 
+// Caixa é do financeiro: sai de quem tinha como exceção, menos do Flavio
+// (Loja Física), que precisa. João, 2026-11-09.
+export const CAIXA_MANTEM = new Set(['flavio'])
+
 // Chaves que, na troca, NÃO viram exceção (ou seja, a pessoa perde).
-export function correcaoTira(funcaoChave: string, feature: string): boolean {
+export function correcaoTira(funcaoChave: string, feature: string, username: string): boolean {
+  if (feature === 'caixa') return !CAIXA_MANTEM.has(username.trim())
   return CHAVES_TIRADAS_DE_TODOS.has(feature) || (FUNCOES_DE_VENDEDOR.has(funcaoChave) && CHAVES_TIRADAS_DE_VENDEDOR.has(feature))
 }
 
@@ -102,6 +107,7 @@ export const NOME_CORRECAO: Record<string, string> = {
   devolucoes_excluir_chamado: 'excluir chamado',
   devolucoes_ver_comissao: 'ver comissão',
   backup: 'Backup',
+  caixa: 'Caixa',
 }
 
 // "Vê tudo": cada item no nível mais baixo dele (só a tela, sem poderes

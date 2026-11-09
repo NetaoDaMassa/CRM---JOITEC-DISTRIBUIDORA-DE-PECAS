@@ -190,7 +190,7 @@ export async function migrarParaFuncoesVivas() {
     const funcao = chavesDaFuncao(itensDaFuncaoInicial(chave), slug)
     let exc = excecoesParaManter(await chavesAtuais(p.id), funcao, chavesGerenciadas(slug))
     const antes = exc.length
-    exc = exc.filter((e) => !(e.modo === 'add' && correcaoTira(chave, e.feature)))
+    exc = exc.filter((e) => !(e.modo === 'add' && correcaoTira(chave, e.feature, p.username)))
     correcoes += antes - exc.length
     await db.update(users).set({ funcaoId }).where(eq(users.id, p.id))
     if (exc.length) await db.insert(usuarioExcecoes).values(exc.map((e) => ({ userId: p.id, feature: e.feature, modo: e.modo })))
