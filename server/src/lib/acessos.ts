@@ -28,6 +28,28 @@ import {
 } from './acessosFuncoesIniciais.js'
 import { registrarAuditoria } from './auditoria.js'
 
+// Pessoa numa função de SETOR DO GRUPO (Financeiro, Compras, RH, Vê tudo...)
+// pode trocar de empresa pelo seletor, como o superAdmin — sempre só nas
+// telas da função dela. Substitui os logins duplicados por empresa
+// (contas vinculadas) pra esses setores. Pedido do João, 2026-11-09.
+// Cache curto porque é consultado em toda requisição.
+const cacheGrupo = new Map<number, { valor: boolean; ate: number }>()
+export async function ehSetorDoGrupo(userId: number): Promise<boolean> {
+  const c = cacheGrupo.get(userId)
+  if (c && c.ate > Date.now()) return c.valor
+  const u = await db.query.users.findFirst({ where: eq(users.id, userId), columns: { funcaoId: true, isActive: true } })
+  let valor = false
+  if (u?.funcaoId && u.isActive) {
+    const f = await db.query.funcoes.findFirst({ where: eq(funcoes.id, u.funcaoId), columns: { camada: true } })
+    valor = f?.camada === 'grupo'
+  }
+  cacheGrupo.set(userId, { valor, ate: Date.now() + 30_000 })
+  return valor
+}
+export function limparCacheGrupo() {
+  cacheGrupo.clear()
+}
+
 async function slugDaEmpresa(empresaId: number): Promise<string | null> {
   const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
   return e?.slug ?? null
@@ -75,6 +97,7 @@ export async function definirFuncaoDaPessoa(userId: number, funcaoId: number | n
 
   await db.delete(usuarioExcecoes).where(eq(usuarioExcecoes.userId, userId))
   await db.update(users).set({ funcaoId }).where(eq(users.id, userId))
+  limparCacheGrupo()
   if (!funcaoId) return
 
   if (manterAcesso) {

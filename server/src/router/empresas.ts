@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { eq, inArray } from 'drizzle-orm'
 import { router, protectedProcedure, publicProcedure, superAdminProcedure } from './_base.js'
+import { ehSetorDoGrupo } from '../lib/acessos.js'
 import { db } from '../db/client.js'
 import { adminEmpresasExtras, empresas, users } from '../db/schema.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
@@ -20,7 +21,8 @@ export const empresasRouter = router({
   // liberou explicitamente pra ele (adminEmpresasExtras — ver Permissões,
   // seção "Empresas extras"). Vendedor continua só com a própria.
   list: protectedProcedure.query(async ({ ctx }) => {
-    if (ctx.user.superAdmin) {
+    // Setor do grupo (funções vivas) troca de empresa como o superAdmin.
+    if (ctx.user.superAdmin || (await ehSetorDoGrupo(ctx.user.id))) {
       return db.query.empresas.findMany({ orderBy: (e, { asc }) => [asc(e.nome)] })
     }
     const propria = await db.query.empresas.findFirst({ where: (e, { eq }) => eq(e.id, ctx.user.empresaId) })

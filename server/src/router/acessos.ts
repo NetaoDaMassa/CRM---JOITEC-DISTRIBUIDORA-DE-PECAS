@@ -9,7 +9,7 @@ import { router, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, funcaoItens, funcoes, permissoesAdmin, usuarioExcecoes, users } from '../db/schema.js'
 import { AREAS, CATALOGO, ITEM_POR_ID, NIVEL_LABEL, chavesAteNivel, chavesDaFuncao, itemVale, niveisDoItem, nivelPorChaves } from '../lib/acessosCatalogo.js'
-import { definirFuncaoDaPessoa, definirNivelDaPessoa, itensDaFuncao, recalcularFuncao, recalcularPessoa } from '../lib/acessos.js'
+import { definirFuncaoDaPessoa, definirNivelDaPessoa, itensDaFuncao, limparCacheGrupo, recalcularFuncao, recalcularPessoa } from '../lib/acessos.js'
 import { criarUsuario, gerarSenhaTemporaria, REGIAO_VALUES } from '../lib/criarUsuario.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 
@@ -76,6 +76,7 @@ export const acessosRouter = router({
       const linhas = Object.entries(itens).map(([item, nivel]) => ({ funcaoId: id!, item, nivel }))
       if (linhas.length) await db.insert(funcaoItens).values(linhas)
       const afetadas = await recalcularFuncao(id)
+      limparCacheGrupo()
 
       await registrarAuditoria({
         tabela: 'funcoes',
@@ -198,6 +199,7 @@ export const acessosRouter = router({
       if (!alvo) throw new Error('Pessoa não encontrada')
       if (alvo.superAdmin && mudancas.isActive === false) throw new Error('Não dá pra desativar o admin principal')
       await db.update(users).set({ ...mudancas, updatedAt: new Date().toISOString() }).where(eq(users.id, id))
+      limparCacheGrupo()
       for (const [campo, valor] of Object.entries(mudancas)) {
         await registrarAuditoria({ tabela: 'users', registroId: id, acao: 'editar', campo, valorNovo: String(valor), alteradoPor: ctx.user.id })
       }

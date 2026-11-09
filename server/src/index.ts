@@ -21,7 +21,7 @@ import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
 import { trocarCodigoPorToken, iniciarListener, baixarGravacaoGoto } from './lib/goto.js'
-import { migrarParaFuncoesVivas } from './lib/acessos.js'
+import { migrarParaFuncoesVivas, ehSetorDoGrupo } from './lib/acessos.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
 import { careersRouter } from './routes/careers.js'
@@ -123,7 +123,14 @@ async function resolverEmpresaId(
   const concedida = await db.query.adminEmpresasExtras.findFirst({
     where: and(eq(adminEmpresasExtras.userId, user.id), eq(adminEmpresasExtras.empresaId, empresaIdPedida)),
   })
-  return concedida ? empresaIdPedida : user.empresaId
+  if (concedida) return empresaIdPedida
+  // Setor do grupo (Financeiro, RH...) entra em qualquer empresa — só nas
+  // telas da função dela (as permissões não mudam com a empresa).
+  if (await ehSetorDoGrupo(user.id)) {
+    const existe = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaIdPedida), columns: { id: true } })
+    if (existe) return empresaIdPedida
+  }
+  return user.empresaId
 }
 
 // tRPC

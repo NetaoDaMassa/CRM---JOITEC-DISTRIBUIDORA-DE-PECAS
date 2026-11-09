@@ -139,7 +139,7 @@ function AbaFuncoes() {
   if (isLoading || !catalogo) return <p className="text-sm text-dark-400">Carregando...</p>
 
   const grupos: { titulo: string; dica: string; camada: Camada }[] = [
-    { titulo: 'Setores do grupo', dica: 'Atendem todas as empresas, cada um na sua parte.', camada: 'grupo' },
+    { titulo: 'Setores do grupo', dica: 'Atendem todas as empresas: trocam de empresa pelo seletor no topo, sempre só nas telas da função.', camada: 'grupo' },
     { titulo: 'Em cada empresa', dica: 'A pessoa só enxerga a empresa dela.', camada: 'empresa' },
   ]
 
@@ -185,7 +185,7 @@ function AbaFuncoes() {
                 onChange={(e) => setForm({ ...form, camada: e.target.value as Camada })}
                 options={[
                   { value: 'empresa', label: 'Em uma empresa (Gerente, Vendedor, Estoque...)' },
-                  { value: 'grupo', label: 'Setor do grupo (Financeiro, Compras, RH...)' },
+                  { value: 'grupo', label: 'Setor do grupo — troca de empresa pelo seletor (Financeiro, Compras, RH...)' },
                 ]}
               />
               <Select
@@ -289,6 +289,7 @@ function AbaPessoas() {
   const senhaMut = trpc.acessos.redefinirSenha.useMutation({ onSuccess: (r) => setSenha(r), onError: (e) => toast.error(e.message) })
 
   const nomeFuncao = new Map((funcoes ?? []).map((f) => [f.id, f.nome]))
+  const camadaFuncao = new Map((funcoes ?? []).map((f) => [f.id, f.camada]))
   const lista = (pessoas ?? []).filter((p) => {
     if (situacao === 'ativos' ? !p.isActive : p.isActive) return false
     if (empresaId && String(p.empresaId) !== empresaId) return false
@@ -335,7 +336,13 @@ function AbaPessoas() {
                     <span className="text-xs text-dark-400">@{p.username}{p.role === 'vendor' ? ' · vendedor' : ''}</span>
                   </button>
                 </td>
-                <td className="px-4 py-3 text-dark-200">{p.empresaNome}</td>
+                <td className="px-4 py-3 text-dark-200">
+                  {p.funcaoId && camadaFuncao.get(p.funcaoId) === 'grupo' ? (
+                    <span title={`Cadastro na ${p.empresaNome}; troca de empresa pelo seletor`} className="rounded-md bg-orange-500/15 px-2 py-0.5 text-xs font-semibold text-orange-200">Todas as empresas</span>
+                  ) : (
+                    p.empresaNome
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {p.superAdmin ? (
                     <span className="text-gold-300">Admin principal · vê tudo</span>

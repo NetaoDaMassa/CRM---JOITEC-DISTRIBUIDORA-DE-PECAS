@@ -89,6 +89,26 @@ async function main() {
   for (const l of semFuncao) console.log('  ' + l)
   console.log(`\n== O que muda de verdade no acesso (${mudancas.length}) ==`)
   for (const l of mudancas) console.log('  ' + l)
+  // Logins duplicados (contas vinculadas) de quem vai pra função de setor
+  // do grupo: com o seletor de empresa, deixam de ser necessários.
+  const grupoChaves = new Set(FUNCOES_INICIAIS.filter((f) => f.camada === 'grupo').map((f) => f.chave))
+  const info = new Map(pessoas.map((p) => [Number(p.id), p]))
+  const todos = new Map((await rows('select id, name, username, role, super_admin, empresa_id, is_active from users')).map((p) => [Number(p.id), p]))
+  const pares = await rows('select user_id, conta_vinculada_id from contas_vinculadas where user_id < conta_vinculada_id')
+  const linhasDup: string[] = []
+  for (const par of pares) {
+    const a = todos.get(Number(par.user_id))
+    const b = todos.get(Number(par.conta_vinculada_id))
+    if (!a || !b) continue
+    const fa = info.has(Number(a.id)) ? funcaoInicialDoUsuario({ username: String(a.username), role: String(a.role), superAdmin: !!Number(a.super_admin), empresaSlug: emp.get(Number(a.empresa_id))?.slug ?? null }) : null
+    const fb = info.has(Number(b.id)) ? funcaoInicialDoUsuario({ username: String(b.username), role: String(b.role), superAdmin: !!Number(b.super_admin), empresaSlug: emp.get(Number(b.empresa_id))?.slug ?? null }) : null
+    const desc = (x: Record<string, unknown>, f: string | null) => `${x.username} (${emp.get(Number(x.empresa_id))?.nome}${Number(x.is_active) ? '' : ', desativado'}${f ? ', ' + nomeFuncao.get(f) : ''})`
+    const grupo = (fa && grupoChaves.has(fa)) || (fb && grupoChaves.has(fb))
+    linhasDup.push(`${grupo ? 'PODE SAIR' : 'continua '} ${desc(a, fa)} ⇄ ${desc(b, fb)}`)
+  }
+  console.log(`\n== Logins duplicados (contas vinculadas) (${linhasDup.length}) — "PODE SAIR" = setor do grupo, o seletor de empresa substitui ==`)
+  for (const l of linhasDup.sort()) console.log('  ' + l)
+
   console.log(`\nConferência: ${erros === 0 ? 'OK — fora a correção aprovada, ninguém ganha nem perde nada' : erros + ' pessoa(s) com diferença inesperada'}`)
 }
 
