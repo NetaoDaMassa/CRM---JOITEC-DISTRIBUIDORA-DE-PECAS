@@ -4,7 +4,8 @@
 //
 // Quase tudo aqui é CONSULTA (GET). Gravar (`escrever`) só existe pra ações
 // que uma pessoa dispara de propósito numa tela — gerar picking e registrar
-// a conferência na Expedição (João, 2026-11-10); nenhuma rotina automática
+// a conferência na Expedição, enviar cotação e gerar pedido nas Cotações
+// (João, 2026-11-10); nenhuma rotina automática
 // grava no SAP. O usuário `integracao.frete` é o do próprio CRM (só o nome
 // ficou errado — João, 2026-11-10). Logout encerra só a sessão aberta aqui.
 //
@@ -20,7 +21,7 @@ export interface SapSessao {
   // Arquivo binário (anexo: GET Attachments2(id)/$value?filename='x.pdf').
   getArquivo(caminho: string): Promise<{ dados: Buffer; tipo: string }>
   // POST/PATCH. Erro do SAP vira exceção com a mensagem dele.
-  escrever<T = unknown>(metodo: 'POST' | 'PATCH', caminho: string, corpo: unknown): Promise<T | null>
+  escrever<T = unknown>(metodo: 'POST' | 'PATCH', caminho: string, corpo?: unknown): Promise<T | null>
 }
 
 export function sapConfigurado(): boolean {
@@ -100,7 +101,7 @@ async function sessaoSap<T>(fn: (sap: SapSessao) => Promise<T>): Promise<T> {
       return todos
     },
     async escrever(metodo, caminho, corpo) {
-      const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })
+      const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: corpo === undefined ? undefined : JSON.stringify(corpo) })
       const texto = await r.text()
       if (!r.ok) throw new Error(mensagemErro(texto))
       return texto ? JSON.parse(texto) : null

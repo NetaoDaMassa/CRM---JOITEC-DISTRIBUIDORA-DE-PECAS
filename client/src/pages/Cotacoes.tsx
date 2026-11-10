@@ -161,6 +161,11 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
                   {ctx?.veTudo && ` · ${c.vendedorNome}`}
                 </p>
               </div>
+              {c.sapPedidoNum ? (
+                <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-green-900/40 text-green-200">Pedido SAP {c.sapPedidoNum}</span>
+              ) : c.sapDocNum ? (
+                <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-teal-900/40 text-teal-200">SAP {c.sapDocNum}</span>
+              ) : null}
               <ChipStatus status={c.status} vencida={c.vencida} />
               <span className="text-sm font-bold text-gold-300 w-32 text-right">{formatarMoeda(c.total)}</span>
               <span className="text-xs text-dark-500 w-24 text-right">{timeAgo(`${c.updatedAt.replace(' ', 'T')}Z`)}</span>
@@ -318,6 +323,32 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const reabrir = trpc.cotacoesCrm.reabrir.useMutation({ onSuccess: depoisDeAcao('Reaberta para negociar'), onError: erro })
   const ganhar = trpc.cotacoesCrm.ganhar.useMutation({ onSuccess: depoisDeAcao('Registrado: cliente aprovou'), onError: erro })
   const perder = trpc.cotacoesCrm.perder.useMutation({ onSuccess: depoisDeAcao('Marcada como perdida'), onError: erro })
+  const enviarSap = trpc.cotacoesCrm.enviarAoSap.useMutation({
+    onSuccess: (r) => depoisDeAcao(`Cotação criada no SAP — nº ${r.docNum} (${formatarMoeda(r.total)} com impostos)`)(),
+    onError: (e) => toast.error(e.message, { duration: 10000 }),
+  })
+  const gerarPedido = trpc.cotacoesCrm.gerarPedido.useMutation({
+    onSuccess: (r) => depoisDeAcao(`Pedido de venda criado no SAP — nº ${r.docNum} (${formatarMoeda(r.total)} com impostos)`)(),
+    onError: (e) => toast.error(e.message, { duration: 10000 }),
+  })
+  // Item sem saldo no depósito: deixa montar, mas avisa que o SAP recusa.
+  const semEstoque = (lista: { itemCodigo: string; quantidade: number }[]) =>
+    lista.filter((l) => (porCodigo.get(l.itemCodigo)?.estoque ?? 0) < l.quantidade).map((l) => porCodigo.get(l.itemCodigo)?.nome ?? l.itemCodigo)
+  const onEnviarSap = () => {
+    if (id == null || !existente) return
+    const faltam = semEstoque(linhas)
+    const aviso = faltam.length
+      ? `Sem estoque suficiente no depósito (o SAP deve recusar):\n- ${faltam.slice(0, 8).join('\n- ')}\n\nEnviar mesmo assim?`
+      : `Criar a cotação nº ${id} no SAP?`
+    if (confirm(aviso)) enviarSap.mutate({ id })
+  }
+  const onGerarPedido = () => {
+    if (id == null || !existente) return
+    const aceitos = existente.itens.filter((i) => i.aceito)
+    const faltam = semEstoque(aceitos)
+    const aviso = `Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?${faltam.length ? `\n\nSem estoque suficiente (o SAP deve recusar):\n- ${faltam.slice(0, 8).join('\n- ')}` : ''}`
+    if (confirm(aviso)) gerarPedido.mutate({ id })
+  }
   const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
     onSuccess: (r) => {
       toast.success(`Cotação duplicada — nova nº ${r.id}`)
@@ -508,11 +539,16 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
               Perdida
             </Button>
           )}
-          <span title="Etapa 2: aguardando o usuário próprio do CRM e a base de teste do SAP">
-            <Button variant="secondary" disabled>
-              <Send className="h-4 w-4 mr-1.5" /> {status === 'ganha' ? 'Gerar pedido no SAP (em breve)' : 'Enviar ao SAP (em breve)'}
+          {existente && ['aprovada', 'enviada'].includes(status) && !existente.sapDocNum && podeMexer && (
+            <Button variant="secondary" loading={enviarSap.isPending} onClick={onEnviarSap}>
+              <Send className="h-4 w-4 mr-1.5" /> Enviar ao SAP
             </Button>
-          </span>
+          )}
+          {existente && status === 'ganha' && !existente.sapPedidoNum && podeMexer && (
+            <Button loading={gerarPedido.isPending} onClick={onGerarPedido}>
+              <Send className="h-4 w-4 mr-1.5" /> Gerar pedido no SAP
+            </Button>
+          )}
         </div>
       </div>
 
@@ -675,6 +711,11 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                           precisa aprovação
                         </span>
                       )}
+                      {l.item && l.item.estoque < l.quantidade && (
+                        <span className="text-[10px] font-semibold rounded bg-red-900/40 text-red-300 px-1.5 py-0.5" title="O SAP só aceita item com saldo no depósito">
+                          {l.item.estoque > 0 ? `só ${fmtQtd(l.item.estoque)} em estoque` : 'sem estoque'} — o SAP vai recusar
+                        </span>
+                      )}
                       <span className="ml-auto text-right">
                         <span className="block text-[11px] text-dark-500">por {l.item?.unidade ?? 'un'}</span>
                         <span className="block text-sm font-semibold text-dark-50">{formatarMoeda(l.subtotal)}</span>
@@ -823,7 +864,7 @@ td{padding:4px;border-bottom:1px dotted #9aa;vertical-align:top}.n{text-align:ri
 .peso{border-left:6px solid #e0102b;padding-left:6px;font-weight:bold;display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:3px}
 .obs{white-space:pre-wrap;margin-top:4px}.pe{margin-top:18px;color:#777;font-size:9px;display:flex;justify-content:space-between}
 </style></head><body>
-<div class="topo"><img src="${logo}" alt=""><div class="titulo">COTAÇÃO DE VENDA Nº<br>${c.id}</div><div></div></div>
+<div class="topo"><img src="${logo}" alt=""><div class="titulo">COTAÇÃO DE VENDA Nº<br>${c.sapDocNum ?? c.id}${c.sapDocNum ? `<div style="font:normal 10px Verdana">CRM nº ${c.id}</div>` : ''}</div><div></div></div>
 <div class="bloco">
   <div><b>${esc(e?.nome ?? '')}</b><br>${esc(e?.endereco ?? '')}<br>${e?.bairro ? `Bairro: ${esc(e.bairro)} ` : ''}${e?.cep ? `CEP: ${esc(e.cep)}` : ''}<br>${esc([e?.cidade, e?.uf].filter(Boolean).join(' - '))}<br>${e?.cnpj ? `CNPJ - ${esc(e.cnpj)}` : ''}</div>
   <div>
@@ -881,7 +922,19 @@ function FaixaSituacao({ c, status, descontoLivre, gerente }: { c: Cotacao; stat
   if (status === 'ganha') {
     const aceitos = c.itens.filter((i) => i.aceito)
     const valor = aceitos.reduce((s, i) => s + i.precoUnitario * i.quantidade, 0)
-    linhas.push({ cor: 'border-green-700/50 bg-green-900/20 text-green-200', texto: <>Cliente aprovou {aceitos.length === c.itens.length ? 'todos os itens' : `${aceitos.length} de ${c.itens.length} itens`} — <b>{formatarMoeda(valor)}</b>. Gerar o pedido no SAP entra na próxima etapa.</> })
+    linhas.push({
+      cor: 'border-green-700/50 bg-green-900/20 text-green-200',
+      texto: (
+        <>
+          Cliente aprovou {aceitos.length === c.itens.length ? 'todos os itens' : `${aceitos.length} de ${c.itens.length} itens`} — <b>{formatarMoeda(valor)}</b>.{' '}
+          {c.sapPedidoNum ? (
+            <>Pedido de venda <b>nº {c.sapPedidoNum}</b> criado no SAP — a venda entra no card (Fechado) sozinha e o picking pode ser gerado na Expedição.</>
+          ) : (
+            <>Clique em <b>Gerar pedido no SAP</b>.</>
+          )}
+        </>
+      ),
+    })
   }
   if (status === 'perdida') linhas.push({ cor: 'border-red-700/50 bg-red-900/20 text-red-200', texto: <>Perdida — <b>{c.motivoPerda}</b>{c.motivoPerdaObs ? `: ${c.motivoPerdaObs}` : ''}.</> })
   return (
@@ -890,6 +943,8 @@ function FaixaSituacao({ c, status, descontoLivre, gerente }: { c: Cotacao; stat
         <span className="font-semibold text-dark-100">Cotação nº {c.id}</span>
         <ChipStatus status={status} vencida={c.vencida} />
         <span className="text-xs text-dark-500">vendedor: {c.vendedorNome}</span>
+        {c.sapDocNum && <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-teal-900/40 text-teal-200">Cotação SAP nº {c.sapDocNum}</span>}
+        {c.sapPedidoNum && <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-green-900/40 text-green-200">Pedido SAP nº {c.sapPedidoNum}</span>}
       </div>
       {linhas.map((l, n) => (
         <div key={n} className={`rounded-xl border px-4 py-2.5 text-sm ${l.cor}`}>

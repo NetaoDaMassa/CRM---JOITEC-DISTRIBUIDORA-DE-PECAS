@@ -5167,9 +5167,11 @@ export const cotacoesCrm = sqliteTable(
     motivoPerda: text('motivo_perda'),
     motivoPerdaObs: text('motivo_perda_obs'),
     encerradaEm: text('encerrada_em'),
-    // Etapa 2/4 (SAP): cotação e pedido gerados.
+    // Cotação criada no SAP (Enviar ao SAP) e pedido gerado a partir dela.
     sapDocEntry: integer('sap_doc_entry'),
     sapDocNum: integer('sap_doc_num'),
+    sapPedidoEntry: integer('sap_pedido_entry'),
+    sapPedidoNum: integer('sap_pedido_num'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
     deletedAt: text('deleted_at'),

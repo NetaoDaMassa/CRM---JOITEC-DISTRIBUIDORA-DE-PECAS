@@ -25,6 +25,8 @@ CREATE TABLE `cotacoes_crm` (
 	`encerrada_em` text,
 	`sap_doc_entry` integer,
 	`sap_doc_num` integer,
+	`sap_pedido_entry` integer,
+	`sap_pedido_num` integer,
 	`created_at` text DEFAULT (datetime('now')) NOT NULL,
 	`updated_at` text DEFAULT (datetime('now')) NOT NULL,
 	`deleted_at` text,

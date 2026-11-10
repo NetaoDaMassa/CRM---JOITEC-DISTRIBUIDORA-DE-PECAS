@@ -38,6 +38,7 @@ import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
+import { enviarCotacaoSap, fecharCotacaoSap, gerarPedidoSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
@@ -104,6 +105,36 @@ async function nomeCliente(clienteId: number) {
   const c = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { razaoSocial: true } })
   return c?.razaoSocial ?? 'cliente'
 }
+
+// Monta o que vai pro SAP: cliente (código), itens na ordem (= LineNum).
+async function paraSap(c: typeof cotacoesCrm.$inferSelect, filial: number): Promise<{ dados: CotacaoParaSap; itens: (typeof cotacoesCrmItens.$inferSelect)[] }> {
+  const [cliente, itens, vendedor] = await Promise.all([
+    db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { codigo: true } }),
+    db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id)).orderBy(cotacoesCrmItens.id),
+    db.query.users.findFirst({ where: eq(users.id, c.vendedorId), columns: { name: true } }),
+  ])
+  if (!cliente?.codigo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente sem código do SAP' })
+  return {
+    itens,
+    dados: {
+      id: c.id,
+      cardCode: cliente.codigo,
+      filial,
+      prazoCodigo: c.prazoCodigo,
+      dataEntrega: c.dataEntrega,
+      numeroReferencia: c.numeroReferencia,
+      observacao: c.observacao,
+      transportadora: c.transportadora,
+      contato: c.contato,
+      tipoEnvio: c.tipoEnvio,
+      valorFrete: c.valorFrete,
+      vendedorNome: vendedor?.name ?? '',
+      itens: itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual })),
+    },
+  }
+}
+
+const sapErro = (e: unknown) => new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -269,6 +300,7 @@ export const cotacoesCrmRouter = router({
         enviadaClienteEm: cotacoesCrm.enviadaClienteEm,
         updatedAt: cotacoesCrm.updatedAt,
         sapDocNum: cotacoesCrm.sapDocNum,
+        sapPedidoNum: cotacoesCrm.sapPedidoNum,
         vendedorId: cotacoesCrm.vendedorId,
         clienteNome: clientes.razaoSocial,
         clienteCodigo: clientes.codigo,
@@ -502,8 +534,10 @@ export const cotacoesCrmRouter = router({
     const c = await acharCotacao(ctx, input.id)
     exigirDono(ctx, c)
     exigirStatus(c, ['aguardando_aprovacao', 'aprovada', 'enviada'], 'reabrir')
-    await db.update(cotacoesCrm).set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
-    await registrar(c.id, ctx.user.id, 'Reabriu para negociar')
+    // Já estava no SAP: fecha lá (ao reenviar, nasce uma cotação nova no SAP).
+    if (c.sapDocEntry) await fecharCotacaoSap(c.sapDocEntry).catch((e) => { throw sapErro(e) })
+    await db.update(cotacoesCrm).set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, sapDocEntry: null, sapDocNum: null, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, 'Reabriu para negociar', c.sapDocNum ? `Cotação SAP nº ${c.sapDocNum} fechada no SAP` : null)
     return { ok: true }
   }),
 
@@ -536,6 +570,7 @@ export const cotacoesCrmRouter = router({
       exigirDono(ctx, c)
       exigirStatus(c, ['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'], 'marcar como perdida')
       if (input.motivo === 'Outro' && !input.observacao) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Conte o motivo em "Outro"' })
+      if (c.sapDocEntry) await fecharCotacaoSap(c.sapDocEntry).catch((e) => { throw sapErro(e) })
       await db
         .update(cotacoesCrm)
         .set({ status: 'perdida', motivoPerda: input.motivo, motivoPerdaObs: input.observacao || null, encerradaEm: agoraSqlite(), updatedAt: agoraSqlite() })
@@ -543,6 +578,52 @@ export const cotacoesCrmRouter = router({
       await registrar(c.id, ctx.user.id, 'Marcou como perdida', input.observacao ? `${input.motivo}: ${input.observacao}` : input.motivo)
       return { ok: true }
     }),
+
+  // Cria a Cotação de Venda no SAP (pronta p/ enviar ou já enviada ao cliente).
+  enviarAoSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    exigirStatus(c, ['aprovada', 'enviada'], 'enviar ao SAP')
+    if (c.sapDocNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Já está no SAP (cotação nº ${c.sapDocNum})` })
+    const { dados } = await paraSap(c, ctx.filial)
+    let r
+    try {
+      r = await enviarCotacaoSap(dados)
+    } catch (e) {
+      throw sapErro(e)
+    }
+    await db.update(cotacoesCrm).set({ sapDocEntry: r.docEntry, sapDocNum: r.docNum, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, 'Enviou ao SAP', `Cotação SAP nº ${r.docNum} · ${brl(r.total)} com impostos`)
+    return { docNum: r.docNum, total: r.total }
+  }),
+
+  // Cliente aprovou → Pedido de Venda no SAP baseado na cotação, só com os
+  // itens aceitos. Se a cotação ainda não estava no SAP, envia antes.
+  // O pedido no SAP vira venda no card (Fechado) pela venda automática.
+  gerarPedido: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    exigirStatus(c, ['ganha'], 'gerar pedido de')
+    if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido já gerado (SAP nº ${c.sapPedidoNum})` })
+    const { dados, itens } = await paraSap(c, ctx.filial)
+    let cotEntry = c.sapDocEntry
+    try {
+      if (!cotEntry) {
+        const q = await enviarCotacaoSap(dados)
+        cotEntry = q.docEntry
+        await db.update(cotacoesCrm).set({ sapDocEntry: q.docEntry, sapDocNum: q.docNum }).where(eq(cotacoesCrm.id, c.id))
+        await registrar(c.id, ctx.user.id, 'Enviou ao SAP', `Cotação SAP nº ${q.docNum}`)
+      }
+      const aceitas = itens.map((i, linha) => (i.aceito ? linha : -1)).filter((l) => l >= 0)
+      const r = await gerarPedidoSap(dados, cotEntry, aceitas)
+      await db.update(cotacoesCrm).set({ sapPedidoEntry: r.docEntry, sapPedidoNum: r.docNum, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+      await registrar(c.id, ctx.user.id, 'Gerou o pedido no SAP', `Pedido SAP nº ${r.docNum} · ${brl(r.total)} com impostos`)
+      return { docNum: r.docNum, total: r.total }
+    } catch (e) {
+      if (e instanceof TRPCError) throw e
+      throw sapErro(e)
+    }
+  }),
 
   // Pra impressão: dados do cliente no SAP, buscando agora se ainda não tem.
   dadosClienteSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
