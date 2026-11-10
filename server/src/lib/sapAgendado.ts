@@ -10,6 +10,7 @@ import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
 import { sincronizarExpedicaoSap } from './sapExpedicao.js'
 import { sincronizarClientesNovosSap } from './sapClientes.js'
 import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
+import { sincronizarEstoqueSap } from './sapEstoque.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -110,5 +111,24 @@ export async function rodarExpedicaoSap(): Promise<void> {
     console.error('[sap-expedicao] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoExpedicao = false
+  }
+}
+
+// Estoque de Revenda + entradas por item (lib/sapEstoque.ts) — de 15 em 15
+// min: a foto do estoque só quando a última tem mais de 55 min, e mais 15
+// dias do histórico por rodada até chegar em hoje. Com `sap_sync_ativo`.
+let rodandoEstoque = false
+
+export async function rodarEstoqueSap(): Promise<void> {
+  if (rodandoEstoque || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoEstoque = true
+  try {
+    const r = await sincronizarEstoqueSap()
+    if (r.itensEstoque !== null) console.log(`[sap-estoque] estoque: ${r.itensEstoque} item(ns) em Revenda, ${r.entradas} entrada(s) recentes`)
+    if (r.historico) console.log(`[sap-estoque] histórico ${r.historico.de} a ${r.historico.ate}: ${r.historico.vendas} venda(s), ${r.historico.entradas} entrada(s)`)
+  } catch (err) {
+    console.error('[sap-estoque] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoEstoque = false
   }
 }

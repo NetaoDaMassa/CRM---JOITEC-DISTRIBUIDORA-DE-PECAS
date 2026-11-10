@@ -16,7 +16,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarClientesSap, rodarCotacoesSap, rodarExpedicaoSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -229,6 +229,10 @@ export function startScheduler() {
   })
   cron.schedule('1-59/2 * * * *', () => {
     rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))
+  })
+  // Estoque de Revenda e giro por item (relatórios de estoque) — de 15 em 15 min.
+  cron.schedule('12-59/15 * * * *', () => {
+    rodarEstoqueSap().catch((err) => console.error('[sap-estoque] erro no agendador:', err))
   })
   // Cadastro novo do SAP vira cliente no CRM — de 10 em 10 minutos.
   cron.schedule('3-59/10 * * * *', () => {

@@ -6,6 +6,7 @@ import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
+import { gravarVendasDasNotas } from './sapEstoque.js'
 import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
 
 // Itens das notas de venda puxados DIRETO do SAP (Service Layer) — passo 2
@@ -266,6 +267,12 @@ export async function sincronizarItensSap(opts: {
   }
 
   if (!opts.confirmar) return resultado
+
+  // Relatórios de estoque (lib/sapEstoque.ts): as mesmas notas, de TODOS os
+  // clientes, sem buscar no SAP de novo. Erro aqui não segura os itens.
+  if (!opts.soEmpresa && !opts.cardCodes?.length) {
+    await gravarVendasDasNotas(notas, de, ate).catch((err) => console.error('[sap-estoque] erro ao gravar vendas:', err instanceof Error ? err.message : err))
+  }
 
   for (const [slug, linhas] of paraGravar) {
     const empresa = empresaPorSlug.get(slug)!

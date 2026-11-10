@@ -10,6 +10,7 @@ import TabelaDados from '../../../components/relatorios/TabelaDados'
 import type { Coluna } from '../../../components/relatorios/TabelaDados'
 import Modal from '../../../components/ui/Modal'
 import type { PropsDetalhe } from './tipos'
+import { EstoqueSemVenda, MenosVendidos, TempoEstoque } from './ItensSapEstoque'
 
 // Itens do SAP mês a mês — pedido do diretor via João, 2026-10-30: "item
 // que em um mês vendeu 1000 e em novembro vendeu 600". Tabela com um mês
@@ -43,7 +44,33 @@ const PERIODOS = [
   { valor: '12', rotulo: '12 meses' },
 ] as const
 
-export function ItensSap({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe) {
+// Abas (João, 2026-11-10): mês a mês (o relatório do diretor) + três de
+// estoque, que vêm do SAP de hora em hora (ItensSapEstoque.tsx).
+type AbaItens = 'mes' | 'menos' | 'sem_venda' | 'tempo'
+
+export function ItensSap(props: PropsDetalhe) {
+  const [aba, setAba] = usePersistedState<AbaItens>('rel:itensSap:aba', 'mes')
+  return (
+    <div className="space-y-5">
+      <Abas<AbaItens>
+        valor={aba}
+        onChange={setAba}
+        opcoes={[
+          { valor: 'mes', rotulo: 'Mês a mês' },
+          { valor: 'menos', rotulo: 'Menos vendidos' },
+          { valor: 'sem_venda', rotulo: 'Estoque sem venda' },
+          { valor: 'tempo', rotulo: 'Tempo de estoque' },
+        ]}
+      />
+      {aba === 'mes' && <ItensMesAMes {...props} />}
+      {aba === 'menos' && <MenosVendidos simples={props.simples} mostrarResumo={props.mostrarResumo} />}
+      {aba === 'sem_venda' && <EstoqueSemVenda simples={props.simples} mostrarResumo={props.mostrarResumo} />}
+      {aba === 'tempo' && <TempoEstoque simples={props.simples} mostrarResumo={props.mostrarResumo} />}
+    </div>
+  )
+}
+
+function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe) {
   const mesAtual = hojeBrString().slice(0, 7)
   const [periodo, setPeriodo] = usePersistedState<string>('rel:itensSap:meses', '6')
   const [medida, setMedida] = usePersistedState<Medida>('rel:itensSap:medida', 'quantidade')

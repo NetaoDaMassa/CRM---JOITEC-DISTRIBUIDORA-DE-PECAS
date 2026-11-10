@@ -1051,6 +1051,13 @@
       "when": 1794330000000,
       "tag": "0149_loja_eventos_visitante",
       "breakpoints": true
+    },
+    {
+      "idx": 150,
+      "version": "6",
+      "when": 1794330030000,
+      "tag": "0150_sap_estoque",
+      "breakpoints": true
     }
   ]
 }

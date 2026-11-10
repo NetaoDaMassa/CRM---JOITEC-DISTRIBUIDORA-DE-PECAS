@@ -26,6 +26,7 @@ import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
+import { SAP_INICIO, estoqueDaFilial, filialDaEmpresa, menosVendidosDaFilial, situacaoHistoricoEstoque } from '../lib/sapEstoque.js'
 
 // Desde quando o cliente está com o vendedor atual — pedido do João,
 // 2026-10-21: nos "Clientes parados", um cliente passado pro vendedor há 3
@@ -1864,6 +1865,27 @@ export const reportsRouter = router({
         }
       }
       return { meses, itens: [...itens.values()] }
+    }),
+
+  // Abas de estoque do relatório (pedido do João, 2026-11-10): itens que
+  // menos venderam, estoque sem venda e tempo de estoque. Vale a filial da
+  // empresa inteira (estoque não é de vendedor); valor do estoque (custo)
+  // só pra admin. Ver lib/sapEstoque.ts.
+  itensSapEstoque: protectedProcedure.query(async ({ ctx }) => {
+    const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+    const filial = empresa ? filialDaEmpresa(empresa.slug) : null
+    const situacao = await situacaoHistoricoEstoque()
+    const verValor = ctx.user.role === 'admin'
+    return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, verValor, itens: filial === null ? [] : await estoqueDaFilial(filial, verValor) }
+  }),
+
+  itensSapMenosVendidos: protectedProcedure
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(async ({ ctx, input }) => {
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+      const filial = empresa ? filialDaEmpresa(empresa.slug) : null
+      const situacao = await situacaoHistoricoEstoque()
+      return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: filial === null ? [] : await menosVendidosDaFilial(filial, input.de, input.ate) }
     }),
 
   // Um item do relatório acima: quem comprou em cada mês.

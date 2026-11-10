@@ -5026,3 +5026,47 @@ export const comprasHistorico = sqliteTable(
   },
   (t) => ({ solIdx: index('idx_compras_hist_sol').on(t.solicitacaoId) })
 )
+
+// Estoque e giro por item no SAP (pedido do João, 2026-11-10): itens que
+// menos venderam, estoque sem venda há X dias e tempo de estoque. Foto do
+// estoque de Revenda (depósitos *-REV) por filial — refeita de hora em hora
+// por lib/sapEstoque.ts. filial = BPLId do SAP (3 Joitec, 4 Odin Tubos,
+// 1 Odin Compressores, 5 Compretec); valor = estoque × custo médio.
+export const sapEstoqueItens = sqliteTable(
+  'sap_estoque_itens',
+  {
+    filial: integer('filial').notNull(),
+    itemCodigo: text('item_codigo').notNull(),
+    itemNome: text('item_nome'),
+    codigoAntigo: text('codigo_antigo'),
+    quantidade: real('quantidade').notNull(),
+    valor: real('valor').notNull(),
+    atualizadoEm: text('atualizado_em').notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.filial, t.itemCodigo] }) })
+)
+
+// Vendas e entradas de cada item por documento do SAP, para TODOS os
+// clientes (sap_itens_historico só guarda nota de cliente do CRM).
+// tipo 'venda' (origem 'nota' = nota de saída) ou 'entrada' (origem 'compra'
+// = nota de entrada, 'entrada' = entrada de mercadoria, 'transferencia' =
+// transferência vinda de outra filial). dia = DocDate.
+export const sapItemMovimentos = sqliteTable(
+  'sap_item_movimentos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tipo: text('tipo', { enum: ['venda', 'entrada'] }).notNull(),
+    origem: text('origem', { enum: ['nota', 'compra', 'entrada', 'transferencia'] }).notNull(),
+    docEntry: integer('doc_entry').notNull(),
+    filial: integer('filial').notNull(),
+    itemCodigo: text('item_codigo').notNull(),
+    itemNome: text('item_nome'),
+    dia: text('dia').notNull(),
+    quantidade: real('quantidade').notNull(),
+    valor: real('valor').notNull(),
+  },
+  (t) => ({
+    filialIdx: index('idx_sap_item_mov_filial').on(t.filial, t.tipo, t.dia),
+    origemIdx: index('idx_sap_item_mov_origem').on(t.origem, t.dia),
+  })
+)
