@@ -11,6 +11,7 @@ import { sincronizarExpedicaoSap } from './sapExpedicao.js'
 import { sincronizarClientesNovosSap } from './sapClientes.js'
 import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
 import { sincronizarEstoqueSap } from './sapEstoque.js'
+import { sincronizarCatalogoSap } from './sapCatalogo.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -130,5 +131,21 @@ export async function rodarEstoqueSap(): Promise<void> {
     console.error('[sap-estoque] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoEstoque = false
+  }
+}
+
+// Catálogo das Cotações do CRM (itens, preços, prazos, lista/prazo de cada
+// cliente) — confere de hora em hora e refaz a cada 3 horas (sapCatalogo.ts).
+let rodandoCatalogo = false
+export async function rodarCatalogoSap(): Promise<void> {
+  if (rodandoCatalogo || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoCatalogo = true
+  try {
+    const r = await sincronizarCatalogoSap()
+    if (r) console.log(`[sap-catalogo] ${r.itens} item(ns), ${r.precos} preço(s), ${r.clientes} cliente(s)`)
+  } catch (err) {
+    console.error('[sap-catalogo] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoCatalogo = false
   }
 }

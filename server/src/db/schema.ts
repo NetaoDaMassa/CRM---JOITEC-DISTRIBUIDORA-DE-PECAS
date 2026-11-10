@@ -5070,3 +5070,94 @@ export const sapItemMovimentos = sqliteTable(
     origemIdx: index('idx_sap_item_mov_origem').on(t.origem, t.dia),
   })
 )
+
+// ── Cotações no CRM (substitui o essencial do "Portal One") ─────────────────
+// Pedido do João, 2026-11-10: a equipe monta cotação/pedido no Portal One,
+// que é lento e trava. Etapa 1: catálogo, preço e prazo copiados do SAP pro
+// CRM (busca instantânea, sem esperar o SAP) e a cotação montada e salva no
+// CRM. Etapa 2 (depois do usuário próprio + base de teste): enviar ao SAP.
+
+// Itens de venda ativos do SAP (Items: SalesItem, Valid, não congelado).
+// Refeito pela rodada do catálogo (lib/sapCatalogo.ts).
+export const sapCatalogoItens = sqliteTable('sap_catalogo_itens', {
+  itemCodigo: text('item_codigo').primaryKey(),
+  nome: text('nome').notNull(),
+  codigoAntigo: text('codigo_antigo'),
+  grupo: text('grupo'),
+  unidade: text('unidade'),
+  pesoKg: real('peso_kg'),
+  ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
+  atualizadoEm: text('atualizado_em').notNull(),
+})
+
+// Preço de cada item em cada lista de preço do SAP (ItemPrices).
+export const sapCatalogoPrecos = sqliteTable(
+  'sap_catalogo_precos',
+  {
+    itemCodigo: text('item_codigo').notNull(),
+    lista: integer('lista').notNull(),
+    preco: real('preco').notNull(),
+  },
+  (t) => ({ pk: primaryKey({ columns: [t.itemCodigo, t.lista] }) })
+)
+
+// Listas de preço (PriceLists) e prazos de pagamento (PaymentTermsTypes).
+export const sapListasPreco = sqliteTable('sap_listas_preco', {
+  numero: integer('numero').primaryKey(),
+  nome: text('nome').notNull(),
+})
+export const sapPrazosPagamento = sqliteTable('sap_prazos_pagamento', {
+  codigo: integer('codigo').primaryKey(),
+  nome: text('nome').notNull(),
+})
+
+// Lista de preço e prazo padrão de cada cliente no SAP (BusinessPartners
+// PriceListNum / PayTermsGrpCode), pelo código do cliente (CardCode).
+export const sapClientesComercial = sqliteTable('sap_clientes_comercial', {
+  cardCode: text('card_code').primaryKey(),
+  listaPreco: integer('lista_preco'),
+  prazoCodigo: integer('prazo_codigo'),
+  bloqueado: integer('bloqueado', { mode: 'boolean' }).notNull().default(false),
+  atualizadoEm: text('atualizado_em').notNull(),
+})
+
+export const cotacoesCrm = sqliteTable(
+  'cotacoes_crm',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    // 'rascunho' até ir pro SAP (etapa 2: 'enviada' com sapDocNum).
+    status: text('status', { enum: ['rascunho', 'enviada', 'cancelada'] }).notNull().default('rascunho'),
+    listaPreco: integer('lista_preco'),
+    prazoCodigo: integer('prazo_codigo'),
+    observacao: text('observacao'),
+    total: real('total').notNull().default(0),
+    sapDocEntry: integer('sap_doc_entry'),
+    sapDocNum: integer('sap_doc_num'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => ({
+    empresaIdx: index('idx_cotacoes_crm_empresa').on(t.empresaId, t.vendedorId),
+    clienteIdx: index('idx_cotacoes_crm_cliente').on(t.clienteId),
+  })
+)
+
+export const cotacoesCrmItens = sqliteTable(
+  'cotacoes_crm_itens',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    cotacaoId: integer('cotacao_id').notNull().references(() => cotacoesCrm.id, { onDelete: 'cascade' }),
+    itemCodigo: text('item_codigo').notNull(),
+    nome: text('nome').notNull(),
+    quantidade: real('quantidade').notNull(),
+    // Preço da lista do cliente no momento; precoUnitario = com desconto.
+    precoTabela: real('preco_tabela').notNull(),
+    descontoPct: real('desconto_pct').notNull().default(0),
+    precoUnitario: real('preco_unitario').notNull(),
+  },
+  (t) => ({ cotacaoIdx: index('idx_cotacoes_crm_itens_cotacao').on(t.cotacaoId) })
+)

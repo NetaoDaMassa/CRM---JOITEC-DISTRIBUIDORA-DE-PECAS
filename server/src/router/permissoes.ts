@@ -9,6 +9,8 @@ import { gravarChavesComoExcecoes } from '../lib/acessos.js'
 // Chaves fixas — 1:1 com ADMIN_LINKS em client/src/components/Sidebar.tsx.
 // superAdmin nunca depende dessa lista: sempre vê tudo (ver Sidebar/rotas).
 export const FEATURES_ADMIN = [
+  // Cotações no CRM (troca do Portal One, 2026-11-10) — mesma chave em FEATURES_VENDEDOR.
+  'cotacoes',
   'dashboard',
   'kanban',
   // Board de Demandas (estilo Trello) — mesma chave em FEATURES_VENDEDOR,
@@ -215,6 +217,7 @@ export const FEATURES_ADMIN = [
 // pelo role antes de checar a feature, então cada papel só enxerga os itens
 // da própria lista.
 export const FEATURES_VENDEDOR = [
+  'cotacoes',
   'meu_painel',
   'fila_hoje',
   'pos_venda',

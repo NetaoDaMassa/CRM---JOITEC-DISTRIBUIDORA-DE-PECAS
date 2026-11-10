@@ -85,6 +85,7 @@ import { leadCampaignsRouter } from './leadCampaigns.js'
 import { avisoLeadsRouter } from './avisoLeads.js'
 import { marketingRouter } from './marketing.js'
 import { router } from './_base.js'
+import { cotacoesCrmRouter } from './cotacoesCrm.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
 
@@ -175,6 +176,7 @@ export const appRouter = router({
   brevo: brevoRouter,
   expedicao: expedicaoRouter,
   lojaRastreamento: lojaRastreamentoRouter,
+  cotacoesCrm: cotacoesCrmRouter,
 })
 
 export type AppRouter = typeof appRouter
