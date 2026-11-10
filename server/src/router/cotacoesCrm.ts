@@ -54,7 +54,9 @@ const cotacoesProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   }
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
   const filial = empresa ? filialDaEmpresa(empresa.slug) : null
-  if (!empresa || !filial || filial === 5) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotações só para empresas que vendem pelo SAP' })
+  // Só Joitec (e Automação, que vende pela filial dela) e Odin Tubos — a Odin
+  // Compressores não vai cotar pelo CRM (João, 2026-11-10).
+  if (!empresa || !filial || ![3, 4].includes(filial)) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotações só para Joitec, Odin Automação e Odin Tubos' })
   const gerenteId = await getConfigNumero(chaveGerente(ctx.empresaId), 0)
   const descontoLivre = await getConfigNumero(chaveDescontoLivre(ctx.empresaId), DESCONTO_LIVRE_PADRAO)
   const souGerente = gerenteId > 0 && gerenteId === ctx.user.id
