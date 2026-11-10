@@ -205,7 +205,8 @@ export async function situacaoHistoricoEstoque(): Promise<{ fotoEm: string | nul
 // Rodada (scheduler, de 15 em 15 min): foto do estoque + entradas recentes
 // se a última foto tem mais de 55 min; e mais 15 dias do histórico enquanto
 // ele não chegou em hoje.
-export async function sincronizarEstoqueSap(): Promise<{ itensEstoque: number | null; entradas: number | null; historico: { de: string; ate: string; vendas: number; entradas: number } | null }> {
+// `diasPorRodada`: carga avulsa do histórico (scripts/carregarEstoqueSap.ts).
+export async function sincronizarEstoqueSap(opts: { diasPorRodada?: number } = {}): Promise<{ itensEstoque: number | null; entradas: number | null; historico: { de: string; ate: string; vendas: number; entradas: number } | null }> {
   const hoje = hojeBrString()
   const fotoEm = await getConfigTexto(CHAVE_FOTO)
   const fazerFoto = !fotoEm || Date.now() - Date.parse(`${fotoEm.replace(' ', 'T')}Z`) > 55 * 60_000
@@ -227,7 +228,7 @@ export async function sincronizarEstoqueSap(): Promise<{ itensEstoque: number | 
     }
     let historico = null
     if (fazerHistorico) {
-      const ate = [somarDias(proximo, DIAS_POR_RODADA - 1), hoje].sort()[0]
+      const ate = [somarDias(proximo, (opts.diasPorRodada ?? DIAS_POR_RODADA) - 1), hoje].sort()[0]
       const notas = await buscarNotasVenda(sap, proximo, ate)
       const vendas = await gravarVendasDasNotas(notas, proximo, ate)
       const linhas = await buscarEntradas(sap, depositos, proximo, ate)
