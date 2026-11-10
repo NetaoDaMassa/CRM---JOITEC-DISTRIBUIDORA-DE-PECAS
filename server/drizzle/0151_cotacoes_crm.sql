@@ -7,6 +7,11 @@ CREATE TABLE `cotacoes_crm` (
 	`lista_preco` integer,
 	`prazo_codigo` integer,
 	`observacao` text,
+	`data_entrega` text,
+	`contato` text,
+	`transportadora` text,
+	`tipo_envio` text,
+	`valor_frete` real DEFAULT 0 NOT NULL,
 	`total` real DEFAULT 0 NOT NULL,
 	`maior_desconto_pct` real DEFAULT 0 NOT NULL,
 	`aprovado_por_id` integer,
@@ -38,6 +43,7 @@ CREATE TABLE `cotacoes_crm_itens` (
 	`preco_tabela` real NOT NULL,
 	`desconto_pct` real DEFAULT 0 NOT NULL,
 	`preco_unitario` real NOT NULL,
+	`preco_manual` integer DEFAULT false NOT NULL,
 	`aceito` integer DEFAULT true NOT NULL,
 	FOREIGN KEY (`cotacao_id`) REFERENCES `cotacoes_crm`(`id`) ON UPDATE no action ON DELETE cascade
 );--> statement-breakpoint
@@ -49,6 +55,7 @@ CREATE TABLE `sap_catalogo_itens` (
 	`grupo` text,
 	`unidade` text,
 	`peso_kg` real,
+	`ncm` text,
 	`ativo` integer DEFAULT true NOT NULL,
 	`atualizado_em` text NOT NULL
 );--> statement-breakpoint
@@ -63,7 +70,9 @@ CREATE TABLE `sap_clientes_comercial` (
 	`lista_preco` integer,
 	`prazo_codigo` integer,
 	`bloqueado` integer DEFAULT false NOT NULL,
-	`atualizado_em` text NOT NULL
+	`atualizado_em` text NOT NULL,
+	`dados` text,
+	`dados_em` text
 );--> statement-breakpoint
 CREATE TABLE `sap_listas_preco` (
 	`numero` integer PRIMARY KEY NOT NULL,

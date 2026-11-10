@@ -37,7 +37,7 @@ import {
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
-import { catalogoAtualizadoEm, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
+import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
 // Lista 01.BASE — usada quando o cliente não tem lista no SAP.
@@ -54,13 +54,13 @@ const cotacoesProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   }
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
   const filial = empresa ? filialDaEmpresa(empresa.slug) : null
-  if (!filial || filial === 5) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotações só para empresas que vendem pelo SAP' })
+  if (!empresa || !filial || filial === 5) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotações só para empresas que vendem pelo SAP' })
   const gerenteId = await getConfigNumero(chaveGerente(ctx.empresaId), 0)
   const descontoLivre = await getConfigNumero(chaveDescontoLivre(ctx.empresaId), DESCONTO_LIVRE_PADRAO)
   const souGerente = gerenteId > 0 && gerenteId === ctx.user.id
   const podeConfigurar = ctx.user.superAdmin || ctx.user.role === 'admin'
   const veTudo = podeConfigurar || souGerente
-  return next({ ctx: { ...ctx, filial, gerenteId, descontoLivre, souGerente, podeAprovar: souGerente || ctx.user.superAdmin, podeConfigurar, veTudo } })
+  return next({ ctx: { ...ctx, filial, empresaSlug: empresa.slug, gerenteId, descontoLivre, souGerente, podeAprovar: souGerente || ctx.user.superAdmin, podeConfigurar, veTudo } })
 })
 
 type Ctx = { empresaId: number; user: { id: number; name: string }; veTudo: boolean }
@@ -108,7 +108,7 @@ export const cotacoesCrmRouter = router({
   // Listas de preço, prazos, regras da empresa (gerente e desconto livre) e
   // quando o catálogo foi copiado do SAP.
   contexto: cotacoesProcedure.query(async ({ ctx }) => {
-    const [listas, prazos, atualizadoEm, gerente, usuarios] = await Promise.all([
+    const [listas, prazos, atualizadoEm, gerente, usuarios, emitente] = await Promise.all([
       db.select().from(sapListasPreco).orderBy(sapListasPreco.numero),
       db.select().from(sapPrazosPagamento).orderBy(sapPrazosPagamento.nome),
       catalogoAtualizadoEm(),
@@ -120,6 +120,7 @@ export const cotacoesCrmRouter = router({
             .where(and(eq(users.empresaId, ctx.empresaId), eq(users.isActive, true)))
             .orderBy(asc(users.name))
         : [],
+      emitenteDaFilial(ctx.filial),
     ])
     return {
       listas,
@@ -134,6 +135,8 @@ export const cotacoesCrmRouter = router({
       usuarios,
       motivosPerda: MOTIVOS_PERDA,
       hoje: hojeBrString(),
+      empresaSlug: ctx.empresaSlug,
+      emitente,
     }
   }),
 
@@ -170,6 +173,8 @@ export const cotacoesCrmRouter = router({
         codigoAntigo: i.codigoAntigo,
         grupo: i.grupo,
         unidade: i.unidade,
+        ncm: i.ncm,
+        pesoKg: i.pesoKg,
         preco: precoDe.get(i.itemCodigo) ?? precoBase.get(i.itemCodigo) ?? null,
         estoque: estoqueDe.get(i.itemCodigo) ?? 0,
       }))
@@ -187,6 +192,7 @@ export const cotacoesCrmRouter = router({
         nome: clientes.razaoSocial,
         cidade: clientes.cidade,
         estado: clientes.estado,
+        nomeContato: clientes.nomeContato,
         listaPreco: sapClientesComercial.listaPreco,
         prazoCodigo: sapClientesComercial.prazoCodigo,
         bloqueado: sapClientesComercial.bloqueado,
@@ -233,7 +239,13 @@ export const cotacoesCrmRouter = router({
   obter: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
     const [cliente, itens, historico, vendedor, aprovador] = await Promise.all([
-      db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { id: true, codigo: true, razaoSocial: true, cidade: true, estado: true } }),
+      db.query.clientes.findFirst({
+        where: eq(clientes.id, c.clienteId),
+        columns: {
+          id: true, codigo: true, razaoSocial: true, cidade: true, estado: true, endereco: true, numero: true, complemento: true, bairro: true, cep: true,
+          cnpj: true, cpf: true, inscricaoEstadual: true, telefoneWhatsapp: true, email: true, nomeContato: true,
+        },
+      }),
       db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id)).orderBy(cotacoesCrmItens.id),
       db
         .select({ id: cotacoesCrmHistorico.id, acao: cotacoesCrmHistorico.acao, detalhe: cotacoesCrmHistorico.detalhe, createdAt: cotacoesCrmHistorico.createdAt, quem: users.name })
@@ -245,7 +257,10 @@ export const cotacoesCrmRouter = router({
       c.aprovadoPorId ? db.query.users.findFirst({ where: eq(users.id, c.aprovadoPorId), columns: { name: true } }) : null,
     ])
     const vencida = c.status === 'enviada' && !!c.validaAte && c.validaAte < hojeBrString()
-    return { ...c, cliente, itens, historico, vendedorNome: vendedor?.name ?? '', aprovadorNome: aprovador?.name ?? null, vencida, souDono: c.vendedorId === ctx.user.id }
+    // Endereço/CNPJ/IE do SAP; se ainda não buscou, busca agora (1 consulta).
+    let clienteSap = cliente ? await dadosClienteSap(cliente.codigo) : null
+    if (cliente && !clienteSap) clienteSap = await atualizarDadosClienteSap(cliente.codigo).catch(() => null)
+    return { ...c, cliente, clienteSap, itens, historico, vendedorNome: vendedor?.name ?? '', aprovadorNome: aprovador?.name ?? null, vencida, souDono: c.vendedorId === ctx.user.id }
   }),
 
   // Cria ou atualiza o rascunho. O preço de tabela é sempre o do catálogo
@@ -259,8 +274,21 @@ export const cotacoesCrmRouter = router({
         listaPreco: z.number().int(),
         prazoCodigo: z.number().int().nullable(),
         observacao: z.string().max(2000).nullable(),
+        dataEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+        contato: z.string().trim().max(120).nullable().optional(),
+        transportadora: z.string().trim().max(160).nullable().optional(),
+        tipoEnvio: z.enum(['CIF', 'FOB']).nullable().optional(),
+        valorFrete: z.number().min(0).max(1_000_000).optional(),
         itens: z
-          .array(z.object({ itemCodigo: z.string().min(1), quantidade: z.number().positive(), descontoPct: z.number().min(0).max(100) }))
+          .array(
+            z.object({
+              itemCodigo: z.string().min(1),
+              quantidade: z.number().positive(),
+              descontoPct: z.number().min(0).max(100),
+              // Preço digitado pelo vendedor (substitui o desconto).
+              precoUnitario: z.number().positive().max(10_000_000).optional(),
+            })
+          )
           .max(300),
       })
     )
@@ -294,13 +322,16 @@ export const cotacoesCrmRouter = router({
         const tabela = preco(i.itemCodigo)
         if (!nome) throw new TRPCError({ code: 'BAD_REQUEST', message: `Item ${i.itemCodigo} não está mais no catálogo do SAP` })
         if (tabela == null) throw new TRPCError({ code: 'BAD_REQUEST', message: `Item ${i.itemCodigo} está sem preço no SAP` })
+        const manual = i.precoUnitario != null
+        const unitario = manual ? arred(i.precoUnitario!, 4) : arred(tabela * (1 - i.descontoPct / 100), 4)
         return {
           itemCodigo: i.itemCodigo,
           nome,
           quantidade: i.quantidade,
           precoTabela: tabela,
-          descontoPct: arred(i.descontoPct, 2),
-          precoUnitario: arred(tabela * (1 - i.descontoPct / 100), 4),
+          descontoPct: manual ? arred((1 - unitario / tabela) * 100, 2) : arred(i.descontoPct, 2),
+          precoUnitario: unitario,
+          precoManual: manual,
         }
       })
       const total = arred(linhas.reduce((s, l) => s + l.precoUnitario * l.quantidade, 0))
@@ -314,6 +345,11 @@ export const cotacoesCrmRouter = router({
           listaPreco: input.listaPreco,
           prazoCodigo: input.prazoCodigo,
           observacao: input.observacao?.trim() || null,
+          dataEntrega: input.dataEntrega ?? null,
+          contato: input.contato || null,
+          transportadora: input.transportadora || null,
+          tipoEnvio: input.tipoEnvio ?? null,
+          valorFrete: arred(input.valorFrete ?? 0),
           total,
           maiorDescontoPct,
           updatedAt: agora,
@@ -332,6 +368,9 @@ export const cotacoesCrmRouter = router({
         return id!
       })
       if (!input.id) await registrar(id, ctx.user.id, 'Criou a cotação', `${linhas.length} item(ns) · ${brl(total)}`)
+      // Atualiza endereço/CNPJ/IE do cliente no SAP pro documento (sem esperar).
+      const codigo = (await db.query.clientes.findFirst({ where: eq(clientes.id, input.clienteId), columns: { codigo: true } }))?.codigo
+      if (codigo) void atualizarDadosClienteSap(codigo).catch((e) => console.error('[cotacoes] dados do cliente no SAP:', e instanceof Error ? e.message : e))
       return { id, total }
     }),
 

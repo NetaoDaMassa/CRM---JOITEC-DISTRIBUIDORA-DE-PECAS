@@ -5086,6 +5086,7 @@ export const sapCatalogoItens = sqliteTable('sap_catalogo_itens', {
   grupo: text('grupo'),
   unidade: text('unidade'),
   pesoKg: real('peso_kg'),
+  ncm: text('ncm'),
   ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
   atualizadoEm: text('atualizado_em').notNull(),
 })
@@ -5119,6 +5120,11 @@ export const sapClientesComercial = sqliteTable('sap_clientes_comercial', {
   prazoCodigo: integer('prazo_codigo'),
   bloqueado: integer('bloqueado', { mode: 'boolean' }).notNull().default(false),
   atualizadoEm: text('atualizado_em').notNull(),
+  // Endereço de entrega, CNPJ/IE, telefone, e-mail e contato do cliente no
+  // SAP (JSON, ver DadosClienteSap em lib/sapCatalogo.ts). Buscado só pro
+  // cliente de cada cotação (ao salvar), não na cópia geral.
+  dados: text('dados'),
+  dadosEm: text('dados_em'),
 })
 
 export const cotacoesCrm = sqliteTable(
@@ -5138,6 +5144,14 @@ export const cotacoesCrm = sqliteTable(
     listaPreco: integer('lista_preco'),
     prazoCodigo: integer('prazo_codigo'),
     observacao: text('observacao'),
+    // Dados do documento (mesmo padrão da Cotação/Pedido de Venda do SAP).
+    dataEntrega: text('data_entrega'),
+    contato: text('contato'),
+    transportadora: text('transportadora'),
+    tipoEnvio: text('tipo_envio', { enum: ['CIF', 'FOB'] }),
+    // Despesas adicionais (frete cobrado do cliente), somado no valor total.
+    valorFrete: real('valor_frete').notNull().default(0),
+    // Soma dos itens (sem IPI e sem frete).
     total: real('total').notNull().default(0),
     maiorDescontoPct: real('maior_desconto_pct').notNull().default(0),
     aprovadoPorId: integer('aprovado_por_id').references(() => users.id, { onDelete: 'set null' }),
@@ -5174,6 +5188,9 @@ export const cotacoesCrmItens = sqliteTable(
     precoTabela: real('preco_tabela').notNull(),
     descontoPct: real('desconto_pct').notNull().default(0),
     precoUnitario: real('preco_unitario').notNull(),
+    // Vendedor digitou o preço (pode ser acima da tabela, como no SAP); o
+    // descontoPct fica calculado a partir dele (negativo = acréscimo).
+    precoManual: integer('preco_manual', { mode: 'boolean' }).notNull().default(false),
     // Cliente aprovou esse item (pedido parcial: só os aceitos viram pedido).
     aceito: integer('aceito', { mode: 'boolean' }).notNull().default(true),
   },

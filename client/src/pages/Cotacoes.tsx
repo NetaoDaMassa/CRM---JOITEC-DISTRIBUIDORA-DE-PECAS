@@ -19,7 +19,9 @@ import { parseValorBr } from '../lib/valorBr'
 type Saidas = inferRouterOutputs<AppRouter>['cotacoesCrm']
 type ItemCatalogo = Saidas['catalogo'][number]
 type ClienteBusca = Saidas['clientes'][number]
-type Linha = { itemCodigo: string; quantidade: number; descontoPct: number }
+// preco = preço digitado pelo vendedor (pode ser acima da tabela, como no SAP);
+// sem ele, vale tabela − desconto.
+type Linha = { itemCodigo: string; quantidade: number; descontoPct: number; preco?: number | null }
 
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 // Aceita "1,5" e "1.5" (lib/valorBr — já evitou o bug do ponto virar milhar).
@@ -227,6 +229,11 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const [lista, setLista] = useState<number | null>(null)
   const [prazo, setPrazo] = useState<number | null>(null)
   const [observacao, setObservacao] = useState('')
+  const [dataEntrega, setDataEntrega] = useState('')
+  const [contato, setContato] = useState('')
+  const [transportadora, setTransportadora] = useState('')
+  const [tipoEnvio, setTipoEnvio] = useState<'CIF' | 'FOB' | ''>('CIF')
+  const [frete, setFrete] = useState(0)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [alterado, setAlterado] = useState(false)
 
@@ -239,7 +246,12 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     setLista(existente.listaPreco)
     setPrazo(existente.prazoCodigo)
     setObservacao(existente.observacao ?? '')
-    setLinhas(existente.itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, descontoPct: i.descontoPct })))
+    setDataEntrega(existente.dataEntrega ?? '')
+    setContato(existente.contato ?? '')
+    setTransportadora(existente.transportadora ?? '')
+    setTipoEnvio(existente.tipoEnvio ?? '')
+    setFrete(existente.valorFrete ?? 0)
+    setLinhas(existente.itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, descontoPct: Math.max(0, i.descontoPct), preco: i.precoManual ? i.precoUnitario : null })))
   }, [existente])
 
   const listaEfetiva = lista ?? ctx?.listaBase ?? 1
@@ -297,8 +309,10 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const calc = linhas.map((l) => {
     const item = porCodigo.get(l.itemCodigo)
     const tabela = item?.preco ?? null
-    const unit = tabela != null ? tabela * (1 - l.descontoPct / 100) : null
-    return { ...l, item, tabela, unit, subtotal: unit != null ? unit * l.quantidade : null }
+    const unit = l.preco != null ? l.preco : tabela != null ? tabela * (1 - l.descontoPct / 100) : null
+    // Desconto efetivo (negativo = acréscimo sobre a tabela).
+    const descEfetivo = l.preco != null && tabela ? (1 - l.preco / tabela) * 100 : l.descontoPct
+    return { ...l, item, tabela, unit, descEfetivo, subtotal: unit != null ? unit * l.quantidade : null }
   })
   const total = calc.reduce((s, l) => s + (l.subtotal ?? 0), 0)
   const semPreco = calc.some((l) => l.tabela == null)
@@ -307,14 +321,28 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     setCliente({ id: c.id, codigo: c.codigo, nome: c.nome, cidade: c.cidade, estado: c.estado })
     if (c.listaPreco) setLista(c.listaPreco)
     if (c.prazoCodigo != null) setPrazo(c.prazoCodigo)
+    if (c.nomeContato && !contato) setContato(c.nomeContato)
     if (c.bloqueado) toast('Atenção: esse cliente está bloqueado/inativo no SAP', { icon: '⚠️' })
     setAlterado(true)
   }
 
+  const dadosParaSalvar = () => ({
+    id: id ?? undefined,
+    clienteId: cliente!.id,
+    listaPreco: listaEfetiva,
+    prazoCodigo: prazo,
+    observacao: observacao || null,
+    dataEntrega: dataEntrega || null,
+    contato: contato.trim() || null,
+    transportadora: transportadora.trim() || null,
+    tipoEnvio: tipoEnvio || null,
+    valorFrete: frete,
+    itens: linhas.map((l) => ({ itemCodigo: l.itemCodigo, quantidade: l.quantidade, descontoPct: l.preco != null ? 0 : l.descontoPct, ...(l.preco != null ? { precoUnitario: l.preco } : {}) })),
+  })
   const onSalvar = () => {
     if (!cliente) return toast.error('Escolha o cliente')
     if (!linhas.length) return toast.error('Adicione pelo menos um item')
-    salvar.mutate({ id: id ?? undefined, clienteId: cliente.id, listaPreco: listaEfetiva, prazoCodigo: prazo, observacao: observacao || null, itens: linhas })
+    salvar.mutate(dadosParaSalvar())
   }
   // Concluir salva antes (se mudou algo) e depois manda concluir.
   const onConcluir = async () => {
@@ -324,7 +352,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     try {
       let alvo = id
       if (alterado || alvo == null) {
-        const r = await salvar.mutateAsync({ id: id ?? undefined, clienteId: cliente.id, listaPreco: listaEfetiva, prazoCodigo: prazo, observacao: observacao || null, itens: linhas })
+        const r = await salvar.mutateAsync(dadosParaSalvar())
         alvo = r.id
       }
       await concluir.mutateAsync({ id: alvo! })
@@ -337,24 +365,31 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const nomeLista = ctx?.listas.find((l) => l.numero === listaEfetiva)?.nome
   const nomePrazo = ctx?.prazos.find((p) => p.codigo === prazo)?.nome
 
-  const imprimir = () => {
+  // Imprime sempre o que está salvo (salva antes, se mudou algo), no mesmo
+  // padrão da Cotação de Venda do SAP. A aba abre já no clique (senão o
+  // navegador bloqueia a janela aberta depois de esperar o servidor).
+  const imprimir = async () => {
     if (!cliente || !linhas.length) return toast.error('Monte a cotação antes de imprimir')
     const w = window.open('', '_blank')
-    if (!w) return
-    const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
-    w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Cotação - ${esc(cliente.nome)}</title>
-<style>body{font-family:system-ui,Arial,sans-serif;color:#111;margin:32px}h1{font-size:20px;margin:0 0 4px}p{margin:2px 0;font-size:13px}
-table{width:100%;border-collapse:collapse;margin-top:16px;font-size:12px}th,td{border-bottom:1px solid #ddd;padding:6px;text-align:left}th{background:#f3f3f3}
-.n{text-align:right;white-space:nowrap}.t{font-size:16px;font-weight:700;text-align:right;margin-top:12px}</style></head><body>
-<h1>Cotação${id ? ` nº ${id}` : ''}</h1><p><b>Cliente:</b> ${esc(cliente.codigo)} - ${esc(cliente.nome)}</p>
-<p><b>Prazo de pagamento:</b> ${esc(nomePrazo ?? '—')}</p><p><b>Data:</b> ${new Date().toLocaleDateString('pt-BR')}</p>
-<table><thead><tr><th>Código</th><th>Produto</th><th class="n">Qtd</th><th class="n">Unitário</th><th class="n">Desc.</th><th class="n">Total</th></tr></thead><tbody>
-${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? '')}</td><td class="n">${fmtQtd(l.quantidade)} ${esc(l.item?.unidade ?? '')}</td><td class="n">${formatarMoeda(l.unit)}</td><td class="n">${l.descontoPct ? `${l.descontoPct}%` : '—'}</td><td class="n">${formatarMoeda(l.subtotal)}</td></tr>`).join('')}
-</tbody></table><p class="t">Total: ${formatarMoeda(total)}</p>${observacao ? `<p style="margin-top:12px"><b>Observação:</b> ${esc(observacao)}</p>` : ''}
-<p style="margin-top:24px;color:#666;font-size:11px">Valores sem impostos (IPI/ST calculados na emissão). Sujeito a disponibilidade de estoque.</p>
-<script>window.onload=()=>window.print()</script></body></html>`)
-    w.document.close()
+    if (!w) return toast.error('O navegador bloqueou a janela — libere pop-ups para o CRM')
+    w.document.write('<p style="font-family:sans-serif;padding:24px">Montando a cotação…</p>')
+    try {
+      let alvo = id
+      if (!somenteLeitura && (alterado || alvo == null)) {
+        const r = await salvar.mutateAsync(dadosParaSalvar())
+        alvo = r.id
+      }
+      const dados = await utils.cotacoesCrm.obter.fetch({ id: alvo! })
+      w.document.open()
+      w.document.write(htmlCotacao(dados, ctx!, porCodigo))
+      w.document.close()
+      if (id == null) onSalva(alvo!)
+    } catch (e) {
+      w.close()
+      toast.error((e as Error).message)
+    }
   }
+  const valorTotal = total + frete
 
   return (
     <div className="space-y-4">
@@ -469,7 +504,41 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
                   ))}
                 </select>
               </label>
+              <div className="grid grid-cols-2 gap-3 pt-1">
+              <label className="space-y-1">
+                <span className="text-xs text-dark-400">Data de entrega</span>
+                <input type="date" disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={dataEntrega} onChange={(e) => (setDataEntrega(e.target.value), setAlterado(true))} />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-dark-400">Contato no cliente</span>
+                <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={contato} onChange={(e) => (setContato(e.target.value), setAlterado(true))} placeholder="Quem pediu" />
+              </label>
+              <label className="space-y-1 col-span-2">
+                <span className="text-xs text-dark-400">Transportadora</span>
+                <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={transportadora} onChange={(e) => (setTransportadora(e.target.value), setAlterado(true))} placeholder="Ex.: Kamer Cargo" />
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-dark-400">Tipo de envio</span>
+                <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-2 text-sm text-dark-100" value={tipoEnvio} onChange={(e) => (setTipoEnvio(e.target.value as 'CIF' | 'FOB' | ''), setAlterado(true))}>
+                  <option value="">—</option>
+                  <option value="CIF">CIF (frete por nossa conta)</option>
+                  <option value="FOB">FOB (frete por conta do cliente)</option>
+                </select>
+              </label>
+              <label className="space-y-1">
+                <span className="text-xs text-dark-400">Frete cobrado (R$)</span>
+                <CampoNumero
+                  disabled={somenteLeitura}
+                  className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100 outline-none"
+                  valor={frete}
+                  vazioVale={0}
+                  placeholder="0,00"
+                  valido={(n) => n >= 0}
+                  onValor={(n) => (setFrete(n), setAlterado(true))}
+                />
+              </label>
             </div>
+          </div>
           </div>
 
           <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
@@ -519,21 +588,32 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
                         <CampoNumero
                           disabled={somenteLeitura}
                           className="w-14 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-right text-sm text-dark-100 outline-none"
-                          valor={l.descontoPct}
+                          valor={Math.round(Math.max(0, l.descEfetivo) * 100) / 100}
                           vazioVale={0}
                           placeholder="0"
                           valido={(n) => n >= 0 && n <= 100}
-                          onValor={(n) => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, descontoPct: n } : x)))}
+                          onValor={(n) => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, descontoPct: n, preco: null } : x)))}
                         />
                         %
                       </label>
-                      {ctx && l.descontoPct > ctx.descontoLivre && (
+                      <label className="flex items-center gap-1 text-xs text-dark-400">
+                        Preço R$
+                        <CampoNumero
+                          disabled={somenteLeitura}
+                          className="w-24 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-right text-sm text-dark-100 outline-none"
+                          valor={Math.round((l.unit ?? 0) * 10000) / 10000}
+                          valido={(n) => n > 0}
+                          onValor={(n) => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, preco: n, descontoPct: 0 } : x)))}
+                        />
+                      </label>
+                      {l.descEfetivo < -0.005 && <span className="text-[10px] font-semibold rounded bg-sky-900/40 text-sky-300 px-1.5 py-0.5">+{fmtQtd(Math.round(-l.descEfetivo * 100) / 100)}% sobre a tabela</span>}
+                      {ctx && l.descEfetivo > ctx.descontoLivre && (
                         <span className="text-[10px] font-semibold rounded bg-amber-900/40 text-amber-300 px-1.5 py-0.5" title={`Acima de ${fmtQtd(ctx.descontoLivre)}% precisa do gerente aprovar`}>
                           precisa aprovação
                         </span>
                       )}
                       <span className="ml-auto text-right">
-                        <span className="block text-[11px] text-dark-500">{formatarMoeda(l.unit)} / {l.item?.unidade ?? 'un'}</span>
+                        <span className="block text-[11px] text-dark-500">por {l.item?.unidade ?? 'un'}</span>
                         <span className="block text-sm font-semibold text-dark-50">{formatarMoeda(l.subtotal)}</span>
                       </span>
                     </div>
@@ -541,11 +621,28 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
                 ))}
               </div>
             )}
-            <div className="flex items-center justify-between px-4 py-3 border-t border-dark-700 bg-dark-900/40">
-              <span className="text-sm text-dark-300">
-                Total {semPreco && <span className="text-amber-400">(há item sem preço)</span>}
-              </span>
-              <span className="text-xl font-bold text-gold-300">{formatarMoeda(total)}</span>
+            <div className="px-4 py-3 border-t border-dark-700 bg-dark-900/40 space-y-1">
+              {frete > 0 && (
+                <>
+                  <div className="flex justify-between text-xs text-dark-400">
+                    <span>Itens (sem IPI)</span>
+                    <span>{formatarMoeda(total)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-dark-400">
+                    <span>Frete (despesas adicionais)</span>
+                    <span>{formatarMoeda(frete)}</span>
+                  </div>
+                </>
+              )}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-dark-300">
+                  Total {semPreco && <span className="text-amber-400">(há item sem preço)</span>}
+                </span>
+                <span className="text-xl font-bold text-gold-300">{formatarMoeda(valorTotal)}</span>
+              </div>
+              {calc.some((l) => l.item?.pesoKg) && (
+                <p className="text-right text-[11px] text-dark-500">Peso total {fmtQtd(calc.reduce((s, l) => s + (l.item?.pesoKg ?? 0) * l.quantidade, 0))} kg</p>
+              )}
             </div>
           </div>
 
@@ -604,6 +701,104 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
 }
 
 type Cotacao = Saidas['obter']
+
+const LOGO_EMPRESA: Record<string, string> = {
+  joitec: '/logos/joitec.png',
+  'joitec-automacao': '/logos/joitec.png',
+  'odin-tubos': '/logos/odin-tubos.png',
+  'odin-compressores': '/logos/odin-compressores.png',
+}
+
+// Cotação impressa no mesmo padrão da "Cotação de Venda" do SAP (modelo que
+// o João mandou, 2026-11-10): logo + título, emitente, datas/transportadora/
+// envio/vendedor, cliente completo, itens com NCM/UN/%desc/preço/IPI/ICMS,
+// totais (peso, sem IPI, IPI, despesas adicionais, desconto, valor total),
+// Benefício/Utilização/Observações. IPI e ICMS só o SAP calcula (por item e
+// por UF) — aqui saem como "na NF" até a cotação ir pro SAP (etapa 2).
+function htmlCotacao(c: Cotacao, ctx: Saidas['contexto'], catalogo: Map<string, ItemCatalogo>): string {
+  const esc = (s: string | null | undefined) => (s ?? '').replace(/[&<>"]/g, (x) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[x]!)
+  const din = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const din4 = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })
+  // Dados do SAP têm prioridade (o cadastro do CRM costuma estar sem endereço/IE).
+  const sap = c.clienteSap
+  const crm = c.cliente
+  const cl = {
+    codigo: crm?.codigo ?? '',
+    razaoSocial: crm?.razaoSocial ?? '',
+    endereco: sap?.endereco ?? ([crm?.endereco, crm?.numero].filter(Boolean).join(', ') || null),
+    complemento: sap?.complemento ?? crm?.complemento ?? null,
+    bairro: sap?.bairro ?? crm?.bairro ?? null,
+    cep: sap?.cep ?? crm?.cep ?? null,
+    cidade: sap?.cidade ?? crm?.cidade ?? null,
+    estado: sap?.uf ?? crm?.estado ?? null,
+    doc: sap?.cnpj ?? sap?.cpf ?? crm?.cnpj ?? crm?.cpf ?? '',
+    ie: sap?.ie ?? crm?.inscricaoEstadual ?? null,
+    telefone: sap?.telefone ?? crm?.telefoneWhatsapp ?? null,
+    email: sap?.email ?? crm?.email ?? null,
+  }
+  const e = ctx.emitente
+  const prazo = ctx.prazos.find((p) => p.codigo === c.prazoCodigo)?.nome ?? ''
+  const itens = c.status === 'ganha' ? c.itens.filter((i) => i.aceito) : c.itens
+  const totalItens = itens.reduce((s, i) => s + i.precoUnitario * i.quantidade, 0)
+  const peso = itens.reduce((s, i) => s + (catalogo.get(i.itemCodigo)?.pesoKg ?? 0) * i.quantidade, 0)
+  const logo = `${window.location.origin}${LOGO_EMPRESA[ctx.empresaSlug] ?? '/logos/grupo-odin.png'}`
+  const dataDoc = dataBr(c.createdAt) || new Date().toLocaleDateString('pt-BR')
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Cotação de Venda nº ${c.id} - ${esc(cl.razaoSocial)}</title>
+<style>
+@page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Verdana,Arial,sans-serif;color:#111;font-size:10.5px;margin:0}
+.topo{display:grid;grid-template-columns:170px 1fr 170px;align-items:center;gap:8px;border-bottom:2px solid #f08a24;padding-bottom:8px}
+.topo img{max-width:160px;max-height:70px}.titulo{text-align:center;font:bold 22px Arial,sans-serif}
+.bloco{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:8px 0;border-bottom:2px solid #f08a24}
+.bloco b{font-weight:bold}.lin{border-bottom:1px dotted #9aa;padding:3px 0;min-height:18px}.duas{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+table{width:100%;border-collapse:collapse;margin-top:10px}th{background:#1f5f99;color:#fff;font-size:9.5px;padding:6px 4px;border-right:1px solid #fff}
+td{padding:4px;border-bottom:1px dotted #9aa;vertical-align:top}.n{text-align:right;white-space:nowrap}.c{text-align:center}
+.rodape{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:6px;border-top:2px solid #1f5f99;padding-top:6px}
+.tot div{display:flex;justify-content:space-between;border-bottom:1px dotted #9aa;padding:4px 0}.tot .final{font-weight:bold;font-size:12px;border:0;padding-top:8px}
+.peso{border-left:6px solid #e0102b;padding-left:6px;font-weight:bold;display:flex;justify-content:space-between;border-bottom:2px solid #111;padding-bottom:3px}
+.obs{white-space:pre-wrap;margin-top:4px}.pe{margin-top:18px;color:#777;font-size:9px;display:flex;justify-content:space-between}
+</style></head><body>
+<div class="topo"><img src="${logo}" alt=""><div class="titulo">COTAÇÃO DE VENDA Nº<br>${c.id}</div><div></div></div>
+<div class="bloco">
+  <div><b>${esc(e?.nome ?? '')}</b><br>${esc(e?.endereco ?? '')}<br>${e?.bairro ? `Bairro: ${esc(e.bairro)} ` : ''}${e?.cep ? `CEP: ${esc(e.cep)}` : ''}<br>${esc([e?.cidade, e?.uf].filter(Boolean).join(' - '))}<br>${e?.cnpj ? `CNPJ - ${esc(e.cnpj)}` : ''}</div>
+  <div>
+    <div class="duas"><div><b>Data do documento</b><div class="lin">${dataDoc}</div></div><div><b>Data de Entrega</b><div class="lin">${dataBr(c.dataEntrega)}</div></div><div><b>Válida até</b><div class="lin">${dataBr(c.validaAte) || '—'}</div></div></div>
+    <div class="lin"><b>Transportadora:</b> ${esc(c.transportadora)}</div>
+    <div class="lin"><b>Tipo de envio:</b> ${esc(c.tipoEnvio)}</div>
+    <div class="lin"><b>Vendedor:</b> ${esc(c.vendedorNome)}</div>
+  </div>
+</div>
+<div class="bloco">
+  <div><b>${esc(cl.razaoSocial)}</b><br>${esc(cl.endereco)}${cl.complemento ? ` Complemento: ${esc(cl.complemento)}` : ''}<br>${cl.bairro ? `Bairro: ${esc(cl.bairro)} ` : ''}${cl.cep ? `CEP: ${esc(cl.cep)}` : ''}<br>Cidade: ${esc([cl.cidade, cl.estado].filter(Boolean).join(' - '))}<br>CPF/CNPJ: ${esc(cl.doc)}<br>${cl.ie ? `Insc. Estadual: ${esc(cl.ie)}<br>` : ''}${cl.telefone ? `Telefone: ${esc(cl.telefone)}` : ''}</div>
+  <div>
+    <div class="lin"><b>Código Cliente:</b> ${esc(cl.codigo)}</div>
+    <div class="lin"><b>E-mail:</b> ${esc(cl.email)}</div>
+    <div class="lin"><b>Contato:</b> ${esc(c.contato ?? sap?.contato)}</div>
+    <div class="lin"><b>Condição de Pagamento:</b> ${esc(prazo)}</div>
+  </div>
+</div>
+<table><thead><tr><th>Nº</th><th>Código</th><th>Descrição do item</th><th>NCM</th><th>UN</th><th>Quantidade</th><th>% Desc</th><th>Preço</th><th>IPI %</th><th>ICMS %</th><th>TOTAL s/ IPI</th></tr></thead><tbody>
+${itens
+  .map((i, n) => {
+    const cat = catalogo.get(i.itemCodigo)
+    return `<tr><td>${n + 1}</td><td>${esc(i.itemCodigo)}</td><td>${esc(i.nome)}</td><td class="c">${esc(cat?.ncm)}</td><td class="c">${esc(cat?.unidade)}</td><td class="n">${din(i.quantidade)}</td><td class="n">${din(Math.max(0, i.descontoPct))}</td><td class="n">R$ ${din4(i.precoUnitario)}</td><td class="c">na NF</td><td class="c">na NF</td><td class="n">R$ ${din(i.precoUnitario * i.quantidade)}</td></tr>`
+  })
+  .join('')}
+</tbody></table>
+<div class="rodape">
+  <div><div class="peso"><span>PESO TOTAL:</span><span>${din(peso)} kG</span></div>
+    <p><b>Benefício:</b><br><b>Utilização:</b> Venda de Mercadoria Comercio</p>
+    <p><b style="font-size:12px">OBSERVAÇÕES :</b></p><div class="obs">${esc(c.observacao)}</div></div>
+  <div class="tot">
+    <div><b>TOTAL SEM IPI:</b><span>R$ ${din(totalItens)}</span></div>
+    <div><b>VALOR DO IPI:</b><span>calculado na NF</span></div>
+    <div><b>DESPESAS ADICIONAIS:</b><span>R$ ${din(c.valorFrete)}</span></div>
+    <div><b>DESCONTO (-):</b><span>R$ 0,00</span></div>
+    <div class="final"><span>VALOR TOTAL:</span><span>R$ ${din(totalItens + c.valorFrete)}</span></div>
+  </div>
+</div>
+<div class="pe"><span>Gerado pelo CRM Grupo Odin</span><span>Valores sujeitos a disponibilidade de estoque. IPI/ICMS calculados na emissão da nota.</span></div>
+<script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`
+}
 
 // Faixa abaixo dos botões: em que pé está a cotação e o que fazer agora.
 function FaixaSituacao({ c, status, descontoLivre, gerente }: { c: Cotacao; status: Status; descontoLivre: number; gerente: string | null }) {

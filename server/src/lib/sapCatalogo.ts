@@ -4,6 +4,7 @@
 // listas de preço, prazos de pagamento e a lista/prazo padrão de cada cliente.
 // Refeito a cada 3 horas (~2.600 itens + ~12 mil clientes, poucos segundos).
 // Só leitura no SAP.
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { sapCatalogoItens, sapCatalogoPrecos, sapClientesComercial, sapListasPreco, sapPrazosPagamento } from '../db/schema.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
@@ -12,6 +13,35 @@ import { comSessaoSap } from './sapServiceLayer.js'
 
 const CHAVE = 'sap_catalogo_atualizado_em'
 const INTERVALO_MS = 3 * 60 * 60_000
+const CHAVE_FILIAIS = 'sap_filiais_dados'
+
+export interface EmitenteFilial {
+  nome: string
+  cnpj: string | null
+  endereco: string
+  bairro: string | null
+  cep: string | null
+  cidade: string | null
+  uf: string | null
+}
+
+// Razão social, CNPJ e endereço da filial no SAP (BusinessPlaces).
+export async function emitenteDaFilial(filial: number): Promise<EmitenteFilial | null> {
+  const bruto = await getConfigTexto(CHAVE_FILIAIS)
+  if (!bruto) return null
+  const f = (JSON.parse(bruto) as Record<string, Record<string, string | null>>)[String(filial)]
+  if (!f) return null
+  const rua = [f.AddressType, f.Street].filter(Boolean).join(' ')
+  return {
+    nome: String(f.BPLName ?? ''),
+    cnpj: f.FederalTaxID ?? null,
+    endereco: [rua, f.StreetNo, f.Building].filter(Boolean).join(', '),
+    bairro: f.Block ?? null,
+    cep: f.ZipCode ?? null,
+    cidade: f.City ?? null,
+    uf: f.State ?? null,
+  }
+}
 
 interface ItemSap {
   ItemCode: string
@@ -19,6 +49,7 @@ interface ItemSap {
   ItemsGroupCode: number | null
   SalesUnit: string | null
   SalesUnitWeight: number | null
+  NCMCode?: number | null
   U_CodigoAntigo?: string | null
   ItemPrices?: { PriceList: number; Price: number | null }[]
 }
@@ -42,8 +73,12 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
 
   const dados = await comSessaoSap(async (sap) => {
     const grupos = await sap.getTodos<{ Number: number; GroupName: string }>('/ItemGroups?$select=Number,GroupName')
+    const ncms = await sap.getTodos<{ AbsEntry: number; NCMCode: string }>('/NCMCodesSetup?$select=AbsEntry,NCMCode', 1000)
+    const filiais = await sap.getTodos<Record<string, string | number | null>>(
+      '/BusinessPlaces?$select=BPLID,BPLName,FederalTaxID,AddressType,Street,StreetNo,Building,Block,ZipCode,City,State,Disabled'
+    )
     const itens = await sap.getTodos<ItemSap>(
-      "/Items?$filter=SalesItem eq 'tYES' and Valid eq 'tYES' and Frozen eq 'tNO'&$select=ItemCode,ItemName,ItemsGroupCode,SalesUnit,SalesUnitWeight,U_CodigoAntigo,ItemPrices",
+      "/Items?$filter=SalesItem eq 'tYES' and Valid eq 'tYES' and Frozen eq 'tNO'&$select=ItemCode,ItemName,ItemsGroupCode,SalesUnit,SalesUnitWeight,NCMCode,U_CodigoAntigo,ItemPrices",
       200
     )
     const listas = await sap.getTodos<{ PriceListNo: number; PriceListName: string; Active: string }>('/PriceLists?$select=PriceListNo,PriceListName,Active')
@@ -52,11 +87,12 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
       "/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,PriceListNum,PayTermsGrpCode,Frozen,Valid",
       1000
     )
-    return { grupos, itens, listas, prazos, clientes }
+    return { grupos, ncms, filiais, itens, listas, prazos, clientes }
   })
 
   const agora = agoraSqlite()
   const nomeGrupo = new Map(dados.grupos.map((g) => [g.Number, g.GroupName]))
+  const codigoNcm = new Map(dados.ncms.map((n) => [n.AbsEntry, n.NCMCode]))
   const itens = dados.itens.map((i) => ({
     itemCodigo: i.ItemCode,
     nome: limparNome(i.ItemName ?? i.ItemCode),
@@ -64,6 +100,7 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
     grupo: i.ItemsGroupCode != null ? (nomeGrupo.get(i.ItemsGroupCode) ?? null) : null,
     unidade: i.SalesUnit || null,
     pesoKg: i.SalesUnitWeight || null,
+    ncm: i.NCMCode != null && i.NCMCode > 0 ? (codigoNcm.get(i.NCMCode) ?? null) : null,
     ativo: true,
     atualizadoEm: agora,
   }))
@@ -95,9 +132,76 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
     )
     await tx.delete(sapPrazosPagamento)
     await lote(sapPrazosPagamento, dados.prazos.map((p) => ({ codigo: p.GroupNumber, nome: p.PaymentTermsGroupName.trim() })))
-    await tx.delete(sapClientesComercial)
-    await lote(sapClientesComercial, clientes)
+    // Upsert (não apaga): preserva os dados de endereço já buscados por cotação.
+    for (let i = 0; i < clientes.length; i += 400) {
+      await tx
+        .insert(sapClientesComercial)
+        .values(clientes.slice(i, i + 400))
+        .onConflictDoUpdate({
+          target: sapClientesComercial.cardCode,
+          set: { listaPreco: sql`excluded.lista_preco`, prazoCodigo: sql`excluded.prazo_codigo`, bloqueado: sql`excluded.bloqueado`, atualizadoEm: sql`excluded.atualizado_em` },
+        })
+    }
   })
+  // Emitente de cada filial (cabeçalho da cotação impressa).
+  await setConfig(CHAVE_FILIAIS, JSON.stringify(Object.fromEntries(dados.filiais.filter((f) => f.Disabled !== 'tYES').map((f) => [String(f.BPLID), f]))))
   await setConfig(CHAVE, agora)
   return { itens: itens.length, precos: precos.length, clientes: clientes.length }
+}
+
+export interface DadosClienteSap {
+  endereco: string | null
+  complemento: string | null
+  bairro: string | null
+  cep: string | null
+  cidade: string | null
+  uf: string | null
+  cnpj: string | null
+  cpf: string | null
+  ie: string | null
+  telefone: string | null
+  email: string | null
+  contato: string | null
+}
+
+// Endereço de entrega (o padrão do cliente), CNPJ/IE, telefone, e-mail e
+// contato de UM cliente no SAP — chamado depois de salvar a cotação. Só GET.
+export async function atualizarDadosClienteSap(cardCode: string): Promise<DadosClienteSap | null> {
+  type End = { AddressType: string; AddressName: string; TypeOfAddress: string | null; Street: string | null; StreetNo: string | null; BuildingFloorRoom: string | null; Block: string | null; ZipCode: string | null; City: string | null; State: string | null }
+  type Fiscal = { Address: string | null; TaxId0: string | null; TaxId1: string | null; TaxId4: string | null }
+  const bp = await comSessaoSap((sap) =>
+    sap.get<{ Phone1: string | null; Cellular: string | null; EmailAddress: string | null; ContactPerson: string | null; ShipToDefault: string | null; BPAddresses?: End[]; BPFiscalTaxIDCollection?: Fiscal[] }>(
+      `/BusinessPartners('${encodeURIComponent(cardCode.replace(/'/g, "''"))}')?$select=Phone1,Cellular,EmailAddress,ContactPerson,ShipToDefault,BPAddresses,BPFiscalTaxIDCollection`
+    )
+  )
+  const ends = bp.BPAddresses ?? []
+  const e = ends.find((a) => a.AddressType === 'bo_ShipTo' && a.AddressName === bp.ShipToDefault) ?? ends.find((a) => a.AddressType === 'bo_ShipTo') ?? ends[0]
+  const fiscais = bp.BPFiscalTaxIDCollection ?? []
+  const f = fiscais.find((x) => x.Address === e?.AddressName && (x.TaxId0 || x.TaxId4)) ?? fiscais.find((x) => x.TaxId0 || x.TaxId4)
+  const vazio = (s: string | null | undefined) => (s && s.trim() ? s.trim() : null)
+  const dados: DadosClienteSap = {
+    endereco: vazio([e?.TypeOfAddress, e?.Street].filter(Boolean).join(' ') + (e?.StreetNo ? `, ${e.StreetNo}` : '')),
+    complemento: vazio(e?.BuildingFloorRoom),
+    bairro: vazio(e?.Block),
+    cep: vazio(e?.ZipCode),
+    cidade: vazio(e?.City),
+    uf: vazio(e?.State),
+    cnpj: vazio(f?.TaxId0),
+    cpf: vazio(f?.TaxId4),
+    ie: vazio(f?.TaxId1),
+    telefone: vazio(bp.Phone1) ?? vazio(bp.Cellular),
+    email: vazio(bp.EmailAddress),
+    contato: vazio(bp.ContactPerson),
+  }
+  const agora = agoraSqlite()
+  await db
+    .insert(sapClientesComercial)
+    .values({ cardCode, atualizadoEm: agora, dados: JSON.stringify(dados), dadosEm: agora })
+    .onConflictDoUpdate({ target: sapClientesComercial.cardCode, set: { dados: JSON.stringify(dados), dadosEm: agora } })
+  return dados
+}
+
+export async function dadosClienteSap(cardCode: string): Promise<DadosClienteSap | null> {
+  const r = await db.query.sapClientesComercial.findFirst({ where: eq(sapClientesComercial.cardCode, cardCode), columns: { dados: true } })
+  return r?.dados ? (JSON.parse(r.dados) as DadosClienteSap) : null
 }
