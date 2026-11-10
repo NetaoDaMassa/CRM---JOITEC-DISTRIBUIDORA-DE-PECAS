@@ -6,6 +6,8 @@ import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
+import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
+import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
@@ -614,6 +616,59 @@ export const expedicaoRouter = router({
     }),
 
   sincronizarAgora: featureProcedure(FEATURE).mutation(() => sincronizarExpedicaoSap()),
+
+  // Pedidos de venda abertos no SAP (últimos 15 dias) que ainda não têm
+  // picking — a mesma foto que alimenta a jornada do vendedor.
+  pedidosSemPicking: featureProcedure(FEATURE).query(async ({ ctx }) => {
+    const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+    if (!empresa) return []
+    const linhas = await db
+      .select()
+      .from(sapPedidosPendentes)
+      .where(and(eq(sapPedidosPendentes.tipo, 'pedido'), eq(sapPedidosPendentes.empresaSlug, empresa.slug)))
+      .orderBy(asc(sapPedidosPendentes.data))
+    const codigos = [...new Set(linhas.map((l) => l.codigoCliente))]
+    const nomes = codigos.length
+      ? await db.select({ codigo: clientes.codigo, nome: clientes.razaoSocial }).from(clientes).where(and(eq(clientes.empresaId, ctx.empresaId), inArray(clientes.codigo, codigos)))
+      : []
+    const nomeDe = new Map(nomes.map((n) => [n.codigo, n.nome]))
+    return linhas.map((l) => ({ numero: l.numero, codigoCliente: l.codigoCliente, cliente: nomeDe.get(l.codigoCliente) ?? null, data: l.data, valor: l.valor, vendedorSap: l.vendedorSap }))
+  }),
+
+  // Gera a lista de picking no SAP (todas as linhas em aberto do pedido) e
+  // já roda a sincronização pra o card aparecer na Expedição.
+  gerarPicking: featureProcedure(FEATURE)
+    .input(z.object({ numero: z.string().regex(/^\d+$/) }))
+    .mutation(async ({ ctx, input }) => {
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+      const filial = empresa ? filialDaEmpresa(empresa.slug) : null
+      if (!filial || ![3, 4].includes(filial)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Gerar picking só na Joitec, Odin Automação e Odin Tubos' })
+      let r
+      try {
+        r = await gerarPickingSap(filial, Number(input.numero), ctx.user.name)
+      } catch (e) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
+      }
+      await db.delete(sapPedidosPendentes).where(and(eq(sapPedidosPendentes.tipo, 'pedido'), eq(sapPedidosPendentes.numero, input.numero), eq(sapPedidosPendentes.empresaSlug, empresa!.slug)))
+      await sincronizarExpedicaoSap().catch((e) => console.error('[expedicao] sincronizar depois do picking:', e))
+      return r
+    }),
+
+  // Depois da conferência no CRM: marca o picking como separado no SAP.
+  registrarConferenciaSap: featureProcedure(FEATURE)
+    .input(z.object({ id: z.number().int() }))
+    .mutation(async ({ ctx, input }) => {
+      const p = await acharPedido(ctx.empresaId, input.id)
+      if (!p.conferenciaFim) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Termine a conferência no CRM antes' })
+      let r
+      try {
+        r = await registrarConferenciaSap(p.id, p.pickListSap)
+      } catch (e) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
+      }
+      await db.update(expedicaoPedidos).set({ statusPickingSap: 'ps_Picked', updatedAt: agoraSqlite() }).where(eq(expedicaoPedidos.id, p.id))
+      return r
+    }),
 
   // ---- Ações pra resolver de uma vez (pedido do João, 2026-11-02, na
   // subida: "pedidos que já foram feitos mas quero finalizar o processo

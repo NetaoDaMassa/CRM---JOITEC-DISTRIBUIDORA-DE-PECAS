@@ -2,10 +2,11 @@
 // próprio SAP) — pedido do João, 2026-10-29. Substitui, aos poucos, as
 // planilhas que ele exportava do SAP e mandava pra importar.
 //
-// Só CONSULTA: além de Login/Logout, este módulo só faz GET. O usuário
-// (`integracao.frete`, licença Indirect) é compartilhado com a integração de
-// frete — por isso o CRM nunca grava nada nem mexe na sessão dos outros
-// (Logout encerra só a sessão aberta aqui).
+// Quase tudo aqui é CONSULTA (GET). Gravar (`escrever`) só existe pra ações
+// que uma pessoa dispara de propósito numa tela — gerar picking e registrar
+// a conferência na Expedição (João, 2026-11-10); nenhuma rotina automática
+// grava no SAP. O usuário `integracao.frete` é o do próprio CRM (só o nome
+// ficou errado — João, 2026-11-10). Logout encerra só a sessão aberta aqui.
 //
 // Configuração no .env do servidor: SAP_SL_URL (…:50000/b1s/v1),
 // SAP_SL_COMPANYDB (SBO_ODIN_PRD; o usuário não está liberado no
@@ -18,6 +19,8 @@ export interface SapSessao {
   getTodos<T = unknown>(caminho: string, porPagina?: number): Promise<T[]>
   // Arquivo binário (anexo: GET Attachments2(id)/$value?filename='x.pdf').
   getArquivo(caminho: string): Promise<{ dados: Buffer; tipo: string }>
+  // POST/PATCH. Erro do SAP vira exceção com a mensagem dele.
+  escrever<T = unknown>(metodo: 'POST' | 'PATCH', caminho: string, corpo: unknown): Promise<T | null>
 }
 
 export function sapConfigurado(): boolean {
@@ -95,6 +98,12 @@ async function sessaoSap<T>(fn: (sap: SapSessao) => Promise<T>): Promise<T> {
         url = proximo ? `${base}/${proximo.replace(/^\/?b1s\/v[12]\//, '')}` : null
       }
       return todos
+    },
+    async escrever(metodo, caminho, corpo) {
+      const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify(corpo) })
+      const texto = await r.text()
+      if (!r.ok) throw new Error(mensagemErro(texto))
+      return texto ? JSON.parse(texto) : null
     },
     async getArquivo(caminho) {
       const r = await fetch(`${base}${caminho}`, { headers: { Cookie: cookie } })

@@ -121,7 +121,7 @@ export default function Expedicao() {
     () => new Map((conversas ?? []).filter((c) => c.tipoOrigem === 'expedicao' && c.idOrigem).map((c) => [c.idOrigem as number, c.naoLidas])),
     [conversas]
   )
-  const [aba, setAba] = useState<'quadro' | 'coletados'>('quadro')
+  const [aba, setAba] = useState<'quadro' | 'picking' | 'coletados'>('quadro')
   const [coletadoAberto, setColetadoAberto] = useState<Pedido | null>(null)
   const [verDescartados, setVerDescartados] = useState(false)
   const [verKits, setVerKits] = useState(false)
@@ -238,6 +238,7 @@ export default function Expedicao() {
         {(
           [
             { id: 'quadro', label: 'Em andamento' },
+            { id: 'picking', label: 'Aguardando picking' },
             { id: 'coletados', label: 'Coletados' },
           ] as const
         ).map((a) => (
@@ -253,6 +254,7 @@ export default function Expedicao() {
       </div>
 
       {aba === 'coletados' && <ColetadosLista onAbrir={setColetadoAberto} />}
+      {aba === 'picking' && <PedidosSemPicking onGerado={() => (utils.expedicao.fila.invalidate(), setAba('quadro'))} />}
 
       {aba === 'quadro' && selecionando && (
         <AcoesEmLote
@@ -439,6 +441,70 @@ export default function Expedicao() {
   )
 }
 
+// Pedidos de venda abertos no SAP sem picking (últimos 15 dias): gerar o
+// picking daqui cria a lista no SAP e o card entra na fila (João, 2026-11-10).
+function PedidosSemPicking({ onGerado }: { onGerado: () => void }) {
+  const utils = trpc.useUtils()
+  const { data, isLoading, error } = trpc.expedicao.pedidosSemPicking.useQuery(undefined, { refetchInterval: 60_000 })
+  const [gerando, setGerando] = useState<string | null>(null)
+  const gerar = trpc.expedicao.gerarPicking.useMutation({
+    onSuccess: (r, v) => {
+      toast.success(`Picking ${r.pickList} gerado no SAP para o pedido ${v.numero} (${r.linhas} linha(s)) — o card entrou na fila`)
+      utils.expedicao.pedidosSemPicking.invalidate()
+      onGerado()
+    },
+    onError: (e) => toast.error(e.message, { duration: 8000 }),
+    onSettled: () => setGerando(null),
+  })
+  if (error) return <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
+  if (isLoading) return <div className="h-32 rounded-2xl bg-dark-800 animate-pulse" />
+  if (!data?.length)
+    return <p className="text-sm text-dark-400 bg-dark-800 border border-dark-600 rounded-2xl p-6 text-center">Nenhum pedido aberto sem picking nos últimos 15 dias.</p>
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-dark-400">Pedidos de venda abertos no SAP que ainda não têm picking (atualiza a cada 5 minutos). Gerar o picking cria a lista no SAP com todas as linhas em aberto.</p>
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
+        {data.map((p) => (
+          <div key={p.numero} className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+            <div className="flex-1 min-w-[220px]">
+              <p className="text-sm text-dark-100">
+                <b>Pedido {p.numero}</b>
+                {p.cliente && <span className="text-dark-300"> · {p.cliente}</span>}
+              </p>
+              <p className="text-xs text-dark-500">
+                {p.codigoCliente} · {p.vendedorSap ?? 'sem vendedor'} · {hora(p.data)}
+              </p>
+            </div>
+            <span className="text-sm font-semibold text-dark-100">{p.valor != null ? `R$ ${num(p.valor)}` : ''}</span>
+            <Button
+              size="sm"
+              loading={gerando === p.numero}
+              disabled={gerando != null}
+              onClick={() => confirm(`Gerar o picking do pedido ${p.numero} no SAP?`) && (setGerando(p.numero), gerar.mutate({ numero: p.numero }))}
+            >
+              <PackageCheck className="h-4 w-4 mr-1.5" /> Gerar picking
+            </Button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Marca o picking como separado no SAP, depois da conferência feita no CRM.
+function ConferenciaSapBotao({ id }: { id: number }) {
+  const utils = trpc.useUtils()
+  const registrar = trpc.expedicao.registrarConferenciaSap.useMutation({
+    onSuccess: () => (toast.success('Conferência registrada no SAP'), utils.expedicao.fila.invalidate()),
+    onError: (e) => toast.error(e.message, { duration: 10000 }),
+  })
+  return (
+    <Button size="sm" variant="secondary" loading={registrar.isPending} onClick={() => registrar.mutate({ id })}>
+      ✔ Registrar conferência no SAP
+    </Button>
+  )
+}
+
 function SeloIsento({ className = '' }: { className?: string }) {
   return (
     <span className={`inline-block text-[11px] font-bold tracking-wide rounded bg-violet-900/40 text-violet-200 border border-violet-600/60 px-1.5 py-0.5 ${className}`}>
@@ -539,6 +605,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
         {p.clienteIsento && <SeloIsento />}
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-dark-300">
           <span>Picking <b className="text-dark-100">{p.pickListSap}</b> ({STATUS_SAP[p.statusPickingSap ?? ''] ?? p.statusPickingSap})</span>
+          {p.conferenciaFim && p.statusPickingSap === 'ps_Released' && <ConferenciaSapBotao id={p.id} />}
           {p.cotacaoSap && <span>Cotação <b className="text-dark-100">{p.cotacaoSap}</b></span>}
           <span>Vendedor <b className="text-dark-100">{p.vendedorSap ?? '—'}</b></span>
           <span>{p.itens} itens · {num(p.pecas)} peças</span>
