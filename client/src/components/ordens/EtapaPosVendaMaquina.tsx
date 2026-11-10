@@ -7,7 +7,7 @@
 // chegada no lugar do PDF, sem técnico, e o Concluir é só o OK.
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { AlertTriangle, CheckCircle2, Copy, ExternalLink, FileText, MessageCircle, Send } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Copy, ExternalLink, FileText, Mail, MessageCircle, Send } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../ui/Button'
 import { Input, Textarea } from '../ui/Input'
@@ -25,12 +25,14 @@ export default function EtapaPosVendaMaquina({
   readonly,
   clienteNome,
   clienteWhatsapp,
+  clienteEmail,
 }: {
   ordemId: number
   isAdmin: boolean
   readonly: boolean
   clienteNome?: string | null
   clienteWhatsapp?: string | null
+  clienteEmail?: string | null
   clienteRevendaId?: number | null
 }) {
   const utils = trpc.useUtils()
@@ -95,6 +97,24 @@ export default function EtapaPosVendaMaquina({
     const numero = clienteWhatsapp.replace(/\D/g, '')
     window.open(`https://wa.me/${numero.length <= 11 ? `55${numero}` : numero}?text=${encodeURIComponent(mensagem)}`, '_blank')
     enviadoMut.mutate({ ordemId })
+  }
+  // E-mail do cadastro do cliente ao lado do WhatsApp (João, 2026-11-10):
+  // abre o e-mail com a mesma mensagem; também conta como enviado.
+  const email = clienteEmail?.trim() || null
+  function enviarEmail() {
+    if (!email) return
+    const assunto = data?.orderType === 'peca' ? 'Odin Compressores — pesquisa de satisfação' : 'Odin Compressores — guia do equipamento e pesquisa de satisfação'
+    window.open(`mailto:${email}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(mensagem)}`)
+    enviadoMut.mutate({ ordemId })
+  }
+  async function copiarEmail() {
+    if (!email) return
+    try {
+      await navigator.clipboard.writeText(email)
+      toast.success('E-mail copiado')
+    } catch {
+      toast.error('Não deu para copiar')
+    }
   }
   async function copiar() {
     try {
@@ -197,6 +217,20 @@ export default function EtapaPosVendaMaquina({
             <Button size="sm" onClick={enviarWhatsapp} loading={enviadoMut.isPending}>
               <MessageCircle size={14} className="mr-1" /> Enviar no WhatsApp
             </Button>
+            {email ? (
+              <span className="inline-flex items-stretch rounded-lg border border-dark-600 overflow-hidden">
+                <button type="button" onClick={enviarEmail} title="Abrir o e-mail com esta mensagem" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs text-dark-100 bg-dark-800 hover:bg-dark-700">
+                  <Mail size={14} className="text-gold-400" /> Enviar por e-mail: <b className="font-medium">{email}</b>
+                </button>
+                <button type="button" onClick={copiarEmail} title="Copiar só o e-mail" className="px-2 border-l border-dark-600 bg-dark-800 hover:bg-dark-700 text-dark-300">
+                  <Copy size={13} />
+                </button>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 text-xs text-dark-500 px-1" title="Cadastre o e-mail no cadastro do cliente">
+                <Mail size={13} /> Cliente sem e-mail cadastrado
+              </span>
+            )}
             <Button size="sm" variant="secondary" onClick={copiar}>
               <Copy size={14} className="mr-1" /> Copiar mensagem
             </Button>

@@ -107,6 +107,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
             readonly={readonly}
             clienteNome={clienteNome}
             clienteWhatsapp={clienteWhatsapp}
+            clienteEmail={clienteEmail}
             clienteRevendaId={ordem.cliente?.revendaId}
           />
         )
@@ -116,7 +117,7 @@ export function renderEtapa(stage: Stage, ordem: OrdemParaEtapa, isAdmin: boolea
       // lugar à pesquisa (João, 2026-10-29).
       return (
         <div className="space-y-6">
-          <EtapaPosVendaMaquina ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} clienteNome={clienteNome} clienteWhatsapp={clienteWhatsapp} />
+          <EtapaPosVendaMaquina ordemId={ordemId} isAdmin={isAdmin} readonly={readonly} clienteNome={clienteNome} clienteWhatsapp={clienteWhatsapp} clienteEmail={clienteEmail} />
           <div className="border-t border-dark-700 pt-4">
             <p className="text-xs font-semibold text-dark-500 uppercase tracking-wide mb-3">Outros dados</p>
             <EtapaPosVenda
