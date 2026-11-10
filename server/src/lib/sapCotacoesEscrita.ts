@@ -85,6 +85,11 @@ export async function gerarPedidoSap(c: CotacaoParaSap, cotacaoEntry: number, li
       DocumentLines: linhasAceitas.map((linha) => ({ BaseType: 23, BaseEntry: cotacaoEntry, BaseLine: linha })),
     })
     if (!r?.DocEntry) throw new Error('O SAP não devolveu o número do pedido')
+    // A cotação fica aberta no SAP quando sobra algo dela (item que o cliente
+    // não quis, ou o frete — o pedido leva uma despesa própria): fecha, porque
+    // a negociação acabou. Testado 2026-11-10: cotação 12277 → pedido 9294.
+    const q = await sap.get<{ DocumentStatus: string }>(`/Quotations(${cotacaoEntry})?$select=DocumentStatus`)
+    if (q.DocumentStatus === 'bost_Open') await sap.escrever('POST', `/Quotations(${cotacaoEntry})/Close`)
     return { docEntry: r.DocEntry, docNum: r.DocNum, total: r.DocTotal }
   })
 }
