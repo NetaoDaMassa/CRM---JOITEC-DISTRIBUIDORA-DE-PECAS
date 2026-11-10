@@ -45,7 +45,10 @@ import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emiten
 const FEATURE = 'cotacoes'
 // Lista 01.BASE — usada quando o cliente não tem lista no SAP.
 const LISTA_BASE = 1
-const DESCONTO_LIVRE_PADRAO = 5
+// Desconto que o vendedor dá sem aprovação, por filial (João, 2026-11-10:
+// 3% Joitec/Automação, 2% Odin Tubos — igual às aprovações do SAP). Dá pra
+// mudar por empresa em Regras.
+const DESCONTO_LIVRE_POR_FILIAL: Record<number, number> = { 3: 3, 4: 2 }
 export const MOTIVOS_PERDA = ['Preço', 'Prazo', 'Concorrente', 'Sem resposta', 'Outro'] as const
 
 const chaveGerente = (empresaId: number) => `cotacoes_gerente_${empresaId}`
@@ -61,7 +64,7 @@ const cotacoesProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   // Compressores não vai cotar pelo CRM (João, 2026-11-10).
   if (!empresa || !filial || ![3, 4].includes(filial)) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotações só para Joitec, Odin Automação e Odin Tubos' })
   const gerenteId = await getConfigNumero(chaveGerente(ctx.empresaId), 0)
-  const descontoLivre = await getConfigNumero(chaveDescontoLivre(ctx.empresaId), DESCONTO_LIVRE_PADRAO)
+  const descontoLivre = await getConfigNumero(chaveDescontoLivre(ctx.empresaId), DESCONTO_LIVRE_POR_FILIAL[filial] ?? 3)
   const souGerente = gerenteId > 0 && gerenteId === ctx.user.id
   const podeConfigurar = ctx.user.superAdmin || ctx.user.role === 'admin'
   const veTudo = podeConfigurar || souGerente
