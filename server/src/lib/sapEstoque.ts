@@ -162,6 +162,26 @@ async function buscarEntradas(sap: SapSessao, depositos: Map<string, number>, de
   return somarPorItem(linhas)
 }
 
+// Itens usados pra montar outros (componentes das estruturas de produção do
+// SAP — ProductTrees). Ficam guardados na Revenda, mas saem pela montagem e
+// não por venda, então apareceriam como parados. O João pediu (2026-11-10)
+// pra tirar das três abas; o produto montado continua.
+const CHAVE_COMPONENTES = 'sap_estoque_componentes'
+async function componentesDeMontagem(sap: SapSessao): Promise<Set<string>> {
+  const arvores = await sap.getTodos<{ TreeCode: string; ProductTreeLines?: { ItemCode: string | null }[] }>('/ProductTrees?$select=TreeCode,ProductTreeLines', 100)
+  const codigos = new Set<string>()
+  for (const a of arvores) for (const l of a.ProductTreeLines ?? []) if (l.ItemCode) codigos.add(l.ItemCode)
+  await setConfig(CHAVE_COMPONENTES, JSON.stringify([...codigos].sort()))
+  return codigos
+}
+async function componentesGravados(): Promise<Set<string>> {
+  try {
+    return new Set(JSON.parse((await getConfigTexto(CHAVE_COMPONENTES)) ?? '[]') as string[])
+  } catch {
+    return new Set()
+  }
+}
+
 async function fotoEstoque(sap: SapSessao, depositos: Map<string, number>): Promise<number> {
   const itens = await sap.getTodos<{
     ItemCode: string
@@ -169,9 +189,11 @@ async function fotoEstoque(sap: SapSessao, depositos: Map<string, number>): Prom
     U_CodigoAntigo?: string | null
     ItemWarehouseInfoCollection: { WarehouseCode: string; InStock: number; StandardAveragePrice: number | null }[]
   }>('/Items?$select=ItemCode,ItemName,U_CodigoAntigo,ItemWarehouseInfoCollection&$filter=QuantityOnStock gt 0', 200)
+  const componentes = await componentesDeMontagem(sap)
   const agora = new Date().toISOString().replace('T', ' ').slice(0, 19)
   const linhas = new Map<string, typeof sapEstoqueItens.$inferInsert>()
   for (const it of itens) {
+    if (componentes.has(it.ItemCode)) continue
     for (const w of it.ItemWarehouseInfoCollection ?? []) {
       const filial = depositos.get(w.WarehouseCode)
       if (!filial || !ehRevenda(w.WarehouseCode) || !(w.InStock > 0)) continue
@@ -349,7 +371,7 @@ export interface ItemMenosVendido {
 // Todos os itens que têm estoque de Revenda hoje ou que venderam alguma vez
 // desde a implantação, com o que venderam no período (zero entra).
 export async function menosVendidosDaFilial(filial: number, de: string, ate: string): Promise<ItemMenosVendido[]> {
-  const [estoque, periodo, ultimas, nomes] = await Promise.all([
+  const [estoque, periodo, ultimas, nomes, componentes] = await Promise.all([
     db.select().from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, filial)),
     db
       .select({
@@ -367,11 +389,12 @@ export async function menosVendidosDaFilial(filial: number, de: string, ate: str
       .where(and(eq(sapItemMovimentos.filial, filial), eq(sapItemMovimentos.tipo, 'venda')))
       .groupBy(sapItemMovimentos.itemCodigo),
     nomesDosItens(filial),
+    componentesGravados(),
   ])
   const est = new Map(estoque.map((e) => [e.itemCodigo, e]))
   const per = new Map(periodo.map((p) => [p.item, p]))
   const ult = new Map(ultimas.map((u) => [u.item, u.ultimo]))
-  const codigos = new Set([...est.keys(), ...ult.keys()])
+  const codigos = new Set([...est.keys(), ...ult.keys()].filter((c) => !componentes.has(c)))
   return [...codigos].map((codigo) => {
     const e = est.get(codigo)
     const p = per.get(codigo)
