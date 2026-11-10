@@ -12,10 +12,11 @@ import { appRouter } from './router/index.js'
 import { verifyToken, type JwtPayload } from './lib/jwt.js'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, sql } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
-import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas, vendas, clientes, funilMensal } from './db/schema.js'
+import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
 import { temFeature } from './router/_base.js'
+import { semearFotosCatalogo } from './lib/fotosProdutos.js'
 import { baixarArquivoNotaSap, baixarArquivoNotaDoPedidoSap, FILIAL_SAP_POR_SLUG, type ArquivoNota } from './lib/sapDanfe.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
@@ -456,6 +457,31 @@ app.post('/upload/marketing-arquivo', uploadMarketing.single('file'), async (req
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// Foto de um produto (módulo Fotos dos produtos, João 2026-11-10): admin
+// troca/coloca a foto do item; substitui a do catálogo. Só imagem, até 5 MB.
+const uploadFotoProduto = multer({
+  storage: multer.diskStorage({
+    destination: UPLOADS_DIR,
+    filename: (_req, file, cb) => cb(null, `produto-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname).toLowerCase() || '.jpg'}`),
+  }),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => cb(null, /^image\/(jpeg|png|webp)$/.test(file.mimetype)),
+})
+app.post('/upload/foto-produto/:itemCodigo', uploadFotoProduto.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!user.superAdmin && !(user.role === 'admin' && (await temFeature(user.id, 'cotacoes')))) return res.status(403).json({ error: 'Só admin com Cotações troca foto' })
+  const itemCodigo = String(req.params.itemCodigo)
+  if (!/^[A-Za-z0-9._-]{1,30}$/.test(itemCodigo)) return res.status(400).json({ error: 'Código de item inválido' })
+  if (!req.file) return res.status(400).json({ error: 'Envie uma imagem JPG, PNG ou WEBP de até 5 MB' })
+  const url = `/uploads/${req.file.filename}`
+  await db
+    .insert(itemFotos)
+    .values({ itemCodigo, url, origem: 'upload', atualizadoPorId: user.id })
+    .onConflictDoUpdate({ target: itemFotos.itemCodigo, set: { url, origem: 'upload', atualizadoPorId: user.id, atualizadoEm: sql`(datetime('now'))` } })
+  res.json({ url })
+})
+
 // Conteúdo de um arquivo de Marketing "somente visualização" — diferente do
 // resto de /uploads (estático, sem login), essa rota exige token E confere
 // empresa/feature antes de servir os bytes, porque pra esse arquivo o front
@@ -821,6 +847,8 @@ async function start() {
     await backfillFuncaoRh()
     // Funções vivas (2026-11-09) — roda uma vez só, na primeira subida.
     await migrarParaFuncoesVivas()
+    // Fotos dos produtos: recortes do catálogo (só os itens ainda sem foto).
+    await semearFotosCatalogo().catch((e) => console.error('[fotos] semear:', e))
   } catch (err) {
     console.error('[db] falha ao aplicar migrações:', err)
     process.exit(1)

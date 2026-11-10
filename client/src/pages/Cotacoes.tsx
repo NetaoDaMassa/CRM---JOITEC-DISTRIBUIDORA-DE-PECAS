@@ -653,7 +653,8 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                 {calc.map((l) => (
                   <div key={l.itemCodigo} className="px-4 py-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
+                      <FotoProduto codigo={l.itemCodigo} nome={l.item?.nome ?? l.itemCodigo} foto={l.item?.foto ?? null} tamanho="h-12 w-12" />
+                      <div className="min-w-0 flex-1">
                         <p className={`text-sm break-words ${recusados.has(l.itemCodigo) ? 'text-dark-500 line-through' : 'text-dark-100'}`}>{l.item?.nome ?? l.itemCodigo}</p>
                         {recusados.has(l.itemCodigo) && <p className="text-[11px] font-semibold text-red-300">Cliente não quis este item</p>}
                         <p className="text-[11px] text-dark-500">
@@ -884,11 +885,12 @@ td{padding:4px;border-bottom:1px dotted #9aa;vertical-align:top}.n{text-align:ri
     <div class="lin"><b>Condição de Pagamento:</b> ${esc(prazo)}</div>
   </div>
 </div>
-<table><thead><tr><th>Nº</th><th>Código</th><th>Descrição do item</th><th>NCM</th><th>UN</th><th>Quantidade</th><th>% Desc</th><th>Preço</th><th>IPI %</th><th>ICMS %</th><th>TOTAL s/ IPI</th></tr></thead><tbody>
+<table><thead><tr><th>Nº</th><th></th><th>Código</th><th>Descrição do item</th><th>NCM</th><th>UN</th><th>Quantidade</th><th>% Desc</th><th>Preço</th><th>IPI %</th><th>ICMS %</th><th>TOTAL s/ IPI</th></tr></thead><tbody>
 ${itens
   .map((i, n) => {
     const cat = catalogo.get(i.itemCodigo)
-    return `<tr><td>${n + 1}</td><td>${esc(i.itemCodigo)}</td><td>${esc(i.nome)}</td><td class="c">${esc(cat?.ncm)}</td><td class="c">${esc(cat?.unidade)}</td><td class="n">${din(i.quantidade)}</td><td class="n">${din(Math.max(0, i.descontoPct))}</td><td class="n">R$ ${din4(i.precoUnitario)}</td><td class="c">na NF</td><td class="c">na NF</td><td class="n">R$ ${din(i.precoUnitario * i.quantidade)}</td></tr>`
+    const foto = cat?.foto ? `<img src="${window.location.origin}${cat.foto}" style="width:34px;height:34px;object-fit:contain">` : ''
+    return `<tr><td>${n + 1}</td><td class="c">${foto}</td><td>${esc(i.itemCodigo)}</td><td>${esc(i.nome)}</td><td class="c">${esc(cat?.ncm)}</td><td class="c">${esc(cat?.unidade)}</td><td class="n">${din(i.quantidade)}</td><td class="n">${din(Math.max(0, i.descontoPct))}</td><td class="n">R$ ${din4(i.precoUnitario)}</td><td class="c">na NF</td><td class="c">na NF</td><td class="n">R$ ${din(i.precoUnitario * i.quantidade)}</td></tr>`
   })
   .join('')}
 </tbody></table>
@@ -1049,6 +1051,68 @@ function ModalGanhar({ itens, carregando, onFechar, onConfirmar }: { itens: Cota
   )
 }
 
+// Foto do produto (módulo Fotos dos produtos). Clique abre grande; admin com
+// Cotações troca a foto ali mesmo (substitui a do catálogo).
+function FotoProduto({ codigo, nome, foto, tamanho }: { codigo: string; nome: string; foto: string | null; tamanho: string }) {
+  const [aberta, setAberta] = useState(false)
+  const [falhou, setFalhou] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAberta(true)}
+        title="Ver foto"
+        className={`${tamanho} shrink-0 overflow-hidden rounded-lg bg-white/95 ring-1 ring-dark-600 flex items-center justify-center hover:ring-gold-500`}
+      >
+        {foto && !falhou ? (
+          <img src={foto} alt="" loading="lazy" className="h-full w-full object-contain" onError={() => setFalhou(true)} />
+        ) : (
+          <Package className="h-5 w-5 text-dark-500" />
+        )}
+      </button>
+      {aberta && <ModalFoto codigo={codigo} nome={nome} foto={falhou ? null : foto} onFechar={() => setAberta(false)} />}
+    </>
+  )
+}
+
+function ModalFoto({ codigo, nome, foto, onFechar }: { codigo: string; nome: string; foto: string | null; onFechar: () => void }) {
+  const utils = trpc.useUtils()
+  const { data: ctx } = trpc.cotacoesCrm.contexto.useQuery()
+  const [enviando, setEnviando] = useState(false)
+  const trocar = async (arquivo: File) => {
+    setEnviando(true)
+    try {
+      const form = new FormData()
+      form.append('file', arquivo)
+      const r = await fetch(`/upload/foto-produto/${encodeURIComponent(codigo)}`, { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
+      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `erro ${r.status}`)
+      toast.success('Foto trocada')
+      utils.cotacoesCrm.catalogo.invalidate()
+      onFechar()
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+  return (
+    <Modal open onClose={onFechar} title={nome}>
+      <div className="space-y-3">
+        <div className="flex h-72 items-center justify-center rounded-xl bg-white">
+          {foto ? <img src={foto} alt={nome} className="max-h-full max-w-full object-contain" /> : <p className="text-sm text-dark-600">Sem foto ainda</p>}
+        </div>
+        <p className="text-xs text-dark-400">{codigo}</p>
+        {ctx?.podeConfigurar && (
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dark-600 px-3 py-2 text-sm text-dark-100 hover:bg-dark-800">
+            {enviando ? 'Enviando…' : foto ? 'Trocar foto' : 'Colocar foto'}
+            <input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={enviando} onChange={(e) => e.target.files?.[0] && trocar(e.target.files[0])} />
+          </label>
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
   return (
     <label className="flex min-w-0 flex-col gap-1">
@@ -1173,10 +1237,7 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
                     className="h-4 w-4 shrink-0 accent-sky-500"
                   />
                 )}
-                {/* Foto do produto entra aqui (etapa das imagens). */}
-                <div className="h-11 w-11 shrink-0 rounded-lg bg-dark-700 flex items-center justify-center">
-                  <Package className="h-5 w-5 text-dark-500" />
-                </div>
+                <FotoProduto codigo={i.codigo} nome={i.nome} foto={i.foto} tamanho="h-12 w-12" />
                 <div className="min-w-0 flex-1">
                   <p className="text-sm text-dark-100 leading-snug break-words">{i.nome}</p>
                   <p className="text-[11px] text-dark-500">

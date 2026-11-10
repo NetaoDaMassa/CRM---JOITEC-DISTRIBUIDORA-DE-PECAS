@@ -10,6 +10,7 @@ import { sapCatalogoItens, sapCatalogoPrecos, sapClientesComercial, sapListasPre
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { agoraSqlite } from './dataBr.js'
 import { comSessaoSap } from './sapServiceLayer.js'
+import { semearFotosCatalogo } from './fotosProdutos.js'
 
 const CHAVE = 'sap_catalogo_atualizado_em'
 const INTERVALO_MS = 3 * 60 * 60_000
@@ -147,6 +148,7 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
   // Emitente de cada filial (cabeçalho da cotação impressa).
   await setConfig(CHAVE_FILIAIS, JSON.stringify(Object.fromEntries(dados.filiais.filter((f) => f.Disabled !== 'tYES').map((f) => [String(f.BPLID), f]))))
   await setConfig(CHAVE, agora)
+  await semearFotosCatalogo().catch((e) => console.error('[sap-catalogo] fotos:', e))
   return { itens: itens.length, precos: precos.length, clientes: clientes.length }
 }
 

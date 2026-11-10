@@ -38,6 +38,7 @@ import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
+import { fotosPorItem } from '../lib/fotosProdutos.js'
 import { enviarCotacaoSap, faltasDeEstoqueSap, fecharCotacaoSap, gerarPedidoSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
@@ -210,6 +211,7 @@ export const cotacoesCrmRouter = router({
       db.select({ item: sapCatalogoPrecos.itemCodigo, preco: sapCatalogoPrecos.preco }).from(sapCatalogoPrecos).where(eq(sapCatalogoPrecos.lista, LISTA_BASE)),
       db.select({ item: sapEstoqueItens.itemCodigo, qtd: sql<number>`coalesce(${sapEstoqueItens.disponivel}, ${sapEstoqueItens.quantidade})` }).from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, ctx.filial)),
     ])
+    const fotoDe = await fotosPorItem()
     const precoDe = new Map(precos.map((p) => [p.item, p.preco]))
     const precoBase = new Map(base.map((p) => [p.item, p.preco]))
     const estoqueDe = new Map(estoque.map((e) => [e.item, e.qtd]))
@@ -222,6 +224,7 @@ export const cotacoesCrmRouter = router({
         unidade: i.unidade,
         ncm: i.ncm,
         pesoKg: i.pesoKg,
+        foto: fotoDe.get(i.itemCodigo) ?? null,
         preco: precoDe.get(i.itemCodigo) ?? precoBase.get(i.itemCodigo) ?? null,
         estoque: estoqueDe.get(i.itemCodigo) ?? 0,
       }))

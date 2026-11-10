@@ -5219,3 +5219,15 @@ export const cotacoesCrmHistorico = sqliteTable(
   },
   (t) => ({ cotacaoIdx: index('idx_cotacoes_crm_historico_cotacao').on(t.cotacaoId) })
 )
+
+// Foto de cada produto (código do item no SAP) — módulo próprio, usado na
+// cotação e no documento impresso (João, 2026-11-10); pode servir a outras
+// telas. Origem 'catalogo' = recorte do catálogo em PDF (semente em
+// data/fotosProdutos.ts); 'upload' = trocada por um admin (vale sempre).
+export const itemFotos = sqliteTable('item_fotos', {
+  itemCodigo: text('item_codigo').primaryKey(),
+  url: text('url').notNull(),
+  origem: text('origem', { enum: ['catalogo', 'upload'] }).notNull(),
+  atualizadoPorId: integer('atualizado_por_id').references(() => users.id, { onDelete: 'set null' }),
+  atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+})

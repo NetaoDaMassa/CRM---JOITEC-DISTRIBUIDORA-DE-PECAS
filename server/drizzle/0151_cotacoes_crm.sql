@@ -97,4 +97,12 @@ CREATE TABLE `cotacoes_crm_historico` (
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
 );--> statement-breakpoint
 CREATE INDEX `idx_cotacoes_crm_historico_cotacao` ON `cotacoes_crm_historico` (`cotacao_id`);--> statement-breakpoint
-ALTER TABLE `sap_estoque_itens` ADD `disponivel` real;
+ALTER TABLE `sap_estoque_itens` ADD `disponivel` real;--> statement-breakpoint
+CREATE TABLE `item_fotos` (
+	`item_codigo` text PRIMARY KEY NOT NULL,
+	`url` text NOT NULL,
+	`origem` text NOT NULL,
+	`atualizado_por_id` integer,
+	`atualizado_em` text DEFAULT (datetime('now')) NOT NULL,
+	FOREIGN KEY (`atualizado_por_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
+);
