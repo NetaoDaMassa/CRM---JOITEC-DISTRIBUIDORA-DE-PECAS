@@ -67,6 +67,13 @@ const LEAD_SOURCE_LABELS: Record<string, string> = {
   ecommerce_carrinho_abandonado: 'Carrinho abandonado (loja online)',
   ecommerce_venda: 'Venda na loja online',
   meta_ads_lead: 'Meta Ads (formulário de lead)',
+  // Loja virtual nova (routes/lojaEventos.ts: source `loja_<tipo>`)
+  loja_lead: 'Loja virtual (deixou o contato)',
+  loja_form_submit: 'Loja virtual (formulário)',
+  loja_signup: 'Loja virtual (criou conta)',
+  loja_begin_checkout: 'Loja virtual (fez pedido)',
+  loja_purchase: 'Loja virtual (comprou)',
+  loja_cart_abandoned: 'Loja virtual (carrinho abandonado)',
 }
 export function labelOrigemLead(source: string | null | undefined): string {
   if (!source) return '—'

@@ -1,4 +1,5 @@
 import GravacoesDoContato from '../../components/ui/GravacoesDoContato'
+import LojaVirtualLead from '../../components/LojaVirtualLead'
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -55,6 +56,7 @@ const HISTORY_ACTION_LABELS: Record<string, string> = {
   excluido: 'Excluído',
   reatribuicao_automatica: 'Reatribuído por rodízio',
   email_marketing: 'E-mail marketing',
+  loja_virtual: '🛒 Loja virtual',
 }
 
 const TRACKING_EVENT_LABELS: Record<string, string> = {
@@ -749,6 +751,8 @@ export default function LeadDetail() {
           </div>
         </div>
       </div>
+
+      <LojaVirtualLead leadId={lead.id} />
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-5">
         <p className="text-sm font-semibold text-dark-100 mb-3">🌐 Atividade no site</p>

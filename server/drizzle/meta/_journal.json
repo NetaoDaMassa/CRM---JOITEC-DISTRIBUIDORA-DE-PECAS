@@ -1044,6 +1044,13 @@
       "when": 1794244000000,
       "tag": "0148_funcoes_vivas",
       "breakpoints": true
+    },
+    {
+      "idx": 149,
+      "version": "6",
+      "when": 1794330000000,
+      "tag": "0149_loja_eventos_visitante",
+      "breakpoints": true
     }
   ]
 }

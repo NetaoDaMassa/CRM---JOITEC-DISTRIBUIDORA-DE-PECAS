@@ -4828,6 +4828,7 @@ export const lojaEventos = sqliteTable(
     empresaQuandoIdx: index('idx_loja_eventos_empresa_quando').on(t.empresaId, t.ocorreuEm),
     empresaSkuIdx: index('idx_loja_eventos_empresa_sku').on(t.empresaId, t.produtoSku),
     empresaSessaoIdx: index('idx_loja_eventos_empresa_sessao').on(t.empresaId, t.sessionId),
+    empresaVisitanteIdx: index('idx_loja_eventos_empresa_visitante').on(t.empresaId, t.visitorId),
   })
 )
 

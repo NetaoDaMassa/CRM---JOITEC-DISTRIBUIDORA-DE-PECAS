@@ -179,7 +179,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/expedicao-equipe', label: 'Equipe do estoque', icon: UsersRound, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
   // Loja virtual nova (Compretec): o que os visitantes fazem na loja —
   // páginas, tempo, cliques, produtos, origem. Pedido do João, 2026-11-03.
-  { to: '/admin/loja-rastreamento', label: 'Loja virtual — visitantes', icon: MousePointerClick, somenteEmpresas: ['compretec-ecommerce'], feature: 'loja_rastreamento' },
+  { to: '/admin/loja-rastreamento', label: 'Loja virtual — visitantes', icon: MousePointerClick, somenteEmpresas: ['compretec-loja-fisica', 'compretec-ecommerce'], feature: 'loja_rastreamento' },
   // Telefonia PABXONE360 (3 empresas Odin, uma conta): relatório de
   // ligações tentativa x efetiva + (superAdmin) configuração e ramais.
   // 2026-10-30.

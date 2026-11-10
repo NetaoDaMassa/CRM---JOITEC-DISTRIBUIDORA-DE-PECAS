@@ -99,9 +99,15 @@ export function parseTelefone(phoneRaw: string): { ddd: number; phone: string } 
 // usuário logado) quando um formulário do site tem telefone — cria (ou
 // reaproveita, se já existe) o lead correspondente, com o mesmo rodízio por
 // DDD usado em leads.create.
-export async function findOrCreateLeadFromTracking(
+export async function findOrCreateLeadFromTracking(input: FindOrCreateLeadFromTrackingInput): Promise<number | null> {
+  return (await findOrCreateLeadFromTrackingDetalhado(input))?.id ?? null
+}
+
+// Igual, mas diz se o lead foi criado agora (a loja virtual usa isso pra
+// avisar o vendedor quando um lead que já existia volta e compra/abandona).
+export async function findOrCreateLeadFromTrackingDetalhado(
   input: FindOrCreateLeadFromTrackingInput
-): Promise<number | null> {
+): Promise<{ id: number; criado: boolean; vendorId: number | null } | null> {
   const { empresaId, email, name, company, observations, source, utmCampaign, metaDados } = input
   const cnpjLimpo = input.cnpj ? limparCnpj(input.cnpj) : ''
   const cnpj = cnpjLimpo && cnpjValido(cnpjLimpo) ? cnpjLimpo : null
@@ -129,7 +135,7 @@ export async function findOrCreateLeadFromTracking(
         .where(eq(leads.id, existing.id))
       if (cnpj && !existing.dadosReceita) void enriquecerLeadComReceita(existing.id)
     }
-    return existing.id
+    return { id: existing.id, criado: false, vendorId: existing.vendorId ?? null }
   }
 
   const vendorId = await getVendorByDDD(ddd, empresaId)
@@ -169,6 +175,7 @@ export async function findOrCreateLeadFromTracking(
   if (vendorId) {
     await db.insert(notifications).values({
       vendedorId: vendorId,
+      leadId,
       type: 'lead_assigned',
       title: 'Novo lead atribuído',
       message: `${name?.trim() || 'Um novo lead'} foi distribuído para você agora (origem: ${source}).`,
@@ -177,5 +184,5 @@ export async function findOrCreateLeadFromTracking(
 
   if (cnpj) void enriquecerLeadComReceita(leadId)
 
-  return leadId
+  return { id: leadId, criado: true, vendorId: vendorId ?? null }
 }

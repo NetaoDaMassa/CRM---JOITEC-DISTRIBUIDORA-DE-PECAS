@@ -30,6 +30,7 @@ import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
 import { mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
 import { notificarGestores } from '../lib/propostasGates.js'
+import { historicoLojaDoLead } from '../lib/lojaLeadHistorico.js'
 import {
   STATUS_VALUES,
   SEGMENT_VALUES,
@@ -387,6 +388,17 @@ export const leadsRouter = router({
         }))
       )
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }),
+
+  // Tudo o que o lead fez na loja virtual nova (Compretec) — lib/lojaLeadHistorico.ts.
+  lojaVirtual: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+    const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.id), columns: { id: true, empresaId: true, vendorId: true } })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id && !(await vendedorVeTudo(ctx.user.id))) {
+      throw new Error('Acesso negado')
+    }
+    return historicoLojaDoLead(lead.empresaId, lead.id)
   }),
 
   create: protectedProcedure

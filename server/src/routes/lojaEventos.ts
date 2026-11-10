@@ -1,10 +1,11 @@
 import crypto from 'node:crypto'
 import express from 'express'
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { empresas, leadTrackingVisitors, lojaEventos } from '../db/schema.js'
+import { empresas, leadHistory, leads, leadTrackingVisitors, lojaEventos, notifications } from '../db/schema.js'
 import { getConfigTexto } from '../lib/configuracoes.js'
-import { findOrCreateLeadFromTracking } from '../lib/leadsTrackingService.js'
+import { findOrCreateLeadFromTrackingDetalhado } from '../lib/leadsTrackingService.js'
+import { eventoQuente, lerMetadata, resumoEventoLoja } from '../lib/lojaResumo.js'
 
 // Rastreamento da loja virtual nova (Compretec) → CRM, em lotes assinados —
 // contrato combinado com a sessão da loja em 2026-11-03 (pedido do João):
@@ -73,6 +74,17 @@ function caminho(url: string | null): string | null {
   } catch {
     return url.split('?')[0].slice(0, 300)
   }
+}
+
+// Pedido grande não pode virar JSON cortado no meio (antes cortava em 4000
+// caracteres): tira o que é menos útil até caber.
+function metadataJson(m: unknown): string | null {
+  if (!m || typeof m !== 'object') return null
+  let j = JSON.stringify(m)
+  if (j.length <= 30000) return j
+  const { items: _i, ...semItens } = m as Record<string, unknown>
+  j = JSON.stringify(semItens)
+  return j.length <= 30000 ? j : JSON.stringify({ store_event: (m as Record<string, unknown>).store_event ?? null, cortado: true })
 }
 
 lojaEventosRouter.post('/eventos', async (req, res) => {
@@ -146,7 +158,7 @@ lojaEventosRouter.post('/eventos', async (req, res) => {
           duracaoMs: num(e.duration_ms),
           engajadoMs: num(e.engaged_ms),
           elemento: txt(e.element, 200),
-          metadata: e.metadata && typeof e.metadata === 'object' ? JSON.stringify(e.metadata).slice(0, 4000) : null,
+          metadata: metadataJson(e.metadata),
         })
         .onConflictDoNothing()
       if (!ins.rowsAffected) {
@@ -163,20 +175,52 @@ lojaEventosRouter.post('/eventos', async (req, res) => {
 
       const contato = (e.contact && typeof e.contact === 'object' ? e.contact : {}) as Record<string, unknown>
       const telefone = txt(contato.phone, 40)
-      if (IDENTIFICAM.has(tipo) && telefone) {
-        const leadId = await findOrCreateLeadFromTracking({
+      const email = txt(contato.email, 200)?.toLowerCase() ?? null
+      if (!IDENTIFICAM.has(tipo) || (!telefone && !email)) continue
+      const meta = lerMetadata(metadataJson(e.metadata))
+      const resumo = resumoEventoLoja(tipo, meta, num(e.value))
+
+      // Com telefone: acha ou cria o lead (rodízio por DDD). Só e-mail: liga
+      // a um lead que já existe com esse e-mail (o CRM não cria lead sem telefone).
+      let lead: { id: number; criado: boolean; vendorId: number | null } | null = null
+      if (telefone) {
+        lead = await findOrCreateLeadFromTrackingDetalhado({
           empresaId: empresa.id,
           phone: telefone,
-          email: txt(contato.email, 200) ?? undefined,
+          email: email ?? undefined,
           name: txt(contato.name, 200) ?? undefined,
           source: `loja_${tipo}`,
           utmCampaign: v.utmCampaign ?? utm.utmCampaign ?? undefined,
-          observations: tipo === 'cart_abandoned' || tipo === 'begin_checkout' ? `Loja virtual: ${tipo === 'cart_abandoned' ? 'carrinho abandonado' : 'iniciou o checkout'}${num(e.value) ? ` · R$ ${num(e.value)!.toFixed(2)}` : ''}` : undefined,
+          observations: `Loja virtual: ${resumo}`,
         })
-        if (leadId && leadId !== v.leadId) {
-          await db.update(leadTrackingVisitors).set({ leadId }).where(eq(leadTrackingVisitors.id, v.id))
-          v = { ...v, leadId }
-          visitante.set(uid, v)
+      }
+      if (!lead && email) {
+        const porEmail = await db.query.leads.findFirst({
+          where: and(eq(leads.empresaId, empresa.id), eq(leads.email, email), isNull(leads.deletedAt)),
+          columns: { id: true, vendorId: true },
+        })
+        if (porEmail) lead = { id: porEmail.id, criado: false, vendorId: porEmail.vendorId ?? null }
+      }
+      if (!lead) continue
+      if (lead.id !== v.leadId) {
+        await db.update(leadTrackingVisitors).set({ leadId: lead.id }).where(eq(leadTrackingVisitors.id, v.id))
+        v = { ...v, leadId: lead.id }
+        visitante.set(uid, v)
+      }
+
+      // Lead que já existia e fez algo importante na loja: linha no
+      // histórico + aviso pro vendedor dele (o lead novo já é avisado na criação).
+      if (!lead.criado && eventoQuente(tipo, meta)) {
+        await db.insert(leadHistory).values({ empresaId: empresa.id, leadId: lead.id, action: 'loja_virtual', details: resumo })
+        if (lead.vendorId) {
+          const nome = txt(contato.name, 200) ?? 'Seu lead'
+          await db.insert(notifications).values({
+            vendedorId: lead.vendorId,
+            leadId: lead.id,
+            type: 'loja_virtual',
+            title: tipo === 'purchase' ? '🛒 Lead comprou na loja virtual' : '🛒 Lead ativo na loja virtual',
+            message: `${nome}: ${resumo}`.slice(0, 600),
+          })
         }
       }
     }

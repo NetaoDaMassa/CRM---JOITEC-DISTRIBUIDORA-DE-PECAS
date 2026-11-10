@@ -5,6 +5,7 @@ import { router, featureProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, leads, leadTrackingVisitors, lojaEventos } from '../db/schema.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
+import { itensDe, lerMetadata, pedidoDe, rotuloEventoLoja } from '../lib/lojaResumo.js'
 
 // Tela "Loja virtual" — comportamento dos visitantes da loja nova (pedido do
 // João, 2026-11-03), a partir dos eventos que a loja manda em lote
@@ -73,6 +74,7 @@ export const lojaRastreamentoRouter = router({
           duracaoMs: lojaEventos.duracaoMs,
           engajadoMs: lojaEventos.engajadoMs,
           elemento: lojaEventos.elemento,
+          metadata: lojaEventos.metadata,
         })
         .from(lojaEventos)
         .where(and(eq(lojaEventos.empresaId, ctx.empresaId), gte(lojaEventos.ocorreuEm, inicioDia(input.de)), lte(lojaEventos.ocorreuEm, fimDia(input.ate))))
@@ -180,6 +182,89 @@ export const lojaRastreamentoRouter = router({
         porDia.set(dia, d)
       }
 
+      // Carrinhos abandonados e pedidos — a lista que o vendedor usa pra ligar.
+      const nomeLead = new Map(comLead.map((c) => [c.uid, { leadId: c.leadId!, nome: c.nome, telefone: c.telefone ? `(${c.ddd}) ${c.telefone}` : null }]))
+      const metaDe = new Map<(typeof eventos)[number], Record<string, unknown>>()
+      const meta = (e: (typeof eventos)[number]) => {
+        if (!metaDe.has(e)) metaDe.set(e, lerMetadata(e.metadata))
+        return metaDe.get(e)!
+      }
+      const contatoDe = (m: Record<string, unknown>) => {
+        const c = (m.contact && typeof m.contact === 'object' ? m.contact : {}) as Record<string, unknown>
+        return { nome: typeof c.name === 'string' ? c.name : null, email: typeof c.email === 'string' ? c.email : null }
+      }
+      const compraram = new Set(de('purchase').map((e) => e.visitorUid))
+      const carrinhos = de('cart_abandoned')
+        .filter((e) => meta(e).store_event !== 'payment_failed' && (!meta(e).stage || meta(e).stage === 1))
+        .map((e) => {
+          const m = meta(e)
+          return {
+            quando: e.quando,
+            valor: e.valor,
+            itens: itensDe(m),
+            link: typeof m.recovery_url === 'string' ? m.recovery_url : null,
+            lead: nomeLead.get(e.visitorUid) ?? null,
+            email: contatoDe(m).email,
+            comprouDepois: compraram.has(e.visitorUid) && de('purchase').some((p) => p.visitorUid === e.visitorUid && p.quando > e.quando),
+          }
+        })
+        .sort((a, b) => b.quando.localeCompare(a.quando))
+        .slice(0, 60)
+      const pedidosMap = new Map<string, { numero: string; quando: string; situacao: string; total: number | null; pagamento: string | null; cidade: string | null; itens: ReturnType<typeof itensDe>; lead: ReturnType<typeof nomeLead.get> | null }>()
+      for (const e of eventos) {
+        if (!['begin_checkout', 'purchase', 'cart_abandoned'].includes(e.tipo)) continue
+        const m = meta(e)
+        const p = pedidoDe(m)
+        if (!p?.numero) continue
+        const situacao = e.tipo === 'purchase' ? 'Pago' : m.store_event === 'payment_failed' ? 'Pagamento não concluído' : 'Aguardando pagamento'
+        const atual = pedidosMap.get(p.numero)
+        if (atual && atual.situacao === 'Pago') continue
+        pedidosMap.set(p.numero, {
+          numero: p.numero,
+          quando: atual?.quando ?? e.quando,
+          situacao,
+          total: p.total ?? e.valor,
+          pagamento: p.pagamento ? `${p.pagamento}${p.parcelas && p.parcelas > 1 ? ` ${p.parcelas}x` : ''}` : null,
+          cidade: p.cidade ? `${p.cidade}/${p.uf ?? ''}` : null,
+          itens: p.itens,
+          lead: nomeLead.get(e.visitorUid) ?? null,
+        })
+      }
+      const pedidos = [...pedidosMap.values()].sort((a, b) => b.quando.localeCompare(a.quando)).slice(0, 60)
+
+      // Buscas: a loja manda enquanto a pessoa digita; conta só o termo mais completo de cada sessão.
+      const termosPorSessao = new Map<string, Set<string>>()
+      for (const e of de('search')) {
+        const t = meta(e).search_term
+        if (typeof t !== 'string' || t.trim().length < 2) continue
+        const k = e.sessionId ?? e.visitorUid
+        termosPorSessao.set(k, (termosPorSessao.get(k) ?? new Set()).add(t.trim().toLowerCase()))
+      }
+      const buscasCont = new Map<string, number>()
+      for (const termos of termosPorSessao.values()) {
+        const lista = [...termos]
+        for (const t of lista.filter((t) => !lista.some((o) => o !== t && o.startsWith(t)))) buscasCont.set(t, (buscasCont.get(t) ?? 0) + 1)
+      }
+      const buscas = [...buscasCont.entries()].map(([termo, vezes]) => ({ termo, vezes })).sort((a, b) => b.vezes - a.vezes).slice(0, 30)
+
+      // Últimas ações (sem "saiu da página", que é ruído)
+      const recentes = eventos
+        .filter((e) => e.tipo !== 'page_leave')
+        .slice(-40)
+        .reverse()
+        .map((e) => ({
+          quando: e.quando,
+          tipo: (meta(e).store_event as string) || e.tipo,
+          rotulo: rotuloEventoLoja(e.tipo, meta(e)),
+          produto: e.produto,
+          pagina: e.pageTitle ?? e.pagePath,
+          valor: e.valor,
+          visitante: e.visitorUid.slice(-5),
+          lead: nomeLead.get(e.visitorUid) ?? null,
+        }))
+      const agoraMs = Date.now()
+      const naLojaAgora = new Set(eventos.filter((e) => agoraMs - ms(e.quando) < 5 * 60_000).map((e) => e.visitorUid)).size
+
       const ultimoPorUid = new Map<string, string>()
       for (const e of eventos) ultimoPorUid.set(e.visitorUid, e.quando)
       return {
@@ -193,13 +278,21 @@ export const lojaRastreamentoRouter = router({
           leads: new Set(comLead.map((c) => c.leadId)).size,
           compras: de('purchase').length,
           valorCompras: de('purchase').reduce((s, e) => s + (e.valor ?? 0), 0),
-          carrinhosAbandonados: de('cart_abandoned').length,
+          carrinhosAbandonados: carrinhos.length,
+          valorCarrinhosAbandonados: carrinhos.filter((c) => !c.comprouDepois).reduce((s, c) => s + (c.valor ?? 0), 0),
+          pedidosFeitos: pedidosMap.size,
+          naLojaAgora,
         },
+        carrinhos,
+        pedidos,
+        buscas,
+        recentes,
         funil: [
           { etapa: 'Visitaram a loja', visitantes: visitantes.size },
           { etapa: 'Viram um produto', visitantes: visitantesCom('product_view') },
           { etapa: 'Puseram no carrinho', visitantes: visitantesCom('add_to_cart') },
-          { etapa: 'Começaram o checkout', visitantes: visitantesCom('begin_checkout') },
+          { etapa: 'Deixaram o contato', visitantes: new Set([...de('lead'), ...de('signup'), ...de('begin_checkout')].map((e) => e.visitorUid)).size },
+          { etapa: 'Fizeram pedido', visitantes: visitantesCom('begin_checkout') },
           { etapa: 'Compraram', visitantes: visitantesCom('purchase') },
         ],
         produtos: [...produtos.values()]
