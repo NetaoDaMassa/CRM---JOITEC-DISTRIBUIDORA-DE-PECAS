@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Search, Plus, Minus, Trash2, Package, RefreshCw, Printer, Send, ArrowLeft, ShoppingCart, User, Settings2, CheckCircle2, XCircle, ThumbsUp, Undo2, History, BadgeCheck, Clock } from 'lucide-react'
+import { Search, Plus, Minus, Trash2, Package, RefreshCw, Printer, Send, ArrowLeft, ShoppingCart, User, Settings2, CheckCircle2, XCircle, ThumbsUp, Undo2, History, BadgeCheck, Clock, Copy } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
@@ -46,7 +46,7 @@ function ChipStatus({ status, vencida }: { status: Status; vencida?: boolean }) 
 
 export default function Cotacoes() {
   const [aberta, setAberta] = useState<number | 'nova' | null>(null)
-  return aberta === null ? <ListaCotacoes onAbrir={setAberta} /> : <EditorCotacao id={aberta === 'nova' ? null : aberta} onVoltar={() => setAberta(null)} onSalva={setAberta} />
+  return aberta === null ? <ListaCotacoes onAbrir={setAberta} /> : <EditorCotacao key={String(aberta)} id={aberta === 'nova' ? null : aberta} onVoltar={() => setAberta(null)} onSalva={setAberta} />
 }
 
 const FILTROS: { chave: string; rotulo: string; teste: (c: { status: Status; vencida: boolean }) => boolean }[] = [
@@ -231,6 +231,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const [observacao, setObservacao] = useState('')
   const [dataEntrega, setDataEntrega] = useState('')
   const [contato, setContato] = useState('')
+  const [numeroReferencia, setNumeroReferencia] = useState('')
   const [transportadora, setTransportadora] = useState('')
   const [tipoEnvio, setTipoEnvio] = useState<'CIF' | 'FOB' | ''>('CIF')
   const [frete, setFrete] = useState(0)
@@ -248,6 +249,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     setObservacao(existente.observacao ?? '')
     setDataEntrega(existente.dataEntrega ?? '')
     setContato(existente.contato ?? '')
+    setNumeroReferencia(existente.numeroReferencia ?? '')
     setTransportadora(existente.transportadora ?? '')
     setTipoEnvio(existente.tipoEnvio ?? '')
     setFrete(existente.valorFrete ?? 0)
@@ -278,6 +280,14 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const reabrir = trpc.cotacoesCrm.reabrir.useMutation({ onSuccess: depoisDeAcao('Reaberta para negociar'), onError: erro })
   const ganhar = trpc.cotacoesCrm.ganhar.useMutation({ onSuccess: depoisDeAcao('Registrado: cliente aprovou'), onError: erro })
   const perder = trpc.cotacoesCrm.perder.useMutation({ onSuccess: depoisDeAcao('Marcada como perdida'), onError: erro })
+  const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
+    onSuccess: (r) => {
+      toast.success(`Cotação duplicada — nova nº ${r.id}`)
+      utils.cotacoesCrm.listar.invalidate()
+      onSalva(r.id)
+    },
+    onError: erro,
+  })
 
   const salvar = trpc.cotacoesCrm.salvar.useMutation({
     onSuccess: (r) => {
@@ -302,8 +312,15 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     setLinhas(f)
     setAlterado(true)
   }
-  const adicionar = (codigo: string) =>
-    mexer((ls) => (ls.some((l) => l.itemCodigo === codigo) ? ls.map((l) => (l.itemCodigo === codigo ? { ...l, quantidade: l.quantidade + 1 } : l)) : [...ls, { itemCodigo: codigo, quantidade: 1, descontoPct: 0 }]))
+  // Soma na linha que já existe, ou cria a linha. Aceita vários de uma vez
+  // (seleção múltipla do catálogo, como no Portal One).
+  const adicionar = (novos: { codigo: string; qtd: number }[]) =>
+    mexer((ls) => {
+      let r = ls
+      for (const { codigo, qtd } of novos)
+        r = r.some((l) => l.itemCodigo === codigo) ? r.map((l) => (l.itemCodigo === codigo ? { ...l, quantidade: l.quantidade + qtd } : l)) : [...r, { itemCodigo: codigo, quantidade: qtd, descontoPct: 0 }]
+      return r
+    })
 
   const recusados = new Set((existente?.status === 'ganha' ? existente.itens.filter((i) => !i.aceito) : []).map((i) => i.itemCodigo))
   const calc = linhas.map((l) => {
@@ -334,6 +351,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     observacao: observacao || null,
     dataEntrega: dataEntrega || null,
     contato: contato.trim() || null,
+    numeroReferencia: numeroReferencia.trim() || null,
     transportadora: transportadora.trim() || null,
     tipoEnvio: tipoEnvio || null,
     valorFrete: frete,
@@ -380,6 +398,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
         alvo = r.id
       }
       const dados = await utils.cotacoesCrm.obter.fetch({ id: alvo! })
+      if (!dados.clienteSap) dados.clienteSap = await utils.cotacoesCrm.dadosClienteSap.fetch({ id: alvo! })
       w.document.open()
       w.document.write(htmlCotacao(dados, ctx!, porCodigo))
       w.document.close()
@@ -398,6 +417,11 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
           <ArrowLeft className="h-4 w-4" /> Cotações
         </button>
         <div className="flex flex-wrap gap-2">
+          {id != null && existente && (
+            <Button variant="secondary" loading={duplicar.isPending} onClick={() => (!alterado || confirm('Duplicar sem salvar as mudanças desta?')) && duplicar.mutate({ id })}>
+              <Copy className="h-4 w-4 mr-1.5" /> Duplicar
+            </Button>
+          )}
           <Button variant="secondary" onClick={imprimir}>
             <Printer className="h-4 w-4 mr-1.5" /> Imprimir / PDF
           </Button>
@@ -509,6 +533,10 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                 <span className="text-xs text-dark-400">Data de entrega</span>
                 <input type="date" disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={dataEntrega} onChange={(e) => (setDataEntrega(e.target.value), setAlterado(true))} />
               </label>
+              <label className="space-y-1 col-span-2">
+                <span className="text-xs text-dark-400">Nº do pedido / referência do cliente</span>
+                <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={numeroReferencia} onChange={(e) => (setNumeroReferencia(e.target.value), setAlterado(true))} placeholder="Opcional — o número que o cliente usa" />
+              </label>
               <label className="space-y-1">
                 <span className="text-xs text-dark-400">Contato no cliente</span>
                 <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={contato} onChange={(e) => (setContato(e.target.value), setAlterado(true))} placeholder="Quem pediu" />
@@ -521,8 +549,8 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                 <span className="text-xs text-dark-400">Tipo de envio</span>
                 <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-2 text-sm text-dark-100" value={tipoEnvio} onChange={(e) => (setTipoEnvio(e.target.value as 'CIF' | 'FOB' | ''), setAlterado(true))}>
                   <option value="">—</option>
-                  <option value="CIF">CIF (frete por nossa conta)</option>
-                  <option value="FOB">FOB (frete por conta do cliente)</option>
+                  <option value="CIF">CIF — nós pagamos</option>
+                  <option value="FOB">FOB — cliente paga</option>
                 </select>
               </label>
               <label className="space-y-1">
@@ -770,7 +798,7 @@ td{padding:4px;border-bottom:1px dotted #9aa;vertical-align:top}.n{text-align:ri
 <div class="bloco">
   <div><b>${esc(cl.razaoSocial)}</b><br>${esc(cl.endereco)}${cl.complemento ? ` Complemento: ${esc(cl.complemento)}` : ''}<br>${cl.bairro ? `Bairro: ${esc(cl.bairro)} ` : ''}${cl.cep ? `CEP: ${esc(cl.cep)}` : ''}<br>Cidade: ${esc([cl.cidade, cl.estado].filter(Boolean).join(' - '))}<br>CPF/CNPJ: ${esc(cl.doc)}<br>${cl.ie ? `Insc. Estadual: ${esc(cl.ie)}<br>` : ''}${cl.telefone ? `Telefone: ${esc(cl.telefone)}` : ''}</div>
   <div>
-    <div class="lin"><b>Código Cliente:</b> ${esc(cl.codigo)}</div>
+    <div class="lin"><b>Código Cliente:</b> ${esc(cl.codigo)}${c.numeroReferencia ? ` &nbsp; <b>Nº Referência:</b> ${esc(c.numeroReferencia)}` : ''}</div>
     <div class="lin"><b>E-mail:</b> ${esc(cl.email)}</div>
     <div class="lin"><b>Contato:</b> ${esc(c.contato ?? sap?.contato)}</div>
     <div class="lin"><b>Condição de Pagamento:</b> ${esc(prazo)}</div>
@@ -956,8 +984,24 @@ function CampoNumero({ valor, onValor, valido, vazioVale, className, placeholder
   )
 }
 
-function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?: ItemCatalogo[]; carregando: boolean; naCotacao: Set<string>; onAdicionar?: (codigo: string) => void }) {
+function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?: ItemCatalogo[]; carregando: boolean; naCotacao: Set<string>; onAdicionar?: (novos: { codigo: string; qtd: number }[]) => void }) {
   const [busca, setBusca] = useState('')
+  // Seleção múltipla: código → quantidade digitada (como no Portal One).
+  const [selecao, setSelecao] = useState<Map<string, number>>(new Map())
+  const [qtds, setQtds] = useState<Map<string, number>>(new Map())
+  const qtdDe = (codigo: string) => qtds.get(codigo) ?? 1
+  const marcar = (codigo: string, sim: boolean) =>
+    setSelecao((s) => {
+      const n = new Map(s)
+      if (sim) n.set(codigo, qtdDe(codigo))
+      else n.delete(codigo)
+      return n
+    })
+  const adicionarSelecionados = () => {
+    onAdicionar?.([...selecao].map(([codigo, qtd]) => ({ codigo, qtd })))
+    setSelecao(new Map())
+    setQtds(new Map())
+  }
   const [soComEstoque, setSoComEstoque] = useState(false)
   // Cada termo precisa ser o COMEÇO de alguma palavra do nome/grupo ("ar"
   // acha "AR", não "pARa"), ou estar dentro de um código. Nome que começa
@@ -992,7 +1036,7 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
             placeholder="Buscar produto: nome, código, código antigo…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            onKeyDown={(e) => { const r = resultados.find((x) => x.preco != null); if (e.key === 'Enter' && r) onAdicionar?.(r.codigo) }}
+            onKeyDown={(e) => { const r = resultados.find((x) => x.preco != null); if (e.key === 'Enter' && r) onAdicionar?.([{ codigo: r.codigo, qtd: 1 }]) }}
           />
         </div>
         <div className="flex items-center justify-between text-xs text-dark-400">
@@ -1015,7 +1059,17 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
           resultados.map((i) => {
             const dentro = naCotacao.has(i.codigo)
             return (
-              <div key={i.codigo} className={`flex items-center gap-3 px-3 py-2.5 ${dentro ? 'bg-gold-900/10' : 'hover:bg-dark-700/30'}`}>
+              <div key={i.codigo} className={`flex items-center gap-3 px-3 py-2.5 ${selecao.has(i.codigo) ? 'bg-gold-900/20' : dentro ? 'bg-gold-900/10' : 'hover:bg-dark-700/30'}`}>
+                {onAdicionar && (
+                  <input
+                    type="checkbox"
+                    aria-label={`Selecionar ${i.nome}`}
+                    disabled={i.preco == null}
+                    checked={selecao.has(i.codigo)}
+                    onChange={(e) => marcar(i.codigo, e.target.checked)}
+                    className="h-4 w-4 shrink-0 accent-sky-500"
+                  />
+                )}
                 {/* Foto do produto entra aqui (etapa das imagens). */}
                 <div className="h-11 w-11 shrink-0 rounded-lg bg-dark-700 flex items-center justify-center">
                   <Package className="h-5 w-5 text-dark-500" />
@@ -1034,13 +1088,28 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
                     {i.estoque > 0 ? `${fmtQtd(i.estoque)} ${i.unidade ?? ''} em estoque` : 'sem estoque'}
                   </p>
                 </div>
+                {onAdicionar && i.preco != null && (
+                  <CampoNumero
+                    className="w-14 shrink-0 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-center text-sm text-dark-100 outline-none"
+                    valor={qtdDe(i.codigo)}
+                    valido={(n) => n > 0}
+                    onValor={(n) => {
+                      setQtds((m) => new Map(m).set(i.codigo, n))
+                      setSelecao((s) => (s.has(i.codigo) ? new Map(s).set(i.codigo, n) : s))
+                    }}
+                  />
+                )}
                 {onAdicionar && (
                   <button
                     type="button"
                     aria-label={`Adicionar ${i.nome}`}
                     title={i.preco == null ? 'Sem preço no SAP — não dá pra cotar' : undefined}
                     disabled={i.preco == null}
-                    onClick={() => onAdicionar(i.codigo)}
+                    onClick={() => {
+                      onAdicionar([{ codigo: i.codigo, qtd: qtdDe(i.codigo) }])
+                      setQtds((m) => { const n = new Map(m); n.delete(i.codigo); return n })
+                      marcar(i.codigo, false)
+                    }}
                     className="h-9 w-9 shrink-0 rounded-lg bg-gold-600 hover:bg-gold-500 text-white flex items-center justify-center transition-transform active:scale-95 disabled:bg-dark-700 disabled:text-dark-500 disabled:cursor-not-allowed"
                   >
                     <Plus className="h-4 w-4" />
@@ -1051,6 +1120,21 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
           })
         )}
       </div>
+      {selecao.size > 0 && (
+        <div className="flex items-center justify-between gap-2 border-t border-dark-700 bg-dark-900 px-3 py-2.5">
+          <span className="text-sm text-dark-200">
+            {selecao.size} {selecao.size === 1 ? 'item selecionado' : 'itens selecionados'}
+          </span>
+          <div className="flex gap-2">
+            <Button size="sm" variant="secondary" onClick={() => setSelecao(new Map())}>
+              Limpar
+            </Button>
+            <Button size="sm" onClick={adicionarSelecionados}>
+              <Plus className="h-4 w-4 mr-1" /> Adicionar à cotação
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1068,7 +1152,7 @@ function BuscaCliente({ onEscolher }: { onEscolher: (c: ClienteBusca) => void })
       <p className="text-xs text-dark-400">Cliente</p>
       <div className="flex items-center gap-2 rounded-xl border border-dark-600 bg-dark-900 px-3 focus-within:border-gold-600">
         <User className="h-4 w-4 text-dark-400 shrink-0" />
-        <input className="w-full bg-transparent py-2.5 text-sm text-dark-100 outline-none" placeholder="Nome, código, CNPJ ou CPF do cliente" value={busca} onChange={(e) => setBusca(e.target.value)} />
+        <input className="w-full bg-transparent py-2.5 text-sm text-dark-100 outline-none" placeholder="Nome, fantasia, código (novo ou antigo), CNPJ ou CPF" value={busca} onChange={(e) => setBusca(e.target.value)} />
       </div>
       {termo.length >= 2 && (
         <div className="max-h-64 overflow-y-auto rounded-xl border border-dark-600 divide-y divide-dark-700">
@@ -1085,6 +1169,8 @@ function BuscaCliente({ onEscolher }: { onEscolher: (c: ClienteBusca) => void })
                 </p>
                 <p className="text-[11px] text-dark-500">
                   {c.codigo}
+                  {c.codigoAntigo && ` · antigo ${c.codigoAntigo}`}
+                  {c.nomeFantasia && c.nomeFantasia !== c.nome && ` · ${c.nomeFantasia}`}
                   {c.cidade && ` · ${c.cidade}${c.estado ? `/${c.estado}` : ''}`}
                 </p>
               </button>

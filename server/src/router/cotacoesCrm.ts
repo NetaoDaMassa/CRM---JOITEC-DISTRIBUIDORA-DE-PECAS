@@ -193,6 +193,8 @@ export const cotacoesCrmRouter = router({
         cidade: clientes.cidade,
         estado: clientes.estado,
         nomeContato: clientes.nomeContato,
+        codigoAntigo: clientes.codigoAntigo,
+        nomeFantasia: sapClientesComercial.nomeFantasia,
         listaPreco: sapClientesComercial.listaPreco,
         prazoCodigo: sapClientesComercial.prazoCodigo,
         bloqueado: sapClientesComercial.bloqueado,
@@ -204,8 +206,20 @@ export const cotacoesCrmRouter = router({
           eq(clientes.empresaId, ctx.empresaId),
           isNull(clientes.deletedAt),
           ctx.veTudo ? undefined : eq(clientes.vendedorAtualId, ctx.user.id),
-          or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo), like(clientes.cnpj, termo), like(clientes.cpf, termo))
+          or(
+            like(clientes.razaoSocial, termo),
+            like(clientes.codigo, termo),
+            like(clientes.codigoAntigo, termo),
+            like(sapClientesComercial.nomeFantasia, termo),
+            like(clientes.cnpj, termo),
+            like(clientes.cpf, termo)
+          )
         )
+      )
+      // Código exato (novo ou antigo) primeiro, depois quem começa com o termo.
+      .orderBy(
+        sql`case when ${clientes.codigo} = ${input.busca} or ${clientes.codigoAntigo} = ${input.busca} then 0 when ${clientes.razaoSocial} like ${input.busca + '%'} then 1 else 2 end`,
+        asc(clientes.razaoSocial)
       )
       .limit(25)
   }),
@@ -257,9 +271,10 @@ export const cotacoesCrmRouter = router({
       c.aprovadoPorId ? db.query.users.findFirst({ where: eq(users.id, c.aprovadoPorId), columns: { name: true } }) : null,
     ])
     const vencida = c.status === 'enviada' && !!c.validaAte && c.validaAte < hojeBrString()
-    // Endereço/CNPJ/IE do SAP; se ainda não buscou, busca agora (1 consulta).
-    let clienteSap = cliente ? await dadosClienteSap(cliente.codigo) : null
-    if (cliente && !clienteSap) clienteSap = await atualizarDadosClienteSap(cliente.codigo).catch(() => null)
+    // Endereço/CNPJ/IE do SAP já guardados. Nunca espera o SAP aqui (a tela
+    // tem que abrir na hora); se faltar, busca em segundo plano.
+    const clienteSap = cliente ? await dadosClienteSap(cliente.codigo) : null
+    if (cliente && !clienteSap) void atualizarDadosClienteSap(cliente.codigo).catch(() => null)
     return { ...c, cliente, clienteSap, itens, historico, vendedorNome: vendedor?.name ?? '', aprovadorNome: aprovador?.name ?? null, vencida, souDono: c.vendedorId === ctx.user.id }
   }),
 
@@ -274,6 +289,7 @@ export const cotacoesCrmRouter = router({
         listaPreco: z.number().int(),
         prazoCodigo: z.number().int().nullable(),
         observacao: z.string().max(2000).nullable(),
+        numeroReferencia: z.string().trim().max(100).nullable().optional(),
         dataEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
         contato: z.string().trim().max(120).nullable().optional(),
         transportadora: z.string().trim().max(160).nullable().optional(),
@@ -345,6 +361,7 @@ export const cotacoesCrmRouter = router({
           listaPreco: input.listaPreco,
           prazoCodigo: input.prazoCodigo,
           observacao: input.observacao?.trim() || null,
+          numeroReferencia: input.numeroReferencia || null,
           dataEntrega: input.dataEntrega ?? null,
           contato: input.contato || null,
           transportadora: input.transportadora || null,
@@ -487,6 +504,55 @@ export const cotacoesCrmRouter = router({
       await registrar(c.id, ctx.user.id, 'Marcou como perdida', input.observacao ? `${input.motivo}: ${input.observacao}` : input.motivo)
       return { ok: true }
     }),
+
+  // Pra impressão: dados do cliente no SAP, buscando agora se ainda não tem.
+  dadosClienteSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { codigo: true } })
+    if (!cliente) return null
+    return (await dadosClienteSap(cliente.codigo)) ?? (await atualizarDadosClienteSap(cliente.codigo).catch(() => null))
+  }),
+
+  // Nova cotação (rascunho) com o mesmo cliente, itens, preços e condições —
+  // pra cliente que repete pedido. Validade, aprovação e situação zeram.
+  duplicar: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { vendedorAtualId: true } })
+    if (!ctx.veTudo && cliente?.vendedorAtualId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cliente fora da sua carteira' })
+    const itens = await db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id)).orderBy(cotacoesCrmItens.id)
+    const agora = agoraSqlite()
+    const id = await db.transaction(async (tx) => {
+      const [nova] = await tx
+        .insert(cotacoesCrm)
+        .values({
+          empresaId: ctx.empresaId,
+          clienteId: c.clienteId,
+          vendedorId: ctx.user.id,
+          listaPreco: c.listaPreco,
+          prazoCodigo: c.prazoCodigo,
+          observacao: c.observacao,
+          numeroReferencia: null,
+          dataEntrega: null,
+          contato: c.contato,
+          transportadora: c.transportadora,
+          tipoEnvio: c.tipoEnvio,
+          valorFrete: c.valorFrete,
+          total: c.total,
+          maiorDescontoPct: c.maiorDescontoPct,
+          createdAt: agora,
+          updatedAt: agora,
+        })
+        .returning({ id: cotacoesCrm.id })
+      if (itens.length) {
+        await tx.insert(cotacoesCrmItens).values(
+          itens.map((i) => ({ cotacaoId: nova.id, itemCodigo: i.itemCodigo, nome: i.nome, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual }))
+        )
+      }
+      return nova.id
+    })
+    await registrar(id, ctx.user.id, 'Criou a cotação', `Duplicada da cotação nº ${c.id}`)
+    return { id }
+  }),
 
   excluir: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)

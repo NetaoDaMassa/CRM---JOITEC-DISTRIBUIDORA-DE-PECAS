@@ -7,6 +7,7 @@ CREATE TABLE `cotacoes_crm` (
 	`lista_preco` integer,
 	`prazo_codigo` integer,
 	`observacao` text,
+	`numero_referencia` text,
 	`data_entrega` text,
 	`contato` text,
 	`transportadora` text,
@@ -67,6 +68,7 @@ CREATE TABLE `sap_catalogo_precos` (
 );--> statement-breakpoint
 CREATE TABLE `sap_clientes_comercial` (
 	`card_code` text PRIMARY KEY NOT NULL,
+	`nome_fantasia` text,
 	`lista_preco` integer,
 	`prazo_codigo` integer,
 	`bloqueado` integer DEFAULT false NOT NULL,

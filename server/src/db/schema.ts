@@ -5116,6 +5116,8 @@ export const sapPrazosPagamento = sqliteTable('sap_prazos_pagamento', {
 // PriceListNum / PayTermsGrpCode), pelo código do cliente (CardCode).
 export const sapClientesComercial = sqliteTable('sap_clientes_comercial', {
   cardCode: text('card_code').primaryKey(),
+  // Nome fantasia (CardForeignName) — o CRM não tem; usado na busca da cotação.
+  nomeFantasia: text('nome_fantasia'),
   listaPreco: integer('lista_preco'),
   prazoCodigo: integer('prazo_codigo'),
   bloqueado: integer('bloqueado', { mode: 'boolean' }).notNull().default(false),
@@ -5144,6 +5146,8 @@ export const cotacoesCrm = sqliteTable(
     listaPreco: integer('lista_preco'),
     prazoCodigo: integer('prazo_codigo'),
     observacao: text('observacao'),
+    // Nº do pedido/referência do cliente (NumAtCard no SAP).
+    numeroReferencia: text('numero_referencia'),
     // Dados do documento (mesmo padrão da Cotação/Pedido de Venda do SAP).
     dataEntrega: text('data_entrega'),
     contato: text('contato'),

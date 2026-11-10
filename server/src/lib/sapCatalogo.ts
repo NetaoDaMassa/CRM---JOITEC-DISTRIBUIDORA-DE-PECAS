@@ -83,8 +83,8 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
     )
     const listas = await sap.getTodos<{ PriceListNo: number; PriceListName: string; Active: string }>('/PriceLists?$select=PriceListNo,PriceListName,Active')
     const prazos = await sap.getTodos<{ GroupNumber: number; PaymentTermsGroupName: string }>('/PaymentTermsTypes?$select=GroupNumber,PaymentTermsGroupName')
-    const clientes = await sap.getTodos<{ CardCode: string; PriceListNum: number | null; PayTermsGrpCode: number | null; Frozen: string; Valid: string }>(
-      "/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,PriceListNum,PayTermsGrpCode,Frozen,Valid",
+    const clientes = await sap.getTodos<{ CardCode: string; CardForeignName: string | null; PriceListNum: number | null; PayTermsGrpCode: number | null; Frozen: string; Valid: string }>(
+      "/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardForeignName,PriceListNum,PayTermsGrpCode,Frozen,Valid",
       1000
     )
     return { grupos, ncms, filiais, itens, listas, prazos, clientes }
@@ -109,6 +109,7 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
   )
   const clientes = dados.clientes.map((c) => ({
     cardCode: c.CardCode,
+    nomeFantasia: c.CardForeignName?.trim() || null,
     listaPreco: c.PriceListNum ?? null,
     prazoCodigo: c.PayTermsGrpCode ?? null,
     bloqueado: c.Frozen === 'tYES' || c.Valid === 'tNO',
@@ -139,7 +140,7 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
         .values(clientes.slice(i, i + 400))
         .onConflictDoUpdate({
           target: sapClientesComercial.cardCode,
-          set: { listaPreco: sql`excluded.lista_preco`, prazoCodigo: sql`excluded.prazo_codigo`, bloqueado: sql`excluded.bloqueado`, atualizadoEm: sql`excluded.atualizado_em` },
+          set: { nomeFantasia: sql`excluded.nome_fantasia`, listaPreco: sql`excluded.lista_preco`, prazoCodigo: sql`excluded.prazo_codigo`, bloqueado: sql`excluded.bloqueado`, atualizadoEm: sql`excluded.atualizado_em` },
         })
     }
   })
