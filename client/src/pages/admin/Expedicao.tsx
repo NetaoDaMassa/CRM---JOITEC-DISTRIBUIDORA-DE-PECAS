@@ -10,6 +10,7 @@ import Modal from '../../components/ui/Modal'
 import Select from '../../components/ui/Select'
 import ComoUsar from '../../components/ui/ComoUsar'
 import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
+import { TIPOS_ERRO_EMBALAGEM, TIPOS_ERRO_ITEM, ehErroDeEmbalagem, labelTipoErro, type TipoErro } from '../../lib/expedicaoErros'
 import { useAuth } from '../../contexts/AuthContext'
 import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerTamanho, salvarTamanho } from '../../lib/etiquetasTermicas'
 import HistoricoAgendamentos from '../../components/HistoricoAgendamentos'
@@ -33,14 +34,6 @@ const COLUNAS: { etapa: Pedido['etapa']; titulo: string; cor: string }[] = [
   { etapa: 'coletado', titulo: 'Coletados hoje', cor: '#22c55e' },
 ]
 const CARGO: Record<EtapaPessoa, Colaborador['cargo']> = { separacao: 'separador', conferencia: 'conferente', embalagem: 'embalador' }
-const TIPOS_ERRO = [
-  { value: 'faltou', label: 'Faltou item' },
-  { value: 'sobrou', label: 'Item a mais' },
-  { value: 'trocado', label: 'Item trocado' },
-  { value: 'quantidade', label: 'Quantidade errada' },
-  { value: 'avaria', label: 'Avaria' },
-  { value: 'outro', label: 'Outro' },
-] as const
 const STATUS_SAP: Record<string, string> = { ps_Released: 'Liberado', ps_Picked: 'Conferido no SAP', ps_Closed: 'Fechado no SAP' }
 
 const num = (n: number) => n.toLocaleString('pt-BR')
@@ -563,7 +556,8 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const [transportadora, setTransportadora] = useState(p.transportadora ?? p.transportadoraSap ?? '')
   const [coletaAgendada, setColetaAgendada] = useState(p.coletaAgendada ?? '')
   const [erroItem, setErroItem] = useState('')
-  const [erroTipo, setErroTipo] = useState<(typeof TIPOS_ERRO)[number]['value']>('faltou')
+  const [erroTipo, setErroTipo] = useState<TipoErro>(['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa) ? 'volume_ficou' : 'faltou')
+  const [erroConta, setErroConta] = useState('')
   const [erroQtd, setErroQtd] = useState('')
   const [erroObs, setErroObs] = useState('')
 
@@ -576,7 +570,11 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const conferindo = p.etapa === 'conferencia' && iniciada
   const itensConferidos = data?.itens.filter((i) => i.conferidoEm).length ?? 0
   // Erro achado no agendamento/coleta conta como "expedição" (vai pro embalador).
-  const etapaErro = p.etapa === 'conferencia' || p.etapa === 'embalagem' ? p.etapa : p.etapa === 'nf' || p.etapa === 'agendamento' || p.etapa === 'coleta' ? 'expedicao' : null
+  // Inclui o pedido já coletado: "volume ficou para trás" / "não foi pelo
+  // Correios" normalmente só aparece depois que saiu (João, 2026-11-10).
+  const etapaErro = p.etapa === 'conferencia' || p.etapa === 'embalagem' ? p.etapa : ['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa) ? 'expedicao' : null
+  const tiposErro = etapaErro === 'expedicao' ? [...TIPOS_ERRO_EMBALAGEM, ...TIPOS_ERRO_ITEM] : TIPOS_ERRO_ITEM
+  const responsavelPadrao = etapaErro === 'expedicao' ? p.embalagemColaboradorId : etapaErro === 'embalagem' ? p.conferenciaColaboradorId : etapaErro === 'conferencia' ? p.separacaoColaboradorId : null
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const remetente = empresas?.find((e) => e.id === empresaAtivaId)?.nome ?? ''
@@ -794,8 +792,8 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             <h3 className="text-sm font-semibold text-dark-100">Erros encontrados</h3>
             {data?.erros.map((e) => (
               <div key={e.id} className="flex items-center gap-2 text-sm bg-red-900/15 border border-red-800/40 rounded-lg px-3 py-1.5">
-                <span className="text-red-300 font-medium">{TIPOS_ERRO.find((t) => t.value === e.tipo)?.label}</span>
-                <span className="text-dark-200 truncate">{e.itemCodigo ? `${e.itemCodigo} · ` : ''}{e.descricao ?? ''}{e.quantidade ? ` · ${e.quantidade} un` : ''}</span>
+                <span className="text-red-300 font-medium">{labelTipoErro(e.tipo)}</span>
+                <span className="text-dark-200 truncate">{e.itemCodigo ? `${e.itemCodigo} · ` : ''}{e.descricao ?? ''}{e.quantidade ? ` · ${e.quantidade} ${e.tipo === 'volume_ficou' ? 'vol.' : 'un'}` : ''}</span>
                 {e.observacao && <span className="text-dark-400 truncate">— {e.observacao}</span>}
                 <span className="ml-auto text-[11px] text-dark-400 whitespace-nowrap">conta p/ {nomeDe(e.responsavelId)}</span>
                 <button type="button" title="Apagar" className="text-dark-500 hover:text-red-300" onClick={() => removerErro.mutate({ erroId: e.id })}>
@@ -804,30 +802,55 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
               </div>
             ))}
             {etapaErro && (
-              <div className="grid sm:grid-cols-[2fr_1fr_80px_1.2fr_auto] gap-2 items-end">
+              <div className="space-y-2">
+              {etapaErro === 'expedicao' && (
+                <p className="text-xs text-dark-400">Erro de embalagem ou despacho (volume que ficou, transporte errado, não despachou...) conta para quem embalou — mesmo depois da coleta.</p>
+              )}
+              <div className="grid sm:grid-cols-[1.6fr_1.6fr_80px_1.2fr_1.2fr_auto] gap-2 items-end">
+                <Select label="Tipo" value={erroTipo} onChange={(e) => setErroTipo(e.target.value as TipoErro)} options={tiposErro.map((t) => ({ value: t.value, label: t.label }))} />
+                {ehErroDeEmbalagem(erroTipo) && erroTipo !== 'embalagem_mal_feita' ? (
+                  <div className="hidden sm:block" />
+                ) : (
+                  <Select
+                    label="Item"
+                    value={erroItem}
+                    onChange={(e) => setErroItem(e.target.value)}
+                    placeholder="(pedido todo)"
+                    options={(data?.itens ?? []).map((i) => ({ value: String(i.id), label: `${i.itemCodigo ?? ''} · ${i.descricao}`.slice(0, 70) }))}
+                  />
+                )}
+                <Input label={erroTipo === 'volume_ficou' ? 'Volumes' : 'Qtd'} type="number" value={erroQtd} onChange={(e) => setErroQtd(e.target.value)} />
                 <Select
-                  label="Item"
-                  value={erroItem}
-                  onChange={(e) => setErroItem(e.target.value)}
-                  placeholder="(pedido todo)"
-                  options={(data?.itens ?? []).map((i) => ({ value: String(i.id), label: `${i.itemCodigo ?? ''} · ${i.descricao}`.slice(0, 70) }))}
+                  label="Conta para"
+                  value={erroConta}
+                  onChange={(e) => setErroConta(e.target.value)}
+                  placeholder={responsavelPadrao ? `${nomeDe(responsavelPadrao)} (automático)` : '(quem fez a etapa)'}
+                  options={colaboradores.filter((c) => c.ativo).map((c) => ({ value: String(c.id), label: c.nome }))}
                 />
-                <Select label="Tipo" value={erroTipo} onChange={(e) => setErroTipo(e.target.value as typeof erroTipo)} options={TIPOS_ERRO.map((t) => ({ value: t.value, label: t.label }))} />
-                <Input label="Qtd" type="number" value={erroQtd} onChange={(e) => setErroQtd(e.target.value)} />
-                <Input label="Observação" value={erroObs} onChange={(e) => setErroObs(e.target.value)} />
+                <Input label="Observação" value={erroObs} onChange={(e) => setErroObs(e.target.value)} placeholder={erroTipo === 'envio_errado' ? 'ex.: NF dizia Correios' : ''} />
                 <Button
                   variant="danger"
                   loading={registrarErro.isPending}
                   onClick={() => {
-                    const item = data?.itens.find((i) => String(i.id) === erroItem)
+                    const item = ehErroDeEmbalagem(erroTipo) && erroTipo !== 'embalagem_mal_feita' ? undefined : data?.itens.find((i) => String(i.id) === erroItem)
                     registrarErro.mutate(
-                      { id: p.id, etapa: etapaErro, tipo: erroTipo, itemCodigo: item?.itemCodigo ?? undefined, descricao: item?.descricao, quantidade: erroQtd ? Number(erroQtd) : undefined, observacao: erroObs },
-                      { onSuccess: () => (setErroItem(''), setErroQtd(''), setErroObs('')) }
+                      {
+                        id: p.id,
+                        etapa: etapaErro,
+                        tipo: erroTipo,
+                        itemCodigo: item?.itemCodigo ?? undefined,
+                        descricao: item?.descricao,
+                        quantidade: erroQtd ? Number(erroQtd) : undefined,
+                        observacao: erroObs,
+                        responsavelId: erroConta ? Number(erroConta) : undefined,
+                      },
+                      { onSuccess: () => (setErroItem(''), setErroQtd(''), setErroObs(''), setErroConta(''), toast.success('Erro anotado')) }
                     )
                   }}
                 >
                   + Anotar erro
                 </Button>
+              </div>
               </div>
             )}
           </div>

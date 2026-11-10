@@ -4667,7 +4667,12 @@ export const expedicaoErros = sqliteTable(
     registradoPorId: integer('registrado_por_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
     itemCodigo: text('item_codigo'),
     descricao: text('descricao'),
-    tipo: text('tipo', { enum: ['faltou', 'sobrou', 'trocado', 'quantidade', 'avaria', 'outro'] }).notNull(),
+    // Tipos de embalagem/despacho (volume_ficou...) — erros do embalador
+    // achados depois de embalar, até depois da coleta (João, 2026-11-10).
+    // Coluna é texto livre no banco: tipo novo não precisa de migração.
+    tipo: text('tipo', {
+      enum: ['faltou', 'sobrou', 'trocado', 'quantidade', 'avaria', 'outro', 'volume_ficou', 'envio_errado', 'nao_despachado', 'etiqueta_errada', 'embalagem_mal_feita'],
+    }).notNull(),
     quantidade: real('quantidade'),
     observacao: text('observacao'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),

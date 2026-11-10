@@ -47,6 +47,8 @@ const ms = (s: string | null) => (s ? Date.parse(`${s.replace(' ', 'T')}Z`) : Na
 // 48h contando só dia útil (fim de semana e feriado não contam) — ver lib/expedicaoPrazo.ts.
 const prazoLimite = (inicio: string) => prazoLimiteExpedicao(inicio)
 
+export const TIPOS_ERRO = ['faltou', 'sobrou', 'trocado', 'quantidade', 'avaria', 'outro', 'volume_ficou', 'envio_errado', 'nao_despachado', 'etiqueta_errada', 'embalagem_mal_feita'] as const
+
 async function acharPedido(empresaId: number, id: number) {
   const p = await db.query.expedicaoPedidos.findFirst({ where: and(eq(expedicaoPedidos.id, id), eq(expedicaoPedidos.empresaId, empresaId)) })
   if (!p) throw new TRPCError({ code: 'NOT_FOUND', message: 'Pedido não encontrado' })
@@ -530,14 +532,18 @@ export const expedicaoRouter = router({
         registradoPorId: z.number().optional(),
         itemCodigo: z.string().optional(),
         descricao: z.string().optional(),
-        tipo: z.enum(['faltou', 'sobrou', 'trocado', 'quantidade', 'avaria', 'outro']),
+        tipo: z.enum(TIPOS_ERRO),
         quantidade: z.number().optional(),
         observacao: z.string().optional(),
+        // Normalmente quem fez a etapa anterior (expedição → embalador).
+        // Dá pra apontar outra pessoa quando foi outro que embalou/despachou.
+        responsavelId: z.number().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      const responsavelId = p[campos[ETAPA_ANTERIOR[input.etapa]].pessoa]
+      let responsavelId = p[campos[ETAPA_ANTERIOR[input.etapa]].pessoa]
+      if (input.responsavelId) responsavelId = (await acharColaborador(ctx.empresaId, input.responsavelId)).id
       await db.insert(expedicaoErros).values({
         expedicaoId: p.id,
         etapa: input.etapa,
@@ -1065,6 +1071,37 @@ export const expedicaoRouter = router({
       .limit(200)
     return lista
   }),
+
+  // Lista dos erros do período (tela Desempenho): quando, pedido, tipo e pra
+  // quem contou — pra ver e corrigir o "placar" de cada um.
+  errosPeriodo: featureProcedure(FEATURE)
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))
+    .query(async ({ ctx, input }) => {
+      const deUtc = new Date(`${input.de}T00:00:00-03:00`).toISOString().replace('T', ' ').slice(0, 19)
+      const ateUtc = new Date(`${input.ate}T23:59:59-03:00`).toISOString().replace('T', ' ').slice(0, 19)
+      return db
+        .select({
+          id: expedicaoErros.id,
+          createdAt: expedicaoErros.createdAt,
+          etapa: expedicaoErros.etapa,
+          tipo: expedicaoErros.tipo,
+          itemCodigo: expedicaoErros.itemCodigo,
+          descricao: expedicaoErros.descricao,
+          quantidade: expedicaoErros.quantidade,
+          observacao: expedicaoErros.observacao,
+          responsavelId: expedicaoErros.responsavelId,
+          responsavelNome: expedicaoColaboradores.nome,
+          expedicaoId: expedicaoPedidos.id,
+          pedidosSap: expedicaoPedidos.pedidosSap,
+          clienteNome: expedicaoPedidos.clienteNome,
+          nfNumero: expedicaoPedidos.nfNumero,
+        })
+        .from(expedicaoErros)
+        .innerJoin(expedicaoPedidos, eq(expedicaoPedidos.id, expedicaoErros.expedicaoId))
+        .leftJoin(expedicaoColaboradores, eq(expedicaoColaboradores.id, expedicaoErros.responsavelId))
+        .where(and(eq(expedicaoPedidos.empresaId, ctx.empresaId), gte(expedicaoErros.createdAt, deUtc), lte(expedicaoErros.createdAt, ateUtc)))
+        .orderBy(desc(expedicaoErros.createdAt))
+    }),
 
   vendedoresProblemas: featureProcedure(FEATURE)
     .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }))

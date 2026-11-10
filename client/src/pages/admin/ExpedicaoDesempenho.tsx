@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { Input } from '../../components/ui/Input'
+import { ehErroDeEmbalagem, labelTipoErro } from '../../lib/expedicaoErros'
 
 // Desempenho do estoque (pedido do João, 2026-10-29) — substitui o "Painel
 // Diário" e o "Painel Mensal" da planilha "Análise de Desempenho Estoque":
@@ -118,11 +119,87 @@ export default function ExpedicaoDesempenho() {
           </table>
         )}
         <p className="text-xs text-dark-500 mt-3">
-          Erro achado na conferência conta para o separador; na embalagem, para o conferente; na expedição, para o embalador. Elegível = erros ÷ pedidos até o limite da pessoa.
+          Erro achado na conferência conta para o separador; na embalagem, para o conferente; na expedição — inclusive depois da coleta (volume que ficou, transporte errado, não despachou) — para o embalador. Elegível = erros ÷ pedidos até o limite da pessoa.
         </p>
       </div>
 
+      <ErrosDoPeriodo de={de} ate={ate} />
+
       <VendedoresProblemas de={de} ate={ate} />
+    </div>
+  )
+}
+
+const ETAPA_ERRO: Record<string, string> = { conferencia: 'Conferência', embalagem: 'Embalagem', expedicao: 'Expedição' }
+
+// Erros do período, um por linha, com pra quem contou — o "placar" que
+// entra na bonificação. Filtro rápido só embalagem/despacho.
+function ErrosDoPeriodo({ de, ate }: { de: string; ate: string }) {
+  const { data, isLoading } = trpc.expedicao.errosPeriodo.useQuery({ de, ate })
+  const [soEmbalagem, setSoEmbalagem] = useState(false)
+  const dataHora = (utc: string) => new Date(`${utc.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+  const lista = (data ?? []).filter((e) => !soEmbalagem || ehErroDeEmbalagem(e.tipo))
+  const porPessoa = new Map<string, number>()
+  for (const e of lista) porPessoa.set(e.responsavelNome ?? '—', (porPessoa.get(e.responsavelNome ?? '—') ?? 0) + 1)
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-dark-100">Erros anotados no período</h2>
+          <p className="text-xs text-dark-400">Cada erro conta 1 na taxa de erro de quem aparece em "Conta para". Para corrigir, abra o pedido na Expedição e apague o erro.</p>
+        </div>
+        <label className="flex items-center gap-2 text-sm text-dark-200">
+          <input type="checkbox" className="accent-gold-500" checked={soEmbalagem} onChange={(e) => setSoEmbalagem(e.target.checked)} />
+          Só embalagem e despacho
+        </label>
+      </div>
+      {porPessoa.size > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {[...porPessoa].sort((a, b) => b[1] - a[1]).map(([nome, n]) => (
+            <span key={nome} className="rounded-lg bg-red-900/20 border border-red-800/40 px-2.5 py-1 text-xs text-red-200">
+              {nome}: <b>{n}</b>
+            </span>
+          ))}
+        </div>
+      )}
+      {isLoading ? (
+        <div className="h-24 animate-pulse" />
+      ) : lista.length === 0 ? (
+        <p className="text-sm text-dark-400">Nenhum erro anotado neste período.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px] text-sm">
+            <thead>
+              <tr className="text-xs text-dark-400 text-left">
+                <th className="py-2 pr-3 font-medium">Quando</th>
+                <th className="py-2 pr-3 font-medium">Pedido</th>
+                <th className="py-2 pr-3 font-medium">Tipo</th>
+                <th className="py-2 pr-3 font-medium">Onde achou</th>
+                <th className="py-2 pr-3 font-medium">Conta para</th>
+                <th className="py-2 font-medium">Detalhe</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((e) => (
+                <tr key={e.id} className="border-t border-dark-700/70">
+                  <td className="py-2 pr-3 text-dark-300 whitespace-nowrap">{dataHora(e.createdAt)}</td>
+                  <td className="py-2 pr-3 text-dark-100">
+                    {e.pedidosSap}
+                    {e.nfNumero ? <span className="text-dark-500"> · NF {e.nfNumero}</span> : null}
+                    <span className="block text-xs text-dark-500 truncate max-w-[220px]">{e.clienteNome ?? ''}</span>
+                  </td>
+                  <td className={`py-2 pr-3 font-medium ${ehErroDeEmbalagem(e.tipo) ? 'text-orange-300' : 'text-red-300'}`}>{labelTipoErro(e.tipo)}</td>
+                  <td className="py-2 pr-3 text-dark-300">{ETAPA_ERRO[e.etapa] ?? e.etapa}</td>
+                  <td className="py-2 pr-3 text-dark-100">{e.responsavelNome ?? '—'}</td>
+                  <td className="py-2 text-dark-300">
+                    {[e.itemCodigo, e.descricao, e.quantidade ? `${e.quantidade} ${e.tipo === 'volume_ficou' ? 'vol.' : 'un'}` : null, e.observacao].filter(Boolean).join(' · ') || '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }
