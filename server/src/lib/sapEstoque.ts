@@ -187,7 +187,7 @@ async function fotoEstoque(sap: SapSessao, depositos: Map<string, number>): Prom
     ItemCode: string
     ItemName: string | null
     U_CodigoAntigo?: string | null
-    ItemWarehouseInfoCollection: { WarehouseCode: string; InStock: number; StandardAveragePrice: number | null }[]
+    ItemWarehouseInfoCollection: { WarehouseCode: string; InStock: number; Committed?: number; StandardAveragePrice: number | null }[]
   }>('/Items?$select=ItemCode,ItemName,U_CodigoAntigo,ItemWarehouseInfoCollection&$filter=QuantityOnStock gt 0', 200)
   const componentes = await componentesDeMontagem(sap)
   const agora = new Date().toISOString().replace('T', ' ').slice(0, 19)
@@ -198,8 +198,11 @@ async function fotoEstoque(sap: SapSessao, depositos: Map<string, number>): Prom
       const filial = depositos.get(w.WarehouseCode)
       if (!filial || !ehRevenda(w.WarehouseCode) || !(w.InStock > 0)) continue
       const chave = `${filial}|${it.ItemCode}`
-      const l = linhas.get(chave) ?? { filial, itemCodigo: it.ItemCode, itemNome: it.ItemName?.trim() || null, codigoAntigo: it.U_CodigoAntigo?.trim() || null, quantidade: 0, valor: 0, atualizadoEm: agora }
+      const l = linhas.get(chave) ?? { filial, itemCodigo: it.ItemCode, itemNome: it.ItemName?.trim() || null, codigoAntigo: it.U_CodigoAntigo?.trim() || null, quantidade: 0, disponivel: 0, valor: 0, atualizadoEm: agora }
       l.quantidade += w.InStock
+      // Disponível = físico − reservado em pedidos (o que o SAP deixa vender;
+      // usado nas Cotações, 2026-11-10).
+      l.disponivel = (l.disponivel ?? 0) + Math.max(0, w.InStock - (w.Committed ?? 0))
       l.valor += w.InStock * (w.StandardAveragePrice ?? 0)
       linhas.set(chave, l)
     }

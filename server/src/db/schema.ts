@@ -5040,6 +5040,8 @@ export const sapEstoqueItens = sqliteTable(
     itemNome: text('item_nome'),
     codigoAntigo: text('codigo_antigo'),
     quantidade: real('quantidade').notNull(),
+    // Físico − reservado em pedidos (Cotações). Nulo até a próxima foto.
+    disponivel: real('disponivel'),
     valor: real('valor').notNull(),
     atualizadoEm: text('atualizado_em').notNull(),
   },

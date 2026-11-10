@@ -38,7 +38,7 @@ import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
-import { enviarCotacaoSap, fecharCotacaoSap, gerarPedidoSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
+import { enviarCotacaoSap, faltasDeEstoqueSap, fecharCotacaoSap, gerarPedidoSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
@@ -134,6 +134,19 @@ async function paraSap(c: typeof cotacoesCrm.$inferSelect, filial: number): Prom
   }
 }
 
+// Confere no SAP, na hora, o saldo disponível dos itens (só os aceitos pelo
+// cliente, no pedido). Falta → bloqueia com a lista.
+async function exigirEstoque(cotacaoId: number, filial: number, soAceitos = false) {
+  const itens = await db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, cotacaoId))
+  let faltas: string[]
+  try {
+    faltas = await faltasDeEstoqueSap(filial, itens.filter((i) => !soAceitos || i.aceito))
+  } catch (e) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: `Não consegui conferir o estoque no SAP: ${(e as Error).message}` })
+  }
+  if (faltas.length) throw new TRPCError({ code: 'BAD_REQUEST', message: `Sem estoque no SAP agora — ajuste a cotação: ${faltas.join('; ')}` })
+}
+
 const sapErro = (e: unknown) => new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -195,7 +208,7 @@ export const cotacoesCrmRouter = router({
       db.select().from(sapCatalogoItens).where(eq(sapCatalogoItens.ativo, true)),
       db.select({ item: sapCatalogoPrecos.itemCodigo, preco: sapCatalogoPrecos.preco }).from(sapCatalogoPrecos).where(eq(sapCatalogoPrecos.lista, input.lista)),
       db.select({ item: sapCatalogoPrecos.itemCodigo, preco: sapCatalogoPrecos.preco }).from(sapCatalogoPrecos).where(eq(sapCatalogoPrecos.lista, LISTA_BASE)),
-      db.select({ item: sapEstoqueItens.itemCodigo, qtd: sapEstoqueItens.quantidade }).from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, ctx.filial)),
+      db.select({ item: sapEstoqueItens.itemCodigo, qtd: sql<number>`coalesce(${sapEstoqueItens.disponivel}, ${sapEstoqueItens.quantidade})` }).from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, ctx.filial)),
     ])
     const precoDe = new Map(precos.map((p) => [p.item, p.preco]))
     const precoBase = new Map(base.map((p) => [p.item, p.preco]))
@@ -416,6 +429,22 @@ export const cotacoesCrmRouter = router({
           precoManual: manual,
         }
       })
+      // Item sem estoque é proibido (João, 2026-11-10). Aqui pela foto de
+      // estoque (de hora em hora); concluir/enviar conferem no SAP ao vivo.
+      const estoque = codigos.length
+        ? await db
+            .select({ item: sapEstoqueItens.itemCodigo, qtd: sql<number>`coalesce(${sapEstoqueItens.disponivel}, ${sapEstoqueItens.quantidade})` })
+            .from(sapEstoqueItens)
+            .where(and(eq(sapEstoqueItens.filial, ctx.filial), inArray(sapEstoqueItens.itemCodigo, codigos)))
+        : []
+      const dispDe = new Map(estoque.map((e) => [e.item, e.qtd]))
+      const faltas = linhas.filter((l) => (dispDe.get(l.itemCodigo) ?? 0) < l.quantidade)
+      if (faltas.length) {
+        throw new TRPCError({
+          code: 'BAD_REQUEST',
+          message: `Item sem estoque não pode entrar na cotação: ${faltas.map((l) => `${l.nome} (${(dispDe.get(l.itemCodigo) ?? 0) > 0 ? `só ${dispDe.get(l.itemCodigo)} disponível` : 'sem estoque'})`).join('; ')}`,
+        })
+      }
       const total = arred(linhas.reduce((s, l) => s + l.precoUnitario * l.quantidade, 0))
       const maiorDescontoPct = linhas.reduce((m, l) => Math.max(m, l.descontoPct), 0)
       const agora = agoraSqlite()
@@ -471,6 +500,7 @@ export const cotacoesCrmRouter = router({
     const n = await db.select({ n: sql<number>`count(*)` }).from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id))
     if (!n[0]?.n) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Adicione pelo menos um item' })
     if (c.prazoCodigo == null) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escolha o prazo de pagamento' })
+    await exigirEstoque(c.id, ctx.filial)
     const agora = agoraSqlite()
     if (c.maiorDescontoPct > ctx.descontoLivre) {
       if (!ctx.gerenteId) throw new TRPCError({ code: 'BAD_REQUEST', message: `Desconto acima de ${ctx.descontoLivre}% precisa de aprovação, mas a empresa ainda não tem gerente de cotações. Peça a um admin para configurar.` })
@@ -586,6 +616,7 @@ export const cotacoesCrmRouter = router({
     exigirStatus(c, ['aprovada', 'enviada'], 'enviar ao SAP')
     if (c.sapDocNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Já está no SAP (cotação nº ${c.sapDocNum})` })
     const { dados } = await paraSap(c, ctx.filial)
+    await exigirEstoque(c.id, ctx.filial)
     let r
     try {
       r = await enviarCotacaoSap(dados)
@@ -606,6 +637,7 @@ export const cotacoesCrmRouter = router({
     exigirStatus(c, ['ganha'], 'gerar pedido de')
     if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido já gerado (SAP nº ${c.sapPedidoNum})` })
     const { dados, itens } = await paraSap(c, ctx.filial)
+    await exigirEstoque(c.id, ctx.filial, true)
     let cotEntry = c.sapDocEntry
     try {
       if (!cotEntry) {

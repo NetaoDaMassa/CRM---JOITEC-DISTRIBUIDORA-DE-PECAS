@@ -331,23 +331,14 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     onSuccess: (r) => depoisDeAcao(`Pedido de venda criado no SAP — nº ${r.docNum} (${formatarMoeda(r.total)} com impostos)`)(),
     onError: (e) => toast.error(e.message, { duration: 10000 }),
   })
-  // Item sem saldo no depósito: deixa montar, mas avisa que o SAP recusa.
-  const semEstoque = (lista: { itemCodigo: string; quantidade: number }[]) =>
-    lista.filter((l) => (porCodigo.get(l.itemCodigo)?.estoque ?? 0) < l.quantidade).map((l) => porCodigo.get(l.itemCodigo)?.nome ?? l.itemCodigo)
+  // O servidor confere o estoque no SAP na hora e bloqueia se faltar.
   const onEnviarSap = () => {
-    if (id == null || !existente) return
-    const faltam = semEstoque(linhas)
-    const aviso = faltam.length
-      ? `Sem estoque suficiente no depósito (o SAP deve recusar):\n- ${faltam.slice(0, 8).join('\n- ')}\n\nEnviar mesmo assim?`
-      : `Criar a cotação nº ${id} no SAP?`
-    if (confirm(aviso)) enviarSap.mutate({ id })
+    if (id != null && confirm(`Criar a cotação nº ${id} no SAP?`)) enviarSap.mutate({ id })
   }
   const onGerarPedido = () => {
     if (id == null || !existente) return
     const aceitos = existente.itens.filter((i) => i.aceito)
-    const faltam = semEstoque(aceitos)
-    const aviso = `Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?${faltam.length ? `\n\nSem estoque suficiente (o SAP deve recusar):\n- ${faltam.slice(0, 8).join('\n- ')}` : ''}`
-    if (confirm(aviso)) gerarPedido.mutate({ id })
+    if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?`)) gerarPedido.mutate({ id })
   }
   const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
     onSuccess: (r) => {
@@ -383,11 +374,21 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   }
   // Soma na linha que já existe, ou cria a linha. Aceita vários de uma vez
   // (seleção múltipla do catálogo, como no Portal One).
+  // Item sem estoque é proibido (João, 2026-11-10): nunca passa do disponível.
   const adicionar = (novos: { codigo: string; qtd: number }[]) =>
     mexer((ls) => {
       let r = ls
-      for (const { codigo, qtd } of novos)
-        r = r.some((l) => l.itemCodigo === codigo) ? r.map((l) => (l.itemCodigo === codigo ? { ...l, quantidade: l.quantidade + qtd } : l)) : [...r, { itemCodigo: codigo, quantidade: qtd, descontoPct: 0 }]
+      for (const { codigo, qtd } of novos) {
+        const disp = porCodigo.get(codigo)?.estoque ?? 0
+        const atual = r.find((l) => l.itemCodigo === codigo)?.quantidade ?? 0
+        const nova = Math.min(atual + qtd, disp)
+        if (nova <= atual) {
+          toast.error(`${porCodigo.get(codigo)?.nome ?? codigo}: só ${fmtQtd(disp)} disponível`)
+          continue
+        }
+        if (nova < atual + qtd) toast(`${porCodigo.get(codigo)?.nome ?? codigo}: limitado ao disponível (${fmtQtd(disp)})`, { icon: '⚠️' })
+        r = atual ? r.map((l) => (l.itemCodigo === codigo ? { ...l, quantidade: nova } : l)) : [...r, { itemCodigo: codigo, quantidade: nova, descontoPct: 0 }]
+      }
       return r
     })
 
@@ -675,10 +676,10 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                           disabled={somenteLeitura}
                           className="w-16 bg-transparent text-center text-sm text-dark-100 outline-none"
                           valor={l.quantidade}
-                          valido={(n) => n > 0}
+                          valido={(n) => n > 0 && (somenteLeitura || n <= (l.item?.estoque ?? 0))}
                           onValor={(n) => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, quantidade: n } : x)))}
                         />
-                        <button type="button" disabled={somenteLeitura} className="px-2 py-1.5 text-dark-300 hover:text-dark-100" onClick={() => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, quantidade: x.quantidade + 1 } : x)))}>
+                        <button type="button" disabled={somenteLeitura} className="px-2 py-1.5 text-dark-300 hover:text-dark-100" onClick={() => adicionar([{ codigo: l.itemCodigo, qtd: 1 }])}>
                           <Plus className="h-3.5 w-3.5" />
                         </button>
                       </div>
@@ -712,8 +713,8 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                         </span>
                       )}
                       {l.item && l.item.estoque < l.quantidade && (
-                        <span className="text-[10px] font-semibold rounded bg-red-900/40 text-red-300 px-1.5 py-0.5" title="O SAP só aceita item com saldo no depósito">
-                          {l.item.estoque > 0 ? `só ${fmtQtd(l.item.estoque)} em estoque` : 'sem estoque'} — o SAP vai recusar
+                        <span className="text-[10px] font-semibold rounded bg-red-900/40 text-red-300 px-1.5 py-0.5" title="Item sem estoque não pode ser cotado">
+                          {l.item.estoque > 0 ? `só ${fmtQtd(l.item.estoque)} disponível — diminua a quantidade` : 'sem estoque — tire da cotação'}
                         </span>
                       )}
                       <span className="ml-auto text-right">
@@ -1104,7 +1105,7 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
     setSelecao(new Map())
     setQtds(new Map())
   }
-  const [soComEstoque, setSoComEstoque] = useState(false)
+  const [soComEstoque, setSoComEstoque] = useState(true)
   // Cada termo precisa ser o COMEÇO de alguma palavra do nome/grupo ("ar"
   // acha "AR", não "pARa"), ou estar dentro de um código. Nome que começa
   // com o 1º termo vem primeiro.
@@ -1138,7 +1139,7 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
             placeholder="Buscar produto: nome, código, código antigo…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            onKeyDown={(e) => { const r = resultados.find((x) => x.preco != null); if (e.key === 'Enter' && r) onAdicionar?.([{ codigo: r.codigo, qtd: 1 }]) }}
+            onKeyDown={(e) => { const r = resultados.find((x) => x.preco != null && x.estoque > 0); if (e.key === 'Enter' && r) onAdicionar?.([{ codigo: r.codigo, qtd: 1 }]) }}
           />
         </div>
         <div className="flex items-center justify-between text-xs text-dark-400">
@@ -1166,7 +1167,7 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
                   <input
                     type="checkbox"
                     aria-label={`Selecionar ${i.nome}`}
-                    disabled={i.preco == null}
+                    disabled={i.preco == null || i.estoque <= 0}
                     checked={selecao.has(i.codigo)}
                     onChange={(e) => marcar(i.codigo, e.target.checked)}
                     className="h-4 w-4 shrink-0 accent-sky-500"
@@ -1187,14 +1188,14 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
                 <div className="text-right shrink-0">
                   <p className="text-sm font-semibold text-dark-50">{i.preco != null ? formatarMoeda(i.preco) : '—'}</p>
                   <p className={`text-[11px] ${i.estoque > 10 ? 'text-green-400' : i.estoque > 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                    {i.estoque > 0 ? `${fmtQtd(i.estoque)} ${i.unidade ?? ''} em estoque` : 'sem estoque'}
+                    {i.estoque > 0 ? `${fmtQtd(i.estoque)} ${i.unidade ?? ''} disponível` : 'sem estoque'}
                   </p>
                 </div>
-                {onAdicionar && i.preco != null && (
+                {onAdicionar && i.preco != null && i.estoque > 0 && (
                   <CampoNumero
                     className="w-14 shrink-0 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-center text-sm text-dark-100 outline-none"
                     valor={qtdDe(i.codigo)}
-                    valido={(n) => n > 0}
+                    valido={(n) => n > 0 && n <= i.estoque}
                     onValor={(n) => {
                       setQtds((m) => new Map(m).set(i.codigo, n))
                       setSelecao((s) => (s.has(i.codigo) ? new Map(s).set(i.codigo, n) : s))
@@ -1205,8 +1206,8 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
                   <button
                     type="button"
                     aria-label={`Adicionar ${i.nome}`}
-                    title={i.preco == null ? 'Sem preço no SAP — não dá pra cotar' : undefined}
-                    disabled={i.preco == null}
+                    title={i.preco == null ? 'Sem preço no SAP — não dá pra cotar' : i.estoque <= 0 ? 'Sem estoque — não dá pra cotar' : undefined}
+                    disabled={i.preco == null || i.estoque <= 0}
                     onClick={() => {
                       onAdicionar([{ codigo: i.codigo, qtd: qtdDe(i.codigo) }])
                       setQtds((m) => { const n = new Map(m); n.delete(i.codigo); return n })

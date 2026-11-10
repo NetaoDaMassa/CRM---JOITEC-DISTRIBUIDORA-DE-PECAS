@@ -101,3 +101,34 @@ export async function fecharCotacaoSap(cotacaoEntry: number): Promise<void> {
     if (q.DocumentStatus === 'bost_Open') await sap.escrever('POST', `/Quotations(${cotacaoEntry})/Close`)
   })
 }
+
+// Estoque disponível AGORA no SAP (físico − reservado) no depósito de Revenda
+// da filial, só dos itens da cotação. Item sem saldo é proibido (João,
+// 2026-11-10) — devolve a lista do que falta.
+export async function faltasDeEstoqueSap(filial: number, itens: { itemCodigo: string; nome: string; quantidade: number }[]): Promise<string[]> {
+  const deposito = DEPOSITO_DA_FILIAL[filial]
+  if (!deposito || !itens.length) return []
+  const codigos = [...new Set(itens.map((i) => i.itemCodigo))]
+  const disponivel = new Map<string, number>()
+  await comSessaoSap(async (sap) => {
+    for (let i = 0; i < codigos.length; i += 20) {
+      const filtro = codigos.slice(i, i + 20).map((c) => `ItemCode eq '${c.replace(/'/g, "''")}'`).join(' or ')
+      const lista = await sap.getTodos<{ ItemCode: string; ItemWarehouseInfoCollection?: { WarehouseCode: string; InStock: number; Committed: number }[] }>(
+        `/Items?$filter=${filtro}&$select=ItemCode,ItemWarehouseInfoCollection`,
+        20
+      )
+      for (const it of lista) {
+        const w = it.ItemWarehouseInfoCollection?.find((x) => x.WarehouseCode === deposito)
+        disponivel.set(it.ItemCode, w ? Math.max(0, w.InStock - w.Committed) : 0)
+      }
+    }
+  })
+  const pedido = new Map<string, { nome: string; qtd: number }>()
+  for (const i of itens) pedido.set(i.itemCodigo, { nome: i.nome, qtd: (pedido.get(i.itemCodigo)?.qtd ?? 0) + i.quantidade })
+  return [...pedido]
+    .filter(([codigo, p]) => (disponivel.get(codigo) ?? 0) < p.qtd)
+    .map(([codigo, p]) => {
+      const d = disponivel.get(codigo) ?? 0
+      return `${p.nome} (${codigo}): ${d > 0 ? `só ${d} disponível` : 'sem estoque'}, pediu ${p.qtd}`
+    })
+}

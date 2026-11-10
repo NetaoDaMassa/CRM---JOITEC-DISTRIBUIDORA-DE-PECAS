@@ -96,4 +96,5 @@ CREATE TABLE `cotacoes_crm_historico` (
 	FOREIGN KEY (`cotacao_id`) REFERENCES `cotacoes_crm`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE set null
 );--> statement-breakpoint
-CREATE INDEX `idx_cotacoes_crm_historico_cotacao` ON `cotacoes_crm_historico` (`cotacao_id`);
+CREATE INDEX `idx_cotacoes_crm_historico_cotacao` ON `cotacoes_crm_historico` (`cotacao_id`);--> statement-breakpoint
+ALTER TABLE `sap_estoque_itens` ADD `disponivel` real;
