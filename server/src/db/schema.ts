@@ -5128,12 +5128,28 @@ export const cotacoesCrm = sqliteTable(
     empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
     clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
     vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-    // 'rascunho' até ir pro SAP (etapa 2: 'enviada' com sapDocNum).
-    status: text('status', { enum: ['rascunho', 'enviada', 'cancelada'] }).notNull().default('rascunho'),
+    // Jornada (João, 2026-11-10): rascunho → (desconto acima do livre da
+    // empresa) aguardando_aprovacao → aprovada → enviada (ao cliente; vale
+    // até o último dia do mês) → ganha (cliente aprovou, pode ser parcial) ou
+    // perdida (motivo). "Vencida" não é status: é enviada com validaAte passado.
+    status: text('status', { enum: ['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada', 'ganha', 'perdida', 'cancelada'] })
+      .notNull()
+      .default('rascunho'),
     listaPreco: integer('lista_preco'),
     prazoCodigo: integer('prazo_codigo'),
     observacao: text('observacao'),
     total: real('total').notNull().default(0),
+    maiorDescontoPct: real('maior_desconto_pct').notNull().default(0),
+    aprovadoPorId: integer('aprovado_por_id').references(() => users.id, { onDelete: 'set null' }),
+    aprovadoEm: text('aprovado_em'),
+    reprovacaoMotivo: text('reprovacao_motivo'),
+    enviadaClienteEm: text('enviada_cliente_em'),
+    // YYYY-MM-DD (último dia do mês em que foi enviada ao cliente).
+    validaAte: text('valida_ate'),
+    motivoPerda: text('motivo_perda'),
+    motivoPerdaObs: text('motivo_perda_obs'),
+    encerradaEm: text('encerrada_em'),
+    // Etapa 2/4 (SAP): cotação e pedido gerados.
     sapDocEntry: integer('sap_doc_entry'),
     sapDocNum: integer('sap_doc_num'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
@@ -5158,6 +5174,23 @@ export const cotacoesCrmItens = sqliteTable(
     precoTabela: real('preco_tabela').notNull(),
     descontoPct: real('desconto_pct').notNull().default(0),
     precoUnitario: real('preco_unitario').notNull(),
+    // Cliente aprovou esse item (pedido parcial: só os aceitos viram pedido).
+    aceito: integer('aceito', { mode: 'boolean' }).notNull().default(true),
   },
   (t) => ({ cotacaoIdx: index('idx_cotacoes_crm_itens_cotacao').on(t.cotacaoId) })
+)
+
+// Tudo o que aconteceu com a cotação (criou, pediu aprovação, aprovou,
+// enviou, perdeu…), pra aparecer na linha do tempo da cotação.
+export const cotacoesCrmHistorico = sqliteTable(
+  'cotacoes_crm_historico',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    cotacaoId: integer('cotacao_id').notNull().references(() => cotacoesCrm.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    acao: text('acao').notNull(),
+    detalhe: text('detalhe'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ cotacaoIdx: index('idx_cotacoes_crm_historico_cotacao').on(t.cotacaoId) })
 )

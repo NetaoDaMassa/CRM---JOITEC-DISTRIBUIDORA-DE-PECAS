@@ -1,19 +1,31 @@
-// Cotações no CRM — etapa 1 do "Portal One dentro do CRM" (pedido do João,
-// 2026-11-10). Catálogo/preço/prazo vêm das cópias do SAP (lib/sapCatalogo.ts),
-// estoque da foto de Revenda (lib/sapEstoque.ts). A cotação fica salva no CRM;
-// enviar ao SAP é a etapa 2 (precisa de usuário próprio + base de teste).
-// Acesso: permissão 'cotacoes' (superAdmin sempre). Vendedor vê/edita só as
-// próprias cotações e os clientes da própria carteira; admin vê a empresa toda.
+// Cotações no CRM — troca do Portal One (pedido do João, 2026-11-10).
+// Catálogo/preço/prazo vêm das cópias do SAP (lib/sapCatalogo.ts), estoque da
+// foto de Revenda (lib/sapEstoque.ts). Enviar ao SAP e gerar o pedido são as
+// etapas 2 e 4 (precisam de usuário próprio + base de teste).
+//
+// Jornada (decisões do João, 2026-11-10):
+//   rascunho → concluir → (maior desconto acima do "desconto livre" da
+//   empresa, padrão 5%) aguardando_aprovacao → gerente da empresa aprova ou
+//   reprova (volta pra rascunho com o motivo) → aprovada → enviada ao cliente
+//   (vale até o último dia do mês) → ganha (cliente aprovou; pode ser só parte
+//   dos itens) ou perdida (preço, prazo, concorrente, sem resposta, outro).
+//   Reabrir (negociação) volta pra rascunho e, se precisar, pede aprovação de novo.
+//
+// Acesso: permissão 'cotacoes' (superAdmin sempre). Vendedor vê só as próprias
+// cotações e os clientes da carteira; admin e o gerente de cotações da
+// empresa veem a empresa toda.
 import { z } from 'zod'
-import { and, desc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, like, or, sql } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import {
   clientes,
   cotacoesCrm,
+  cotacoesCrmHistorico,
   cotacoesCrmItens,
   empresas,
+  notifications,
   sapCatalogoItens,
   sapCatalogoPrecos,
   sapClientesComercial,
@@ -22,13 +34,19 @@ import {
   sapPrazosPagamento,
   users,
 } from '../db/schema.js'
-import { agoraSqlite } from '../lib/dataBr.js'
+import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
+import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { catalogoAtualizadoEm, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
 // Lista 01.BASE — usada quando o cliente não tem lista no SAP.
 const LISTA_BASE = 1
+const DESCONTO_LIVRE_PADRAO = 5
+export const MOTIVOS_PERDA = ['Preço', 'Prazo', 'Concorrente', 'Sem resposta', 'Outro'] as const
+
+const chaveGerente = (empresaId: number) => `cotacoes_gerente_${empresaId}`
+const chaveDescontoLivre = (empresaId: number) => `cotacoes_desconto_livre_${empresaId}`
 
 const cotacoesProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   if (!ctx.user.superAdmin && !(await temFeature(ctx.user.id, FEATURE))) {
@@ -37,13 +55,24 @@ const cotacoesProcedure = protectedProcedure.use(async ({ ctx, next }) => {
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
   const filial = empresa ? filialDaEmpresa(empresa.slug) : null
   if (!filial || filial === 5) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotações só para empresas que vendem pelo SAP' })
-  const veTudo = ctx.user.superAdmin || ctx.user.role === 'admin'
-  return next({ ctx: { ...ctx, filial, veTudo } })
+  const gerenteId = await getConfigNumero(chaveGerente(ctx.empresaId), 0)
+  const descontoLivre = await getConfigNumero(chaveDescontoLivre(ctx.empresaId), DESCONTO_LIVRE_PADRAO)
+  const souGerente = gerenteId > 0 && gerenteId === ctx.user.id
+  const podeConfigurar = ctx.user.superAdmin || ctx.user.role === 'admin'
+  const veTudo = podeConfigurar || souGerente
+  return next({ ctx: { ...ctx, filial, gerenteId, descontoLivre, souGerente, podeAprovar: souGerente || ctx.user.superAdmin, podeConfigurar, veTudo } })
 })
+
+type Ctx = { empresaId: number; user: { id: number; name: string }; veTudo: boolean }
 
 const arred = (n: number, casas = 2) => Math.round(n * 10 ** casas) / 10 ** casas
 
-async function acharCotacao(ctx: { empresaId: number; user: { id: number }; veTudo: boolean }, id: number) {
+function ultimoDiaDoMes(dia: string): string {
+  const [a, m] = dia.split('-').map(Number)
+  return `${a}-${String(m).padStart(2, '0')}-${String(new Date(Date.UTC(a, m, 0)).getUTCDate()).padStart(2, '0')}`
+}
+
+async function acharCotacao(ctx: Ctx, id: number) {
   const c = await db.query.cotacoesCrm.findFirst({
     where: and(eq(cotacoesCrm.id, id), eq(cotacoesCrm.empresaId, ctx.empresaId), isNull(cotacoesCrm.deletedAt)),
   })
@@ -51,16 +80,76 @@ async function acharCotacao(ctx: { empresaId: number; user: { id: number }; veTu
   return c
 }
 
+// Só o vendedor dono (ou quem vê tudo) mexe na cotação.
+function exigirDono(ctx: Ctx, c: { vendedorId: number }) {
+  if (!ctx.veTudo && c.vendedorId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Essa cotação não é sua' })
+}
+
+function exigirStatus(c: { status: string }, permitidos: string[], acao: string) {
+  if (!permitidos.includes(c.status)) throw new TRPCError({ code: 'BAD_REQUEST', message: `Não dá pra ${acao} uma cotação nessa situação` })
+}
+
+async function registrar(cotacaoId: number, userId: number, acao: string, detalhe?: string | null) {
+  await db.insert(cotacoesCrmHistorico).values({ cotacaoId, userId, acao, detalhe: detalhe ?? null })
+}
+
+async function avisar(userId: number, clienteId: number, titulo: string, mensagem: string) {
+  await db.insert(notifications).values({ vendedorId: userId, clienteId, type: 'info', title: titulo, message: mensagem })
+}
+
+async function nomeCliente(clienteId: number) {
+  const c = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { razaoSocial: true } })
+  return c?.razaoSocial ?? 'cliente'
+}
+
+const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
 export const cotacoesCrmRouter = router({
-  // Listas de preço, prazos e quando o catálogo foi copiado do SAP.
+  // Listas de preço, prazos, regras da empresa (gerente e desconto livre) e
+  // quando o catálogo foi copiado do SAP.
   contexto: cotacoesProcedure.query(async ({ ctx }) => {
-    const [listas, prazos, atualizadoEm] = await Promise.all([
+    const [listas, prazos, atualizadoEm, gerente, usuarios] = await Promise.all([
       db.select().from(sapListasPreco).orderBy(sapListasPreco.numero),
       db.select().from(sapPrazosPagamento).orderBy(sapPrazosPagamento.nome),
       catalogoAtualizadoEm(),
+      ctx.gerenteId ? db.query.users.findFirst({ where: eq(users.id, ctx.gerenteId), columns: { id: true, name: true } }) : null,
+      ctx.podeConfigurar
+        ? db
+            .select({ id: users.id, nome: users.name })
+            .from(users)
+            .where(and(eq(users.empresaId, ctx.empresaId), eq(users.isActive, true)))
+            .orderBy(asc(users.name))
+        : [],
     ])
-    return { listas, prazos, atualizadoEm, veTudo: ctx.veTudo, listaBase: LISTA_BASE }
+    return {
+      listas,
+      prazos,
+      atualizadoEm,
+      listaBase: LISTA_BASE,
+      veTudo: ctx.veTudo,
+      gerente: gerente ?? null,
+      descontoLivre: ctx.descontoLivre,
+      podeAprovar: ctx.podeAprovar,
+      podeConfigurar: ctx.podeConfigurar,
+      usuarios,
+      motivosPerda: MOTIVOS_PERDA,
+      hoje: hojeBrString(),
+    }
   }),
+
+  // Gerente que aprova desconto e o desconto que o vendedor dá sozinho.
+  configurar: cotacoesProcedure
+    .input(z.object({ gerenteId: z.number().int().nullable(), descontoLivre: z.number().min(0).max(100) }))
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.podeConfigurar) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só admin configura as cotações' })
+      if (input.gerenteId) {
+        const u = await db.query.users.findFirst({ where: and(eq(users.id, input.gerenteId), eq(users.empresaId, ctx.empresaId)), columns: { id: true } })
+        if (!u) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Gerente precisa ser da empresa' })
+      }
+      await setConfig(chaveGerente(ctx.empresaId), input.gerenteId ?? 0)
+      await setConfig(chaveDescontoLivre(ctx.empresaId), input.descontoLivre)
+      return { ok: true }
+    }),
 
   // Catálogo inteiro (~2.600 itens) com o preço da lista pedida e o estoque
   // de Revenda da filial — a tela filtra na hora, sem ir ao servidor.
@@ -87,11 +176,11 @@ export const cotacoesCrmRouter = router({
       .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
   }),
 
-  // Clientes pra cotar: vendedor só a própria carteira, admin a empresa toda.
-  // Junta a lista de preço e o prazo padrão do cliente no SAP.
+  // Clientes pra cotar: vendedor só a própria carteira, admin/gerente a
+  // empresa toda. Junta a lista de preço e o prazo padrão do cliente no SAP.
   clientes: cotacoesProcedure.input(z.object({ busca: z.string().trim().min(2) })).query(async ({ ctx, input }) => {
     const termo = `%${input.busca}%`
-    const linhas = await db
+    return db
       .select({
         id: clientes.id,
         codigo: clientes.codigo,
@@ -113,17 +202,20 @@ export const cotacoesCrmRouter = router({
         )
       )
       .limit(25)
-    return linhas
   }),
 
   listar: cotacoesProcedure.query(async ({ ctx }) => {
+    const hoje = hojeBrString()
     const linhas = await db
       .select({
         id: cotacoesCrm.id,
         status: cotacoesCrm.status,
         total: cotacoesCrm.total,
+        maiorDescontoPct: cotacoesCrm.maiorDescontoPct,
+        validaAte: cotacoesCrm.validaAte,
         updatedAt: cotacoesCrm.updatedAt,
         sapDocNum: cotacoesCrm.sapDocNum,
+        vendedorId: cotacoesCrm.vendedorId,
         clienteNome: clientes.razaoSocial,
         clienteCodigo: clientes.codigo,
         vendedorNome: users.name,
@@ -134,17 +226,26 @@ export const cotacoesCrmRouter = router({
       .innerJoin(users, eq(users.id, cotacoesCrm.vendedorId))
       .where(and(eq(cotacoesCrm.empresaId, ctx.empresaId), isNull(cotacoesCrm.deletedAt), ctx.veTudo ? undefined : eq(cotacoesCrm.vendedorId, ctx.user.id)))
       .orderBy(desc(cotacoesCrm.updatedAt))
-      .limit(300)
-    return linhas
+      .limit(500)
+    return linhas.map((l) => ({ ...l, vencida: l.status === 'enviada' && !!l.validaAte && l.validaAte < hoje }))
   }),
 
   obter: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
-    const [cliente, itens] = await Promise.all([
+    const [cliente, itens, historico, vendedor, aprovador] = await Promise.all([
       db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { id: true, codigo: true, razaoSocial: true, cidade: true, estado: true } }),
       db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id)).orderBy(cotacoesCrmItens.id),
+      db
+        .select({ id: cotacoesCrmHistorico.id, acao: cotacoesCrmHistorico.acao, detalhe: cotacoesCrmHistorico.detalhe, createdAt: cotacoesCrmHistorico.createdAt, quem: users.name })
+        .from(cotacoesCrmHistorico)
+        .leftJoin(users, eq(users.id, cotacoesCrmHistorico.userId))
+        .where(eq(cotacoesCrmHistorico.cotacaoId, c.id))
+        .orderBy(desc(cotacoesCrmHistorico.id)),
+      db.query.users.findFirst({ where: eq(users.id, c.vendedorId), columns: { name: true } }),
+      c.aprovadoPorId ? db.query.users.findFirst({ where: eq(users.id, c.aprovadoPorId), columns: { name: true } }) : null,
     ])
-    return { ...c, cliente, itens }
+    const vencida = c.status === 'enviada' && !!c.validaAte && c.validaAte < hojeBrString()
+    return { ...c, cliente, itens, historico, vendedorNome: vendedor?.name ?? '', aprovadorNome: aprovador?.name ?? null, vencida, souDono: c.vendedorId === ctx.user.id }
   }),
 
   // Cria ou atualiza o rascunho. O preço de tabela é sempre o do catálogo
@@ -166,7 +267,8 @@ export const cotacoesCrmRouter = router({
     .mutation(async ({ ctx, input }) => {
       if (input.id) {
         const atual = await acharCotacao(ctx, input.id)
-        if (atual.status !== 'rascunho') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra editar cotação em rascunho' })
+        exigirDono(ctx, atual)
+        exigirStatus(atual, ['rascunho'], 'editar')
       }
       const cliente = await db.query.clientes.findFirst({
         where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
@@ -202,11 +304,20 @@ export const cotacoesCrmRouter = router({
         }
       })
       const total = arred(linhas.reduce((s, l) => s + l.precoUnitario * l.quantidade, 0))
+      const maiorDescontoPct = linhas.reduce((m, l) => Math.max(m, l.descontoPct), 0)
       const agora = agoraSqlite()
 
-      return db.transaction(async (tx) => {
+      const id = await db.transaction(async (tx) => {
         let id = input.id
-        const dados = { clienteId: input.clienteId, listaPreco: input.listaPreco, prazoCodigo: input.prazoCodigo, observacao: input.observacao?.trim() || null, total, updatedAt: agora }
+        const dados = {
+          clienteId: input.clienteId,
+          listaPreco: input.listaPreco,
+          prazoCodigo: input.prazoCodigo,
+          observacao: input.observacao?.trim() || null,
+          total,
+          maiorDescontoPct,
+          updatedAt: agora,
+        }
         if (id) {
           await tx.update(cotacoesCrm).set(dados).where(eq(cotacoesCrm.id, id))
           await tx.delete(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, id))
@@ -218,20 +329,137 @@ export const cotacoesCrmRouter = router({
           id = nova.id
         }
         if (linhas.length) await tx.insert(cotacoesCrmItens).values(linhas.map((l) => ({ ...l, cotacaoId: id! })))
-        return { id: id!, total }
+        return id!
       })
+      if (!input.id) await registrar(id, ctx.user.id, 'Criou a cotação', `${linhas.length} item(ns) · ${brl(total)}`)
+      return { id, total }
+    }),
+
+  // Rascunho pronto: vai pro gerente se algum desconto passar do livre;
+  // senão já fica aprovada.
+  concluir: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    exigirStatus(c, ['rascunho'], 'concluir')
+    const n = await db.select({ n: sql<number>`count(*)` }).from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id))
+    if (!n[0]?.n) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Adicione pelo menos um item' })
+    if (c.prazoCodigo == null) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escolha o prazo de pagamento' })
+    const agora = agoraSqlite()
+    if (c.maiorDescontoPct > ctx.descontoLivre) {
+      if (!ctx.gerenteId) throw new TRPCError({ code: 'BAD_REQUEST', message: `Desconto acima de ${ctx.descontoLivre}% precisa de aprovação, mas a empresa ainda não tem gerente de cotações. Peça a um admin para configurar.` })
+      await db.update(cotacoesCrm).set({ status: 'aguardando_aprovacao', reprovacaoMotivo: null, updatedAt: agora }).where(eq(cotacoesCrm.id, c.id))
+      await registrar(c.id, ctx.user.id, 'Pediu aprovação do desconto', `Maior desconto ${c.maiorDescontoPct}% (livre até ${ctx.descontoLivre}%)`)
+      if (ctx.gerenteId !== ctx.user.id) {
+        await avisar(
+          ctx.gerenteId,
+          c.clienteId,
+          'Cotação esperando sua aprovação',
+          `${ctx.user.name} pediu aprovação de ${c.maiorDescontoPct}% de desconto na cotação nº ${c.id} (${await nomeCliente(c.clienteId)}, ${brl(c.total)}). Abra em Cotações.`
+        )
+      }
+      return { status: 'aguardando_aprovacao' as const }
+    }
+    await db.update(cotacoesCrm).set({ status: 'aprovada', aprovadoPorId: null, aprovadoEm: agora, reprovacaoMotivo: null, updatedAt: agora }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, 'Concluiu a cotação', c.maiorDescontoPct > 0 ? `Desconto ${c.maiorDescontoPct}% dentro do livre (${ctx.descontoLivre}%)` : 'Sem desconto')
+    return { status: 'aprovada' as const }
+  }),
+
+  aprovar: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    if (!ctx.podeAprovar) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o gerente de cotações da empresa aprova' })
+    const c = await acharCotacao(ctx, input.id)
+    exigirStatus(c, ['aguardando_aprovacao'], 'aprovar')
+    const agora = agoraSqlite()
+    await db.update(cotacoesCrm).set({ status: 'aprovada', aprovadoPorId: ctx.user.id, aprovadoEm: agora, updatedAt: agora }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, 'Aprovou o desconto', `${c.maiorDescontoPct}%`)
+    if (c.vendedorId !== ctx.user.id) {
+      await avisar(c.vendedorId, c.clienteId, 'Desconto aprovado', `${ctx.user.name} aprovou a cotação nº ${c.id} (${await nomeCliente(c.clienteId)}). Já pode enviar ao cliente.`)
+    }
+    return { ok: true }
+  }),
+
+  reprovar: cotacoesProcedure.input(z.object({ id: z.number().int(), motivo: z.string().trim().min(3).max(500) })).mutation(async ({ ctx, input }) => {
+    if (!ctx.podeAprovar) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o gerente de cotações da empresa reprova' })
+    const c = await acharCotacao(ctx, input.id)
+    exigirStatus(c, ['aguardando_aprovacao'], 'reprovar')
+    await db.update(cotacoesCrm).set({ status: 'rascunho', reprovacaoMotivo: input.motivo, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, 'Reprovou o desconto', input.motivo)
+    if (c.vendedorId !== ctx.user.id) {
+      await avisar(c.vendedorId, c.clienteId, 'Desconto reprovado', `${ctx.user.name} reprovou a cotação nº ${c.id} (${await nomeCliente(c.clienteId)}): ${input.motivo}`)
+    }
+    return { ok: true }
+  }),
+
+  // Mandou pro cliente: vale até o último dia do mês. Reenviar renova.
+  marcarEnviada: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    exigirStatus(c, ['aprovada', 'enviada'], 'marcar como enviada')
+    const hoje = hojeBrString()
+    const validaAte = ultimoDiaDoMes(hoje)
+    await db.update(cotacoesCrm).set({ status: 'enviada', enviadaClienteEm: agoraSqlite(), validaAte, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, c.status === 'enviada' ? 'Reenviou ao cliente' : 'Enviou ao cliente', `Válida até ${validaAte.split('-').reverse().join('/')}`)
+    return { validaAte }
+  }),
+
+  // Negociação: volta pra rascunho pra mudar itens/preço (e, se o desconto
+  // passar do livre, pede aprovação de novo).
+  reabrir: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    exigirStatus(c, ['aguardando_aprovacao', 'aprovada', 'enviada'], 'reabrir')
+    await db.update(cotacoesCrm).set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    await registrar(c.id, ctx.user.id, 'Reabriu para negociar')
+    return { ok: true }
+  }),
+
+  // Cliente aprovou — pode ser só parte dos itens (o pedido sai só com eles).
+  ganhar: cotacoesProcedure.input(z.object({ id: z.number().int(), itensAceitos: z.array(z.number().int()).min(1) })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    exigirStatus(c, ['aprovada', 'enviada'], 'marcar como aprovada pelo cliente')
+    const itens = await db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id))
+    const aceitos = new Set(input.itensAceitos.filter((i) => itens.some((x) => x.id === i)))
+    if (!aceitos.size) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Marque pelo menos um item que o cliente aprovou' })
+    const valorAceito = arred(itens.filter((i) => aceitos.has(i.id)).reduce((s, i) => s + i.precoUnitario * i.quantidade, 0))
+    await db.transaction(async (tx) => {
+      for (const i of itens) await tx.update(cotacoesCrmItens).set({ aceito: aceitos.has(i.id) }).where(eq(cotacoesCrmItens.id, i.id))
+      await tx.update(cotacoesCrm).set({ status: 'ganha', encerradaEm: agoraSqlite(), updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    })
+    await registrar(
+      c.id,
+      ctx.user.id,
+      'Cliente aprovou',
+      aceitos.size === itens.length ? `Todos os itens · ${brl(valorAceito)}` : `${aceitos.size} de ${itens.length} itens · ${brl(valorAceito)}`
+    )
+    return { valorAceito }
+  }),
+
+  perder: cotacoesProcedure
+    .input(z.object({ id: z.number().int(), motivo: z.enum(MOTIVOS_PERDA), observacao: z.string().trim().max(500).nullable() }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await acharCotacao(ctx, input.id)
+      exigirDono(ctx, c)
+      exigirStatus(c, ['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'], 'marcar como perdida')
+      if (input.motivo === 'Outro' && !input.observacao) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Conte o motivo em "Outro"' })
+      await db
+        .update(cotacoesCrm)
+        .set({ status: 'perdida', motivoPerda: input.motivo, motivoPerdaObs: input.observacao || null, encerradaEm: agoraSqlite(), updatedAt: agoraSqlite() })
+        .where(eq(cotacoesCrm.id, c.id))
+      await registrar(c.id, ctx.user.id, 'Marcou como perdida', input.observacao ? `${input.motivo}: ${input.observacao}` : input.motivo)
+      return { ok: true }
     }),
 
   excluir: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
-    if (c.status !== 'rascunho') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra excluir cotação em rascunho' })
+    exigirDono(ctx, c)
+    exigirStatus(c, ['rascunho'], 'excluir')
     await db.update(cotacoesCrm).set({ deletedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
     return { ok: true }
   }),
 
   // Recopia o catálogo do SAP agora (admin). Leva alguns segundos.
   atualizarCatalogo: cotacoesProcedure.mutation(async ({ ctx }) => {
-    if (!ctx.veTudo) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só admin atualiza o catálogo' })
+    if (!ctx.podeConfigurar) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só admin atualiza o catálogo' })
     return sincronizarCatalogoSap(true)
   }),
 })

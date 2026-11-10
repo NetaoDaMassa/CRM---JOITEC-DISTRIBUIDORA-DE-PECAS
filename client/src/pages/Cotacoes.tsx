@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Search, Plus, Minus, Trash2, Package, RefreshCw, Printer, Send, ArrowLeft, ShoppingCart, User } from 'lucide-react'
+import { Search, Plus, Minus, Trash2, Package, RefreshCw, Printer, Send, ArrowLeft, ShoppingCart, User, Settings2, CheckCircle2, XCircle, ThumbsUp, Undo2, History, BadgeCheck, Clock } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import Button from '../components/ui/Button'
+import Modal from '../components/ui/Modal'
 import { formatarMoeda } from '../lib/moeda'
 import { timeAgo } from '../lib/utils'
 import { parseValorBr } from '../lib/valorBr'
@@ -24,15 +25,43 @@ const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toL
 // Aceita "1,5" e "1.5" (lib/valorBr — já evitou o bug do ponto virar milhar).
 const numero = (s: string) => parseValorBr(s)
 const fmtQtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 })
+const dataBr = (d: string | null | undefined) => (d ? d.slice(0, 10).split('-').reverse().join('/') : '')
+
+type Status = 'rascunho' | 'aguardando_aprovacao' | 'aprovada' | 'enviada' | 'ganha' | 'perdida' | 'cancelada'
+const STATUS: Record<Status, { rotulo: string; cor: string }> = {
+  rascunho: { rotulo: 'Rascunho', cor: 'bg-dark-700 text-dark-300' },
+  aguardando_aprovacao: { rotulo: 'Aguardando aprovação', cor: 'bg-amber-900/40 text-amber-300' },
+  aprovada: { rotulo: 'Pronta p/ enviar', cor: 'bg-sky-900/40 text-sky-300' },
+  enviada: { rotulo: 'Enviada ao cliente', cor: 'bg-indigo-900/40 text-indigo-300' },
+  ganha: { rotulo: 'Cliente aprovou', cor: 'bg-green-900/40 text-green-300' },
+  perdida: { rotulo: 'Perdida', cor: 'bg-red-900/40 text-red-300' },
+  cancelada: { rotulo: 'Cancelada', cor: 'bg-dark-700 text-dark-400' },
+}
+function ChipStatus({ status, vencida }: { status: Status; vencida?: boolean }) {
+  if (vencida) return <span className="text-[11px] font-semibold rounded-full px-2 py-0.5 bg-orange-900/40 text-orange-300">Vencida</span>
+  return <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 whitespace-nowrap ${STATUS[status].cor}`}>{STATUS[status].rotulo}</span>
+}
 
 export default function Cotacoes() {
   const [aberta, setAberta] = useState<number | 'nova' | null>(null)
   return aberta === null ? <ListaCotacoes onAbrir={setAberta} /> : <EditorCotacao id={aberta === 'nova' ? null : aberta} onVoltar={() => setAberta(null)} onSalva={setAberta} />
 }
 
+const FILTROS: { chave: string; rotulo: string; teste: (c: { status: Status; vencida: boolean }) => boolean }[] = [
+  { chave: 'abertas', rotulo: 'Em aberto', teste: (c) => ['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'].includes(c.status) },
+  { chave: 'aprovacao', rotulo: 'Aguardando aprovação', teste: (c) => c.status === 'aguardando_aprovacao' },
+  { chave: 'enviadas', rotulo: 'Enviadas', teste: (c) => c.status === 'enviada' && !c.vencida },
+  { chave: 'vencidas', rotulo: 'Vencidas', teste: (c) => c.vencida },
+  { chave: 'ganhas', rotulo: 'Cliente aprovou', teste: (c) => c.status === 'ganha' },
+  { chave: 'perdidas', rotulo: 'Perdidas', teste: (c) => c.status === 'perdida' },
+  { chave: 'todas', rotulo: 'Todas', teste: () => true },
+]
+
 function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) {
   const { data: ctx } = trpc.cotacoesCrm.contexto.useQuery()
   const { data: lista, isLoading, error } = trpc.cotacoesCrm.listar.useQuery()
+  const [filtro, setFiltro] = useState('abertas')
+  const [configurando, setConfigurando] = useState(false)
   const utils = trpc.useUtils()
   const atualizar = trpc.cotacoesCrm.atualizarCatalogo.useMutation({
     onSuccess: (r) => {
@@ -41,6 +70,9 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
     },
     onError: (e) => toast.error(e.message),
   })
+  const linhas = (lista ?? []) as (NonNullable<typeof lista>[number] & { status: Status })[]
+  const visiveis = linhas.filter(FILTROS.find((f) => f.chave === filtro)!.teste)
+  const aguardandoMim = ctx?.podeAprovar ? linhas.filter((c) => c.status === 'aguardando_aprovacao').length : 0
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -50,13 +82,19 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
           </h1>
           <p className="text-sm text-dark-400">
             Catálogo e preços do SAP {ctx?.atualizadoEm ? `· atualizado ${timeAgo(`${ctx.atualizadoEm.replace(' ', 'T')}Z`)}` : '· ainda não copiado'}
+            {ctx && ` · desconto livre até ${fmtQtd(ctx.descontoLivre)}%${ctx.gerente ? ` · acima disso aprova: ${ctx.gerente.name}` : ' · gerente não configurado'}`}
           </p>
         </div>
-        <div className="flex gap-2">
-          {ctx?.veTudo && (
-            <Button variant="secondary" loading={atualizar.isPending} onClick={() => atualizar.mutate()}>
-              <RefreshCw className="h-4 w-4 mr-1.5" /> Atualizar catálogo
-            </Button>
+        <div className="flex flex-wrap gap-2">
+          {ctx?.podeConfigurar && (
+            <>
+              <Button variant="secondary" onClick={() => setConfigurando(true)}>
+                <Settings2 className="h-4 w-4 mr-1.5" /> Regras
+              </Button>
+              <Button variant="secondary" loading={atualizar.isPending} onClick={() => atualizar.mutate()}>
+                <RefreshCw className="h-4 w-4 mr-1.5" /> Atualizar catálogo
+              </Button>
+            </>
           )}
           <Button onClick={() => onAbrir('nova')}>
             <Plus className="h-4 w-4 mr-1.5" /> Nova cotação
@@ -64,37 +102,119 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
         </div>
       </div>
 
+      {aguardandoMim > 0 && (
+        <button type="button" onClick={() => setFiltro('aprovacao')} className="w-full text-left rounded-2xl border border-amber-700/50 bg-amber-900/20 px-4 py-3 text-sm text-amber-200 hover:bg-amber-900/30">
+          <Clock className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+          {aguardandoMim === 1 ? '1 cotação está esperando sua aprovação de desconto.' : `${aguardandoMim} cotações estão esperando sua aprovação de desconto.`} Clique para ver.
+        </button>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        {FILTROS.map((f) => {
+          const n = linhas.filter(f.teste).length
+          return (
+            <button
+              key={f.chave}
+              type="button"
+              onClick={() => setFiltro(f.chave)}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold border transition-colors ${filtro === f.chave ? 'border-gold-500 bg-gold-900/30 text-gold-200' : 'border-dark-600 text-dark-300 hover:bg-dark-800'}`}
+            >
+              {f.rotulo} <span className="opacity-70">{n}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {error ? (
         <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
       ) : isLoading ? (
         <div className="h-40 rounded-2xl bg-dark-800 animate-pulse" />
-      ) : !lista?.length ? (
+      ) : !linhas.length ? (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-10 text-center space-y-3">
           <ShoppingCart className="h-10 w-10 mx-auto text-dark-500" />
           <p className="text-dark-200">Nenhuma cotação ainda.</p>
           <Button onClick={() => onAbrir('nova')}>Montar a primeira</Button>
         </div>
+      ) : !visiveis.length ? (
+        <p className="text-sm text-dark-400 bg-dark-800 border border-dark-600 rounded-2xl p-6 text-center">Nenhuma cotação nesse filtro.</p>
       ) : (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700 overflow-hidden">
-          {lista.map((c) => (
+          {visiveis.map((c) => (
             <button key={c.id} type="button" onClick={() => onAbrir(c.id)} className="w-full text-left flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 hover:bg-dark-700/40 transition-colors">
               <div className="flex-1 min-w-[220px]">
-                <p className="text-sm font-semibold text-dark-100 break-words">{c.clienteNome}</p>
+                <p className="text-sm font-semibold text-dark-100 break-words">
+                  <span className="text-dark-500 font-normal">nº {c.id} · </span>
+                  {c.clienteNome}
+                </p>
                 <p className="text-xs text-dark-400">
                   {c.clienteCodigo} · {c.itens} {c.itens === 1 ? 'item' : 'itens'}
+                  {c.maiorDescontoPct > 0 && ` · desc. até ${fmtQtd(c.maiorDescontoPct)}%`}
+                  {c.status === 'enviada' && c.validaAte && ` · vale até ${dataBr(c.validaAte)}`}
                   {ctx?.veTudo && ` · ${c.vendedorNome}`}
                 </p>
               </div>
-              <span className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${c.status === 'enviada' ? 'bg-green-900/40 text-green-300' : 'bg-dark-700 text-dark-300'}`}>
-                {c.status === 'enviada' ? `SAP nº ${c.sapDocNum}` : 'Rascunho'}
-              </span>
+              <ChipStatus status={c.status} vencida={c.vencida} />
               <span className="text-sm font-bold text-gold-300 w-32 text-right">{formatarMoeda(c.total)}</span>
               <span className="text-xs text-dark-500 w-24 text-right">{timeAgo(`${c.updatedAt.replace(' ', 'T')}Z`)}</span>
             </button>
           ))}
         </div>
       )}
+      {configurando && ctx && <ModalRegras ctx={ctx} onFechar={() => setConfigurando(false)} />}
     </div>
+  )
+}
+
+function ModalRegras({ ctx, onFechar }: { ctx: Saidas['contexto']; onFechar: () => void }) {
+  const utils = trpc.useUtils()
+  const [gerenteId, setGerenteId] = useState<number | null>(ctx.gerente?.id ?? null)
+  const [livre, setLivre] = useState(String(ctx.descontoLivre).replace('.', ','))
+  const salvar = trpc.cotacoesCrm.configurar.useMutation({
+    onSuccess: () => {
+      toast.success('Regras salvas')
+      utils.cotacoesCrm.contexto.invalidate()
+      utils.cotacoesCrm.listar.invalidate()
+      onFechar()
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  return (
+    <Modal open onClose={onFechar} title="Regras das cotações desta empresa">
+      <div className="space-y-4">
+        <label className="block space-y-1">
+          <span className="text-sm text-dark-200">Gerente que aprova desconto</span>
+          <select className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100" value={gerenteId ?? ''} onChange={(e) => setGerenteId(e.target.value ? Number(e.target.value) : null)}>
+            <option value="">Ninguém (desconto acima do livre fica bloqueado)</option>
+            {ctx.usuarios.map((u) => (
+              <option key={u.id} value={u.id}>
+                {u.nome}
+              </option>
+            ))}
+          </select>
+          <span className="block text-xs text-dark-400">Recebe o aviso e aprova ou reprova. Também passa a ver todas as cotações da empresa.</span>
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm text-dark-200">Desconto que o vendedor dá sozinho (%)</span>
+          <input inputMode="decimal" className="w-32 rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100" value={livre} onChange={(e) => setLivre(e.target.value)} />
+          <span className="block text-xs text-dark-400">Qualquer item com desconto acima disso manda a cotação para o gerente aprovar.</span>
+        </label>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button
+            loading={salvar.isPending}
+            onClick={() => {
+              const n = numero(livre)
+              if (Number.isNaN(n) || n < 0 || n > 100) return toast.error('Desconto entre 0 e 100%')
+              salvar.mutate({ gerenteId, descontoLivre: n })
+            }}
+          >
+            Salvar
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -125,7 +245,27 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const listaEfetiva = lista ?? ctx?.listaBase ?? 1
   const { data: catalogo, isLoading: carregandoCatalogo } = trpc.cotacoesCrm.catalogo.useQuery({ lista: listaEfetiva }, { staleTime: 5 * 60_000 })
   const porCodigo = useMemo(() => new Map((catalogo ?? []).map((i) => [i.codigo, i])), [catalogo])
-  const somenteLeitura = existente != null && existente.status !== 'rascunho'
+  const status = (existente?.status ?? 'rascunho') as Status
+  const somenteLeitura = existente != null && status !== 'rascunho'
+  const podeMexer = !existente || existente.souDono || !!ctx?.veTudo
+  const [modal, setModal] = useState<null | 'perder' | 'ganhar' | 'reprovar'>(null)
+  const depoisDeAcao = (msg: string) => () => {
+    toast.success(msg)
+    utils.cotacoesCrm.listar.invalidate()
+    utils.cotacoesCrm.obter.invalidate()
+    setModal(null)
+  }
+  const erro = (e: { message: string }) => toast.error(e.message)
+  const concluir = trpc.cotacoesCrm.concluir.useMutation({
+    onSuccess: (r) => depoisDeAcao(r.status === 'aguardando_aprovacao' ? 'Enviada para o gerente aprovar o desconto' : 'Cotação pronta para enviar ao cliente')(),
+    onError: erro,
+  })
+  const aprovar = trpc.cotacoesCrm.aprovar.useMutation({ onSuccess: depoisDeAcao('Desconto aprovado'), onError: erro })
+  const reprovar = trpc.cotacoesCrm.reprovar.useMutation({ onSuccess: depoisDeAcao('Desconto reprovado — voltou para o vendedor'), onError: erro })
+  const marcarEnviada = trpc.cotacoesCrm.marcarEnviada.useMutation({ onSuccess: (r) => depoisDeAcao(`Marcada como enviada — vale até ${dataBr(r.validaAte)}`)(), onError: erro })
+  const reabrir = trpc.cotacoesCrm.reabrir.useMutation({ onSuccess: depoisDeAcao('Reaberta para negociar'), onError: erro })
+  const ganhar = trpc.cotacoesCrm.ganhar.useMutation({ onSuccess: depoisDeAcao('Registrado: cliente aprovou'), onError: erro })
+  const perder = trpc.cotacoesCrm.perder.useMutation({ onSuccess: depoisDeAcao('Marcada como perdida'), onError: erro })
 
   const salvar = trpc.cotacoesCrm.salvar.useMutation({
     onSuccess: (r) => {
@@ -153,6 +293,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const adicionar = (codigo: string) =>
     mexer((ls) => (ls.some((l) => l.itemCodigo === codigo) ? ls.map((l) => (l.itemCodigo === codigo ? { ...l, quantidade: l.quantidade + 1 } : l)) : [...ls, { itemCodigo: codigo, quantidade: 1, descontoPct: 0 }]))
 
+  const recusados = new Set((existente?.status === 'ganha' ? existente.itens.filter((i) => !i.aceito) : []).map((i) => i.itemCodigo))
   const calc = linhas.map((l) => {
     const item = porCodigo.get(l.itemCodigo)
     const tabela = item?.preco ?? null
@@ -174,6 +315,23 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     if (!cliente) return toast.error('Escolha o cliente')
     if (!linhas.length) return toast.error('Adicione pelo menos um item')
     salvar.mutate({ id: id ?? undefined, clienteId: cliente.id, listaPreco: listaEfetiva, prazoCodigo: prazo, observacao: observacao || null, itens: linhas })
+  }
+  // Concluir salva antes (se mudou algo) e depois manda concluir.
+  const onConcluir = async () => {
+    if (!cliente) return toast.error('Escolha o cliente')
+    if (!linhas.length) return toast.error('Adicione pelo menos um item')
+    if (prazo == null) return toast.error('Escolha o prazo de pagamento')
+    try {
+      let alvo = id
+      if (alterado || alvo == null) {
+        const r = await salvar.mutateAsync({ id: id ?? undefined, clienteId: cliente.id, listaPreco: listaEfetiva, prazoCodigo: prazo, observacao: observacao || null, itens: linhas })
+        alvo = r.id
+      }
+      await concluir.mutateAsync({ id: alvo! })
+      if (id == null) onSalva(alvo!)
+    } catch {
+      /* o toast de erro já saiu no onError */
+    }
   }
 
   const nomeLista = ctx?.listas.find((l) => l.numero === listaEfetiva)?.nome
@@ -205,29 +363,66 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
           <ArrowLeft className="h-4 w-4" /> Cotações
         </button>
         <div className="flex flex-wrap gap-2">
-          {id != null && !somenteLeitura && (
-            <Button variant="secondary" loading={excluir.isPending} onClick={() => confirm('Excluir esta cotação?') && excluir.mutate({ id })}>
-              <Trash2 className="h-4 w-4 mr-1.5" /> Excluir
-            </Button>
-          )}
           <Button variant="secondary" onClick={imprimir}>
             <Printer className="h-4 w-4 mr-1.5" /> Imprimir / PDF
           </Button>
-          <span title="Etapa 2: aguardando o usuário próprio do CRM e a base de teste do SAP">
-            <Button variant="secondary" disabled>
-              <Send className="h-4 w-4 mr-1.5" /> Enviar ao SAP (em breve)
-            </Button>
-          </span>
-          {!somenteLeitura && (
-            <Button loading={salvar.isPending} onClick={onSalvar}>
-              Salvar{alterado ? ' *' : ''}
+          {status === 'rascunho' && podeMexer && (
+            <>
+              {id != null && (
+                <Button variant="secondary" loading={excluir.isPending} onClick={() => confirm('Excluir esta cotação?') && excluir.mutate({ id })}>
+                  <Trash2 className="h-4 w-4 mr-1.5" /> Excluir
+                </Button>
+              )}
+              <Button variant="secondary" loading={salvar.isPending && !concluir.isPending} onClick={onSalvar}>
+                Salvar rascunho{alterado ? ' *' : ''}
+              </Button>
+              <Button loading={concluir.isPending} onClick={onConcluir}>
+                <CheckCircle2 className="h-4 w-4 mr-1.5" /> Concluir cotação
+              </Button>
+            </>
+          )}
+          {status === 'aguardando_aprovacao' && ctx?.podeAprovar && id != null && (
+            <>
+              <Button variant="secondary" onClick={() => setModal('reprovar')}>
+                <XCircle className="h-4 w-4 mr-1.5" /> Reprovar
+              </Button>
+              <Button loading={aprovar.isPending} onClick={() => aprovar.mutate({ id })}>
+                <BadgeCheck className="h-4 w-4 mr-1.5" /> Aprovar desconto
+              </Button>
+            </>
+          )}
+          {(status === 'aprovada' || status === 'enviada') && podeMexer && id != null && (
+            <>
+              <Button variant="secondary" loading={marcarEnviada.isPending} onClick={() => marcarEnviada.mutate({ id })}>
+                <Send className="h-4 w-4 mr-1.5" /> {status === 'enviada' ? 'Reenviei (renova validade)' : 'Marquei como enviada ao cliente'}
+              </Button>
+              <Button onClick={() => setModal('ganhar')}>
+                <ThumbsUp className="h-4 w-4 mr-1.5" /> Cliente aprovou
+              </Button>
+            </>
+          )}
+          {['aguardando_aprovacao', 'aprovada', 'enviada'].includes(status) && podeMexer && id != null && (
+            <Button variant="secondary" loading={reabrir.isPending} onClick={() => confirm('Reabrir para mudar itens/preço? Se o desconto passar do livre, vai precisar de aprovação de novo.') && reabrir.mutate({ id })}>
+              <Undo2 className="h-4 w-4 mr-1.5" /> Reabrir p/ negociar
             </Button>
           )}
+          {['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'].includes(status) && podeMexer && id != null && (
+            <Button variant="secondary" onClick={() => setModal('perder')}>
+              Perdida
+            </Button>
+          )}
+          <span title="Etapa 2: aguardando o usuário próprio do CRM e a base de teste do SAP">
+            <Button variant="secondary" disabled>
+              <Send className="h-4 w-4 mr-1.5" /> {status === 'ganha' ? 'Gerar pedido no SAP (em breve)' : 'Enviar ao SAP (em breve)'}
+            </Button>
+          </span>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="order-2 lg:order-1 min-w-0">
+      {existente && <FaixaSituacao c={existente} status={status} descontoLivre={ctx?.descontoLivre ?? 0} gerente={ctx?.gerente?.name ?? null} />}
+
+      <div className={`grid gap-4 ${somenteLeitura ? 'max-w-3xl' : 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]'}`}>
+        <div className={`order-2 lg:order-1 min-w-0 ${somenteLeitura ? 'hidden' : ''}`}>
         <Catalogo catalogo={catalogo} carregando={carregandoCatalogo} naCotacao={new Set(linhas.map((l) => l.itemCodigo))} onAdicionar={somenteLeitura ? undefined : adicionar} />
         </div>
 
@@ -290,7 +485,8 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
                   <div key={l.itemCodigo} className="px-4 py-3 space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="text-sm text-dark-100 break-words">{l.item?.nome ?? l.itemCodigo}</p>
+                        <p className={`text-sm break-words ${recusados.has(l.itemCodigo) ? 'text-dark-500 line-through' : 'text-dark-100'}`}>{l.item?.nome ?? l.itemCodigo}</p>
+                        {recusados.has(l.itemCodigo) && <p className="text-[11px] font-semibold text-red-300">Cliente não quis este item</p>}
                         <p className="text-[11px] text-dark-500">
                           {l.itemCodigo}
                           {l.tabela != null ? ` · tabela ${formatarMoeda(l.tabela)}` : ' · sem preço nesta tabela'}
@@ -331,6 +527,11 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
                         />
                         %
                       </label>
+                      {ctx && l.descontoPct > ctx.descontoLivre && (
+                        <span className="text-[10px] font-semibold rounded bg-amber-900/40 text-amber-300 px-1.5 py-0.5" title={`Acima de ${fmtQtd(ctx.descontoLivre)}% precisa do gerente aprovar`}>
+                          precisa aprovação
+                        </span>
+                      )}
                       <span className="ml-auto text-right">
                         <span className="block text-[11px] text-dark-500">{formatarMoeda(l.unit)} / {l.item?.unidade ?? 'un'}</span>
                         <span className="block text-sm font-semibold text-dark-50">{formatarMoeda(l.subtotal)}</span>
@@ -360,9 +561,174 @@ ${calc.map((l) => `<tr><td>${esc(l.itemCodigo)}</td><td>${esc(l.item?.nome ?? ''
             />
           </label>
           <p className="text-[11px] text-dark-500">Valores sem impostos — IPI/ST o SAP calcula na emissão.</p>
+          {existente && existente.historico.length > 0 && (
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
+              <p className="text-sm font-semibold text-dark-100 flex items-center gap-1.5">
+                <History className="h-4 w-4 text-dark-400" /> Histórico
+              </p>
+              <ol className="space-y-2 border-l border-dark-600 pl-3">
+                {existente.historico.map((h) => (
+                  <li key={h.id} className="text-xs">
+                    <p className="text-dark-100">
+                      <b>{h.acao}</b>
+                      {h.detalhe && <span className="text-dark-300"> — {h.detalhe}</span>}
+                    </p>
+                    <p className="text-dark-500">
+                      {h.quem ?? '—'} · {new Date(`${h.createdAt.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
         </div>
       </div>
+      {modal === 'perder' && id != null && ctx && (
+        <ModalPerder motivos={ctx.motivosPerda} carregando={perder.isPending} onFechar={() => setModal(null)} onConfirmar={(motivo, observacao) => perder.mutate({ id, motivo: motivo as Saidas['contexto']['motivosPerda'][number], observacao })} />
+      )}
+      {modal === 'reprovar' && id != null && (
+        <ModalTexto
+          titulo="Reprovar desconto"
+          rotulo="Por que reprovou? O vendedor vai ver esse motivo."
+          botao="Reprovar"
+          carregando={reprovar.isPending}
+          onFechar={() => setModal(null)}
+          onConfirmar={(motivo) => reprovar.mutate({ id, motivo })}
+        />
+      )}
+      {modal === 'ganhar' && id != null && existente && (
+        <ModalGanhar itens={existente.itens} carregando={ganhar.isPending} onFechar={() => setModal(null)} onConfirmar={(itensAceitos) => ganhar.mutate({ id, itensAceitos })} />
+      )}
     </div>
+  )
+}
+
+type Cotacao = Saidas['obter']
+
+// Faixa abaixo dos botões: em que pé está a cotação e o que fazer agora.
+function FaixaSituacao({ c, status, descontoLivre, gerente }: { c: Cotacao; status: Status; descontoLivre: number; gerente: string | null }) {
+  const linhas: { cor: string; texto: React.ReactNode }[] = []
+  if (status === 'rascunho' && c.reprovacaoMotivo) linhas.push({ cor: 'border-red-700/50 bg-red-900/20 text-red-200', texto: <>Desconto reprovado: <b>{c.reprovacaoMotivo}</b>. Ajuste e conclua de novo.</> })
+  if (status === 'rascunho' && !c.reprovacaoMotivo) linhas.push({ cor: 'border-dark-600 bg-dark-800 text-dark-300', texto: <>Rascunho — quando terminar, clique em <b>Concluir cotação</b>. Desconto acima de {fmtQtd(descontoLivre)}% vai para {gerente ?? 'o gerente'} aprovar.</> })
+  if (status === 'aguardando_aprovacao') linhas.push({ cor: 'border-amber-700/50 bg-amber-900/20 text-amber-200', texto: <>Aguardando {gerente ?? 'o gerente'} aprovar {fmtQtd(c.maiorDescontoPct)}% de desconto.</> })
+  if (status === 'aprovada') linhas.push({ cor: 'border-sky-700/50 bg-sky-900/20 text-sky-200', texto: <>Pronta para enviar ao cliente{c.aprovadorNome ? <> — desconto aprovado por <b>{c.aprovadorNome}</b></> : ''}. Mande o PDF e clique em <b>Marquei como enviada</b>.</> })
+  if (status === 'enviada')
+    linhas.push({
+      cor: c.vencida ? 'border-orange-700/50 bg-orange-900/20 text-orange-200' : 'border-indigo-700/50 bg-indigo-900/20 text-indigo-200',
+      texto: c.vencida ? <>Venceu em {dataBr(c.validaAte)}. Reabra para atualizar preços ou clique em <b>Reenviei</b> para renovar até o fim deste mês.</> : <>Enviada ao cliente em {dataBr(c.enviadaClienteEm)} — vale até <b>{dataBr(c.validaAte)}</b>.</>,
+    })
+  if (status === 'ganha') {
+    const aceitos = c.itens.filter((i) => i.aceito)
+    const valor = aceitos.reduce((s, i) => s + i.precoUnitario * i.quantidade, 0)
+    linhas.push({ cor: 'border-green-700/50 bg-green-900/20 text-green-200', texto: <>Cliente aprovou {aceitos.length === c.itens.length ? 'todos os itens' : `${aceitos.length} de ${c.itens.length} itens`} — <b>{formatarMoeda(valor)}</b>. Gerar o pedido no SAP entra na próxima etapa.</> })
+  }
+  if (status === 'perdida') linhas.push({ cor: 'border-red-700/50 bg-red-900/20 text-red-200', texto: <>Perdida — <b>{c.motivoPerda}</b>{c.motivoPerdaObs ? `: ${c.motivoPerdaObs}` : ''}.</> })
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2 text-sm text-dark-300">
+        <span className="font-semibold text-dark-100">Cotação nº {c.id}</span>
+        <ChipStatus status={status} vencida={c.vencida} />
+        <span className="text-xs text-dark-500">vendedor: {c.vendedorNome}</span>
+      </div>
+      {linhas.map((l, n) => (
+        <div key={n} className={`rounded-xl border px-4 py-2.5 text-sm ${l.cor}`}>
+          {l.texto}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function ModalPerder({ motivos, carregando, onFechar, onConfirmar }: { motivos: readonly string[]; carregando: boolean; onFechar: () => void; onConfirmar: (motivo: string, obs: string | null) => void }) {
+  const [motivo, setMotivo] = useState<string>('')
+  const [obs, setObs] = useState('')
+  return (
+    <Modal open onClose={onFechar} title="Marcar como perdida">
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          {motivos.map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setMotivo(m)}
+              className={`rounded-xl border px-3 py-2.5 text-sm font-semibold transition-colors ${motivo === m ? 'border-red-500 bg-red-900/30 text-red-200' : 'border-dark-600 text-dark-200 hover:bg-dark-800'}`}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        <textarea rows={2} className="w-full rounded-xl bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100" placeholder={motivo === 'Outro' ? 'Conte o motivo (obrigatório)' : 'Detalhe (opcional): ex. concorrente e preço que ele ofereceu'} value={obs} onChange={(e) => setObs(e.target.value)} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button loading={carregando} disabled={!motivo || (motivo === 'Outro' && !obs.trim())} onClick={() => onConfirmar(motivo, obs.trim() || null)}>
+            Marcar perdida
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function ModalTexto({ titulo, rotulo, botao, carregando, onFechar, onConfirmar }: { titulo: string; rotulo: string; botao: string; carregando: boolean; onFechar: () => void; onConfirmar: (texto: string) => void }) {
+  const [texto, setTexto] = useState('')
+  return (
+    <Modal open onClose={onFechar} title={titulo}>
+      <div className="space-y-3">
+        <p className="text-sm text-dark-300">{rotulo}</p>
+        <textarea autoFocus rows={3} className="w-full rounded-xl bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100" value={texto} onChange={(e) => setTexto(e.target.value)} />
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button loading={carregando} disabled={texto.trim().length < 3} onClick={() => onConfirmar(texto.trim())}>
+            {botao}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+// Pedido parcial: o vendedor desmarca o que o cliente não quis.
+function ModalGanhar({ itens, carregando, onFechar, onConfirmar }: { itens: Cotacao['itens']; carregando: boolean; onFechar: () => void; onConfirmar: (ids: number[]) => void }) {
+  const [marcados, setMarcados] = useState<Set<number>>(() => new Set(itens.map((i) => i.id)))
+  const valor = itens.filter((i) => marcados.has(i.id)).reduce((s, i) => s + i.precoUnitario * i.quantidade, 0)
+  return (
+    <Modal open onClose={onFechar} title="Cliente aprovou — quais itens?">
+      <div className="space-y-3">
+        <p className="text-sm text-dark-300">Desmarque o que o cliente não quis. Só os marcados vão para o pedido.</p>
+        <div className="max-h-80 overflow-y-auto rounded-xl border border-dark-600 divide-y divide-dark-700">
+          {itens.map((i) => (
+            <label key={i.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-dark-800">
+              <input
+                type="checkbox"
+                checked={marcados.has(i.id)}
+                onChange={(e) => setMarcados((s) => { const n = new Set(s); if (e.target.checked) n.add(i.id); else n.delete(i.id); return n })}
+              />
+              <span className="flex-1 min-w-0 text-sm text-dark-100 break-words">{i.nome}</span>
+              <span className="text-xs text-dark-400 whitespace-nowrap">
+                {fmtQtd(i.quantidade)} × {formatarMoeda(i.precoUnitario)}
+              </span>
+            </label>
+          ))}
+        </div>
+        <div className="flex items-center justify-between">
+          <span className="text-sm text-dark-300">
+            {marcados.size} de {itens.length} itens · <b className="text-gold-300">{formatarMoeda(valor)}</b>
+          </span>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onFechar}>
+              Cancelar
+            </Button>
+            <Button loading={carregando} disabled={!marcados.size} onClick={() => onConfirmar([...marcados])}>
+              Confirmar
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
