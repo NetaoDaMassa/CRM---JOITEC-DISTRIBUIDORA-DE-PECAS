@@ -54,7 +54,8 @@ interface CotacaoSap {
 // Etapas que vêm antes da Negociação — card em Fechado/Perdido/etc. não mexe.
 const ANTES_DA_NEGOCIACAO = ['novo', 'abordagem', 'interessado', 'sem_contato']
 
-export async function levarParaNegociacao(clienteId: number, valor: number, numero: string, autorId: number | null): Promise<boolean> {
+// `origem` só muda o texto da auditoria (cotação do SAP ou do CRM).
+export async function levarParaNegociacao(clienteId: number, valor: number, numero: string, autorId: number | null, origem = 'do SAP'): Promise<boolean> {
   const mes = mesReferenciaAtual()
   const [card] = await db
     .select()
@@ -66,7 +67,7 @@ export async function levarParaNegociacao(clienteId: number, valor: number, nume
     const c = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { vendedorAtualId: true, deletedAt: true } })
     if (!c?.vendedorAtualId || c.deletedAt) return false
     const r = await db.insert(funilMensal).values({ clienteId, vendedorId: c.vendedorAtualId, mesReferencia: mes, etapa: 'negociacao', valorOrcado: valor || null, dataEntradaEtapa: agoraSqlite() })
-    await registrarAuditoria({ tabela: 'funil_mensal', registroId: Number(r.lastInsertRowid), acao: 'mudar_etapa', campo: 'etapa', valorAnterior: `(sem card) cotação ${numero} do SAP`, valorNovo: 'negociacao', alteradoPor: autorId })
+    await registrarAuditoria({ tabela: 'funil_mensal', registroId: Number(r.lastInsertRowid), acao: 'mudar_etapa', campo: 'etapa', valorAnterior: `(sem card) cotação ${numero} ${origem}`, valorNovo: 'negociacao', alteradoPor: autorId })
     return true
   }
   const valorOrcado = card.valorOrcado ?? (valor || null)
@@ -80,7 +81,7 @@ export async function levarParaNegociacao(clienteId: number, valor: number, nume
     .set({ etapa: 'negociacao', valorOrcado, dataEntradaEtapa: agoraSqlite(), updatedAt: agoraSqlite(), versao: sql`${funilMensal.versao} + 1` })
     .where(eq(funilMensal.id, card.id))
   // valorNovo exatamente 'negociacao': é por ele que a ficha data o orçamento.
-  await registrarAuditoria({ tabela: 'funil_mensal', registroId: card.id, acao: 'mudar_etapa', campo: 'etapa', valorAnterior: `${card.etapa} (cotação ${numero} do SAP)`, valorNovo: 'negociacao', alteradoPor: autorId })
+  await registrarAuditoria({ tabela: 'funil_mensal', registroId: card.id, acao: 'mudar_etapa', campo: 'etapa', valorAnterior: `${card.etapa} (cotação ${numero} ${origem})`, valorNovo: 'negociacao', alteradoPor: autorId })
   return true
 }
 

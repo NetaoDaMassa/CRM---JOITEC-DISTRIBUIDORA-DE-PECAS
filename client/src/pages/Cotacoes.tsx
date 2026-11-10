@@ -45,7 +45,11 @@ function ChipStatus({ status, vencida }: { status: Status; vencida?: boolean }) 
 }
 
 export default function Cotacoes() {
-  const [aberta, setAberta] = useState<number | 'nova' | null>(null)
+  // ?abrir=ID (link do card do Kanban) abre direto a cotação.
+  const [aberta, setAberta] = useState<number | 'nova' | null>(() => {
+    const n = Number(new URLSearchParams(window.location.search).get('abrir'))
+    return Number.isInteger(n) && n > 0 ? n : null
+  })
   return aberta === null ? <ListaCotacoes onAbrir={setAberta} /> : <EditorCotacao key={String(aberta)} id={aberta === 'nova' ? null : aberta} onVoltar={() => setAberta(null)} onSalva={setAberta} />
 }
 
@@ -103,6 +107,8 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
           </Button>
         </div>
       </div>
+
+      <ResumoCotacoes linhas={linhas} />
 
       {aguardandoMim > 0 && (
         <button type="button" onClick={() => setFiltro('aprovacao')} className="w-full text-left rounded-2xl border border-amber-700/50 bg-amber-900/20 px-4 py-3 text-sm text-amber-200 hover:bg-amber-900/30">
@@ -163,6 +169,38 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
         </div>
       )}
       {configurando && ctx && <ModalRegras ctx={ctx} onFechar={() => setConfigurando(false)} />}
+    </div>
+  )
+}
+
+// Cards de resumo do mês (BR): em aberto, aguardando aprovação, enviadas,
+// aprovadas pelo cliente e conversão (aprovadas ÷ encerradas no mês).
+function ResumoCotacoes({ linhas }: { linhas: { status: Status; total: number; vencida: boolean; enviadaClienteEm: string | null; encerradaEm: string | null }[] }) {
+  const mes = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }).slice(0, 7)
+  const doMes = (d: string | null) => !!d && d.slice(0, 7) === mes
+  const abertas = linhas.filter((c) => ['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'].includes(c.status) && !c.vencida)
+  const aguardando = linhas.filter((c) => c.status === 'aguardando_aprovacao')
+  const enviadasMes = linhas.filter((c) => doMes(c.enviadaClienteEm))
+  const ganhasMes = linhas.filter((c) => c.status === 'ganha' && doMes(c.encerradaEm))
+  const perdidasMes = linhas.filter((c) => c.status === 'perdida' && doMes(c.encerradaEm))
+  const soma = (l: { total: number }[]) => l.reduce((s, c) => s + c.total, 0)
+  const encerradas = ganhasMes.length + perdidasMes.length
+  const cards = [
+    { rotulo: 'Em aberto', valor: formatarMoeda(soma(abertas)), sub: `${abertas.length} cotação(ões)`, cor: 'text-dark-50' },
+    { rotulo: 'Aguardando aprovação', valor: String(aguardando.length), sub: formatarMoeda(soma(aguardando)), cor: aguardando.length ? 'text-amber-300' : 'text-dark-50' },
+    { rotulo: 'Enviadas no mês', valor: formatarMoeda(soma(enviadasMes)), sub: `${enviadasMes.length} cotação(ões)`, cor: 'text-indigo-300' },
+    { rotulo: 'Cliente aprovou no mês', valor: formatarMoeda(soma(ganhasMes)), sub: `${ganhasMes.length} cotação(ões)`, cor: 'text-green-300' },
+    { rotulo: 'Conversão no mês', valor: encerradas ? `${Math.round((ganhasMes.length / encerradas) * 100)}%` : '—', sub: `${ganhasMes.length} aprovadas · ${perdidasMes.length} perdidas`, cor: 'text-gold-300' },
+  ]
+  return (
+    <div className="grid gap-3 grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+      {cards.map((c) => (
+        <div key={c.rotulo} className="rounded-2xl border border-dark-600 bg-dark-800 px-4 py-3">
+          <p className="text-xs text-dark-400">{c.rotulo}</p>
+          <p className={`mt-1 text-xl font-bold ${c.cor}`}>{c.valor}</p>
+          <p className="text-[11px] text-dark-500">{c.sub}</p>
+        </div>
+      ))}
     </div>
   )
 }
@@ -480,13 +518,10 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
 
       {existente && <FaixaSituacao c={existente} status={status} descontoLivre={ctx?.descontoLivre ?? 0} gerente={ctx?.gerente?.name ?? null} />}
 
-      <div className={`grid gap-4 ${somenteLeitura ? 'max-w-3xl' : 'lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]'}`}>
-        <div className={`order-2 lg:order-1 min-w-0 ${somenteLeitura ? 'hidden' : ''}`}>
-        <Catalogo catalogo={catalogo} carregando={carregandoCatalogo} naCotacao={new Set(linhas.map((l) => l.itemCodigo))} onAdicionar={somenteLeitura ? undefined : adicionar} />
-        </div>
-
-        <div className="space-y-4 order-1 lg:order-2 min-w-0">
-          <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
+      {/* Faixa de cima: cliente e condições, na largura toda. */}
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <div className="grid gap-5 xl:grid-cols-[minmax(260px,1fr)_minmax(0,3fr)]">
+          <div className="min-w-0 space-y-2">
             {cliente ? (
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -506,76 +541,76 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
             ) : (
               <BuscaCliente onEscolher={escolherCliente} />
             )}
-            <div className="grid grid-cols-2 gap-3">
-              <label className="space-y-1">
-                <span className="text-xs text-dark-400">Tabela de preço</span>
-                <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-2 text-sm text-dark-100" value={listaEfetiva} onChange={(e) => (setLista(Number(e.target.value)), setAlterado(true))}>
-                  {(ctx?.listas ?? []).map((l) => (
-                    <option key={l.numero} value={l.numero}>
-                      {l.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-dark-400">Prazo de pagamento</span>
-                <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-2 text-sm text-dark-100" value={prazo ?? ''} onChange={(e) => (setPrazo(e.target.value === '' ? null : Number(e.target.value)), setAlterado(true))}>
-                  <option value="">Escolha…</option>
-                  {(ctx?.prazos ?? []).map((p) => (
-                    <option key={p.codigo} value={p.codigo}>
-                      {p.nome}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="grid grid-cols-2 gap-3 pt-1">
-              <label className="space-y-1">
-                <span className="text-xs text-dark-400">Data de entrega</span>
-                <input type="date" disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={dataEntrega} onChange={(e) => (setDataEntrega(e.target.value), setAlterado(true))} />
-              </label>
-              <label className="space-y-1 col-span-2">
-                <span className="text-xs text-dark-400">Nº do pedido / referência do cliente</span>
-                <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={numeroReferencia} onChange={(e) => (setNumeroReferencia(e.target.value), setAlterado(true))} placeholder="Opcional — o número que o cliente usa" />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-dark-400">Contato no cliente</span>
-                <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={contato} onChange={(e) => (setContato(e.target.value), setAlterado(true))} placeholder="Quem pediu" />
-              </label>
-              <label className="space-y-1 col-span-2">
-                <span className="text-xs text-dark-400">Transportadora</span>
-                <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100" value={transportadora} onChange={(e) => (setTransportadora(e.target.value), setAlterado(true))} placeholder="Ex.: Kamer Cargo" />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-dark-400">Tipo de envio</span>
-                <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-2 text-sm text-dark-100" value={tipoEnvio} onChange={(e) => (setTipoEnvio(e.target.value as 'CIF' | 'FOB' | ''), setAlterado(true))}>
-                  <option value="">—</option>
-                  <option value="CIF">CIF — nós pagamos</option>
-                  <option value="FOB">FOB — cliente paga</option>
-                </select>
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs text-dark-400">Frete cobrado (R$)</span>
-                <CampoNumero
-                  disabled={somenteLeitura}
-                  className="w-full rounded-lg bg-dark-900 border border-dark-600 px-2 py-1.5 text-sm text-dark-100 outline-none"
-                  valor={frete}
-                  vazioVale={0}
-                  placeholder="0,00"
-                  valido={(n) => n >= 0}
-                  onValor={(n) => (setFrete(n), setAlterado(true))}
-                />
-              </label>
-            </div>
           </div>
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+            <Campo rotulo="Tabela de preço">
+              <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={listaEfetiva} onChange={(e) => (setLista(Number(e.target.value)), setAlterado(true))}>
+                {(ctx?.listas ?? []).map((l) => (
+                  <option key={l.numero} value={l.numero}>
+                    {l.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            <Campo rotulo="Prazo de pagamento">
+              <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={prazo ?? ''} onChange={(e) => (setPrazo(e.target.value === '' ? null : Number(e.target.value)), setAlterado(true))}>
+                <option value="">Escolha…</option>
+                {(ctx?.prazos ?? []).map((p) => (
+                  <option key={p.codigo} value={p.codigo}>
+                    {p.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            <Campo rotulo="Data de entrega">
+              <input type="date" disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={dataEntrega} onChange={(e) => (setDataEntrega(e.target.value), setAlterado(true))} />
+            </Campo>
+            <Campo rotulo="Nº pedido do cliente">
+              <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={numeroReferencia} onChange={(e) => (setNumeroReferencia(e.target.value), setAlterado(true))} placeholder="Opcional" />
+            </Campo>
+            <Campo rotulo="Contato no cliente">
+              <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={contato} onChange={(e) => (setContato(e.target.value), setAlterado(true))} placeholder="Quem pediu" />
+            </Campo>
+            <Campo rotulo="Transportadora">
+              <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={transportadora} onChange={(e) => (setTransportadora(e.target.value), setAlterado(true))} placeholder="Ex.: Kamer Cargo" />
+            </Campo>
+            <Campo rotulo="Tipo de envio">
+              <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={tipoEnvio} onChange={(e) => (setTipoEnvio(e.target.value as 'CIF' | 'FOB' | ''), setAlterado(true))}>
+                <option value="">—</option>
+                <option value="CIF">CIF — nós pagamos</option>
+                <option value="FOB">FOB — cliente paga</option>
+              </select>
+            </Campo>
+            <Campo rotulo="Frete cobrado (R$)">
+              <CampoNumero
+                disabled={somenteLeitura}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                valor={frete}
+                vazioVale={0}
+                placeholder="0,00"
+                valido={(n) => n >= 0}
+                onValor={(n) => (setFrete(n), setAlterado(true))}
+              />
+            </Campo>
           </div>
+        </div>
+      </div>
 
+      {/* Embaixo: catálogo à esquerda, itens e total à direita. */}
+      <div className={`grid gap-4 ${somenteLeitura ? '' : 'lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]'}`}>
+        {!somenteLeitura && (
+          <div className="min-w-0">
+            <Catalogo catalogo={catalogo} carregando={carregandoCatalogo} naCotacao={new Set(linhas.map((l) => l.itemCodigo))} onAdicionar={adicionar} />
+          </div>
+        )}
+        <div className="space-y-4 min-w-0">
           <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-dark-700">
               <p className="text-sm font-semibold text-dark-100">Itens da cotação</p>
               <p className="text-xs text-dark-400">{nomeLista ? `Tabela ${nomeLista}` : ''}</p>
             </div>
             {!calc.length ? (
-              <p className="px-4 py-8 text-center text-sm text-dark-400">Busque um produto ao lado e clique em + para adicionar.</p>
+              <p className="px-4 py-8 text-center text-sm text-dark-400">Busque um produto no catálogo e clique em + (ou marque vários e clique em Adicionar).</p>
             ) : (
               <div className="divide-y divide-dark-700">
                 {calc.map((l) => (
@@ -674,18 +709,20 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
             </div>
           </div>
 
-          <label className="block space-y-1">
-            <span className="text-xs text-dark-400">Observação</span>
-            <textarea
-              disabled={somenteLeitura}
-              rows={3}
-              className="w-full rounded-xl bg-dark-800 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600"
-              value={observacao}
-              onChange={(e) => (setObservacao(e.target.value), setAlterado(true))}
-              placeholder="Frete, entrega, condição combinada…"
-            />
-          </label>
-          <p className="text-[11px] text-dark-500">Valores sem impostos — IPI/ST o SAP calcula na emissão.</p>
+          <div className={`grid gap-4 ${somenteLeitura ? 'lg:grid-cols-2' : ''}`}>
+            <div className="space-y-1">
+              <Campo rotulo="Observação">
+                <textarea
+                  disabled={somenteLeitura}
+                  rows={3}
+                  className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                  value={observacao}
+                  onChange={(e) => (setObservacao(e.target.value), setAlterado(true))}
+                  placeholder="Frete, entrega, condição combinada…"
+                />
+              </Campo>
+              <p className="text-[11px] text-dark-500">Valores sem impostos — IPI/ICMS o SAP calcula na emissão.</p>
+            </div>
           {existente && existente.historico.length > 0 && (
             <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
               <p className="text-sm font-semibold text-dark-100 flex items-center gap-1.5">
@@ -706,6 +743,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
               </ol>
             </div>
           )}
+          </div>
         </div>
       </div>
       {modal === 'perder' && id != null && ctx && (
@@ -952,6 +990,15 @@ function ModalGanhar({ itens, carregando, onFechar, onConfirmar }: { itens: Cota
         </div>
       </div>
     </Modal>
+  )
+}
+
+function Campo({ rotulo, children }: { rotulo: string; children: React.ReactNode }) {
+  return (
+    <label className="flex min-w-0 flex-col gap-1">
+      <span className="text-xs text-dark-400">{rotulo}</span>
+      {children}
+    </label>
   )
 }
 

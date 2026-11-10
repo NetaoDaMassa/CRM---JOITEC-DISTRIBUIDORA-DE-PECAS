@@ -37,6 +37,7 @@ import {
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
+import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
@@ -226,6 +227,34 @@ export const cotacoesCrmRouter = router({
       .limit(25)
   }),
 
+  // Etiqueta no card do Kanban: cotações do CRM do cliente no mês do card.
+  // Aberto a quem vê o Kanban (não exige a permissão de Cotações).
+  doCards: protectedProcedure.input(z.object({ meses: z.array(z.string().regex(/^\d{4}-\d{2}$/)).max(12) })).query(async ({ ctx, input }) => {
+    if (!input.meses.length) return []
+    const linhas = await db
+      .select({ id: cotacoesCrm.id, clienteId: cotacoesCrm.clienteId, status: cotacoesCrm.status, total: cotacoesCrm.total, createdAt: cotacoesCrm.createdAt })
+      .from(cotacoesCrm)
+      .where(
+        and(
+          eq(cotacoesCrm.empresaId, ctx.empresaId),
+          isNull(cotacoesCrm.deletedAt),
+          inArray(sql<string>`substr(${cotacoesCrm.createdAt}, 1, 7)`, input.meses)
+        )
+      )
+      .orderBy(desc(cotacoesCrm.id))
+    const porCard = new Map<string, { clienteId: number; mes: string; qtd: number; valor: number; ultima: { id: number; status: string; total: number }; cotacoes: { id: number; status: string; total: number }[] }>()
+    for (const l of linhas) {
+      const mes = l.createdAt.slice(0, 7)
+      const chave = `${l.clienteId}:${mes}`
+      const atual = porCard.get(chave) ?? { clienteId: l.clienteId, mes, qtd: 0, valor: 0, ultima: { id: l.id, status: l.status, total: l.total }, cotacoes: [] }
+      atual.qtd++
+      atual.valor += l.total
+      atual.cotacoes.push({ id: l.id, status: l.status, total: l.total })
+      porCard.set(chave, atual)
+    }
+    return [...porCard.values()]
+  }),
+
   listar: cotacoesProcedure.query(async ({ ctx }) => {
     const hoje = hojeBrString()
     const linhas = await db
@@ -235,6 +264,9 @@ export const cotacoesCrmRouter = router({
         total: cotacoesCrm.total,
         maiorDescontoPct: cotacoesCrm.maiorDescontoPct,
         validaAte: cotacoesCrm.validaAte,
+        createdAt: cotacoesCrm.createdAt,
+        encerradaEm: cotacoesCrm.encerradaEm,
+        enviadaClienteEm: cotacoesCrm.enviadaClienteEm,
         updatedAt: cotacoesCrm.updatedAt,
         sapDocNum: cotacoesCrm.sapDocNum,
         vendedorId: cotacoesCrm.vendedorId,
@@ -386,7 +418,12 @@ export const cotacoesCrmRouter = router({
         if (linhas.length) await tx.insert(cotacoesCrmItens).values(linhas.map((l) => ({ ...l, cotacaoId: id! })))
         return id!
       })
-      if (!input.id) await registrar(id, ctx.user.id, 'Criou a cotação', `${linhas.length} item(ns) · ${brl(total)}`)
+      if (!input.id) {
+        await registrar(id, ctx.user.id, 'Criou a cotação', `${linhas.length} item(ns) · ${brl(total)}`)
+        // Mesma regra da cotação do SAP: card do mês vai pra Negociação (se
+        // estava antes) e ganha o valor orçado; sem card, cria um pro dono.
+        await levarParaNegociacao(input.clienteId, total, `nº ${id}`, ctx.user.id, 'do CRM').catch((e) => console.error('[cotacoes] levar card pra Negociação:', e))
+      }
       // Atualiza endereço/CNPJ/IE do cliente no SAP pro documento (sem esperar).
       const codigo = (await db.query.clientes.findFirst({ where: eq(clientes.id, input.clienteId), columns: { codigo: true } }))?.codigo
       if (codigo) void atualizarDadosClienteSap(codigo).catch((e) => console.error('[cotacoes] dados do cliente no SAP:', e instanceof Error ? e.message : e))

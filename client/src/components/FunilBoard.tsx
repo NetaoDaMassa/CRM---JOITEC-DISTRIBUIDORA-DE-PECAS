@@ -152,6 +152,15 @@ const CLASSIFICACAO_COR: Record<string, string> = {
 }
 
 const STATUS_COTACAO_SAP: Record<string, string> = { aberto: 'aberta', fechado: 'fechada', cancelado: 'cancelada' }
+const STATUS_COTACAO_CRM: Record<string, string> = {
+  rascunho: 'rascunho',
+  aguardando_aprovacao: 'aguardando aprovação',
+  aprovada: 'pronta p/ enviar',
+  enviada: 'enviada',
+  ganha: 'cliente aprovou',
+  perdida: 'perdida',
+  cancelada: 'cancelada',
+}
 
 function formatarMoeda(v: number | null): string {
   return formatarMoedaBr(v, { vazio: '' })
@@ -461,6 +470,9 @@ export default function FunilBoard({
   const mesesDosCards = useMemo(() => [...new Set(cards.map((c) => c.mesReferencia.slice(0, 7)))].slice(0, 12), [cards])
   const { data: cotacoesSap } = trpc.historicoSap.cotacoesDosCards.useQuery({ meses: mesesDosCards }, { staleTime: 2 * 60_000, enabled: mesesDosCards.length > 0 })
   const cotacaoDoCard = useMemo(() => new Map((cotacoesSap ?? []).map((c) => [`${c.clienteId}:${c.mes}`, c])), [cotacoesSap])
+  // Cotações feitas no CRM (tela Cotações) → etiqueta verde no card.
+  const { data: cotacoesCrm } = trpc.cotacoesCrm.doCards.useQuery({ meses: mesesDosCards }, { staleTime: 60_000, enabled: mesesDosCards.length > 0 })
+  const cotacaoCrmDoCard = useMemo(() => new Map((cotacoesCrm ?? []).map((c) => [`${c.clienteId}:${c.mes}`, c])), [cotacoesCrm])
   // Garantia do SAP no mês (não é venda) → selo 🛡 no card (2026-11-03).
   const { data: garantiasSap } = trpc.historicoSap.garantiasDosCards.useQuery({ meses: mesesDosCards }, { staleTime: 5 * 60_000, enabled: mesesDosCards.length > 0 })
   const garantiaDoCard = useMemo(() => new Map((garantiasSap ?? []).map((g) => [`${g.clienteId}:${g.mes}`, g])), [garantiasSap])
@@ -850,6 +862,16 @@ export default function FunilBoard({
                           >
                             📝 Cotação SAP nº {cq.ultima.numero} · {formatarMoeda(cq.ultima.valor)} · {STATUS_COTACAO_SAP[cq.ultima.status] ?? cq.ultima.status}
                             {cq.qtd > 1 ? ` (+${cq.qtd - 1})` : ''}
+                          </p>
+                        )
+                      })()}
+                      {(() => {
+                        const cc = cotacaoCrmDoCard.get(`${card.clienteId}:${card.mesReferencia.slice(0, 7)}`)
+                        if (!cc) return null
+                        return (
+                          <p className="text-xs text-emerald-200 bg-emerald-900/20 border border-emerald-700/40 rounded-lg px-2 py-1 mb-2" title="Cotação feita no CRM — abra o card para ver">
+                            🧾 Cotação nº {cc.ultima.id} · {formatarMoeda(cc.ultima.total)} · {STATUS_COTACAO_CRM[cc.ultima.status] ?? cc.ultima.status}
+                            {cc.qtd > 1 ? ` (+${cc.qtd - 1})` : ''}
                           </p>
                         )
                       })()}
@@ -1354,6 +1376,8 @@ function CardModal({
   // Cotações do SAP deste cliente no mês do card (Fase 1, só mostrar).
   const { data: cotacoesDoMes } = trpc.historicoSap.cotacoesDosCards.useQuery({ meses: [card.mesReferencia.slice(0, 7)] }, { staleTime: 2 * 60_000 })
   const cotacaoSapDoCard = cotacoesDoMes?.find((c) => c.clienteId === card.clienteId)
+  const { data: cotacoesCrmDoMes } = trpc.cotacoesCrm.doCards.useQuery({ meses: [card.mesReferencia.slice(0, 7)] }, { staleTime: 60_000 })
+  const cotacaoCrmDoCard = cotacoesCrmDoMes?.find((c) => c.clienteId === card.clienteId)
   const [cotacoesSapAbertas, setCotacoesSapAbertas] = useState(false)
   const [mostrarRegistroManual, setMostrarRegistroManual] = useState(false)
   const [cancelarAberto, setCancelarAberto] = useState(false)
@@ -1796,6 +1820,22 @@ function CardModal({
         <InadimplenciaCliente clienteId={card.clienteId} compacto />
         <JornadaPedidosCliente clienteId={card.clienteId} />
         <GarantiasCliente clienteId={card.clienteId} />
+        {cotacaoCrmDoCard && (
+          <div className="space-y-1.5 bg-emerald-900/15 border border-emerald-700/40 rounded-xl px-4 py-2.5">
+            <p className="text-sm text-emerald-100">🧾 {cotacaoCrmDoCard.qtd} cotação(ões) do CRM neste mês · {formatarMoeda(cotacaoCrmDoCard.valor)}</p>
+            <div className="flex flex-wrap gap-2">
+              {cotacaoCrmDoCard.cotacoes.map((c) => (
+                <a
+                  key={c.id}
+                  href={`/${user?.role === 'admin' ? 'admin' : 'vendedor'}/cotacoes?abrir=${c.id}`}
+                  className="text-xs rounded-lg border border-emerald-700/50 px-2 py-1 text-emerald-200 hover:bg-emerald-900/30"
+                >
+                  nº {c.id} · {formatarMoeda(c.total)} · {STATUS_COTACAO_CRM[c.status] ?? c.status}
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
         {cotacaoSapDoCard && (
           <div className="space-y-2">
             <div className="flex gap-3 items-start bg-sky-900/15 border border-sky-700/40 rounded-xl px-4 py-2.5">
