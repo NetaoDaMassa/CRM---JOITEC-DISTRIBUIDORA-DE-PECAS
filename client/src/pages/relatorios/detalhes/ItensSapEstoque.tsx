@@ -47,7 +47,7 @@ function Rodape({ s, extra }: { s: Situacao | undefined; extra: string }) {
   const foto = s?.fotoEm ? new Date(`${s.fotoEm.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null
   return (
     <p className="text-xs text-dark-500">
-      {extra} Estoque só dos depósitos de Revenda (1-REV, 2-REV, 3-REV e 4-REV); só itens com Tipo de material "0 - Mercadoria para Revenda" no SAP; itens usados para montar outros (estruturas de montagem do SAP) ficam de fora; vendas de todos os clientes da filial (notas canceladas e devoluções não entram). O SAP começou em{' '}
+      {extra} Estoque só dos depósitos de Revenda (1-REV, 2-REV, 3-REV e 4-REV); só itens com Tipo de material "0 - Mercadoria para Revenda" no SAP; itens usados para montar outros (estruturas de montagem do SAP) ficam de fora; vendas de todos os clientes da filial, já descontadas as devoluções (nota cancelada no SAP sai na próxima atualização). O SAP começou em{' '}
       {formatarDataCurta(s?.inicioSap)}: antes disso não há histórico.{foto ? ` Estoque atualizado em ${foto}.` : ''}
     </p>
   )
@@ -211,9 +211,14 @@ export function EstoqueSemVenda({ simples, mostrarResumo }: Props) {
 }
 
 // ── Tempo de estoque ──────────────────────────────────────────────────────
+// 2026-11-11 (João, AD2012): "Meses parado" pela entrada mais antiga marcava
+// em vermelho item que vende toda semana (estoque da implantação que nunca
+// teve compra nova). Agora o vermelho é "sem vender há" (última venda) e a
+// idade do estoque fica só como informação.
 export function TempoEstoque({ simples, mostrarResumo }: Props) {
+  const hoje = hojeBrString()
   const { data, isLoading } = trpc.reports.itensSapEstoque.useQuery()
-  const linhas = data?.itens ?? []
+  const linhas = useMemo(() => (data?.itens ?? []).map((l) => ({ ...l, diasSemVenda: diasEntre(l.ultimaVenda ?? data!.inicioSap, hoje) })), [data, hoje])
   const verValor = !!data?.verValor
 
   type L = (typeof linhas)[number]
@@ -225,18 +230,30 @@ export function TempoEstoque({ simples, mostrarResumo }: Props) {
     { id: 'estoque', rotulo: 'Estoque', valor: (l) => l.estoque, formato: 'numero', somar: true },
     ...(verValor ? [{ id: 'valor', rotulo: 'Valor (custo)', valor: (l: L) => l.valor, formato: 'moeda' as const, somar: true }] : []),
     {
+      id: 'semVenda',
+      rotulo: 'Sem vender há (dias)',
+      valor: (l) => l.diasSemVenda,
+      render: (l) => (
+        <span className={`font-semibold ${l.diasSemVenda >= 180 ? 'text-red-500' : l.diasSemVenda >= 90 ? 'text-orange-400' : 'text-dark-100'}`}>
+          {numero(l.diasSemVenda)}
+          {l.ultimaVenda ? '' : '+'}
+        </span>
+      ),
+    },
+    {
       id: 'desde',
-      rotulo: 'Em estoque desde',
+      rotulo: 'Estoque mais antigo desde',
       valor: (l) => l.estoqueDesde,
       formato: 'data',
+      oculta: simples,
       render: (l) => <span className="text-dark-300 text-xs">{l.desdeImplantacao ? `antes de ${formatarDataCurta(l.estoqueDesde)}` : formatarDataCurta(l.estoqueDesde)}</span>,
     },
     {
       id: 'meses',
-      rotulo: 'Meses parado',
+      rotulo: 'Idade do estoque (meses)',
       valor: (l) => l.mesesEmEstoque,
       render: (l) => (
-        <span className={`font-semibold ${l.mesesEmEstoque >= 6 ? 'text-red-500' : l.mesesEmEstoque >= 3 ? 'text-orange-400' : 'text-dark-100'}`}>
+        <span className="text-dark-300">
           {meses(l.mesesEmEstoque)}
           {l.desdeImplantacao ? '+' : ''}
         </span>
@@ -263,7 +280,7 @@ export function TempoEstoque({ simples, mostrarResumo }: Props) {
       {mostrarResumo && data?.temFilial && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard titulo="Itens com estoque" icone={Boxes} cor="#0ea5a4" valor={numero(linhas.length)} />
-          <KpiCard titulo="Parados há 6 meses ou mais" icone={Clock} cor="#e5534b" valor={numero(linhas.filter((l) => l.mesesEmEstoque >= 6).length)} />
+          <KpiCard titulo="Sem vender há 6 meses ou mais" icone={Clock} cor="#e5534b" valor={numero(linhas.filter((l) => l.diasSemVenda >= 180).length)} />
           <KpiCard titulo="Estoque para 12 meses ou mais" icone={PackageX} cor="#f97316" valor={numero(linhas.filter((l) => l.coberturaMeses === null || l.coberturaMeses >= 12).length)} detalhe="Inclui os sem venda em 90 dias" />
           {verValor && <KpiCard titulo="Valor em estoque (custo)" icone={Warehouse} cor="#a855f7" valor={moeda(linhas.reduce((s, l) => s + (l.valor ?? 0), 0))} />}
         </div>
@@ -276,14 +293,14 @@ export function TempoEstoque({ simples, mostrarResumo }: Props) {
         buscaEm={(l) => `${l.codigo} ${l.codigoAntigo ?? ''} ${l.descricao}`}
         placeholderBusca="Buscar código ou nome do item..."
         nomeArquivo="tempo-de-estoque.csv"
-        ordemInicial={{ coluna: 'meses', direcao: 'desc' }}
+        ordemInicial={{ coluna: 'cobertura', direcao: 'desc' }}
         simples={simples}
         carregando={isLoading}
         vazio="Nenhum item com estoque de Revenda para esta empresa."
       />
       <Rodape
         s={data}
-        extra='"Meses parado": desde a entrada da unidade mais antiga que ainda está no estoque (o que sai primeiro é o mais antigo); "+" = já estava no estoque na implantação do SAP. "Estoque dá para": estoque ÷ venda média por mês dos últimos 90 dias.'
+        extra='"Estoque dá para": estoque ÷ venda média por mês dos últimos 90 dias (vendido − devolvido). "Sem vender há": dias desde a última nota de venda; "+" = nenhuma venda desde a implantação do SAP. "Idade do estoque": desde a entrada da unidade mais antiga que ainda está no estoque (o que sai primeiro é o mais antigo); "+" = já estava no estoque na implantação do SAP e não entrou compra nova que cubra o estoque — o item pode estar vendendo normalmente.'
       />
     </div>
   )

@@ -5085,7 +5085,9 @@ export const sapItemMovimentos = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     tipo: text('tipo', { enum: ['venda', 'entrada'] }).notNull(),
-    origem: text('origem', { enum: ['nota', 'compra', 'entrada', 'transferencia'] }).notNull(),
+    // devolucao = nota de devolução de cliente (CreditNotes), tipo 'venda'
+    // com quantidade/valor negativos (2026-11-11).
+    origem: text('origem', { enum: ['nota', 'devolucao', 'compra', 'entrada', 'transferencia'] }).notNull(),
     docEntry: integer('doc_entry').notNull(),
     filial: integer('filial').notNull(),
     itemCodigo: text('item_codigo').notNull(),

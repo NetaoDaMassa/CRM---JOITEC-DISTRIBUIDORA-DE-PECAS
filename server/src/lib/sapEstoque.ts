@@ -28,6 +28,8 @@ const CHAVE_FOTO = 'sap_estoque_atualizado_em'
 // Até que dia o histórico (vendas + entradas) já foi carregado. Vazio = nada.
 const CHAVE_HISTORICO = 'sap_estoque_historico_ate'
 const DIAS_POR_RODADA = 15
+// Devoluções já carregadas desde a implantação (vazio = carregar tudo).
+const CHAVE_DEVOLUCOES = 'sap_estoque_devolucoes_desde'
 // Entradas recentes: margem pra trás, pra pegar documento lançado com data
 // de dias anteriores.
 const DIAS_ENTRADAS_RECENTES = 5
@@ -115,6 +117,56 @@ export async function gravarVendasDasNotas(notas: NotaVendaSap[], de: string, at
   const somadas = somarPorItem(linhas)
   await substituir(['nota'], de, ate, somadas)
   return somadas.length
+}
+
+// Devoluções de cliente (CreditNotes) descontam da venda: entram como
+// 'venda' com quantidade e valor negativos (João, 2026-11-11 — o AD2012
+// teve 50 devolvidas em outubro que contavam como vendidas).
+async function gravarDevolucoes(sap: SapSessao, de: string, ate: string): Promise<number> {
+  const docs = await sap.getTodos<NotaVendaSap>(
+    `/CreditNotes?$select=DocEntry,DocDate,BPL_IDAssignedToInvoice,Cancelled,CancelStatus,DocumentLines&$filter=${filtroPeriodo(de, ate)}&$orderby=DocEntry`,
+    200
+  )
+  const linhas: Movimento[] = []
+  for (const d of docs) {
+    if (cancelado(d)) continue
+    for (const l of d.DocumentLines) {
+      if (!l.ItemCode) continue
+      linhas.push({
+        tipo: 'venda',
+        origem: 'devolucao',
+        docEntry: d.DocEntry,
+        filial: d.BPL_IDAssignedToInvoice,
+        itemCodigo: l.ItemCode,
+        itemNome: (l.ItemDescription ?? '').trim() || null,
+        dia: dataSap(d.DocDate),
+        quantidade: -(l.Quantity ?? 0),
+        valor: -(l.LineTotal ?? 0),
+      })
+    }
+  }
+  const somadas = somarPorItem(linhas)
+  await substituir(['devolucao'], de, ate, somadas)
+  return somadas.length
+}
+
+// Nota cancelada no SAP depois que já entrou aqui (a rodada de itens só olha
+// os últimos dias): tira. Busca só o DocEntry dos cancelados desde a
+// implantação — leve, roda junto com a foto de hora em hora.
+async function tirarCanceladas(sap: SapSessao): Promise<number> {
+  let tiradas = 0
+  for (const [entidade, origem] of [
+    ['Invoices', 'nota'],
+    ['CreditNotes', 'devolucao'],
+  ] as const) {
+    const canceladas = await sap.getTodos<{ DocEntry: number }>(`/${entidade}?$select=DocEntry&$filter=Cancelled eq 'tYES' and DocDate ge '${SAP_INICIO}'`, 500)
+    const ids = canceladas.map((c) => c.DocEntry)
+    for (let i = 0; i < ids.length; i += 500) {
+      const r = await db.delete(sapItemMovimentos).where(and(eq(sapItemMovimentos.origem, origem), inArray(sapItemMovimentos.docEntry, ids.slice(i, i + 500))))
+      tiradas += r.rowsAffected ?? 0
+    }
+  }
+  return tiradas
 }
 
 async function depositosPorFilial(sap: SapSessao): Promise<Map<string, number>> {
@@ -256,12 +308,19 @@ export async function sincronizarEstoqueSap(opts: { diasPorRodada?: number } = {
       const linhas = await buscarEntradas(sap, depositos, de, hoje)
       await substituir(['compra', 'entrada', 'transferencia'], de, hoje, linhas)
       entradas = linhas.length
+      // Devoluções: na 1ª vez, desde a implantação (são poucas); depois, só
+      // os últimos dias, junto com as entradas.
+      const devolucoesCarregadas = await getConfigTexto(CHAVE_DEVOLUCOES)
+      await gravarDevolucoes(sap, devolucoesCarregadas ? de : SAP_INICIO, hoje)
+      if (!devolucoesCarregadas) await setConfig(CHAVE_DEVOLUCOES, hoje)
+      await tirarCanceladas(sap)
     }
     let historico = null
     if (fazerHistorico) {
       const ate = [somarDias(proximo, (opts.diasPorRodada ?? DIAS_POR_RODADA) - 1), hoje].sort()[0]
       const notas = await buscarNotasVenda(sap, proximo, ate)
       const vendas = await gravarVendasDasNotas(notas, proximo, ate)
+      await gravarDevolucoes(sap, proximo, ate)
       const linhas = await buscarEntradas(sap, depositos, proximo, ate)
       await substituir(['compra', 'entrada', 'transferencia'], proximo, ate, linhas)
       await setConfig(CHAVE_HISTORICO, ate)
@@ -311,10 +370,10 @@ export async function estoqueDaFilial(filial: number, verValor: boolean): Promis
   const [estoqueTodo, ultimas, entradas, vendas90, fora] = await Promise.all([
     db.select().from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, filial)),
     db
-      .select({ item: sapItemMovimentos.itemCodigo, tipo: sapItemMovimentos.tipo, ultimo: sql<string>`max(${sapItemMovimentos.dia})` })
+      .select({ item: sapItemMovimentos.itemCodigo, origem: sapItemMovimentos.origem, ultimo: sql<string>`max(${sapItemMovimentos.dia})` })
       .from(sapItemMovimentos)
       .where(eq(sapItemMovimentos.filial, filial))
-      .groupBy(sapItemMovimentos.itemCodigo, sapItemMovimentos.tipo),
+      .groupBy(sapItemMovimentos.itemCodigo, sapItemMovimentos.origem),
     db
       .select({ item: sapItemMovimentos.itemCodigo, dia: sapItemMovimentos.dia, quantidade: sql<number>`sum(${sapItemMovimentos.quantidade})`.mapWith(Number) })
       .from(sapItemMovimentos)
@@ -328,11 +387,14 @@ export async function estoqueDaFilial(filial: number, verValor: boolean): Promis
     componentesGravados(),
   ])
   const estoque = estoqueTodo.filter((e) => !fora.has(e.itemCodigo))
-  const ultimaVenda = new Map(ultimas.filter((u) => u.tipo === 'venda').map((u) => [u.item, u.ultimo]))
-  const ultimaEntrada = new Map(ultimas.filter((u) => u.tipo === 'entrada').map((u) => [u.item, u.ultimo]))
+  // Última venda = última nota de saída (devolução não conta como venda).
+  const ultimaVenda = new Map(ultimas.filter((u) => u.origem === 'nota').map((u) => [u.item, u.ultimo]))
+  const ultimaEntrada = new Map<string, string>()
+  for (const u of ultimas) if (u.origem !== 'nota' && u.origem !== 'devolucao' && u.ultimo > (ultimaEntrada.get(u.item) ?? '')) ultimaEntrada.set(u.item, u.ultimo)
   const entradasPorItem = new Map<string, { dia: string; quantidade: number }[]>()
   for (const e of entradas) entradasPorItem.set(e.item, [...(entradasPorItem.get(e.item) ?? []), e])
-  const vendido90 = new Map(vendas90.map((v) => [v.item, v.quantidade]))
+  // Vendido − devolvido (nunca negativo).
+  const vendido90 = new Map(vendas90.map((v) => [v.item, Math.max(0, v.quantidade)]))
 
   return estoque.map((e) => {
     // Estoque "mais antigo": soma as entradas da mais nova pra mais antiga
@@ -389,7 +451,7 @@ export async function menosVendidosDaFilial(filial: number, de: string, ate: str
         item: sapItemMovimentos.itemCodigo,
         quantidade: sql<number>`sum(${sapItemMovimentos.quantidade})`.mapWith(Number),
         valor: sql<number>`sum(${sapItemMovimentos.valor})`.mapWith(Number),
-        notas: sql<number>`count(distinct ${sapItemMovimentos.docEntry})`.mapWith(Number),
+        notas: sql<number>`count(distinct case when ${sapItemMovimentos.origem} = 'nota' then ${sapItemMovimentos.docEntry} end)`.mapWith(Number),
       })
       .from(sapItemMovimentos)
       .where(and(eq(sapItemMovimentos.filial, filial), eq(sapItemMovimentos.tipo, 'venda'), between(sapItemMovimentos.dia, de, ate)))
@@ -397,7 +459,7 @@ export async function menosVendidosDaFilial(filial: number, de: string, ate: str
     db
       .select({ item: sapItemMovimentos.itemCodigo, ultimo: sql<string>`max(${sapItemMovimentos.dia})` })
       .from(sapItemMovimentos)
-      .where(and(eq(sapItemMovimentos.filial, filial), eq(sapItemMovimentos.tipo, 'venda')))
+      .where(and(eq(sapItemMovimentos.filial, filial), eq(sapItemMovimentos.origem, 'nota')))
       .groupBy(sapItemMovimentos.itemCodigo),
     nomesDosItens(filial),
     componentesGravados(),
@@ -413,8 +475,9 @@ export async function menosVendidosDaFilial(filial: number, de: string, ate: str
       codigo,
       codigoAntigo: e?.codigoAntigo ?? null,
       descricao: e?.itemNome ?? nomes.get(codigo) ?? codigo,
-      quantidade: p?.quantidade ?? 0,
-      valor: Math.round((p?.valor ?? 0) * 100) / 100,
+      // Vendido − devolvido no período (devolução maior que a venda = 0).
+      quantidade: Math.max(0, p?.quantidade ?? 0),
+      valor: Math.max(0, Math.round((p?.valor ?? 0) * 100) / 100),
       notas: p?.notas ?? 0,
       estoque: e?.quantidade ?? 0,
       ultimaVenda: ult.get(codigo) ?? null,
