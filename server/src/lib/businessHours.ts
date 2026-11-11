@@ -1,14 +1,19 @@
 import { ehDiaNaoUtil } from './dataBr.js'
 
 const TZ_OFFSET_MS = 3 * 60 * 60 * 1000 // America/Sao_Paulo (UTC-3, sem horário de verão desde 2019)
-const BUSINESS_START_HOUR = 8
-const BUSINESS_END_HOUR = 18
+// Expediente: seg-sex, 08:00-12:00 e 13:00-17:48 (pedido do João,
+// 2026-11-11 — vendedores reclamaram que o tempo de resposta de lead contava
+// horário em que não trabalham; antes ia até 18:00). Em minutos do dia.
+// Usado também pela tela (client importa este arquivo), pra contar igual.
+export const EXPEDIENTE_INICIO_MIN = 8 * 60
+export const EXPEDIENTE_FIM_MIN = 17 * 60 + 48
 // Horário de almoço — não conta como expediente. Pedido do João, 2026-09-15:
 // o "Tempo médio até 1º contato" (e os alertas de SLA de leads parados, que
 // usam a mesma função) estavam contando 8h-18h corrido (10h/dia), sem
-// descontar o almoço — agora são 9h de expediente por dia útil de verdade.
-const LUNCH_START_HOUR = 12
-const LUNCH_END_HOUR = 13
+// descontar o almoço.
+export const ALMOCO_INICIO_MIN = 12 * 60
+export const ALMOCO_FIM_MIN = 13 * 60
+const MIN_MS = 60 * 1000
 const DAY_MS = 24 * 60 * 60 * 1000
 
 // SQLite grava `datetime('now')` como "YYYY-MM-DD HH:MM:SS" (UTC, sem sufixo de fuso).
@@ -39,14 +44,14 @@ export function businessHoursElapsedMs(fromISO: string, toISO: string = new Date
     // `dayStart` já está deslocado pro fuso de Brasília, então a data UTC
     // dele é a data local — formato que ehDiaNaoUtil espera.
     if (!ehDiaNaoUtil(new Date(dayStart))) {
-      const windowStart = dayStart + BUSINESS_START_HOUR * 60 * 60 * 1000
-      const windowEnd = dayStart + BUSINESS_END_HOUR * 60 * 60 * 1000
+      const windowStart = dayStart + EXPEDIENTE_INICIO_MIN * MIN_MS
+      const windowEnd = dayStart + EXPEDIENTE_FIM_MIN * MIN_MS
       const clippedStart = Math.max(windowStart, from)
       const clippedEnd = Math.min(windowEnd, to)
       if (clippedEnd > clippedStart) {
         let diaTotal = clippedEnd - clippedStart
-        const lunchStart = dayStart + LUNCH_START_HOUR * 60 * 60 * 1000
-        const lunchEnd = dayStart + LUNCH_END_HOUR * 60 * 60 * 1000
+        const lunchStart = dayStart + ALMOCO_INICIO_MIN * MIN_MS
+        const lunchEnd = dayStart + ALMOCO_FIM_MIN * MIN_MS
         const overlapStart = Math.max(clippedStart, lunchStart)
         const overlapEnd = Math.min(clippedEnd, lunchEnd)
         if (overlapEnd > overlapStart) diaTotal -= overlapEnd - overlapStart

@@ -199,7 +199,7 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
   'leads-geral': [
     { termo: 'Leads recebidos', texto: 'Leads que entraram no CRM no período escolhido. É a "safra" do período: atendimento, conversão e funil olham o que aconteceu com esses leads.' },
     { termo: 'Atendidos', texto: 'Quantos dos leads recebidos já tiveram um contato confirmado pelo vendedor (ou já passaram de Qualificado). "Sem contato" = ainda em aberto e ninguém falou com ele.' },
-    { termo: 'Tempo até o 1º contato', texto: 'Média de tempo entre o lead chegar e o primeiro contato confirmado. Conta só horas úteis: 8h–18h, sem almoço (12h–13h), sem fim de semana e sem feriado. 9 horas úteis = 1 dia útil.', exemplo: 'Lead chegou sábado, atendido segunda 9h = 1 hora.' },
+    { termo: 'Tempo até o 1º contato', texto: 'Média de tempo entre o lead chegar e o primeiro contato confirmado. Conta só horário de trabalho: segunda a sexta, 08:00–12:00 e 13:00–17:48, sem fim de semana e sem feriado. 8h48 úteis = 1 dia útil.', exemplo: 'Lead chegou sábado, atendido segunda 9h = 1 hora.' },
     { termo: 'Taxa de conversão', texto: 'Dos leads recebidos no período, quantos % já viraram venda (Ganho). Lead que ainda está em negociação pode virar venda depois, então a taxa de um mês recente tende a subir com o tempo.' },
     { termo: 'Vendas fechadas', texto: 'Leads marcados como Ganho no período, pela data do fechamento — inclui lead que chegou antes e fechou agora. Soma o valor final da venda.' },
     { termo: 'Ticket médio', texto: 'Valor médio de cada venda fechada no período.' },
@@ -237,12 +237,12 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
   ],
   'leads-sla': [
     { termo: 'Leads críticos / em risco', texto: 'Leads que passaram do prazo de atendimento: "em risco" está quase estourando, "crítico" já estourou.' },
-    { termo: 'Tempo médio em Abordagem', texto: 'Em média, quanto tempo os leads que estão em Abordagem estão parados nessa etapa. Conta só horas úteis (8h–18h, sem almoço, fim de semana e feriado).' },
+    { termo: 'Tempo médio em Abordagem', texto: 'Em média, quanto tempo os leads que estão em Abordagem estão parados nessa etapa. Conta só horas úteis (seg–sex 08:00–12:00 e 13:00–17:48, sem fim de semana e feriado).' },
     { termo: 'Recebeu / Perdeu', texto: 'Quantas vezes um lead foi passado PARA o vendedor (recebeu) e quantas vezes um lead dele foi passado pra outro (perdeu), por transferência manual ou automática por falta de atendimento.' },
   ],
   'leads-transferencias': [{ termo: 'Transferências', texto: 'Quando um lead mudou de vendedor no período: quem tinha (De), quem ficou (Para) e quem fez a mudança. ⚠️ marca lead que voltou pro rodízio 2 vezes ou mais.' }],
   'marketing-geral': [
-    { termo: 'Tempo médio até 1º contato', texto: 'Média, entre as empresas, do tempo até o primeiro contato confirmado com o lead, em horas úteis (8h–18h, sem almoço, fim de semana e feriado). Empresa com mais leads pesa mais.' },
+    { termo: 'Tempo médio até 1º contato', texto: 'Média, entre as empresas, do tempo até o primeiro contato confirmado com o lead, em horas úteis (seg–sex 08:00–12:00 e 13:00–17:48, sem fim de semana e feriado). Empresa com mais leads pesa mais.' },
     { termo: 'Tempo médio de fechamento', texto: 'Dias entre o lead ser entregue ao vendedor e ser encerrado (ganho, perdido ou desqualificado).' },
     { termo: 'Leads atendidos no mês', texto: 'Leads que tiveram pelo menos 1 contato no período.' },
     { termo: 'Leads novos no mês', texto: 'Leads que ENTRARAM no período (pela data de chegada).' },

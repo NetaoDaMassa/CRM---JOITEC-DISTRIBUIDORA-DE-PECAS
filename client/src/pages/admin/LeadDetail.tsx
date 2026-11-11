@@ -17,7 +17,8 @@ import Select from '../../components/ui/Select'
 import LeadContatoButtons, { LeadWhatsappButton } from '../../components/ui/LeadContatoButtons'
 import EmailButton from '../../components/ui/EmailButton'
 import { Badge } from '../../components/ui/Badge'
-import { timeAgo, formatElapsed } from '../../lib/utils'
+import { timeAgo } from '../../lib/utils'
+import { formatarTempoUtil } from '../../lib/horasUteis'
 import LeadChangeStatusModal from '../../components/LeadChangeStatusModal'
 import LeadReopenDisqualifiedModal from '../../components/LeadReopenDisqualifiedModal'
 import LeadContactAttemptForm from '../../components/LeadContactAttemptForm'
@@ -299,8 +300,8 @@ export default function LeadDetail() {
   const terminal = isLeadTerminalStatus(lead.status)
   const tempoAtendimento = lead.assignedAt
     ? terminal && lead.statusChangedAt
-      ? `Tempo de atendimento: ${formatElapsed(lead.assignedAt, lead.statusChangedAt)}`
-      : `Em atendimento há ${formatElapsed(lead.assignedAt)}`
+      ? `Tempo de atendimento: ${formatarTempoUtil(lead.assignedAt, lead.statusChangedAt)} em horário de trabalho`
+      : `Em atendimento há ${formatarTempoUtil(lead.assignedAt)} em horário de trabalho`
     : null
 
   return (

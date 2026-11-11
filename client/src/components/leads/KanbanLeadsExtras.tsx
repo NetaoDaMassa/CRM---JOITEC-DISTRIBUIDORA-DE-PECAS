@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { ReactNode } from 'react'
 import { Download, Info, MessageCircle, Sparkles, Trophy, X } from 'lucide-react'
 import { formatElapsed, timeAgo } from '../../lib/utils'
+import { formatarTempoUtil, msUteisEntre } from '../../lib/horasUteis'
 import { formatarMoeda } from '../../lib/moeda'
 import { LEAD_STATUS_LABELS, getLeadContactUrgency, isLeadTerminalStatus, leadTelefoneCompleto, leadTelefoneFormatado } from '../../lib/leadsShared'
 import { AvatarIniciais } from '../ui/Visual'
@@ -117,14 +118,16 @@ export function SeloTemperatura({ t }: { t: Temperatura }) {
 
 // ── Relógio do "Novo" ───────────────────────────────────────────────────
 // Tempo desde que o lead caiu na mão do vendedor sem nenhum contato
-// registrado. Verde até 1h, amarelo até 4h, vermelho depois (horas
-// corridas).
+// registrado. Verde até 1h, amarelo até 4h, vermelho depois — só em horário
+// de trabalho (seg-sex 08:00-12:00 e 13:00-17:48, sem feriado), igual aos
+// relatórios. Antes contava hora corrida (noite e fim de semana), reclamação
+// dos vendedores em 2026-11-11.
 export function relogioNovo(lead: LeadKanban): { texto: string; cor: string } | null {
   if (lead.status !== 'novo' || lead.lastContactAt || (lead.attemptCount ?? 0) > 0) return null
-  const desde = lead.assignedAt || lead.createdAt
-  const horas = (Date.now() - paraData(desde).getTime()) / 3600000
+  const desde = paraData(lead.assignedAt || lead.createdAt)
+  const horas = msUteisEntre(desde) / 3600000
   const cor = horas < 1 ? '#22a861' : horas < 4 ? '#e8a33a' : '#e5534b'
-  return { texto: `${formatElapsed(paraData(desde))} sem 1º contato`, cor }
+  return { texto: `${formatarTempoUtil(desde)} úteis sem 1º contato`, cor }
 }
 
 // ── Mensagens prontas de WhatsApp ───────────────────────────────────────

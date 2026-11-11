@@ -3,6 +3,7 @@ import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../lib/trpc'
 import { formatElapsed, formatarPercentual } from '../lib/utils'
+import { formatarTempoUtil } from '../lib/horasUteis'
 import { formatarMoeda } from '../lib/moeda'
 import AvatarMeta from '../components/ui/AvatarMeta'
 import { corTexto } from '../lib/corTexto'
@@ -389,8 +390,8 @@ function BlocoLeadsEmNovo({ data }: { data: PainelData }) {
                 <span className="text-dark-500"> · {l.canal}</span>
               </p>
             </div>
-            <span className="text-[1.7vh] font-bold font-mono shrink-0" style={{ color: corTexto(COR_RUIM) }}>
-              há {formatElapsed(l.criadoEm)}
+            <span className="text-[1.7vh] font-bold font-mono shrink-0" style={{ color: corTexto(COR_RUIM) }} title="Só horário de trabalho (seg-sex 08:00-12:00 e 13:00-17:48)">
+              {formatarTempoUtil(l.criadoEm)} úteis
             </span>
           </div>
         ))}
