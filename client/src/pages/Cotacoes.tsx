@@ -276,7 +276,8 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const [contato, setContato] = useState('')
   const [numeroReferencia, setNumeroReferencia] = useState('')
   const [transportadora, setTransportadora] = useState('')
-  const [tipoEnvio, setTipoEnvio] = useState<'CIF' | 'FOB' | ''>('CIF')
+  const [transportadoraCodigo, setTransportadoraCodigo] = useState('')
+  const [tipoEnvio, setTipoEnvio] = useState<'CIF' | 'FOB' | 'SEM_FRETE' | ''>('CIF')
   const [frete, setFrete] = useState(0)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [alterado, setAlterado] = useState(false)
@@ -294,6 +295,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     setContato(existente.contato ?? '')
     setNumeroReferencia(existente.numeroReferencia ?? '')
     setTransportadora(existente.transportadora ?? '')
+    setTransportadoraCodigo(existente.transportadoraCodigo ?? '')
     setTipoEnvio(existente.tipoEnvio ?? '')
     setFrete(existente.valorFrete ?? 0)
     setLinhas(existente.itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, descontoPct: Math.max(0, i.descontoPct), preco: i.precoManual ? i.precoUnitario : null })))
@@ -434,6 +436,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     numeroReferencia: numeroReferencia.trim() || null,
     transportadora: transportadora.trim() || null,
     tipoEnvio: tipoEnvio || null,
+    transportadoraCodigo: transportadoraCodigo || null,
     valorFrete: frete,
     itens: linhas.map((l) => ({ itemCodigo: l.itemCodigo, quantidade: l.quantidade, descontoPct: l.preco != null ? 0 : l.descontoPct, ...(l.preco != null ? { precoUnitario: l.preco } : {}) })),
   })
@@ -619,13 +622,43 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
               <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={contato} onChange={(e) => (setContato(e.target.value), setAlterado(true))} placeholder="Quem pediu" />
             </Campo>
             <Campo rotulo="Transportadora">
-              <input disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={transportadora} onChange={(e) => (setTransportadora(e.target.value), setAlterado(true))} placeholder="Ex.: Kamer Cargo" />
+              {/* Lista do SAP (fornecedores do grupo TRANSPORTE), mais usadas primeiro. */}
+              <select
+                disabled={somenteLeitura || tipoEnvio === 'SEM_FRETE'}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                value={transportadoraCodigo}
+                onChange={(e) => {
+                  const t = ctx?.transportadoras.find((x) => x.codigo === e.target.value)
+                  setTransportadoraCodigo(t?.codigo ?? '')
+                  setTransportadora(t?.nome ?? '')
+                  setAlterado(true)
+                }}
+              >
+                <option value="">{tipoEnvio === 'SEM_FRETE' ? '— (sem frete)' : 'Escolha…'}</option>
+                {transportadoraCodigo && !ctx?.transportadoras.some((x) => x.codigo === transportadoraCodigo) && <option value={transportadoraCodigo}>{transportadora || transportadoraCodigo}</option>}
+                {(ctx?.transportadoras ?? []).map((t) => (
+                  <option key={t.codigo} value={t.codigo}>
+                    {t.nome} · {t.codigo}
+                  </option>
+                ))}
+              </select>
             </Campo>
             <Campo rotulo="Tipo de envio">
-              <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={tipoEnvio} onChange={(e) => (setTipoEnvio(e.target.value as 'CIF' | 'FOB' | ''), setAlterado(true))}>
+              <select
+                disabled={somenteLeitura}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                value={tipoEnvio}
+                onChange={(e) => {
+                  const v = e.target.value as 'CIF' | 'FOB' | 'SEM_FRETE' | ''
+                  setTipoEnvio(v)
+                  if (v === 'SEM_FRETE') (setTransportadoraCodigo(''), setTransportadora(''))
+                  setAlterado(true)
+                }}
+              >
                 <option value="">—</option>
                 <option value="CIF">CIF — nós pagamos</option>
                 <option value="FOB">FOB — cliente paga</option>
+                <option value="SEM_FRETE">Sem frete (cliente retira)</option>
               </select>
             </Campo>
             <Campo rotulo="Frete cobrado (R$)">
@@ -882,7 +915,7 @@ td{padding:4px;border-bottom:1px dotted #9aa;vertical-align:top}.n{text-align:ri
   <div>
     <div class="duas"><div><b>Data do documento</b><div class="lin">${dataDoc}</div></div><div><b>Data de Entrega</b><div class="lin">${dataBr(c.dataEntrega)}</div></div><div><b>Válida até</b><div class="lin">${dataBr(c.validaAte) || '—'}</div></div></div>
     <div class="lin"><b>Transportadora:</b> ${esc(c.transportadora)}</div>
-    <div class="lin"><b>Tipo de envio:</b> ${esc(c.tipoEnvio)}</div>
+    <div class="lin"><b>Tipo de envio:</b> ${esc(c.tipoEnvio === 'SEM_FRETE' ? 'Sem frete' : c.tipoEnvio)}</div>
     <div class="lin"><b>Vendedor:</b> ${esc(c.vendedorNome)}</div>
   </div>
 </div>

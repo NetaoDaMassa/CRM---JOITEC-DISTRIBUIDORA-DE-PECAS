@@ -6,7 +6,7 @@
 // Só leitura no SAP.
 import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { sapCatalogoItens, sapCatalogoPrecos, sapClientesComercial, sapListasPreco, sapPrazosPagamento } from '../db/schema.js'
+import { sapCatalogoItens, sapCatalogoPrecos, sapClientesComercial, sapListasPreco, sapPrazosPagamento, sapTransportadoras } from '../db/schema.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { agoraSqlite } from './dataBr.js'
 import { comSessaoSap } from './sapServiceLayer.js'
@@ -88,7 +88,17 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
       "/BusinessPartners?$filter=CardType eq 'cCustomer'&$select=CardCode,CardForeignName,PriceListNum,PayTermsGrpCode,Frozen,Valid",
       1000
     )
-    return { grupos, ncms, filiais, itens, listas, prazos, clientes }
+    // Transportadoras = fornecedores do grupo TRANSPORTE; usos = pedidos de
+    // venda dos últimos 45 dias com ela (as mais usadas no topo da lista).
+    const grupoTransporte = (await sap.getTodos<{ Code: number; Name: string }>("/BusinessPartnerGroups?$filter=Type eq 'bbpgt_VendorGroup'&$select=Code,Name")).find((g) => /TRANSPORT/i.test(g.Name))
+    const transportadoras = grupoTransporte
+      ? await sap.getTodos<{ CardCode: string; CardName: string; Valid: string; Frozen: string }>(`/BusinessPartners?$filter=GroupCode eq ${grupoTransporte.Code} and CardType eq 'cSupplier'&$select=CardCode,CardName,Valid,Frozen`)
+      : []
+    const desde = new Date(Date.now() - 45 * 86400e3).toISOString().slice(0, 10)
+    const pedidosFrete = await sap.getTodos<{ TaxExtension?: { Carrier?: string | null } }>(`/Orders?$filter=DocDate ge '${desde}'&$select=TaxExtension`, 500)
+    const usos = new Map<string, number>()
+    for (const p of pedidosFrete) if (p.TaxExtension?.Carrier) usos.set(p.TaxExtension.Carrier, (usos.get(p.TaxExtension.Carrier) ?? 0) + 1)
+    return { grupos, ncms, filiais, itens, listas, prazos, clientes, transportadoras, usos }
   })
 
   const agora = agoraSqlite()
@@ -132,6 +142,15 @@ export async function sincronizarCatalogoSap(forcar = false): Promise<{ itens: n
       sapListasPreco,
       dados.listas.filter((l) => l.Active !== 'tNO').map((l) => ({ numero: l.PriceListNo, nome: l.PriceListName.replace(/^Lista de preços\s*-?\s*/i, '').trim() || l.PriceListName }))
     )
+    if (dados.transportadoras.length) {
+      await tx.delete(sapTransportadoras)
+      await lote(
+        sapTransportadoras,
+        dados.transportadoras
+          .filter((t) => t.Valid !== 'tNO' && t.Frozen !== 'tYES')
+          .map((t) => ({ codigo: t.CardCode, nome: t.CardName.trim(), usos: dados.usos.get(t.CardCode) ?? 0, atualizadoEm: agora }))
+      )
+    }
     await tx.delete(sapPrazosPagamento)
     await lote(sapPrazosPagamento, dados.prazos.map((p) => ({ codigo: p.GroupNumber, nome: p.PaymentTermsGroupName.trim() })))
     // Upsert (não apaga): preserva os dados de endereço já buscados por cotação.

@@ -5168,7 +5168,10 @@ export const cotacoesCrm = sqliteTable(
     dataEntrega: text('data_entrega'),
     contato: text('contato'),
     transportadora: text('transportadora'),
-    tipoEnvio: text('tipo_envio', { enum: ['CIF', 'FOB'] }),
+    // CIF (Incoterms 0), FOB (1) ou SEM_FRETE (9 — cliente retira).
+    tipoEnvio: text('tipo_envio', { enum: ['CIF', 'FOB', 'SEM_FRETE'] }),
+    // Código da transportadora no SAP (fornecedor do grupo TRANSPORTE).
+    transportadoraCodigo: text('transportadora_codigo'),
     // Despesas adicionais (frete cobrado do cliente), somado no valor total.
     valorFrete: real('valor_frete').notNull().default(0),
     // Soma dos itens (sem IPI e sem frete).
@@ -5244,4 +5247,14 @@ export const itemFotos = sqliteTable('item_fotos', {
   origem: text('origem', { enum: ['catalogo', 'upload'] }).notNull(),
   atualizadoPorId: integer('atualizado_por_id').references(() => users.id, { onDelete: 'set null' }),
   atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+})
+
+// Transportadoras do SAP (fornecedores do grupo TRANSPORTE), copiadas junto
+// com o catálogo — lista de escolha na cotação (João, 2026-11-11).
+export const sapTransportadoras = sqliteTable('sap_transportadoras', {
+  codigo: text('codigo').primaryKey(),
+  nome: text('nome').notNull(),
+  // Pedidos de venda desde 01/10 com essa transportadora (ordena a lista).
+  usos: integer('usos').notNull().default(0),
+  atualizadoEm: text('atualizado_em').notNull(),
 })

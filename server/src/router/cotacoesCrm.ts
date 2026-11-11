@@ -32,6 +32,7 @@ import {
   sapEstoqueItens,
   sapListasPreco,
   sapPrazosPagamento,
+  sapTransportadoras,
   users,
 } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
@@ -131,6 +132,7 @@ async function paraSap(c: typeof cotacoesCrm.$inferSelect, filial: number): Prom
       transportadora: c.transportadora,
       contato: c.contato,
       tipoEnvio: c.tipoEnvio,
+      transportadoraCodigo: c.transportadoraCodigo,
       valorFrete: c.valorFrete,
       vendedorNome: vendedor?.name ?? '',
       itens: itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual })),
@@ -174,7 +176,7 @@ export const cotacoesCrmRouter = router({
   // Listas de preço, prazos, regras da empresa (gerente e desconto livre) e
   // quando o catálogo foi copiado do SAP.
   contexto: cotacoesProcedure.query(async ({ ctx }) => {
-    const [listas, prazos, atualizadoEm, gerente, usuarios, emitente] = await Promise.all([
+    const [listas, prazos, atualizadoEm, gerente, usuarios, emitente, transportadoras] = await Promise.all([
       db.select().from(sapListasPreco).orderBy(sapListasPreco.numero),
       db.select().from(sapPrazosPagamento).orderBy(sapPrazosPagamento.nome),
       catalogoAtualizadoEm(),
@@ -187,6 +189,7 @@ export const cotacoesCrmRouter = router({
             .orderBy(asc(users.name))
         : [],
       emitenteDaFilial(ctx.filial),
+      db.select({ codigo: sapTransportadoras.codigo, nome: sapTransportadoras.nome, usos: sapTransportadoras.usos }).from(sapTransportadoras).orderBy(desc(sapTransportadoras.usos), asc(sapTransportadoras.nome)),
     ])
     return {
       listas,
@@ -203,6 +206,7 @@ export const cotacoesCrmRouter = router({
       hoje: hojeBrString(),
       empresaSlug: ctx.empresaSlug,
       emitente,
+      transportadoras,
     }
   }),
 
@@ -393,7 +397,8 @@ export const cotacoesCrmRouter = router({
         dataEntrega: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
         contato: z.string().trim().max(120).nullable().optional(),
         transportadora: z.string().trim().max(160).nullable().optional(),
-        tipoEnvio: z.enum(['CIF', 'FOB']).nullable().optional(),
+        tipoEnvio: z.enum(['CIF', 'FOB', 'SEM_FRETE']).nullable().optional(),
+        transportadoraCodigo: z.string().trim().max(30).nullable().optional(),
         valorFrete: z.number().min(0).max(1_000_000).optional(),
         itens: z
           .array(
@@ -482,6 +487,7 @@ export const cotacoesCrmRouter = router({
           contato: input.contato || null,
           transportadora: input.transportadora || null,
           tipoEnvio: input.tipoEnvio ?? null,
+          transportadoraCodigo: input.transportadoraCodigo || null,
           valorFrete: arred(input.valorFrete ?? 0),
           total,
           maiorDescontoPct,
@@ -720,6 +726,7 @@ export const cotacoesCrmRouter = router({
           contato: c.contato,
           transportadora: c.transportadora,
           tipoEnvio: c.tipoEnvio,
+          transportadoraCodigo: c.transportadoraCodigo,
           valorFrete: c.valorFrete,
           total: c.total,
           maiorDescontoPct: c.maiorDescontoPct,

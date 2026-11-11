@@ -23,7 +23,8 @@ export interface CotacaoParaSap {
   observacao: string | null
   transportadora: string | null
   contato: string | null
-  tipoEnvio: 'CIF' | 'FOB' | null
+  tipoEnvio: 'CIF' | 'FOB' | 'SEM_FRETE' | null
+  transportadoraCodigo: string | null
   valorFrete: number
   vendedorNome: string
   itens: { itemCodigo: string; quantidade: number; precoTabela: number; descontoPct: number; precoUnitario: number; precoManual: boolean }[]
@@ -42,7 +43,7 @@ function comentario(c: CotacaoParaSap): string {
 }
 
 function cabecalho(c: CotacaoParaSap) {
-  if (!c.tipoEnvio) throw new Error('Escolha o tipo de envio (CIF ou FOB) — o SAP exige')
+  if (!c.tipoEnvio) throw new Error('Escolha o tipo de envio (CIF, FOB ou Sem frete) — o SAP exige')
   const hoje = hojeBrString()
   return {
     CardCode: c.cardCode,
@@ -52,7 +53,12 @@ function cabecalho(c: CotacaoParaSap) {
     NumAtCard: c.numeroReferencia || `CRM ${c.id}`,
     Comments: comentario(c),
     ...(c.prazoCodigo != null ? { PaymentGroupCode: c.prazoCodigo } : {}),
-    TaxExtension: { Incoterms: c.tipoEnvio === 'FOB' ? '1' : '0' },
+    // Modalidade do frete no SAP: 0 = CIF (emitente), 1 = FOB (destinatário),
+    // 9 = sem frete. Transportadora = código do fornecedor (grupo TRANSPORTE).
+    TaxExtension: {
+      Incoterms: c.tipoEnvio === 'FOB' ? '1' : c.tipoEnvio === 'SEM_FRETE' ? '9' : '0',
+      ...(c.transportadoraCodigo && c.tipoEnvio !== 'SEM_FRETE' ? { Carrier: c.transportadoraCodigo } : {}),
+    },
     ...(c.valorFrete > 0 ? { DocumentAdditionalExpenses: [{ ExpenseCode: 1, LineTotal: c.valorFrete }] } : {}),
   }
 }
