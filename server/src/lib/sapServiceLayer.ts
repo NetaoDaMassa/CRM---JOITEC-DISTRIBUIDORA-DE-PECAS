@@ -21,7 +21,7 @@ export interface SapSessao {
   // Arquivo binário (anexo: GET Attachments2(id)/$value?filename='x.pdf').
   getArquivo(caminho: string): Promise<{ dados: Buffer; tipo: string }>
   // POST/PATCH. Erro do SAP vira exceção com a mensagem dele.
-  escrever<T = unknown>(metodo: 'POST' | 'PATCH', caminho: string, corpo?: unknown): Promise<T | null>
+  escrever<T = unknown>(metodo: 'POST' | 'PATCH' | 'DELETE', caminho: string, corpo?: unknown): Promise<T | null>
   // POST multipart (anexos: /Attachments2 com o campo "files").
   enviarArquivos<T = unknown>(caminho: string, form: FormData): Promise<T | null>
 }

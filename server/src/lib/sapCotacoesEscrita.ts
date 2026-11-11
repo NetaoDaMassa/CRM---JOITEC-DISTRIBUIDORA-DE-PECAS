@@ -121,7 +121,8 @@ export async function subirAnexosSap(arquivos: { nome: string; dados: Buffer; ti
 // 13/14/15 ICMS-ST, 35 FCP-ST, 16/17/18 IPI). ICMS vem embutido no preço
 // (não soma); IPI e ST somam por fora — o DocTotal do SAP já é o total final.
 export interface ImpostosSap {
-  documento: 'cotacao' | 'pedido'
+  // simulacao = rascunho temporário no SAP só pra calcular (apagado na hora).
+  documento: 'cotacao' | 'pedido' | 'simulacao'
   docNum: number
   total: number
   icms: number
@@ -137,11 +138,11 @@ type LinhaSap = { ItemCode: string; LineTaxJurisdictions?: { JurisdictionType: n
 const r2 = (n: number) => Math.round(n * 100) / 100
 export async function lerImpostosSap(
   sap: { get<T = unknown>(c: string): Promise<T> },
-  documento: 'cotacao' | 'pedido',
+  documento: 'cotacao' | 'pedido' | 'simulacao',
   docEntry: number
 ): Promise<ImpostosSap> {
   const d = await sap.get<{ DocNum: number; DocTotal: number; DocumentLines: LinhaSap[] }>(
-    `/${documento === 'cotacao' ? 'Quotations' : 'Orders'}(${docEntry})?$select=DocNum,DocTotal,DocumentLines`
+    `/${documento === 'cotacao' ? 'Quotations' : documento === 'pedido' ? 'Orders' : 'Drafts'}(${docEntry})?$select=DocNum,DocTotal,DocumentLines`
   )
   const linhas = (d.DocumentLines ?? []).map((l) => {
     const j = l.LineTaxJurisdictions ?? []
@@ -154,6 +155,36 @@ export async function lerImpostosSap(
   return { documento, docNum: d.DocNum, total: d.DocTotal, icms: tot('icms'), ipi: tot('ipi'), st: tot('st'), linhas, lidoEm: new Date().toISOString() }
 }
 
+function linhasCotacao(c: CotacaoParaSap, deposito: string) {
+  return c.itens.map((i) =>
+    i.precoManual || i.descontoPct < 0
+      ? { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoUnitario, DiscountPercent: 0, WarehouseCode: deposito, Usage: i.utilizacao ?? UTILIZACAO_PADRAO }
+      : { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoTabela, DiscountPercent: i.descontoPct, WarehouseCode: deposito, Usage: i.utilizacao ?? UTILIZACAO_PADRAO }
+  )
+}
+
+// Impostos ANTES de mandar a cotação ao SAP (João, 2026-11-11: o papel tem
+// que sair igual ao do SAP, com IPI/ICMS): cria um esboço (Drafts) de Cotação
+// de Venda com os mesmos dados, lê os impostos que o SAP calculou e apaga o
+// esboço na hora — nenhuma cotação de verdade nasce no SAP.
+export async function simularImpostosSap(c: CotacaoParaSap): Promise<ImpostosSap> {
+  const deposito = DEPOSITO_DA_FILIAL[c.filial]
+  if (!deposito) throw new Error('Filial sem depósito de Revenda configurado')
+  return comSessaoSap(async (sap) => {
+    const r = await sap.escrever<{ DocEntry: number }>('POST', '/Drafts', {
+      DocObjectCode: 'oQuotations',
+      ...cabecalho({ ...c, tipoEnvio: c.tipoEnvio ?? 'CIF', anexoEntry: null }),
+      DocumentLines: linhasCotacao(c, deposito),
+    })
+    if (!r?.DocEntry) throw new Error('O SAP não devolveu o esboço')
+    try {
+      return await lerImpostosSap(sap, 'simulacao', r.DocEntry)
+    } finally {
+      await sap.escrever('DELETE', `/Drafts(${r.DocEntry})`).catch((e) => console.error('[cotacoes] apagar esboço de simulação', r.DocEntry, e instanceof Error ? e.message : e))
+    }
+  })
+}
+
 // Cria a Cotação de Venda no SAP. Linhas na mesma ordem dos itens (LineNum
 // 0..n-1) — o pedido usa essa ordem pra apontar cada linha.
 export async function enviarCotacaoSap(c: CotacaoParaSap): Promise<{ docEntry: number; docNum: number; total: number; impostos: ImpostosSap | null }> {
@@ -162,11 +193,7 @@ export async function enviarCotacaoSap(c: CotacaoParaSap): Promise<{ docEntry: n
   return comSessaoSap(async (sap) => {
     const r = await sap.escrever<{ DocEntry: number; DocNum: number; DocTotal: number }>('POST', '/Quotations', {
       ...cabecalho(c),
-      DocumentLines: c.itens.map((i) =>
-        i.precoManual || i.descontoPct < 0
-          ? { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoUnitario, DiscountPercent: 0, WarehouseCode: deposito, Usage: i.utilizacao ?? UTILIZACAO_PADRAO }
-          : { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoTabela, DiscountPercent: i.descontoPct, WarehouseCode: deposito, Usage: i.utilizacao ?? UTILIZACAO_PADRAO }
-      ),
+      DocumentLines: linhasCotacao(c, deposito),
     })
     if (!r?.DocEntry) throw new Error('O SAP não devolveu o número da cotação')
     const impostos = await lerImpostosSap(sap, 'cotacao', r.DocEntry).catch(() => null)

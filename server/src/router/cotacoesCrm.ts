@@ -46,7 +46,7 @@ import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
 import { fotosPorItem } from '../lib/fotosProdutos.js'
-import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, impostosDoDocumentoSap, type ImpostosSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
+import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, impostosDoDocumentoSap, simularImpostosSap, type ImpostosSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { limiteAgora, limiteDaFoto } from '../lib/sapLimiteCredito.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
@@ -661,6 +661,8 @@ export const cotacoesCrmRouter = router({
             Object.fromEntries(Object.entries(input.despesasExtras ?? {}).filter(([k, v]) => DESPESAS_SAP.some((d) => String(d.codigo) === k) && v > 0).map(([k, v]) => [k, arred(v)]))
           ),
           ...(input.anexos ? { anexos: JSON.stringify(input.anexos) } : {}),
+          // Itens/preços podem ter mudado: os impostos simulados não valem mais.
+          impostos: null,
           total,
           maiorDescontoPct,
           updatedAt: agora,
@@ -1060,15 +1062,16 @@ export const cotacoesCrmRouter = router({
     }
   }),
 
-  // Busca de novo no SAP o ICMS/IPI da cotação (ou do pedido, se já gerado) —
-  // pras cotações enviadas antes dessa leitura existir.
+  // ICMS/IPI pelo SAP: do pedido ou da cotação que já estão lá; se a cotação
+  // ainda não foi pro SAP, simula num esboço temporário (apagado na hora) —
+  // o papel sai igual ao do SAP mesmo antes de enviar (João, 2026-11-11).
   atualizarImpostos: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
-    const alvo = c.sapPedidoEntry ? (['pedido', c.sapPedidoEntry] as const) : c.sapDocEntry ? (['cotacao', c.sapDocEntry] as const) : null
-    if (!alvo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Envie a cotação ao SAP primeiro — é o SAP que calcula os impostos' })
     let imp
     try {
-      imp = await impostosDoDocumentoSap(alvo[0], alvo[1])
+      if (c.sapPedidoEntry) imp = await impostosDoDocumentoSap('pedido', c.sapPedidoEntry)
+      else if (c.sapDocEntry) imp = await impostosDoDocumentoSap('cotacao', c.sapDocEntry)
+      else imp = await simularImpostosSap((await paraSap(c, ctx.filial)).dados)
     } catch (e) {
       throw sapErro(e)
     }

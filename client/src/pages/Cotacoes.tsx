@@ -521,7 +521,17 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
         const r = await salvar.mutateAsync(dadosParaSalvar())
         alvo = r.id
       }
-      const dados = await utils.cotacoesCrm.obter.fetch({ id: alvo! })
+      let dados = await utils.cotacoesCrm.obter.fetch({ id: alvo! })
+      // Papel igual ao do SAP: sem impostos ainda, calcula no SAP antes.
+      if (!dados.impostos) {
+        w.document.body.innerHTML = '<p style="font-family:sans-serif;padding:24px">Calculando ICMS/IPI no SAP…</p>'
+        try {
+          await buscarImpostos.mutateAsync({ id: alvo! })
+          dados = await utils.cotacoesCrm.obter.fetch({ id: alvo! })
+        } catch {
+          /* segue sem impostos ("na NF") — o erro já saiu no toast */
+        }
+      }
       if (!dados.clienteSap) dados.clienteSap = await utils.cotacoesCrm.dadosClienteSap.fetch({ id: alvo! })
       w.document.open()
       w.document.write(htmlCotacao(dados, ctx!, porCodigo))
@@ -969,7 +979,12 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                     </div>
                   )}
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-dark-300">Total com impostos <span className="text-[10px] text-dark-500">(SAP {impostos.documento === 'pedido' ? 'pedido' : 'cotação'} nº {impostos.docNum})</span></span>
+                    <span className="text-sm text-dark-300">
+                      Total com impostos{' '}
+                      <span className="text-[10px] text-dark-500">
+                        ({impostos.documento === 'simulacao' ? 'calculado pelo SAP' : `SAP ${impostos.documento === 'pedido' ? 'pedido' : 'cotação'} nº ${impostos.docNum}`})
+                      </span>
+                    </span>
                     <span className="text-xl font-bold text-gold-300">{formatarMoeda(impostos.total)}</span>
                   </div>
                 </>
@@ -982,12 +997,12 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                     <span className="text-xl font-bold text-gold-300">{formatarMoeda(valorTotal)}</span>
                   </div>
                   <p className="text-right text-[11px] text-dark-500">
-                    {existente?.sapDocEntry ? (
-                      <button type="button" className="text-blue-400 hover:underline" disabled={buscarImpostos.isPending} onClick={() => id != null && buscarImpostos.mutate({ id })}>
-                        {buscarImpostos.isPending ? 'Buscando…' : 'Buscar ICMS/IPI no SAP'}
+                    {id != null && !alterado ? (
+                      <button type="button" className="text-blue-400 hover:underline" disabled={buscarImpostos.isPending} onClick={() => buscarImpostos.mutate({ id })}>
+                        {buscarImpostos.isPending ? 'Calculando no SAP…' : 'Calcular ICMS/IPI no SAP'}
                       </button>
                     ) : (
-                      'ICMS/IPI: o SAP calcula quando a cotação for enviada ao SAP'
+                      'ICMS/IPI: salve a cotação para calcular no SAP'
                     )}
                   </p>
                 </>
@@ -1034,7 +1049,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                   placeholder="Frete, entrega, condição combinada…"
                 />
               </Campo>
-              <p className="text-[11px] text-dark-500">{impostos ? 'ICMS/IPI calculados pelo SAP.' : 'ICMS/IPI aparecem depois de "Enviar ao SAP" (é o SAP que calcula).'}</p>
+              <p className="text-[11px] text-dark-500">{impostos ? 'ICMS/IPI calculados pelo SAP.' : 'ICMS/IPI: clique em "Calcular ICMS/IPI no SAP" (o Imprimir calcula sozinho).'}</p>
             </div>
           {existente && existente.historico.length > 0 && (
             <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
