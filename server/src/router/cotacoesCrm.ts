@@ -41,6 +41,7 @@ import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
 import { fotosPorItem } from '../lib/fotosProdutos.js'
 import { enviarCotacaoSap, faltasDeEstoqueSap, fecharCotacaoSap, gerarPedidoSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
+import { limiteAgora, limiteDaFoto } from '../lib/sapLimiteCredito.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
@@ -169,6 +170,27 @@ async function umaPorVez<T>(id: number, fn: () => Promise<T>): Promise<T> {
 }
 
 const sapErro = (e: unknown) => new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
+
+// SAP recusou o envio (limite de crédito, prazo etc. — João, 2026-11-11): a
+// mensagem antes só aparecia na hora e sumia. Fica no histórico da cotação e
+// avisa o vendedor dono e o gerente de cotações.
+async function registrarRecusaSap(
+  ctx: { user: { id: number; name: string }; gerenteId: number | null },
+  c: { id: number; clienteId: number; vendedorId: number; total: number },
+  oque: string,
+  e: unknown
+) {
+  const msg = (e as Error)?.message ?? String(e)
+  try {
+    await registrar(c.id, ctx.user.id, `SAP recusou: ${oque}`, msg.slice(0, 500))
+    const cliente = await nomeCliente(c.clienteId)
+    const texto = `O SAP recusou ${oque} da cotação nº ${c.id} (${cliente}, ${brl(c.total)}): ${msg.slice(0, 300)}`
+    for (const id of new Set([c.vendedorId, ctx.gerenteId].filter((x): x is number => !!x && x !== ctx.user.id)))
+      await avisar(id, c.clienteId, 'SAP recusou a cotação', texto)
+  } catch (err) {
+    console.error('[cotacoes] registrar recusa do SAP:', err)
+  }
+}
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
 
@@ -659,6 +681,7 @@ export const cotacoesCrmRouter = router({
     try {
       r = await enviarCotacaoSap(dados)
     } catch (e) {
+      await registrarRecusaSap(ctx, c, 'o envio', e)
       throw sapErro(e)
     }
     await db.update(cotacoesCrm).set({ sapDocEntry: r.docEntry, sapDocNum: r.docNum, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
@@ -691,9 +714,23 @@ export const cotacoesCrmRouter = router({
       return { docNum: r.docNum, total: r.total }
     } catch (e) {
       if (e instanceof TRPCError) throw e
+      await registrarRecusaSap(ctx, c, 'o pedido', e)
       throw sapErro(e)
     }
   })),
+
+  // Limite de crédito do cliente no SAP, na hora (tela da cotação avisa antes
+  // de mandar o pedido). null = sem limite cadastrado; erro = não deu pra ver.
+  limiteCredito: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { codigo: true } })
+    if (!cliente?.codigo) return { limite: null, erro: null }
+    try {
+      return { limite: await limiteAgora(cliente.codigo), erro: null }
+    } catch (e) {
+      return { limite: limiteDaFoto(cliente.codigo), erro: (e as Error).message }
+    }
+  }),
 
   // Pra impressão: dados do cliente no SAP, buscando agora se ainda não tem.
   dadosClienteSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {

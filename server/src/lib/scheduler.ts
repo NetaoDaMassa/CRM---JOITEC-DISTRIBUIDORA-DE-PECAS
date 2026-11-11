@@ -17,6 +17,7 @@ import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
 import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
@@ -233,6 +234,10 @@ export function startScheduler() {
   // Estoque de Revenda e giro por item (relatórios de estoque) — de 15 em 15 min.
   cron.schedule('12-59/15 * * * *', () => {
     rodarEstoqueSap().catch((err) => console.error('[sap-estoque] erro no agendador:', err))
+  })
+  // Limite de crédito dos clientes no SAP (selo no Kanban) — de 30 em 30 min.
+  cron.schedule('23,53 * * * *', () => {
+    atualizarFotoLimites().catch((err) => console.error('[sap-limite] erro no agendador:', err instanceof Error ? err.message : err))
   })
   // Catálogo das Cotações do CRM — confere aos :47, refaz a cada 3 horas.
   cron.schedule('47 * * * *', () => {

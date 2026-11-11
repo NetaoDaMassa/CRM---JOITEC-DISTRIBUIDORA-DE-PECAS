@@ -14,6 +14,7 @@ import { SLUG_VENDA_RAPIDA } from './vendas.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
 import { registrarHistoricoOrdem } from '../lib/ordensGates.js'
 import { vendaJaVeioDoSap } from '../lib/sapVendasAuto.js'
+import { limiteDaFoto, SLUGS_EMPRESAS_SAP } from '../lib/sapLimiteCredito.js'
 
 // Etapas pra onde dá pra reabrir/reenviar um pedido cancelado a partir de
 // "Fechado" — mesma lista de ETAPAS_ABERTAS_SUGESTAO do front (reset
@@ -47,6 +48,9 @@ const ETAPA_VALUES = [
 // entram.
 async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAdmin: boolean, mesReferencia?: string) {
   const mes = mesReferencia ?? mesReferenciaAtual()
+  const empresasSap = new Set(
+    (await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_EMPRESAS_SAP), columns: { id: true } })).map((e) => e.id)
+  )
 
   const funis = await db.query.funilMensal.findMany({
     // Cliente excluído (lixeira) não aparece no Kanban — a exclusão só marca
@@ -71,6 +75,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
           cnpj: true,
           cpf: true,
           codigo: true,
+          empresaId: true,
           inscricaoEstadual: true,
           estado: true,
           cidade: true,
@@ -328,6 +333,12 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,
+    // Limite de crédito do SAP estourado (selo no card) — só empresas do SAP.
+    limiteCreditoEstourado: (() => {
+      if (!empresasSap.has(f.cliente.empresaId)) return null
+      const l = limiteDaFoto(f.cliente.codigo)
+      return l && l.disponivel <= 0 ? l : null
+    })(),
     contatos: (contatosPorFunil.get(f.id) ?? []).map((c) => ({
       id: c.id,
       tipo: c.tipo,

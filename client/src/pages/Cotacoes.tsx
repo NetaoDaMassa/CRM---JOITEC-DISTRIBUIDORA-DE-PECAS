@@ -345,11 +345,18 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     if (confirm(`Criar a cotação nº ${id} no SAP?`)) enviarSap.mutate({ id })
     else travaSap.current = false
   }
+  const { data: credito } = trpc.cotacoesCrm.limiteCredito.useQuery({ id: id ?? 0 }, { enabled: id != null && !!existente, staleTime: 5 * 60_000 })
   const onGerarPedido = () => {
     if (travaSap.current || id == null || !existente) return
     travaSap.current = true
     const aceitos = existente.itens.filter((i) => i.aceito)
-    if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?`)) gerarPedido.mutate({ id })
+    const valorAceito = aceitos.reduce((s, i) => s + i.quantidade * i.precoUnitario, 0)
+    const lim = credito?.limite
+    const aviso =
+      lim && valorAceito > lim.disponivel
+        ? `\n\n⚠ ATENÇÃO: o pedido (${formatarMoeda(valorAceito)}) passa do limite de crédito disponível do cliente no SAP (${formatarMoeda(Math.max(0, lim.disponivel))}). O SAP pode recusar — confira com o financeiro.`
+        : ''
+    if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?${aviso}`)) gerarPedido.mutate({ id })
     else travaSap.current = false
   }
   const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
@@ -567,6 +574,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
       </div>
 
       {existente && <FaixaSituacao c={existente} status={status} descontoLivre={ctx?.descontoLivre ?? 0} gerente={ctx?.gerente?.name ?? null} />}
+      {existente && id != null && status !== 'perdida' && !existente.sapPedidoNum && <LimiteCredito id={id} valor={valorTotal} />}
 
       {/* Faixa de cima: cliente e condições, na largura toda. */}
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
@@ -1385,6 +1393,37 @@ function BuscaCliente({ onEscolher }: { onEscolher: (c: ClienteBusca) => void })
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// Limite de crédito do cliente no SAP (João, 2026-11-11): avisa antes de
+// mandar o pedido — no SAP o bloqueio por crédito só aparece na hora de lançar.
+function LimiteCredito({ id, valor }: { id: number; valor: number }) {
+  const { data, isLoading } = trpc.cotacoesCrm.limiteCredito.useQuery({ id }, { staleTime: 5 * 60_000 })
+  if (isLoading || !data) return null
+  const l = data.limite
+  if (!l) {
+    return data.erro ? <p className="text-xs text-dark-500">Não deu para conferir o limite de crédito no SAP agora.</p> : null
+  }
+  const disponivel = Math.max(0, l.disponivel)
+  const estourado = l.disponivel <= 0
+  const passa = !estourado && valor > l.disponivel
+  const cor = estourado || passa ? 'border-red-700/60 bg-red-900/20 text-red-100' : 'border-dark-600 bg-dark-800 text-dark-200'
+  return (
+    <div className={`rounded-xl border px-4 py-2.5 text-sm ${cor}`}>
+      <span className="font-semibold">
+        {estourado ? '⚠ Cliente sem limite de crédito no SAP' : passa ? '⚠ Esta cotação passa do limite de crédito do cliente' : '💳 Limite de crédito no SAP'}
+      </span>
+      <span className="ml-2 text-xs opacity-90">
+        Limite {formatarMoeda(l.limite)} · Usado {formatarMoeda(l.usado)} (títulos em aberto{l.pedidosAbertos > 0 ? ' + pedidos abertos' : ''}) · Disponível <b>{formatarMoeda(disponivel)}</b>
+      </span>
+      {(estourado || passa) && (
+        <p className="text-xs mt-1 opacity-90">
+          {estourado ? 'O SAP pode recusar qualquer pedido a prazo para este cliente.' : `Esta cotação é de ${formatarMoeda(valor)}.`} Fale com o financeiro antes de gerar o pedido (liberar limite ou pagamento à vista).
+        </p>
+      )}
+      {data.erro && <p className="text-[11px] mt-1 opacity-70">Valor da última consulta — o SAP não respondeu agora.</p>}
     </div>
   )
 }

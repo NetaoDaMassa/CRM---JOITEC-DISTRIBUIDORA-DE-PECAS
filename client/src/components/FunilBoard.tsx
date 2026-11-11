@@ -914,6 +914,14 @@ export default function FunilBoard({
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
                       )}
+                      {card.limiteCreditoEstourado && (
+                        <p
+                          className="text-[11px] font-semibold text-red-200 bg-red-900/30 border border-red-700/60 rounded px-1.5 py-0.5 mb-1"
+                          title={`Limite ${formatarMoeda(card.limiteCreditoEstourado.limite)} · usado ${formatarMoeda(card.limiteCreditoEstourado.usado)} — o SAP pode recusar pedido a prazo. Fale com o financeiro.`}
+                        >
+                          ⚠ Sem limite de crédito no SAP (limite {formatarMoeda(card.limiteCreditoEstourado.limite)} · usado {formatarMoeda(card.limiteCreditoEstourado.usado)})
+                        </p>
+                      )}
 
                       {ultimoContato && (
                         <div className="bg-dark-900/60 rounded-lg px-2 py-1.5 mt-2 mb-2">
