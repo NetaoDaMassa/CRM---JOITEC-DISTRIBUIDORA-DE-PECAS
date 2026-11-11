@@ -155,9 +155,13 @@ async function gravarDevolucoes(sap: SapSessao, de: string, ate: string): Promis
 // implantação — leve, roda junto com a foto de hora em hora.
 async function tirarCanceladas(sap: SapSessao): Promise<number> {
   let tiradas = 0
+  // Nota de entrada cancelada depois de 5 dias também ficava (auditoria
+  // 2026-11-11: S000022, nota de entrada 2513 cancelada).
   for (const [entidade, origem] of [
     ['Invoices', 'nota'],
     ['CreditNotes', 'devolucao'],
+    ['PurchaseInvoices', 'compra'],
+    ['InventoryGenEntries', 'entrada'],
   ] as const) {
     const canceladas = await sap.getTodos<{ DocEntry: number }>(`/${entidade}?$select=DocEntry&$filter=Cancelled eq 'tYES' and DocDate ge '${SAP_INICIO}'`, 500)
     const ids = canceladas.map((c) => c.DocEntry)
