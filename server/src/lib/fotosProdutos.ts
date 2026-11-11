@@ -6,15 +6,15 @@
 //                código do item no nome da subpasta ou do arquivo (ex.:
 //                "Catálogo / Válvulas / I001568 - VALVULA ..."). João,
 //                2026-11-11;
-//   - 'catalogo' — recorte do catálogo em PDF da Joitec (semente em
-//                data/fotosProdutos.ts, trabalho de 2026-11-06);
+//   - 'catalogo' — recorte do catálogo em PDF da Joitec (2026-11-06) e do
+//                catálogo Odin TC (2026-11-11), semente em data/fotosProdutos.ts;
 //   - 'tipo'   — foto do TIPO de peça da Odin Tubos ("JOELHO 90°.png" vale
 //                pra todas as medidas de joelho 90°): ilustrativa, a tela
 //                avisa. João aceitou ligar sozinho (2026-11-11).
 import { inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { itemFotos } from '../db/schema.js'
-import { FOTOS_CATALOGO_JOITEC } from '../data/fotosProdutos.js'
+import { FOTOS_CATALOGO_JOITEC, FOTOS_CATALOGO_ODINTC } from '../data/fotosProdutos.js'
 
 export type OrigemFoto = 'upload' | 'midia' | 'catalogo' | 'tipo'
 export interface FotoItem {
@@ -23,10 +23,22 @@ export interface FotoItem {
   ilustrativa: boolean
 }
 
+// Recorte do catálogo entra onde não tem foto ou onde só tem a ilustrativa
+// do tipo de peça; nunca passa por cima de 'midia' nem 'upload'. Item que
+// está nos dois catálogos fica com o da Odin TC (é o catálogo do fabricante).
 export async function semearFotosCatalogo(): Promise<void> {
-  const linhas = Object.entries(FOTOS_CATALOGO_JOITEC).map(([itemCodigo, url]) => ({ itemCodigo, url, origem: 'catalogo' as const }))
-  for (let i = 0; i < linhas.length; i += 200) await db.insert(itemFotos).values(linhas.slice(i, i + 200)).onConflictDoNothing()
+  const linhas = Object.entries({ ...FOTOS_CATALOGO_JOITEC, ...FOTOS_CATALOGO_ODINTC }).map(([itemCodigo, url]) => ({ itemCodigo, url, origem: 'catalogo' as const }))
+  for (let i = 0; i < linhas.length; i += 200)
+    await db
+      .insert(itemFotos)
+      .values(linhas.slice(i, i + 200))
+      .onConflictDoUpdate({
+        target: itemFotos.itemCodigo,
+        set: { url: sql`excluded.url`, origem: 'catalogo', atualizadoPorId: null, atualizadoEm: sql`(datetime('now'))` },
+        setWhere: sql`${itemFotos.origem} = 'tipo' OR (${itemFotos.origem} = 'catalogo' AND ${itemFotos.url} <> excluded.url)`,
+      })
 }
+let semeadoNestaSubida = false
 
 // Fotos de alguns itens, com o aviso de ilustrativa.
 export async function fotosDosItens(codigos: (string | null | undefined)[]): Promise<Map<string, FotoItem>> {
@@ -153,6 +165,12 @@ export function fotoDoTipo(nomeItem: string, arquivos: ArquivoProduto[]): Arquiv
 // Liga as fotos das pastas aos itens. Roda de 15 em 15 min e na subida do
 // servidor; barato (algumas centenas de arquivos e ~2.600 itens).
 export async function sincronizarFotosMidia(): Promise<{ porCodigo: number; porTipo: number; removidas: number }> {
+  // Na subida, garante os recortes dos catálogos antes (a rodada do catálogo
+  // do SAP, que também semeia, é de 3 em 3 horas).
+  if (!semeadoNestaSubida) {
+    await semearFotosCatalogo()
+    semeadoNestaSubida = true
+  }
   const arquivos = await arquivosDasPastasDeProdutos()
   const atuais = new Map((await db.select().from(itemFotos)).map((l) => [l.itemCodigo, l]))
 
