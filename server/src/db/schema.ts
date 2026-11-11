@@ -630,6 +630,15 @@ export const vendas = sqliteTable('vendas', {
   // venda duplicada.
   pedidoSapEntry: integer('pedido_sap_entry'),
   criadaPeloSap: integer('criada_pelo_sap', { mode: 'boolean' }).notNull().default(false),
+  // Venda de balcão (Compretec Loja Física): não cria mais um cliente por
+  // venda — todas caem no cadastro "CONSUMIDOR FINAL" do vendedor
+  // (lib/consumidorFinalBalcao.ts) e quem comprou fica aqui, na venda.
+  // Pedido do João, 2026-11-11. A origem de Marketing também passa a ser da
+  // venda (antes ia no cliente criado na hora).
+  nomeComprador: text('nome_comprador'),
+  telefoneComprador: text('telefone_comprador'),
+  origemMarketing: integer('origem_marketing', { mode: 'boolean' }).notNull().default(false),
+  origemMarketingTipo: text('origem_marketing_tipo', { enum: ['padrao', 'site'] }),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   deletedAt: text('deleted_at'),
 }, (t) => ({

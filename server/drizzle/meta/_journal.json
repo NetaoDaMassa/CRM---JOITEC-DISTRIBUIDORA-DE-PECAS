@@ -1065,6 +1065,13 @@
       "when": 1794340000000,
       "tag": "0151_cotacoes_crm",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "6",
+      "when": 1794400000000,
+      "tag": "0152_venda_balcao_comprador",
+      "breakpoints": true
     }
   ]
 }

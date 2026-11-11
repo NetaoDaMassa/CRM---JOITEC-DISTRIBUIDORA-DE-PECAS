@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, isNull, or } from 'drizzle-orm'
 import { router, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { empresas, clientes, vendas as vendasTable } from '../db/schema.js'
@@ -39,7 +39,7 @@ export const marketingGeralRouter = router({
             .select({ valorFechado: vendasTable.valorFechado, dataFechamento: vendasTable.dataFechamento })
             .from(vendasTable)
             .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
-            .where(and(eq(clientes.empresaId, empresa.id), eq(clientes.origemMarketing, true), isNull(vendasTable.deletedAt)))
+            .where(and(eq(clientes.empresaId, empresa.id), or(eq(clientes.origemMarketing, true), eq(vendasTable.origemMarketing, true)), isNull(vendasTable.deletedAt)))
 
           const vendasMarketingPeriodo = vendasMarketingRows.filter((v) => {
             const dataLocal = toLocalDateKey(toUtcISO(v.dataFechamento))

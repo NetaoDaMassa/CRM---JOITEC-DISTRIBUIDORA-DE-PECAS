@@ -17,6 +17,7 @@ import { ClientesParados, CurvaAbc, Positivacao } from './detalhes/Carteira'
 import { Orcamentos, Perdas, Produtos, TodasEmpresas, Vendas } from './detalhes/Vendas'
 import { Contatos, Ligacoes } from './detalhes/Contatos'
 import { ItensSap } from './detalhes/ItensSap'
+import { LeadSite } from './detalhes/LeadSite'
 import type { PropsDetalhe } from './detalhes/tipos'
 
 // Exportar relatórios (pedido do João, 2026-10-20): escolhe quais relatórios
@@ -34,6 +35,7 @@ const COMPONENTES: Record<string, ComponentType<PropsDetalhe>> = {
   positivacao: Positivacao,
   'curva-abc': CurvaAbc,
   vendas: Vendas,
+  'lead-site': LeadSite,
   orcamentos: Orcamentos,
   produtos: Produtos,
   'itens-sap': ItensSap,

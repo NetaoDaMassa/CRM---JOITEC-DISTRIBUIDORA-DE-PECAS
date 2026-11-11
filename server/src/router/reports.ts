@@ -568,7 +568,8 @@ export const reportsRouter = router({
     if (filtroVend) filtros.push(filtroVend)
     const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
     if (filtroReg) filtros.push(filtroReg)
-    if (input.apenasMarketing) filtros.push(eq(clientes.origemMarketing, true))
+    // Venda de balcão guarda a origem de Marketing na própria venda (2026-11-11).
+    if (input.apenasMarketing) filtros.push(or(eq(clientes.origemMarketing, true), eq(vendasTable.origemMarketing, true))!)
 
     const [{ quantidade, valorTotal }] = await db
       .select({
@@ -661,6 +662,64 @@ export const reportsRouter = router({
   // condição de pagamento, nº do pedido/nota — mesmo escopo e filtros de
   // `vendas` (Carteira + Pedidos Odin + histórico SAP). Vendedor só vê as
   // dele. Pedidos/SAP nem sempre têm condição de pagamento.
+  // Vendas de Lead Site (pedido do João, 2026-11-11, Compretec Loja Física):
+  // quanto foi vendido pra quem veio do site e quanto cada vendedor vendeu.
+  // Conta a venda quando o CLIENTE está marcado "Cliente de Marketing → Lead
+  // Site" ou quando a própria VENDA foi marcada assim (venda de balcão, que
+  // não tem cadastro próprio do comprador). Venda conta pra quem vendeu.
+  vendasLeadSite: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
+    const { inicio, fim } = limitesDia(input)
+    const filtros = [
+      between(vendasTable.dataFechamento, inicio, fim),
+      isNull(vendasTable.deletedAt),
+      eq(users.empresaId, ctx.empresaId),
+      or(
+        and(eq(clientes.origemMarketing, true), eq(clientes.origemMarketingTipo, 'site')),
+        and(eq(vendasTable.origemMarketing, true), eq(vendasTable.origemMarketingTipo, 'site'))
+      )!,
+    ]
+    const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, vendasTable.vendedorId)
+    if (filtroVend) filtros.push(filtroVend)
+    const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+    if (filtroReg) filtros.push(filtroReg)
+
+    const linhas = await db
+      .select({
+        id: vendasTable.id,
+        dataFechamento: vendasTable.dataFechamento,
+        clienteId: vendasTable.clienteId,
+        razaoSocial: clientes.razaoSocial,
+        nomeComprador: vendasTable.nomeComprador,
+        vendedorId: vendasTable.vendedorId,
+        vendedorNome: users.name,
+        valor: vendasTable.valorFechado,
+        condicaoPagamento: vendasTable.condicaoPagamento,
+        numeroPedido: vendasTable.numeroPedido,
+        numeroNotaFiscal: vendasTable.numeroNotaFiscal,
+        numeroCupomFiscal: vendasTable.numeroCupomFiscal,
+      })
+      .from(vendasTable)
+      .innerJoin(clientes, eq(clientes.id, vendasTable.clienteId))
+      .innerJoin(users, eq(users.id, vendasTable.vendedorId))
+      .where(and(...filtros))
+      .orderBy(desc(vendasTable.dataFechamento))
+
+    return linhas.map((v) => ({
+      chave: `crm-${v.id}`,
+      data: v.dataFechamento.slice(0, 10),
+      clienteId: v.clienteId,
+      cliente: v.nomeComprador ?? v.razaoSocial,
+      vendedorId: v.vendedorId,
+      vendedor: v.vendedorNome,
+      valor: v.valor,
+      condicaoPagamento: v.condicaoPagamento,
+      numero:
+        [v.numeroPedido && `Pedido ${v.numeroPedido}`, v.numeroNotaFiscal && `NF ${v.numeroNotaFiscal}`, v.numeroCupomFiscal && `Cupom ${v.numeroCupomFiscal}`]
+          .filter(Boolean)
+          .join(' · ') || null,
+    }))
+  }),
+
   vendasLista: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
     const filtros = [between(vendasTable.dataFechamento, inicio, fim), isNull(vendasTable.deletedAt), eq(users.empresaId, ctx.empresaId)]
@@ -675,6 +734,7 @@ export const reportsRouter = router({
         dataFechamento: vendasTable.dataFechamento,
         clienteId: vendasTable.clienteId,
         razaoSocial: clientes.razaoSocial,
+        nomeComprador: vendasTable.nomeComprador,
         vendedorNome: users.name,
         valor: vendasTable.valorFechado,
         condicaoPagamento: vendasTable.condicaoPagamento,
@@ -714,7 +774,7 @@ export const reportsRouter = router({
       // Mesmo dia que vendasPorDia usa (date(dataFechamento)).
       data: v.dataFechamento.slice(0, 10),
       clienteId: v.clienteId,
-      cliente: v.razaoSocial,
+      cliente: v.nomeComprador ?? v.razaoSocial,
       vendedor: v.vendedorNome,
       valor: v.valor,
       condicaoPagamento: v.condicaoPagamento,

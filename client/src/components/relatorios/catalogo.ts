@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Building2, ChartColumnBig, FileText, PackageSearch, PhoneCall, Layers, MessagesSquare, UserX, XCircle } from 'lucide-react'
+import { Activity, BarChart3, Building2, ChartColumnBig, FileText, Globe, PackageSearch, PhoneCall, Layers, MessagesSquare, UserX, XCircle } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 // Relatórios detalhados (pedido do João, 2026-10-20): cada um numa página
@@ -23,6 +23,7 @@ export const RELATORIOS_DETALHADOS: RelatorioDetalhado[] = [
   { slug: 'positivacao', curto: 'Positivação', titulo: 'Positivação de carteira', descricao: 'Carteira por data da última compra: ativos, novos, recuperados, quase inativos e inativos.', icone: Activity, cor: '#22a861', feature: 'relatorio_visao_geral', vendedor: true },
   { slug: 'curva-abc', curto: 'Curva ABC', titulo: 'Curva ABC de clientes', descricao: 'Quem traz 80% do faturamento (A), os próximos 15% (B) e o resto (C).', icone: Layers, cor: '#f2a516', feature: 'relatorio_visao_geral' },
   { slug: 'vendas', curto: 'Vendas', titulo: 'Vendas', descricao: 'Faturamento por dia e por vendedor, ticket médio e vendas de marketing.', icone: BarChart3, cor: '#24aff4', feature: 'relatorio_visao_geral', vendedor: true },
+  { slug: 'lead-site', curto: 'Vendas Lead Site', titulo: 'Vendas Lead Site', descricao: 'Quanto foi vendido pra clientes que vieram do site e quanto cada vendedor vendeu.', icone: Globe, cor: '#ec4899', feature: 'relatorio_visao_geral', vendedor: true },
   { slug: 'orcamentos', curto: 'Orçamentos', titulo: 'Orçamentos', descricao: 'Orçamentos em aberto, há quantos dias parados, e quantos cada vendedor fez.', icone: FileText, cor: '#8b5cf6', feature: 'relatorio_orcamentos', vendedor: true },
   { slug: 'produtos', curto: 'Produtos e mix', titulo: 'Produtos e mix', descricao: 'Itens mais comprados e média de itens por cliente de cada vendedor.', icone: PackageSearch, cor: '#0ea5a4', feature: 'relatorio_orcamentos' },
   { slug: 'itens-sap', curto: 'Itens SAP mês a mês', titulo: 'Itens do SAP mês a mês', descricao: 'Quanto cada item vendeu em cada mês, o que caiu, parou ou subiu, com gráfico e quem comprou. Também: itens que menos venderam, estoque sem venda e tempo de estoque.', icone: ChartColumnBig, cor: '#14b8a6', feature: 'relatorio_orcamentos', vendedor: true },

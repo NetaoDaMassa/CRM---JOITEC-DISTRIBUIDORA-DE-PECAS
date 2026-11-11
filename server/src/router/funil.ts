@@ -1,3 +1,4 @@
+import { ehClienteBalcao } from '../lib/consumidorFinalBalcao.js'
 import { z } from 'zod'
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
@@ -245,6 +246,8 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
   const orcamentoLabelPorFunil = new Map<number, string>()
   for (const lista of funisPorCliente.values()) {
     if (lista.length < 2) continue
+    // Cadastro "CONSUMIDOR FINAL" da venda de balcão: um card por venda, não é orçamento.
+    if (ehClienteBalcao(lista[0].cliente.codigo)) continue
     const ordenada = [...lista].sort((a, b) => a.id - b.id)
     ordenada.forEach((f, i) => orcamentoLabelPorFunil.set(f.id, `Orçamento ${i + 1}`))
   }
@@ -258,8 +261,15 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     etapa: f.etapa,
     vendedorId: f.vendedorId,
     clienteId: f.cliente.id,
-    razaoSocial: f.cliente.razaoSocial,
-    telefoneWhatsapp: f.cliente.telefoneWhatsapp,
+    // Venda de balcão: o card mostra quem comprou (fica na venda), não o
+    // cadastro "CONSUMIDOR FINAL" que é o mesmo pra todas.
+    clienteBalcao: ehClienteBalcao(f.cliente.codigo),
+    razaoSocial: ehClienteBalcao(f.cliente.codigo)
+      ? f.vendas.find((v) => v.nomeComprador)?.nomeComprador ?? f.cliente.razaoSocial
+      : f.cliente.razaoSocial,
+    telefoneWhatsapp: ehClienteBalcao(f.cliente.codigo)
+      ? f.vendas.find((v) => v.telefoneComprador)?.telefoneComprador ?? null
+      : f.cliente.telefoneWhatsapp,
     telefonesExtras: f.cliente.telefonesExtras,
     emailsExtras: f.cliente.emailsExtras,
     email: f.cliente.email,
@@ -273,8 +283,8 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     estado: f.cliente.estado,
     cidade: f.cliente.cidade,
     clienteVersao: f.cliente.versao,
-    origemMarketing: f.cliente.origemMarketing,
-    origemMarketingTipo: f.cliente.origemMarketingTipo,
+    origemMarketing: f.cliente.origemMarketing || f.vendas.some((v) => v.origemMarketing),
+    origemMarketingTipo: f.cliente.origemMarketingTipo ?? f.vendas.find((v) => v.origemMarketing)?.origemMarketingTipo ?? null,
     cadastroRapido: f.cliente.cadastroRapido,
     importadoRecentemente: f.cliente.importadoRecentemente,
     novoDoSapEm: f.cliente.novoDoSapEm,

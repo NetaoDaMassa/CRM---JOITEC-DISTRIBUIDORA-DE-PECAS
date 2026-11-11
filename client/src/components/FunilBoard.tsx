@@ -24,6 +24,7 @@ import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
 import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
+import HistoricoComprasCard from './HistoricoComprasCard'
 import InadimplenciaCliente from './InadimplenciaCliente'
 import JornadaPedidosCliente from './JornadaPedidosCliente'
 import HistoricoCotacoesSapCliente from './HistoricoCotacoesSapCliente'
@@ -367,7 +368,7 @@ function VendaRapidaModal({ open, onClose, vendedorId }: { open: boolean; onClos
             options={(vendedores ?? []).map((v) => ({ value: String(v.id), label: v.name }))}
           />
         )}
-        <Input label="Nome do cliente" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
+        <Input label="Nome de quem comprou" value={nomeCliente} onChange={(e) => setNomeCliente(e.target.value)} />
         <Input label="Número do pedido" value={numeroPedido} onChange={(e) => setNumeroPedido(e.target.value)} placeholder="Ex: 10210" />
         <Input label="Valor do pedido (R$)" type="number" min="0" step="0.01" value={valor} onChange={(e) => setValor(e.target.value)} />
         <Input label="Data do pedido" type="date" value={dataPedido} onChange={(e) => setDataPedido(e.target.value)} />
@@ -1862,6 +1863,13 @@ function CardModal({
             {cotacoesSapAbertas && <HistoricoCotacoesSapCliente clienteId={card.clienteId} />}
           </div>
         )}
+        {mostrarConsumidorFinalLoja && !card.clienteBalcao && <HistoricoComprasCard clienteId={card.clienteId} />}
+        {card.clienteBalcao ? (
+          <p className="text-xs text-dark-400 bg-dark-900/50 border border-dark-700 rounded-xl px-3 py-2">
+            Venda de balcão (consumidor final) — não gera cadastro de cliente. Quem comprou fica registrado na própria venda.
+          </p>
+        ) : (
+        <>
         <ClienteInfoEditavel card={card} />
 
         <div>
@@ -1880,6 +1888,8 @@ function CardModal({
         </div>
 
         <SolicitarAcaoCarteira card={card} />
+        </>
+        )}
 
         {(card.etapa === 'negociacao' ||
           card.etapa === 'fechado' ||

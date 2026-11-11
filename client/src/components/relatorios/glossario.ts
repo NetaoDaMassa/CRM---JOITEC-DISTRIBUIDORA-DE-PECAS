@@ -134,6 +134,13 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'Vendedor', texto: 'Quem fechou o negócio no Kanban daquele mês.' },
     VARIACAO,
   ],
+  'lead-site': [
+    { termo: 'Total vendido (Lead Site)', texto: 'Soma das vendas do período pra clientes marcados como "Cliente de Marketing → Lead Site", mais as vendas de balcão marcadas assim na hora de registrar.' },
+    VENDAS_QTD,
+    TICKET,
+    { termo: 'Vendedor', texto: 'Quem fechou a venda (a venda conta pra quem vendeu, mesmo que o cliente tenha mudado de carteira depois).' },
+    VARIACAO,
+  ],
   orcamentos: [
     { termo: 'Em negociação agora', texto: 'Cards que estão AGORA na etapa Negociação do Kanban deste mês. É uma foto do momento, não muda com o filtro de data.' },
     { termo: 'Valor em aberto', texto: 'Soma dos valores orçados desses cards em negociação.' },

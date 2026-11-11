@@ -8,6 +8,7 @@ import { registrarAuditoria } from '../lib/auditoria.js'
 import { validarClienteFaturamento } from './vinculos.js'
 import { criarOrdemPecaSeOdinCompressores } from '../lib/vendaParaOrdemPeca.js'
 import { vendaJaVeioDoSap } from '../lib/sapVendasAuto.js'
+import { clienteBalcaoDoVendedor } from '../lib/consumidorFinalBalcao.js'
 
 // Só a Compretec Loja Física usa o botão de venda rápida (venda de balcão,
 // consumidor final) — pedido do João depois de criar o Thiago/Marcos/Flavio
@@ -15,7 +16,7 @@ import { vendaJaVeioDoSap } from '../lib/sapVendasAuto.js'
 export const SLUG_VENDA_RAPIDA = 'compretec-loja-fisica'
 
 export const vendasRouter = router({
-  // Venda de balcão (consumidor final) — cria cliente + funil já em
+  // Venda de balcão (consumidor final) — card já em
   // "fechado" + venda numa tacada só, sem passar pelas etapas normais
   // (novo→abordagem→...) do funil — mas exige PDF do pedido e data do
   // pedido, igual ao fechamento normal (pedido direto do João depois de
@@ -64,28 +65,15 @@ export const vendasRouter = router({
       // quebra os filtros de intervalo de data que comparam como texto).
       const dataFechamento = `${input.dataPedido} ${agoraSqlite().slice(11)}`
 
-      const codigo = `M${Date.now()}`
-      const clienteResult = await db.insert(clientes).values({
-        empresaId: ctx.empresaId,
-        razaoSocial: input.nomeCliente,
-        codigo,
-        regiao: 'sul',
-        telefoneWhatsapp: input.telefone || undefined,
-        statusFiscal: 'consumidor_final',
-        cadastradoPor: ctx.user.id,
-        vendedorAtualId: vendedorAlvoId,
-        dataUltimaCompra: agoraSqlite(),
-        origemMarketing: input.origemMarketing ?? false,
-        origemMarketingTipo: input.origemMarketing ? (input.origemMarketingTipo ?? 'padrao') : undefined,
-        // Venda de balcão não é carteira de verdade — sem isso, o cliente
-        // virava "Novo" de novo todo mês pro sempre (reset mensal) e inflava
-        // a cobertura de contatos/alertas de "sem contato" do vendedor com
-        // compradores avulsos que nunca mais vão ser contatados. Mesmo
-        // mecanismo que já isolava os prospects da Prospecção Odin. Pedido
-        // do João, 2026-10-13.
-        emProspeccao: true,
-      })
-      const clienteId = Number(clienteResult.lastInsertRowid)
+      // Não cria mais um cliente por venda (pedido do João, 2026-11-11) —
+      // entra no cadastro "CONSUMIDOR FINAL" do vendedor; quem comprou fica
+      // na venda (nomeComprador/telefoneComprador), assim como a origem de
+      // Marketing. Ver lib/consumidorFinalBalcao.ts.
+      const clienteId = await clienteBalcaoDoVendedor(ctx.empresaId, vendedorAlvoId, ctx.user.id)
+      await db
+        .update(clientes)
+        .set({ dataUltimaCompra: sql`max(coalesce(${clientes.dataUltimaCompra}, ''), ${dataFechamento})` })
+        .where(eq(clientes.id, clienteId))
 
       const mesReferencia = mesReferenciaAtual()
       const funilResult = await db.insert(funilMensal).values({
@@ -113,6 +101,10 @@ export const vendasRouter = router({
         numeroPedido: input.numeroPedido,
         pdfPedidoPath: input.pdfPedidoPath,
         dataFechamento,
+        nomeComprador: input.nomeCliente.trim() || null,
+        telefoneComprador: input.telefone?.trim() || null,
+        origemMarketing: input.origemMarketing ?? false,
+        origemMarketingTipo: input.origemMarketing ? (input.origemMarketingTipo ?? 'padrao') : null,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
 
@@ -131,7 +123,7 @@ export const vendasRouter = router({
         })
       }
 
-      await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'criar', alteradoPor: ctx.user.id })
+      await registrarAuditoria({ tabela: 'vendas', registroId: vendaId, acao: 'criar', alteradoPor: ctx.user.id })
 
       return { clienteId, funilMensalId, vendaId }
     }),
