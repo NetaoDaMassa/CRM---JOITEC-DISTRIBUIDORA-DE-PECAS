@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, eq, inArray, isNull, or, sql, type SQL } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { funilMensal, clientes, registroContato, pabxLigacoesProcessadas, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
@@ -357,6 +357,20 @@ async function buscarFaturamentoGeral(empresaId: number, ctxUserId: number, ctxI
 const ETAPAS_ABERTAS_FILA = ['novo', 'abordagem', 'interessado', 'negociacao', 'sem_contato']
 const TAMANHO_FILA_HOJE = 20
 
+// Card Fechado com venda que veio do pedido do SAP não volta pra trás pelo
+// vendedor (João, 2026-11-11: pedido 9299 entrou, foi pra Fechado e 2 min
+// depois o card foi arrastado pra Negociação — a venda ficou num card fora
+// de Fechado). Admin continua podendo. Devolve o nº do pedido, se travar.
+async function vendaSapNoCard(funilMensalId: number): Promise<string | null> {
+  const v = await db.query.vendas.findFirst({
+    where: and(eq(vendas.funilMensalId, funilMensalId), isNull(vendas.deletedAt), isNotNull(vendas.pedidoSapEntry)),
+    columns: { numeroPedido: true },
+  })
+  return v ? (v.numeroPedido ?? '') : null
+}
+const msgTravaSap = (pedido: string) =>
+  `Esse card tem a venda do pedido ${pedido} do SAP — não dá para tirar de "Fechado". Se o pedido foi cancelado, cancele no SAP (a venda sai sozinha) ou fale com o admin.`
+
 export const funilRouter = router({
   meuFunil: protectedProcedure.input(z.object({ mesReferencia: z.string().optional() }).optional()).query(async ({ ctx, input }) => {
     return buscarFunilDoVendedor(ctx.user.id, ctx.user.id, ctx.user.role === 'admin', input?.mesReferencia)
@@ -473,6 +487,11 @@ export const funilRouter = router({
           (input.etapa === 'faturamento' || input.etapa === 'consumidor_final_loja') &&
           (await temFeature(ctx.user.id, 'faturamento_geral'))
         if (!podeMoverFaturamento) throw new Error('Acesso negado')
+      }
+
+      if (funil.etapa === 'fechado' && !['fechado', 'faturamento', 'consumidor_final_loja'].includes(input.etapa) && ctx.user.role !== 'admin') {
+        const pedidoSap = await vendaSapNoCard(funil.id)
+        if (pedidoSap !== null) throw new Error(msgTravaSap(pedidoSap))
       }
 
       if (funil.etapa === 'novo' && input.etapa !== 'novo' && funil.qtdTentativasContato === 0) {
@@ -729,6 +748,10 @@ export const funilRouter = router({
       if (!funil) throw new Error('Card não encontrado')
       if (ctx.user.role !== 'admin' && funil.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
       if (funil.etapa !== 'fechado') throw new Error('Só é possível cancelar um pedido que está na etapa "Fechado".')
+      if (ctx.user.role !== 'admin') {
+        const pedidoSap = await vendaSapNoCard(funil.id)
+        if (pedidoSap !== null) throw new Error(msgTravaSap(pedidoSap))
+      }
 
       if (input.novaEtapa === 'perdido' && (!input.motivoPerdaCategoria || !input.motivoPerdaObservacao)) {
         throw new Error('Informe a categoria e a observação do motivo de perda.')
