@@ -27,6 +27,9 @@ export default function LeadChangeStatusModal({
   empresaSlug,
   open,
   onClose,
+  codSapAtual,
+  propostaId,
+  repasseVendedorIdAtual,
 }: {
   leadId: number
   currentStatus: string
@@ -36,6 +39,12 @@ export default function LeadChangeStatusModal({
   empresaSlug: string | undefined
   open: boolean
   onClose: () => void
+  // Pré-preenche o Código SAP (ex: lead que volta pra Em Negociação já tinha).
+  codSapAtual?: string | null
+  // Lead da Odin Compressores já transferido pra Propostas — a proposta
+  // acompanha a mudança de etapa (ver sincronizarPropostaDoLead no server).
+  propostaId?: number | null
+  repasseVendedorIdAtual?: number | null
 }) {
   const utils = trpc.useUtils()
   const [status, setStatus] = useState<LeadStatus>((initialStatus ?? currentStatus) as LeadStatus)
@@ -52,6 +61,21 @@ export default function LeadChangeStatusModal({
   const [lossReason, setLossReason] = useState('')
   const [disqualifyReason, setDisqualifyReason] = useState('')
   const [finalConsumerReason, setFinalConsumerReason] = useState('')
+  const [repasseVendedorId, setRepasseVendedorId] = useState('')
+
+  useEffect(() => {
+    if (!open) return
+    setCodSap(codSapAtual ?? '')
+    setRepasseVendedorId(repasseVendedorIdAtual ? String(repasseVendedorIdAtual) : '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
+  // Repasse Comercial: lista os vendedores externos (equipe "visitas" da
+  // Odin Compressores — Usuários → Equipe). Se ninguém estiver marcado como
+  // externo, mostra todo mundo pra não travar.
+  const { data: usuarios } = trpc.users.vendors.useQuery(undefined, { enabled: open && empresaSlug === 'odin-compressores' })
+  const externos = (usuarios ?? []).filter((u) => u.canalVenda === 'visitas')
+  const opcoesRepasse = (externos.length ? externos : usuarios ?? []).map((u) => ({ value: String(u.id), label: u.name }))
 
   const mut = trpc.leads.changeStatus.useMutation({
     onSuccess(_r, vars) {
@@ -60,6 +84,7 @@ export default function LeadChangeStatusModal({
       utils.leads.get.invalidate({ id: leadId })
       utils.leads.list.invalidate()
       utils.leads.todayQueue.invalidate()
+      utils.propostas.listar.invalidate()
       onClose()
     },
     onError(err) {
@@ -83,6 +108,7 @@ export default function LeadChangeStatusModal({
       lossReason: required.has('lossReason') ? lossReason : undefined,
       disqualifyReason: required.has('disqualifyReason') ? disqualifyReason : undefined,
       finalConsumerReason: required.has('finalConsumerReason') ? finalConsumerReason : undefined,
+      repasseVendedorId: status === 'repasse_comercial' && repasseVendedorId ? Number(repasseVendedorId) : undefined,
     })
   }
 
@@ -93,19 +119,47 @@ export default function LeadChangeStatusModal({
           label="Nova etapa"
           value={status}
           onChange={(e) => setStatus(e.target.value as LeadStatus)}
-          options={LEAD_STATUS_VALUES.filter((s) => s !== 'novo_consumidor_final' && isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => ({
+          options={LEAD_STATUS_VALUES.filter(
+            (s) => s !== 'novo_consumidor_final' && isLeadStatusAllowedForEmpresa(s, empresaSlug) && !(propostaId && s === 'ganho'),
+          ).map((s) => ({
             value: s,
             label: LEAD_STATUS_LABELS[s],
           }))}
         />
 
+        {status === 'repasse_comercial' && (
+          <div>
+            <Select
+              label="Vendedor externo que vai visitar *"
+              value={repasseVendedorId}
+              onChange={(e) => setRepasseVendedorId(e.target.value)}
+              placeholder="Selecione..."
+              options={opcoesRepasse}
+            />
+            <p className="text-xs text-dark-500 mt-1">O lead continua seu; fica registrado pra qual externo foi (visita + comissão dividida).</p>
+          </div>
+        )}
+
         {!terminal && (
-          <Input
-            label="Próximo contato *"
-            type="datetime-local"
-            value={nextContactAt}
-            onChange={(e) => setNextContactAt(e.target.value)}
-          />
+          <div>
+            <Input
+              label="Próximo contato *"
+              type="datetime-local"
+              value={nextContactAt}
+              onChange={(e) => setNextContactAt(e.target.value)}
+            />
+            <AtalhosProximoContato onEscolher={setNextContactAt} />
+          </div>
+        )}
+
+        {propostaId && status !== currentStatus && (
+          <p className="text-xs rounded-lg border border-dark-600 bg-dark-800 px-3 py-2 text-dark-300">
+            {status === 'em_negociacao'
+              ? `A Proposta #${propostaId} volta pra Negociação.`
+              : status === 'perdido' || status === 'desqualificado'
+                ? `A Proposta #${propostaId} vai junto pra Perdida, com o mesmo motivo.`
+                : `A Proposta #${propostaId} sai da negociação ativa e vai pra "Chamar depois", com retorno na data do próximo contato.`}
+          </p>
         )}
 
         {required.has('codSap') && (
@@ -162,5 +216,41 @@ export default function LeadChangeStatusModal({
         </div>
       </form>
     </Modal>
+  )
+}
+
+// Atalhos pro próximo contato — cada cliente pede um ritmo (5 dias, 1 mês, 2
+// meses...). Marca às 9h e pula sábado/domingo pra segunda (o servidor não
+// aceita fim de semana). Pedido do João, 2026-11-11.
+const ATALHOS: { rotulo: string; dias?: number; meses?: number }[] = [
+  { rotulo: '+5 dias', dias: 5 },
+  { rotulo: '+15 dias', dias: 15 },
+  { rotulo: '+1 mês', meses: 1 },
+  { rotulo: '+2 meses', meses: 2 },
+  { rotulo: '+3 meses', meses: 3 },
+]
+function AtalhosProximoContato({ onEscolher }: { onEscolher: (v: string) => void }) {
+  function escolher(a: (typeof ATALHOS)[number]) {
+    const d = new Date()
+    if (a.dias) d.setDate(d.getDate() + a.dias)
+    if (a.meses) d.setMonth(d.getMonth() + a.meses)
+    if (d.getDay() === 6) d.setDate(d.getDate() + 2)
+    if (d.getDay() === 0) d.setDate(d.getDate() + 1)
+    const p = (n: number) => String(n).padStart(2, '0')
+    onEscolher(`${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T09:00`)
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-1.5">
+      {ATALHOS.map((a) => (
+        <button
+          key={a.rotulo}
+          type="button"
+          onClick={() => escolher(a)}
+          className="text-[11px] px-2 py-0.5 rounded-full border border-dark-600 text-dark-300 hover:text-dark-100 hover:bg-dark-700"
+        >
+          {a.rotulo}
+        </button>
+      ))}
+    </div>
   )
 }

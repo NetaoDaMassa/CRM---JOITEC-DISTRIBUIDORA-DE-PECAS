@@ -31,6 +31,7 @@ export const ETAPAS: Record<string, { rotulo: string; cor: string }> = {
   novo_consumidor_final: { rotulo: 'Novo (Consumidor Final)', cor: '#60a5fa' },
   abordagem: { rotulo: 'Abordagem', cor: '#eab308' },
   qualificado: { rotulo: 'Qualificado', cor: '#a855f7' },
+  repasse_comercial: { rotulo: 'Repasse Comercial', cor: '#ec4899' },
   em_negociacao: { rotulo: 'Em Negociação', cor: '#f97316' },
   ganho: { rotulo: 'Ganho', cor: '#22a861' },
   perdido: { rotulo: 'Perdido', cor: '#e5534b' },
@@ -53,7 +54,7 @@ export const REGIOES_BR: Record<string, string> = {
   sul: 'Sul',
 }
 
-export const ABERTOS = new Set(['novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao'])
+export const ABERTOS = new Set(['novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'repasse_comercial', 'em_negociacao'])
 
 // ── Filtros ─────────────────────────────────────────────────────────────
 export type FiltrosLeads = ReturnType<typeof useFiltrosLeads>

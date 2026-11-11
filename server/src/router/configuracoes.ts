@@ -72,7 +72,7 @@ export const configuracoesRouter = router({
         meta_faturamento_padrao: z.number().min(0).optional(),
         meta_ligacoes_dia_padrao: z.number().min(0).optional(),
         meta_faturamento_empresa: z.number().min(0).optional(),
-        leads_max_dias_proximo_contato: z.number().int().min(1).max(90).optional(),
+        leads_max_dias_proximo_contato: z.number().int().min(0).max(365).optional(), // 0 = sem limite
         dias_sem_contato_alerta: z.number().min(1).optional(),
         backup_retencao_dias: z.number().min(1).optional(),
         goto_duracao_minima_segundos: z.number().min(0).optional(),

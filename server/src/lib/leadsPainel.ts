@@ -33,6 +33,7 @@ const ORDEM_ETAPA: Record<string, number> = {
   novo_consumidor_final: 0,
   abordagem: 1,
   qualificado: 2,
+  repasse_comercial: 2, // conta como "chegou em Qualificado"
   em_negociacao: 3,
   ganho: 4,
 }

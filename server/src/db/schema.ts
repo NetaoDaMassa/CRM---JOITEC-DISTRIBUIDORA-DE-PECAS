@@ -1577,9 +1577,17 @@ export const leads = sqliteTable(
       enum: ['assistente_tecnico', 'instalador', 'revendedor_lojista', 'outros'],
     }).default('outros'),
     status: text('status', {
-      enum: ['novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final'],
+      enum: ['novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'repasse_comercial', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final'],
     }).notNull().default('novo'),
     vendorId: integer('vendor_id').references(() => users.id, { onDelete: 'set null' }),
+    // Etapa "Repasse Comercial" (só Odin Compressores, pedido do João
+    // 2026-11-11): o lead é encaminhado a um vendedor EXTERNO pra visita/
+    // negociação com divisão de comissão. O dono do lead (vendorId) continua
+    // sendo o interno; aqui fica só pra qual externo foi e quando — substitui
+    // a folha de papel "Visitas Leads" por vendedor. Fica gravado mesmo se o
+    // lead avançar (pra saber quem divide a comissão).
+    repasseVendedorId: integer('repasse_vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    repasseEm: text('repasse_em'),
     regionId: integer('region_id').references(() => leadRegions.id, { onDelete: 'set null' }),
     campaignId: integer('campaign_id').references(() => leadCampaigns.id, { onDelete: 'set null' }),
     source: text('source'),
@@ -1825,6 +1833,7 @@ export const leadCampaignsRelations = relations(leadCampaigns, ({ one }) => ({
 export const leadsRelations = relations(leads, ({ one, many }) => ({
   empresa: one(empresas, { fields: [leads.empresaId], references: [empresas.id] }),
   vendor: one(users, { fields: [leads.vendorId], references: [users.id] }),
+  repasseVendedor: one(users, { fields: [leads.repasseVendedorId], references: [users.id] }),
   region: one(leadRegions, { fields: [leads.regionId], references: [leadRegions.id] }),
   campaign: one(leadCampaigns, { fields: [leads.campaignId], references: [leadCampaigns.id] }),
   convertidoParaCliente: one(clientes, { fields: [leads.convertidoParaClienteId], references: [clientes.id] }),

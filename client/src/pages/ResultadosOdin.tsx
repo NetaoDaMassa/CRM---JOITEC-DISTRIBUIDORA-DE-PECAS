@@ -1,5 +1,5 @@
-import { useEffect, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { BadgeDollarSign, Car, ClipboardList, Headset, MapPin, Package, PhoneCall, Receipt, Target, UserPlus, Users, Wrench } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
@@ -11,6 +11,7 @@ import { PRESETS, datasDoPreset, formatarDataCurta, periodoAnterior, type Preset
 import BotaoImprimir from '../components/relatorios/BotaoImprimir'
 import AvatarMeta from '../components/ui/AvatarMeta'
 import { corTexto } from '../lib/corTexto'
+import Modal from '../components/ui/Modal'
 
 type Dados = inferRouterOutputs<AppRouter>['dashboardOdin']['resultados']
 type Frente = 'externos' | 'leads' | 'pecas'
@@ -30,6 +31,101 @@ const ROTULO: Record<Aba, string> = { geral: 'Geral', externos: 'Externos', lead
 const somar = <T,>(l: T[], f: (x: T) => number) => l.reduce((a, x) => a + f(x), 0)
 const taxa = (parte: number, todo: number) => (todo > 0 ? (parte / todo) * 100 : null)
 const pctOuTraco = (v: number | null | undefined) => (v == null ? '—' : pct(v))
+
+// Números clicáveis (pedido do João, 2026-11-11: "esses 14 aguardando, não
+// sei quem são") — cada card / número da tabela abre a lista do que ele
+// conta. Ver dashboardOdin.resultadosDetalhe / lib/resultadosOdinDetalhe.ts.
+type TipoDetalhe = 'leads' | 'aguardando' | 'contatos' | 'propostas' | 'pedidos' | 'visitas' | 'vendas' | 'ligacoes'
+type PedidoDetalhe = { frente: Aba; tipo: TipoDetalhe; titulo: string; vendedorId?: number; vendedorNome?: string }
+const AbrirDetalhe = createContext<(p: PedidoDetalhe) => void>(() => {})
+
+// Número de uma célula da tabela "Por vendedor" que abre a lista só daquele vendedor.
+function Num({ valor, frente, tipo, titulo, v, className = '' }: { valor: number; frente: Aba; tipo: TipoDetalhe; titulo: string; v: { id: number; nome: string }; className?: string }) {
+  const abrir = useContext(AbrirDetalhe)
+  if (!valor) return <span className={className}>{numero(valor)}</span>
+  return (
+    <button type="button" onClick={() => abrir({ frente, tipo, titulo, vendedorId: v.id, vendedorNome: v.nome })} className={`underline decoration-dotted underline-offset-2 hover:text-gold-400 ${className}`} title="Ver a lista">
+      {numero(valor)}
+    </button>
+  )
+}
+
+function formatarDataDetalhe(d: string | null) {
+  if (!d) return '—'
+  if (/^\d{4}-\d{2}-\d{2}$/.test(d)) return d.split('-').reverse().join('/')
+  const data = new Date(/[zZ]|[+-]\d\d:?\d\d$/.test(d) ? d : `${d.replace(' ', 'T')}Z`)
+  return data.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+function ModalDetalhe({ pedido, de, ate, base, onClose }: { pedido: PedidoDetalhe | null; de: string; ate: string; base: string; onClose: () => void }) {
+  const navigate = useNavigate()
+  const [busca, setBusca] = useState('')
+  useEffect(() => setBusca(''), [pedido])
+  const { data, isLoading, isError, error } = trpc.dashboardOdin.resultadosDetalhe.useQuery(
+    { frente: pedido?.frente ?? 'geral', tipo: pedido?.tipo ?? 'pedidos', dataDe: de, dataAte: ate, vendedorId: pedido?.vendedorId },
+    { enabled: !!pedido, retry: false },
+  )
+  const termo = busca.trim().toLowerCase()
+  const linhas = (data ?? []).filter((l) => !termo || `${l.nome} ${l.detalhe ?? ''} ${l.vendedor}`.toLowerCase().includes(termo))
+  const temValor = linhas.some((l) => l.valor != null)
+  const total = linhas.reduce((s, l) => s + (l.valor ?? 0), 0)
+  const periodo = pedido?.tipo === 'aguardando' ? 'agora (qualquer data)' : `${formatarDataCurta(de)} a ${formatarDataCurta(ate)}`
+  return (
+    <Modal open={!!pedido} onClose={onClose} title={pedido ? `${pedido.titulo}${pedido.vendedorNome ? ` — ${pedido.vendedorNome}` : ''}` : ''} size="xl">
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2 justify-between">
+          <p className="text-xs text-dark-400">
+            {periodo} · <b className="text-dark-100">{numero(linhas.length)}</b> {linhas.length === 1 ? 'item' : 'itens'}
+            {temValor && <> · total <b className="text-dark-100">{moeda(total)}</b></>}
+          </p>
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar cliente ou vendedor..."
+            className="h-8 w-56 max-w-full bg-dark-900 border border-dark-600 rounded-lg text-sm text-dark-100 px-2.5"
+          />
+        </div>
+        {isError ? (
+          <p className="text-dark-400 text-sm">{error?.message ?? 'Não foi possível carregar.'}</p>
+        ) : isLoading ? (
+          <Carregando />
+        ) : !linhas.length ? (
+          <p className="text-dark-400 text-sm py-6 text-center">Nada por aqui.</p>
+        ) : (
+          <div className="max-h-[60vh] overflow-auto rounded-xl border border-dark-700">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-dark-800 text-xs text-dark-400">
+                <tr>
+                  <th className="text-left font-medium px-3 py-2">Cliente</th>
+                  <th className="text-left font-medium px-3 py-2">Vendedor</th>
+                  <th className="text-left font-medium px-3 py-2 whitespace-nowrap">{pedido?.tipo === 'aguardando' ? 'Chegou em' : 'Data'}</th>
+                  {temValor && <th className="text-right font-medium px-3 py-2">Valor</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {linhas.map((l) => (
+                  <tr
+                    key={l.id}
+                    onClick={() => l.link && navigate(`${base}/${l.link}`)}
+                    className={`border-t border-dark-700 ${l.link ? 'cursor-pointer hover:bg-dark-700/40' : ''}`}
+                  >
+                    <td className="px-3 py-2">
+                      <p className="text-dark-100 font-medium">{l.nome}</p>
+                      {l.detalhe && <p className="text-xs text-dark-400">{l.detalhe}</p>}
+                    </td>
+                    <td className="px-3 py-2 text-dark-300 whitespace-nowrap">{l.vendedor}</td>
+                    <td className="px-3 py-2 text-dark-300 whitespace-nowrap">{formatarDataDetalhe(l.data)}</td>
+                    {temValor && <td className="px-3 py-2 text-right text-dark-100 whitespace-nowrap">{l.valor != null ? moeda(l.valor) : '—'}</td>}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Modal>
+  )
+}
 
 // Funil horizontal: cada etapa com a barra proporcional à primeira e a
 // conversão em relação à etapa anterior.
@@ -136,6 +232,7 @@ function LinksDetalhe({ links }: { links: { rotulo: string; to: string }[] }) {
 }
 
 function AbaGeral({ d, irPara }: { d: Dados; irPara: (a: Aba) => void }) {
+  const abrir = useContext(AbrirDetalhe)
   const g = d.geral!
   const ant = d.anterior.geral
   const frentes: { chave: Frente | 'semFrente'; rotulo: string; valor: number; cor: string }[] = [
@@ -153,9 +250,9 @@ function AbaGeral({ d, irPara }: { d: Dados; irPara: (a: Aba) => void }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard titulo="Faturamento" icone={BadgeDollarSign} cor={COR.geral} valor={moeda(g.faturamento)} atual={g.faturamento} anterior={ant?.faturamento} ajuda="Pedidos (externos, leads e peças) não cancelados criados no período" />
-        <KpiCard titulo="Pedidos" icone={Package} cor={COR.pecas} valor={numero(g.pedidos)} atual={g.pedidos} anterior={ant?.pedidos} />
-        <KpiCard titulo="Ticket médio" icone={Receipt} cor="#0ea5a4" valor={moeda(g.ticketMedio)} atual={g.ticketMedio} anterior={ant?.ticketMedio} />
+        <KpiCard onClick={() => abrir({ frente: 'geral', tipo: 'pedidos', titulo: 'Pedidos do período' })} titulo="Faturamento" icone={BadgeDollarSign} cor={COR.geral} valor={moeda(g.faturamento)} atual={g.faturamento} anterior={ant?.faturamento} ajuda="Pedidos (externos, leads e peças) não cancelados criados no período" />
+        <KpiCard onClick={() => abrir({ frente: 'geral', tipo: 'pedidos', titulo: 'Pedidos do período' })} titulo="Pedidos" icone={Package} cor={COR.pecas} valor={numero(g.pedidos)} atual={g.pedidos} anterior={ant?.pedidos} />
+        <KpiCard onClick={() => abrir({ frente: 'geral', tipo: 'pedidos', titulo: 'Pedidos do período' })} titulo="Ticket médio" icone={Receipt} cor="#0ea5a4" valor={moeda(g.ticketMedio)} atual={g.ticketMedio} anterior={ant?.ticketMedio} />
         <KpiCard
           titulo="Meta do mês"
           icone={Target}
@@ -214,16 +311,17 @@ function AbaGeral({ d, irPara }: { d: Dados; irPara: (a: Aba) => void }) {
 }
 
 function AbaExternos({ d, base }: { d: Dados; base: string }) {
+  const abrir = useContext(AbrirDetalhe)
   const l = d.externos
   const a = d.anterior.externos
   const t = { visitas: somar(l, (v) => v.visitas), gps: somar(l, (v) => v.visitasGps), propostas: somar(l, (v) => v.propostas), pedidos: somar(l, (v) => v.pedidos), valor: somar(l, (v) => v.valorVendido) }
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard titulo="Visitas" icone={MapPin} cor={COR.externos} valor={numero(t.visitas)} atual={t.visitas} anterior={a.visitas} detalhe={`${numero(t.gps)} com GPS`} />
-        <KpiCard titulo="Propostas" icone={ClipboardList} cor={COR.geral} valor={numero(t.propostas)} atual={t.propostas} anterior={a.propostas} />
-        <KpiCard titulo="Pedidos" icone={Package} cor={COR.pecas} valor={numero(t.pedidos)} atual={t.pedidos} anterior={a.pedidos} />
-        <KpiCard titulo="Vendido" icone={BadgeDollarSign} cor={COR.meta} valor={moeda(t.valor)} atual={t.valor} anterior={a.valorVendido} detalhe="sem meta individual" />
+        <KpiCard onClick={() => abrir({ frente: 'externos', tipo: 'visitas', titulo: 'Visitas' })} titulo="Visitas" icone={MapPin} cor={COR.externos} valor={numero(t.visitas)} atual={t.visitas} anterior={a.visitas} detalhe={`${numero(t.gps)} com GPS`} />
+        <KpiCard onClick={() => abrir({ frente: 'externos', tipo: 'propostas', titulo: 'Propostas (externos)' })} titulo="Propostas" icone={ClipboardList} cor={COR.geral} valor={numero(t.propostas)} atual={t.propostas} anterior={a.propostas} />
+        <KpiCard onClick={() => abrir({ frente: 'externos', tipo: 'pedidos', titulo: 'Pedidos (externos)' })} titulo="Pedidos" icone={Package} cor={COR.pecas} valor={numero(t.pedidos)} atual={t.pedidos} anterior={a.pedidos} />
+        <KpiCard onClick={() => abrir({ frente: 'externos', tipo: 'pedidos', titulo: 'Vendido (externos)' })} titulo="Vendido" icone={BadgeDollarSign} cor={COR.meta} valor={moeda(t.valor)} atual={t.valor} anterior={a.valorVendido} detalhe="sem meta individual" />
       </div>
       <div className="grid 2xl:grid-cols-3 gap-4">
         <Secao titulo="Funil da equipe externa" subtitulo="Visita → proposta → pedido">
@@ -234,7 +332,7 @@ function AbaExternos({ d, base }: { d: Dados; base: string }) {
             colunas={[{ titulo: 'Vendedor' }, { titulo: 'Visitas', direita: true }, { titulo: 'Com GPS', direita: true }, { titulo: 'Propostas', direita: true }, { titulo: 'Pedidos', direita: true }, { titulo: 'Vendido', direita: true }, { titulo: 'Visita → proposta', direita: true }, { titulo: 'Proposta → pedido', direita: true }]}
             linhas={l.map((v) => ({
               id: v.id,
-              celulas: [<Pessoa nome={v.nome} fotoUrl={v.fotoUrl} />, numero(v.visitas), numero(v.visitasGps), numero(v.propostas), numero(v.pedidos), moeda(v.valorVendido), pctOuTraco(v.conversaoVisitaProposta), pctOuTraco(v.conversaoPropostaPedido)],
+              celulas: [<Pessoa nome={v.nome} fotoUrl={v.fotoUrl} />, <Num valor={v.visitas} frente="externos" tipo="visitas" titulo="Visitas" v={v} />, numero(v.visitasGps), <Num valor={v.propostas} frente="externos" tipo="propostas" titulo="Propostas" v={v} />, <Num valor={v.pedidos} frente="externos" tipo="pedidos" titulo="Pedidos" v={v} />, moeda(v.valorVendido), pctOuTraco(v.conversaoVisitaProposta), pctOuTraco(v.conversaoPropostaPedido)],
             }))}
           />
         </Secao>
@@ -244,6 +342,7 @@ function AbaExternos({ d, base }: { d: Dados; base: string }) {
 }
 
 function AbaLeads({ d, base }: { d: Dados; base: string }) {
+  const abrir = useContext(AbrirDetalhe)
   const l = d.leads
   const a = d.anterior.leads
   const t = {
@@ -259,11 +358,11 @@ function AbaLeads({ d, base }: { d: Dados; base: string }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        <KpiCard titulo="Leads recebidos" icone={UserPlus} cor={COR.leads} valor={numero(t.recebidos)} atual={t.recebidos} anterior={a.leadsRecebidos} />
-        <KpiCard titulo="Aguardando atendimento" icone={Headset} cor={COR.ruim} valor={numero(t.aguardando)} detalhe="agora, sem nenhum contato" destaque={t.aguardando ? 'ruim' : 'bom'} />
-        <KpiCard titulo="Contatos" icone={PhoneCall} cor={COR.leads} valor={numero(t.contatos)} atual={t.contatos} anterior={a.contatos} />
-        <KpiCard titulo="Pedidos" icone={Package} cor={COR.pecas} valor={numero(t.pedidos)} atual={t.pedidos} anterior={a.pedidos} detalhe={`${numero(t.propostas)} propostas`} />
-        <KpiCard titulo="Vendido" icone={BadgeDollarSign} cor={COR.meta} valor={moeda(t.valor)} atual={t.valor} anterior={a.valorVendido} detalhe={t.meta ? `${pct((t.valor / t.meta) * 100)} da meta da equipe (${moeda(t.meta)})` : undefined} />
+        <KpiCard onClick={() => abrir({ frente: 'leads', tipo: 'leads', titulo: 'Leads recebidos' })} titulo="Leads recebidos" icone={UserPlus} cor={COR.leads} valor={numero(t.recebidos)} atual={t.recebidos} anterior={a.leadsRecebidos} />
+        <KpiCard onClick={() => abrir({ frente: 'leads', tipo: 'aguardando', titulo: 'Aguardando atendimento' })} titulo="Aguardando atendimento" icone={Headset} cor={COR.ruim} valor={numero(t.aguardando)} detalhe="agora, sem nenhum contato" destaque={t.aguardando ? 'ruim' : 'bom'} />
+        <KpiCard onClick={() => abrir({ frente: 'leads', tipo: 'contatos', titulo: 'Contatos com leads' })} titulo="Contatos" icone={PhoneCall} cor={COR.leads} valor={numero(t.contatos)} atual={t.contatos} anterior={a.contatos} />
+        <KpiCard onClick={() => abrir({ frente: 'leads', tipo: 'pedidos', titulo: 'Pedidos (leads)' })} titulo="Pedidos" icone={Package} cor={COR.pecas} valor={numero(t.pedidos)} atual={t.pedidos} anterior={a.pedidos} detalhe={`${numero(t.propostas)} propostas`} />
+        <KpiCard onClick={() => abrir({ frente: 'leads', tipo: 'pedidos', titulo: 'Vendido (leads)' })} titulo="Vendido" icone={BadgeDollarSign} cor={COR.meta} valor={moeda(t.valor)} atual={t.valor} anterior={a.valorVendido} detalhe={t.meta ? `${pct((t.valor / t.meta) * 100)} da meta da equipe (${moeda(t.meta)})` : undefined} />
       </div>
       <div className="grid 2xl:grid-cols-3 gap-4">
         <Secao titulo="Funil de leads" subtitulo="Recebido → atendido → proposta → pedido">
@@ -284,11 +383,11 @@ function AbaLeads({ d, base }: { d: Dados; base: string }) {
               id: v.id,
               celulas: [
                 <Pessoa nome={v.nome} fotoUrl={v.fotoUrl} />,
-                numero(v.leadsRecebidos),
-                <span className={v.aguardando ? 'text-red-400 font-semibold' : ''}>{numero(v.aguardando)}</span>,
-                numero(v.contatos),
-                numero(v.propostas),
-                numero(v.pedidos),
+                <Num valor={v.leadsRecebidos} frente="leads" tipo="leads" titulo="Leads recebidos" v={v} />,
+                <Num valor={v.aguardando} frente="leads" tipo="aguardando" titulo="Aguardando atendimento" v={v} className={v.aguardando ? 'text-red-400 font-semibold' : ''} />,
+                <Num valor={v.contatos} frente="leads" tipo="contatos" titulo="Contatos com leads" v={v} />,
+                <Num valor={v.propostas} frente="leads" tipo="propostas" titulo="Propostas" v={v} />,
+                <Num valor={v.pedidos} frente="leads" tipo="pedidos" titulo="Pedidos" v={v} />,
                 pctOuTraco(v.conversaoLeadPedido),
                 moeda(v.valorVendido),
                 <BarraMeta percentual={v.percentualMeta} ideal={d.geral?.percentualIdealHoje} />,
@@ -302,6 +401,7 @@ function AbaLeads({ d, base }: { d: Dados; base: string }) {
 }
 
 function AbaPecas({ d, base }: { d: Dados; base: string }) {
+  const abrir = useContext(AbrirDetalhe)
   const l = d.pecas
   const a = d.anterior.pecas
   const t = {
@@ -319,10 +419,10 @@ function AbaPecas({ d, base }: { d: Dados; base: string }) {
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         <KpiCard titulo="Cobertura da carteira" icone={Users} cor={COR.pecas} valor={pctOuTraco(taxa(t.contatados, t.carteira))} detalhe={`${numero(t.contatados)} de ${numero(t.carteira)} clientes no mês`} />
-        <KpiCard titulo="Contatos" icone={PhoneCall} cor={COR.leads} valor={numero(t.contatos)} atual={t.contatos} anterior={a.contatos} />
-        <KpiCard titulo="Ligações" icone={PhoneCall} cor={COR.leads} valor={numero(t.ligacoes)} atual={t.ligacoes} anterior={a.ligacoes} />
-        <KpiCard titulo="Vendas" icone={Package} cor={COR.pecas} valor={numero(t.vendas)} atual={t.vendas} anterior={a.vendas} detalhe={`${numero(t.orcamentos)} orçamentos em aberto`} />
-        <KpiCard titulo="Vendido" icone={BadgeDollarSign} cor={COR.meta} valor={moeda(t.valor)} atual={t.valor} anterior={a.valorVendido} detalhe={t.meta ? `${pct((t.valor / t.meta) * 100)} da meta da equipe (${moeda(t.meta)})` : undefined} />
+        <KpiCard onClick={() => abrir({ frente: 'pecas', tipo: 'contatos', titulo: 'Contatos (peças)' })} titulo="Contatos" icone={PhoneCall} cor={COR.leads} valor={numero(t.contatos)} atual={t.contatos} anterior={a.contatos} />
+        <KpiCard onClick={() => abrir({ frente: 'pecas', tipo: 'ligacoes', titulo: 'Ligações (peças)' })} titulo="Ligações" icone={PhoneCall} cor={COR.leads} valor={numero(t.ligacoes)} atual={t.ligacoes} anterior={a.ligacoes} />
+        <KpiCard onClick={() => abrir({ frente: 'pecas', tipo: 'vendas', titulo: 'Vendas (peças)' })} titulo="Vendas" icone={Package} cor={COR.pecas} valor={numero(t.vendas)} atual={t.vendas} anterior={a.vendas} detalhe={`${numero(t.orcamentos)} orçamentos em aberto`} />
+        <KpiCard onClick={() => abrir({ frente: 'pecas', tipo: 'vendas', titulo: 'Vendido (peças)' })} titulo="Vendido" icone={BadgeDollarSign} cor={COR.meta} valor={moeda(t.valor)} atual={t.valor} anterior={a.valorVendido} detalhe={t.meta ? `${pct((t.valor / t.meta) * 100)} da meta da equipe (${moeda(t.meta)})` : undefined} />
       </div>
       <div className="grid 2xl:grid-cols-3 gap-4">
         <Secao titulo="Funil da carteira" subtitulo="Carteira → contatados → compraram">
@@ -350,10 +450,10 @@ function AbaPecas({ d, base }: { d: Dados; base: string }) {
                 <Pessoa nome={v.nome} fotoUrl={v.fotoUrl} />,
                 numero(v.carteira),
                 pct(v.coberturaPercentual, 0),
-                numero(v.contatos),
-                numero(v.ligacoes),
+                <Num valor={v.contatos} frente="pecas" tipo="contatos" titulo="Contatos" v={v} />,
+                <Num valor={v.ligacoes} frente="pecas" tipo="ligacoes" titulo="Ligações" v={v} />,
                 <span title={moeda(v.valorOrcamentosAbertos)}>{numero(v.orcamentosAbertos)}</span>,
-                numero(v.vendas),
+                <Num valor={v.vendas} frente="pecas" tipo="vendas" titulo="Vendas" v={v} />,
                 moeda(v.valorVendido),
                 <BarraMeta percentual={v.percentualMeta} ideal={d.geral?.percentualIdealHoje} />,
               ],
@@ -375,6 +475,7 @@ export default function ResultadosOdin() {
   const datas = datasDoPreset(preset) ?? { inicio: inicioCustom, fim: fimCustom }
   const ant = periodoAnterior(datas.inicio, datas.fim)
   const [aba, setAba] = usePersistedState<Aba>('resultadosOdin:aba', 'geral')
+  const [detalhe, setDetalhe] = useState<PedidoDetalhe | null>(null)
 
   const { data, isLoading, isError, error } = trpc.dashboardOdin.resultados.useQuery(
     { dataDe: datas.inicio, dataAte: datas.fim, anteriorDe: ant.inicio, anteriorAte: ant.fim },
@@ -389,6 +490,7 @@ export default function ResultadosOdin() {
   }, [data, abaAtual, aba, setAba])
 
   return (
+    <AbrirDetalhe.Provider value={setDetalhe}>
     <div className="space-y-5">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
@@ -463,6 +565,8 @@ export default function ResultadosOdin() {
       ) : (
         <AbaPecas d={data} base={base} />
       )}
+      <ModalDetalhe pedido={detalhe} de={datas.inicio} ate={datas.fim} base={base} onClose={() => setDetalhe(null)} />
     </div>
+    </AbrirDetalhe.Provider>
   )
 }

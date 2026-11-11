@@ -65,3 +65,74 @@ export async function notificarGestores(empresaId: number, title: string, messag
     await db.insert(notifications).values({ vendedorId: admin.id, title, message, type })
   }
 }
+
+// Lead da Odin Compressores que já virou Proposta (leads.convertidoParaPropostaId)
+// mudou de etapa no Kanban de Leads → a proposta acompanha sozinha. Pedido do
+// João, 2026-11-11: cliente recebia a proposta, parava de responder, e a
+// proposta ficava eternamente "em negociação" (as 156 "paradas"), atrapalhando
+// a Agatta. Regras:
+//   - lead voltou pra Novo/Abordagem/Qualificado/Repasse Comercial → proposta
+//     sai da negociação ativa e vai pra "Chamar Depois", com a data de retorno
+//     = próximo contato do lead;
+//   - lead voltou pra Em Negociação → proposta volta pra Negociação (ou pra
+//     Proposta, se ainda não tem PDF);
+//   - lead Perdido/Desqualificado/Consumidor Final → proposta Perdida, com o motivo.
+// Proposta já Fechada/Convertida em pedido não é mexida (a venda aconteceu).
+const STATUS_LEAD_VOLTOU = ['novo', 'abordagem', 'qualificado', 'repasse_comercial']
+const STATUS_LEAD_PERDEU = ['perdido', 'desqualificado', 'consumidor_final']
+const ROTULO_STATUS_LEAD: Record<string, string> = {
+  novo: 'Novo', abordagem: 'Abordagem', qualificado: 'Qualificado', repasse_comercial: 'Repasse Comercial',
+  em_negociacao: 'Em Negociação', perdido: 'Perdido', desqualificado: 'Desqualificado', consumidor_final: 'Consumidor Final',
+}
+
+function diaLocal(nextContactAt: string | null): string {
+  if (nextContactAt && /^\d{4}-\d{2}-\d{2}/.test(nextContactAt)) {
+    // datetime-local ("2026-11-20T10:00") já é a hora de Brasília; ISO com Z
+    // vem em UTC → -3h.
+    if (/Z$|[+-]\d{2}:?\d{2}$/.test(nextContactAt)) {
+      return new Date(new Date(nextContactAt).getTime() - 3 * 3600_000).toISOString().slice(0, 10)
+    }
+    return nextContactAt.slice(0, 10)
+  }
+  return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
+}
+
+export async function sincronizarPropostaDoLead(params: {
+  propostaId: number
+  empresaId: number
+  userId: number
+  novoStatus: string
+  nextContactAt: string | null
+  motivo?: string | null
+}): Promise<void> {
+  const { propostaId, empresaId, userId, novoStatus, nextContactAt, motivo } = params
+  const proposta = await db.query.propostas.findFirst({ where: and(eq(propostas.id, propostaId), eq(propostas.empresaId, empresaId)) })
+  if (!proposta || proposta.stage === 'fechado' || proposta.stage === 'convertido') return
+  const rotulo = ROTULO_STATUS_LEAD[novoStatus] ?? novoStatus
+
+  if (STATUS_LEAD_VOLTOU.includes(novoStatus)) {
+    const dataRetorno = diaLocal(nextContactAt)
+    if (proposta.stage === 'chamar_depois') {
+      await db.update(propostas).set({ dataRetorno, updatedAt: agoraSqlite() }).where(eq(propostas.id, propostaId))
+      return
+    }
+    if (proposta.stage !== 'proposta' && proposta.stage !== 'negociacao') return
+    await db.update(propostas).set({ dataRetorno }).where(eq(propostas.id, propostaId))
+    await mudarEtapaProposta({ propostaId, empresaId, userId, novaEtapa: 'chamar_depois', nota: `Lead voltou para "${rotulo}" no Kanban de Leads — saiu da negociação ativa` })
+    return
+  }
+
+  if (novoStatus === 'em_negociacao') {
+    if (proposta.stage !== 'chamar_depois' && proposta.stage !== 'perdido') return
+    const { ok: temPdf } = await checkPodeIrParaNegociacao(propostaId)
+    await mudarEtapaProposta({ propostaId, empresaId, userId, novaEtapa: temPdf ? 'negociacao' : 'proposta', nota: 'Lead voltou para "Em Negociação" no Kanban de Leads' })
+    return
+  }
+
+  if (STATUS_LEAD_PERDEU.includes(novoStatus)) {
+    if (proposta.stage === 'perdido') return
+    const motivoPerda = motivo?.trim() || `Lead marcado como ${rotulo}`
+    await db.update(propostas).set({ motivoPerda }).where(eq(propostas.id, propostaId))
+    await mudarEtapaProposta({ propostaId, empresaId, userId, novaEtapa: 'perdido', nota: `Lead marcado como "${rotulo}" no Kanban de Leads — ${motivoPerda}` })
+  }
+}

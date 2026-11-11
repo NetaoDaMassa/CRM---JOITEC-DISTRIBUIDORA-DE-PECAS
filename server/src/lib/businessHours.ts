@@ -103,6 +103,9 @@ export function validateNextContactLimit(
   if (isWeekend(nextContactISO)) {
     return 'Não é possível agendar o próximo contato para sábado ou domingo'
   }
+  // 0 (ou menos) = sem limite de dias — Odin Compressores, pedido do João
+  // 2026-11-11: cliente que pede retorno em janeiro tem que poder ser agendado.
+  if (maxBusinessDays <= 0) return null
   const limit = addBusinessDays(fromISO, maxBusinessDays)
   if (toShiftedMs(nextContactISO) > toShiftedMs(limit)) {
     return `O próximo contato não pode ser agendado com mais de ${maxBusinessDays} dias úteis de antecedência`

@@ -25,6 +25,24 @@ export const COR_ETAPA_PROPOSTA: Record<string, string> = {
   convertido: '#0ea5a4',
 }
 export const ETAPAS_ABERTAS_PROPOSTA = ['proposta', 'negociacao']
+
+// Data que ordena a coluna: a criação OU o último PDF anexado, o que for mais
+// recente — proposta refeita (alteração pedida, a Agatta anexa o PDF novo)
+// volta pro topo em vez de ficar lá embaixo pela data de criação antiga.
+// Pedido do João, 2026-11-11.
+function ultimoPdf(p: Pick<PropostaCard, 'arquivos'>): string | null {
+  let ultimo: string | null = null
+  for (const a of p.arquivos) {
+    if (a.fileCategory === 'proposta_pdf' || a.tipoArquivo?.includes('pdf')) {
+      if (!ultimo || a.createdAt > ultimo) ultimo = a.createdAt
+    }
+  }
+  return ultimo
+}
+export function dataOrdemProposta(p: Pick<PropostaCard, 'createdAt' | 'arquivos'>): string {
+  const pdf = ultimoPdf(p)
+  return pdf && pdf > p.createdAt ? pdf : p.createdAt
+}
 export const DIAS_PARADA_ATENCAO = 3
 export const DIAS_PARADA_ALERTA = 7
 
@@ -153,7 +171,11 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
         {PROPOSTA_BOARD_COLUMNS.map((stage) => {
           const cards = propostas
             .filter((p) => p.stage === stage)
-            .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : b.id - a.id))
+            .sort((a, b) => {
+              const da = dataOrdemProposta(a)
+              const db = dataOrdemProposta(b)
+              return da < db ? 1 : da > db ? -1 : b.id - a.id
+            })
           const aberta = ETAPAS_ABERTAS_PROPOSTA.includes(stage)
           const paradas = aberta ? cards.filter((c) => diasDesdeData(c.updatedAt) >= DIAS_PARADA_ALERTA).length : 0
           return (
@@ -235,6 +257,17 @@ export default function PropostasBoard({ propostas, basePath, mostrarVendedor = 
                         <AvatarIniciais nome={p.clienteNome} tamanho={26} />
                         <h4 className="text-sm font-medium text-dark-100 line-clamp-1 group-hover:text-gold-400 transition-colors flex-1">{p.clienteNome}</h4>
                       </div>
+                      {(() => {
+                        // PDF refeito há pouco (depois da criação) — pra achar a
+                        // proposta atualizada de bater o olho.
+                        const pdf = ultimoPdf(p)
+                        if (!pdf || pdf <= p.createdAt || diasDesdeData(pdf) > 3) return null
+                        return (
+                          <div className="mb-1.5">
+                            <Pilula cor="#22a861" title="PDF da proposta anexado/atualizado recentemente">📄 PDF novo {timeAgo(pdf)}</Pilula>
+                          </div>
+                        )
+                      })()}
                       {aberta && (() => {
                         const dias = diasDesdeData(p.updatedAt)
                         if (dias < DIAS_PARADA_ATENCAO) return null

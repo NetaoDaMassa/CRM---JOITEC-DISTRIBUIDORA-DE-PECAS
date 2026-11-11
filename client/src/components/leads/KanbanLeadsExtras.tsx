@@ -43,6 +43,7 @@ export const COR_ETAPA_LEAD: Record<string, string> = {
   novo_consumidor_final: '#5b6cf0',
   abordagem: '#e8a33a',
   qualificado: '#8b5cf6',
+  repasse_comercial: '#ec4899',
   em_negociacao: '#f97316',
   ganho: '#22a861',
   perdido: '#e5534b',
@@ -93,7 +94,7 @@ export function temperaturaLead(lead: LeadKanban): Temperatura | null {
   const diasRecebido = Math.floor((Date.now() - paraData(lead.createdAt).getTime()) / 86400000)
   if (diasRecebido <= 2) somar(2, 'chegou há até 2 dias')
   else if (diasRecebido <= 7) somar(1, 'chegou há até 7 dias')
-  if (lead.status === 'qualificado' || lead.status === 'em_negociacao') somar(2, `já está em "${LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS]}"`)
+  if (lead.status === 'qualificado' || lead.status === 'repasse_comercial' || lead.status === 'em_negociacao') somar(2, `já está em "${LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS]}"`)
   else if (lead.status === 'abordagem') somar(1, 'já está em "Abordagem"')
   if (lead.negotiationTag === 'vermelho') somar(-2, 'marcado como 🔴 Risco')
   if (lead.negotiationTag === 'amarelo') somar(-1, 'marcado como 🟡 Atenção')

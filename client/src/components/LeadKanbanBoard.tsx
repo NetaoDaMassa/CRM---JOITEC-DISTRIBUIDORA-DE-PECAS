@@ -56,6 +56,9 @@ type LeadCard = {
   fromSite?: boolean
   source?: string | null
   convertidoParaPropostaId?: number | null
+  codSap?: string | null
+  repasseVendedorId?: number | null
+  repasseVendedor?: { id: number; name: string } | null
   reassignedFrom?: { name: string; type: 'rodizio' | 'transferencia'; at: string; stage: string | null } | null
   observations?: string | null
   // Resposta "qual compressor possui atualmente?" do formulário da Meta.
@@ -167,7 +170,9 @@ export default function LeadKanbanBoard({
   const [colunaAlvo, setColunaAlvo] = useState<string | null>(null)
   const [mudarEtapa, setMudarEtapa] = useState<{ lead: LeadCard; para: string } | null>(null)
   const [registrar, setRegistrar] = useState<LeadCard | null>(null)
-  const podeSoltar = (status: string) => !!arrastando && arrastando.status !== status && status !== 'novo_consumidor_final'
+  // Lead já virou Proposta: "Ganho" é pelo botão da ficha (não pede valor).
+  const podeSoltar = (status: string) =>
+    !!arrastando && arrastando.status !== status && status !== 'novo_consumidor_final' && !(arrastando.convertidoParaPropostaId && status === 'ganho')
   const soltar = (status: string) => {
     if (arrastando && podeSoltar(status)) setMudarEtapa({ lead: arrastando, para: status })
     setArrastando(null)
@@ -296,6 +301,25 @@ export default function LeadKanbanBoard({
                     <span className="font-semibold text-emerald-400">{formatarMoeda(valorColuna, { casas: 0 })}</span> {status === 'ganho' ? 'vendidos' : 'em jogo'}
                   </p>
                 )}
+                {status === 'repasse_comercial' && cards.length > 0 && (
+                  // Quantos leads estão com cada vendedor externo — substitui
+                  // a folha "Visitas Leads" colada na parede.
+                  <div className="flex flex-wrap gap-1 mt-1.5">
+                    {Object.entries(
+                      cards.reduce<Record<string, number>>((acc, c) => {
+                        const nome = c.repasseVendedor?.name ?? 'Sem externo'
+                        acc[nome] = (acc[nome] ?? 0) + 1
+                        return acc
+                      }, {}),
+                    )
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([nome, qtd]) => (
+                        <span key={nome} className="text-[10px] rounded-full px-1.5 py-0.5 bg-pink-500/10 text-pink-400 border border-pink-500/20">
+                          {nome.split(' ')[0]} {qtd}
+                        </span>
+                      ))}
+                  </div>
+                )}
               </div>
               <div className="space-y-2 min-h-24">
                 {cards.map((lead) => {
@@ -397,6 +421,14 @@ export default function LeadKanbanBoard({
                           {lead.tagOutrasLinhas && (
                             <Badge className="text-teal-300 bg-teal-900/20 border-teal-700/40">📦 Outras Linhas</Badge>
                           )}
+                        </div>
+                      )}
+
+                      {lead.repasseVendedor && (
+                        <div className="mb-2">
+                          <Badge className="text-pink-400 bg-pink-900/20 border-pink-700/40">
+                            🤝 Repasse: {lead.repasseVendedor.name}
+                          </Badge>
                         </div>
                       )}
 
@@ -517,6 +549,9 @@ export default function LeadKanbanBoard({
           currentStatus={mudarEtapa.lead.status}
           initialStatus={mudarEtapa.para}
           empresaSlug={empresaSlug}
+          codSapAtual={mudarEtapa.lead.codSap}
+          propostaId={mudarEtapa.lead.convertidoParaPropostaId}
+          repasseVendedorIdAtual={mudarEtapa.lead.repasseVendedorId}
           open
           onClose={() => {
             setMudarEtapa(null)

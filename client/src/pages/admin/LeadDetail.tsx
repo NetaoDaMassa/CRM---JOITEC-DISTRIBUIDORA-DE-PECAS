@@ -433,19 +433,24 @@ export default function LeadDetail() {
             Admin vê e pode mudar em qualquer lead da empresa (não só nos próprios), mesma
             regra do botão de transferir logo acima — precisa enxergar a etapa de qualquer
             lead pra saber quando dá pra transferir. */}
-        {(podeGerenciarTudo || isOwner) && (lead.convertidoParaCliente || lead.convertidoParaProposta) && (
+        {/* Lead que virou Proposta (Odin Compressores) não trava mais — pode voltar de
+            Negociação pra Abordagem/Qualificado etc. e a proposta acompanha (pedido do
+            João, 2026-11-11). Só o transferido pra Carteira continua travado. */}
+        {(podeGerenciarTudo || isOwner) && lead.convertidoParaCliente && (
           <div className="mt-4 pt-4 border-t border-dark-700">
             <Badge className="text-dark-400 bg-dark-700/50 border-dark-600">
               Etapa travada em "{LEAD_STATUS_LABELS[lead.status as keyof typeof LEAD_STATUS_LABELS]}" — lead já transferido
             </Badge>
           </div>
         )}
-        {(podeGerenciarTudo || isOwner) && !lead.convertidoParaCliente && !lead.convertidoParaProposta && (
+        {(podeGerenciarTudo || isOwner) && !lead.convertidoParaCliente && (
           <div className="flex items-center gap-1.5 flex-wrap mt-4 pt-4 border-t border-dark-700">
             {/* 'novo_consumidor_final' fica de fora do seletor manual — só entra na
                 criação do lead (fila sem dono) e sai só pegando na fila, nunca
                 escolhendo aqui (ver leads.changeStatus, que recusa esse valor). */}
-            {LEAD_STATUS_VALUES.filter((s) => s !== 'novo_consumidor_final' && isLeadStatusAllowedForEmpresa(s, empresaSlug)).map((s) => (
+            {LEAD_STATUS_VALUES.filter(
+              (s) => s !== 'novo_consumidor_final' && isLeadStatusAllowedForEmpresa(s, empresaSlug) && !(lead.convertidoParaProposta && s === 'ganho'),
+            ).map((s) => (
               <button
                 key={s}
                 onClick={() => {
@@ -472,6 +477,12 @@ export default function LeadDetail() {
           {lead.company && <InfoRow icon={Building2} label="Empresa">{lead.company}</InfoRow>}
           {lead.city && <InfoRow icon={MapPin} label="Cidade">{lead.city}</InfoRow>}
           <InfoRow icon={MapPin} label="Vendedor">{lead.vendor?.name ?? 'Sem vendedor'}</InfoRow>
+          {lead.repasseVendedor && (
+            <InfoRow icon={MapPin} label="Repasse comercial">
+              <span className="text-pink-400">{lead.repasseVendedor.name}</span>
+              {lead.repasseEm && <span className="text-dark-500 text-xs"> · {timeAgo(lead.repasseEm)}</span>}
+            </InfoRow>
+          )}
           <InfoRow icon={MapPin} label="Região">{lead.region?.name ?? '—'}</InfoRow>
           <InfoRow icon={Building2} label="Segmento">{lead.segment ? LEAD_SEGMENT_LABELS[lead.segment] : '—'}</InfoRow>
           <InfoRow icon={Building2} label="Origem">{labelOrigemLead(lead.source)}</InfoRow>
@@ -792,6 +803,9 @@ export default function LeadDetail() {
         currentStatus={lead.status}
         initialStatus={pendingStatus}
         empresaSlug={empresaSlug}
+        codSapAtual={lead.codSap}
+        propostaId={lead.convertidoParaPropostaId}
+        repasseVendedorIdAtual={lead.repasseVendedorId}
         open={statusModalOpen}
         onClose={() => {
           setStatusModalOpen(false)

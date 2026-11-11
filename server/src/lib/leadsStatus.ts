@@ -3,7 +3,7 @@
 // sem alteração de comportamento.
 
 export const STATUS_VALUES = [
-  'novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
+  'novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'repasse_comercial', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
 ] as const
 
 export type LeadStatus = (typeof STATUS_VALUES)[number]
@@ -18,6 +18,7 @@ export const STATUS_LABELS: Record<LeadStatus, string> = {
   novo_consumidor_final: 'Novo (Consumidor Final)',
   abordagem: 'Abordagem',
   qualificado: 'Qualificado',
+  repasse_comercial: 'Repasse Comercial',
   em_negociacao: 'Em Negociação',
   ganho: 'Ganho',
   perdido: 'Perdido',
@@ -32,6 +33,9 @@ export const TERMINAL_STATUSES: LeadStatus[] = ['ganho', 'perdido', 'desqualific
 // separar leads fora do funil normal de revenda. `novo_consumidor_final` é
 // só Joitec (fila de leads sem dono, ver comentário acima).
 export const COMPANY_RESTRICTED_STATUSES: Partial<Record<LeadStatus, string[]>> = {
+  // Lead repassado a um vendedor externo (visita + comissão dividida) —
+  // só a Odin Compressores tem equipe externa. Pedido do João, 2026-11-11.
+  repasse_comercial: ['odin-compressores'],
   consumidor_final: ['odin-tubos', 'joitec'],
   novo_consumidor_final: ['joitec'],
 }
@@ -90,6 +94,7 @@ export const REQUIRED_FIELDS_BY_STATUS: Record<LeadStatus, StatusFieldKey[]> = {
   novo_consumidor_final: [],
   abordagem: [],
   qualificado: [],
+  repasse_comercial: [],
   em_negociacao: ['codSap'],
   ganho: ['finalOrderValue', 'paymentMethod'],
   perdido: ['lossReason'],

@@ -4,7 +4,7 @@
 // server em runtime — só tipos vêm de @server, ver client/src/lib/trpc.ts).
 
 export const LEAD_STATUS_VALUES = [
-  'novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
+  'novo', 'novo_consumidor_final', 'abordagem', 'qualificado', 'repasse_comercial', 'em_negociacao', 'ganho', 'perdido', 'desqualificado', 'consumidor_final',
 ] as const
 export type LeadStatus = (typeof LEAD_STATUS_VALUES)[number]
 
@@ -16,6 +16,7 @@ export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
   novo_consumidor_final: 'Novo (Consumidor Final)',
   abordagem: 'Abordagem',
   qualificado: 'Qualificado',
+  repasse_comercial: 'Repasse Comercial',
   em_negociacao: 'Em Negociação',
   ganho: 'Ganho',
   perdido: 'Perdido',
@@ -28,6 +29,7 @@ export const LEAD_STATUS_COLORS: Record<LeadStatus, string> = {
   novo_consumidor_final: 'text-indigo-400 bg-indigo-900/20 border-indigo-700/40',
   abordagem: 'text-gold-400 bg-gold-900/20 border-gold-700/40',
   qualificado: 'text-purple-400 bg-purple-900/20 border-purple-700/40',
+  repasse_comercial: 'text-pink-400 bg-pink-900/20 border-pink-700/40',
   em_negociacao: 'text-amber-400 bg-amber-900/20 border-amber-700/40',
   ganho: 'text-green-400 bg-green-900/20 border-green-700/40',
   perdido: 'text-red-400 bg-red-900/20 border-red-700/40',
@@ -46,6 +48,7 @@ export function isLeadTerminalStatus(status: string): boolean {
 export function isLeadStatusAllowedForEmpresa(status: LeadStatus, empresaSlug: string | undefined): boolean {
   if (status === 'consumidor_final') return empresaSlug === 'odin-tubos' || empresaSlug === 'joitec'
   if (status === 'novo_consumidor_final') return empresaSlug === 'joitec'
+  if (status === 'repasse_comercial') return empresaSlug === 'odin-compressores'
   return true
 }
 
@@ -109,6 +112,7 @@ export const LEAD_REQUIRED_FIELDS_BY_STATUS: Record<LeadStatus, LeadStatusFieldK
   novo_consumidor_final: [],
   abordagem: [],
   qualificado: [],
+  repasse_comercial: [],
   em_negociacao: ['codSap'],
   ganho: ['finalOrderValue', 'paymentMethod'],
   perdido: ['lossReason'],

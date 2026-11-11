@@ -15,6 +15,7 @@ import { empresas, ordens, ordemDetalhes, propostas, visitas, estoqueMaquinas, u
 import { buscarOrdensFaturadas } from '../lib/faturamentoOdin.js'
 import { montarPainelTvOdin } from '../lib/painelTvOdin.js'
 import { resultadosOdin, totaisResultadosOdin } from '../lib/resultadosOdin.js'
+import { resultadosOdinDetalhe, TIPOS_DETALHE_ODIN } from '../lib/resultadosOdinDetalhe.js'
 import { controlePedidosOdin } from '../lib/controlePedidosOdin.js'
 import { etapaFinal, type OrderType } from '../lib/ordensStages.js'
 
@@ -308,6 +309,23 @@ export const dashboardOdinRouter = router({
       ])
       const eu = somente ? await db.query.users.findFirst({ where: eq(users.id, ctx.user.id), columns: { canalVenda: true } }) : null
       return { ...atual, anterior, minhaFrente: eu?.canalVenda ?? null }
+    }),
+  // Lista por trás de cada número do Resultados Odin (clicar no card abre).
+  // Vendedor (sem ser admin) só vê os próprios — mesma regra de `resultados`.
+  resultadosDetalhe: adminOrFeatureProcedure('dashboard_odin')
+    .input(
+      z.object({
+        frente: z.enum(['geral', 'externos', 'leads', 'pecas']),
+        tipo: z.enum(TIPOS_DETALHE_ODIN),
+        dataDe: z.string(),
+        dataAte: z.string(),
+        vendedorId: z.number().optional(),
+      }),
+    )
+    .query(async ({ ctx, input }) => {
+      await assertEmpresa(ctx.empresaId)
+      const somente = ctx.user.role === 'admin' || ctx.user.superAdmin ? undefined : ctx.user.id
+      return resultadosOdinDetalhe({ empresaId: ctx.empresaId, frente: input.frente, tipo: input.tipo, de: input.dataDe, ate: input.dataAte, vendedorId: input.vendedorId, somenteVendedorId: somente })
     }),
   // Painel de TV 75" por equipe (externos / leads / peças) — ver
   // lib/painelTvOdin.ts. Pedido do João, 2026-10-23.

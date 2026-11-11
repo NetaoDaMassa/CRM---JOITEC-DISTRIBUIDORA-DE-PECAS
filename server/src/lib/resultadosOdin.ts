@@ -72,13 +72,14 @@ export async function resultadosOdin(empresaId: number, de: string, ate: string,
     vazio
       ? []
       : db.query.leads.findMany({
-          where: and(eq(leads.empresaId, empresaId), inArray(leads.vendorId, ids), gte(leads.createdAt, utc.de), lt(leads.createdAt, utc.ate)),
+          where: and(eq(leads.empresaId, empresaId), inArray(leads.vendorId, ids), isNull(leads.deletedAt), gte(leads.createdAt, utc.de), lt(leads.createdAt, utc.ate)),
           columns: { id: true, vendorId: true, status: true },
         }),
     vazio
       ? []
       : db.query.leads.findMany({
-          where: and(eq(leads.empresaId, empresaId), inArray(leads.vendorId, ids), inArray(leads.status, ['novo', 'novo_consumidor_final'])),
+          // Lead excluído não está aguardando ninguém (antes contava — achado 2026-11-11).
+          where: and(eq(leads.empresaId, empresaId), inArray(leads.vendorId, ids), isNull(leads.deletedAt), inArray(leads.status, ['novo', 'novo_consumidor_final'])),
           columns: { vendorId: true },
         }),
     vazio

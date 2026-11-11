@@ -785,15 +785,15 @@ export default function AdminConfiguracoes() {
           <Input
             label="Agendar o próximo contato até quantos dias úteis pra frente (etapa Abordagem)"
             type="number"
-            min="1"
-            max="90"
+            min="0"
+            max="365"
             value={leadsMaxDiasProximoContato}
             onChange={(e) => setLeadsMaxDiasProximoContato(e.target.value)}
           />
           <p className="text-xs text-dark-500 mt-1.5">
             Vale só pra esta empresa. Na etapa "Abordagem", o próximo contato / lembrete não pode ser marcado
             além desse limite de dias úteis (sábado e domingo nunca contam). Padrão do sistema: 4. Aumente pra
-            empresas de ciclo de venda mais longo (ex: Odin Compressores).
+            empresas de ciclo de venda mais longo. Coloque 0 pra não ter limite (ex: Odin Compressores).
           </p>
         </div>
         )}

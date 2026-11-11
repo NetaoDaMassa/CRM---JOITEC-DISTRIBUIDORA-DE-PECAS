@@ -182,7 +182,7 @@ export const painelMarketingRouter = router({
     const funil = [
       { etapa: 'Novo', qtd: contar('novo', 'novo_consumidor_final') },
       { etapa: 'Abordagem', qtd: contar('abordagem') },
-      { etapa: 'Qualificado', qtd: contar('qualificado') },
+      { etapa: 'Qualificado', qtd: contar('qualificado', 'repasse_comercial') },
       { etapa: 'Negociação', qtd: contar('em_negociacao') },
       { etapa: 'Ganho', qtd: contar('ganho') },
     ]

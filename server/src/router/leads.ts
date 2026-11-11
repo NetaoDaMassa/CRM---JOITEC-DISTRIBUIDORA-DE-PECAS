@@ -29,7 +29,7 @@ import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
 import { mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
-import { notificarGestores } from '../lib/propostasGates.js'
+import { notificarGestores, sincronizarPropostaDoLead } from '../lib/propostasGates.js'
 import { historicoLojaDoLead } from '../lib/lojaLeadHistorico.js'
 import {
   STATUS_VALUES,
@@ -191,6 +191,7 @@ export const leadsRouter = router({
         where: and(eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt)),
         with: {
           vendor: { columns: { passwordHash: false } },
+          repasseVendedor: { columns: { id: true, name: true } },
           region: true,
         },
         orderBy: (l, { desc }) => [desc(l.createdAt)],
@@ -342,6 +343,7 @@ export const leadsRouter = router({
       where: and(eq(leads.id, input.id), isNull(leads.deletedAt)),
       with: {
         vendor: { columns: { passwordHash: false } },
+        repasseVendedor: { columns: { id: true, name: true } },
         region: true,
         notes: { with: { user: { columns: { passwordHash: false } } }, orderBy: (n, { desc }) => [desc(n.createdAt)] },
         contactAttempts: { with: { user: { columns: { passwordHash: false } } }, orderBy: (a, { desc }) => [desc(a.createdAt)] },
@@ -628,11 +630,16 @@ export const leadsRouter = router({
           lossReason: z.string().optional(),
           disqualifyReason: z.string().optional(),
           finalConsumerReason: z.string().optional(),
+          // Vendedor externo que recebe o lead na etapa "Repasse Comercial".
+          repasseVendedorId: z.number().optional(),
         })
         .superRefine((input, ctx) => {
           const missing = getMissingRequiredFields(input.status, input)
           for (const key of missing) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, path: [key], message: `${STATUS_FIELD_LABELS[key]} é obrigatório para essa etapa` })
+          }
+          if (input.status === 'repasse_comercial' && !input.repasseVendedorId) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['repasseVendedorId'], message: 'Escolha o vendedor externo que vai receber o lead' })
           }
           if (!isTerminalStatus(input.status) && !input.nextContactAt) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['nextContactAt'], message: 'É necessário agendar o próximo contato para manter o lead ativo' })
@@ -654,13 +661,30 @@ export const leadsRouter = router({
       // dela é só via leads.assumirConsumidorFinal.
       if (input.status === 'novo_consumidor_final') throw new Error('Essa etapa não pode ser escolhida manualmente')
 
-      // Lead já transferido (virou cliente de Carteira ou proposta de
-      // verdade) trava a etapa — mudar pra outro status aqui não desfaz o
-      // cliente/proposta já criado, só deixaria os dois registros
-      // contando histórias diferentes. Pra reverter, mexe direto no
-      // cliente/proposta (ex: excluir), não no lead.
-      if (existing.convertidoParaClienteId || existing.convertidoParaPropostaId) {
+      // Lead já transferido pra Carteira trava a etapa — mudar o status aqui
+      // não desfaz o cliente já criado, só deixaria os dois registros
+      // contando histórias diferentes.
+      if (existing.convertidoParaClienteId) {
         throw new Error('Este lead já foi transferido — a etapa não pode mais mudar por aqui')
+      }
+      // Lead transferido pra Propostas (Odin Compressores) — antes travava
+      // igual; pedido do João, 2026-11-11: cliente recebe a proposta e some,
+      // o lead ficava preso em "Em Negociação" pra sempre. Agora pode voltar
+      // pra Abordagem/Qualificado/etc. e a proposta acompanha sozinha (ver
+      // sincronizarPropostaDoLead). "Ganho" continua pelo botão próprio
+      // (marcarGanhoPosProposta), que não pede valor — o valor vive no pedido.
+      if (existing.convertidoParaPropostaId && input.status === 'ganho') {
+        throw new Error('Use o botão "Marcar como Ganho" deste lead')
+      }
+
+      let repasseVendedor: { id: number; name: string } | null = null
+      if (input.status === 'repasse_comercial') {
+        repasseVendedor =
+          (await db.query.users.findFirst({
+            where: and(eq(users.id, input.repasseVendedorId!), eq(users.empresaId, ctx.empresaId), eq(users.isActive, true)),
+            columns: { id: true, name: true },
+          })) ?? null
+        if (!repasseVendedor) throw new Error('Vendedor externo não encontrado')
       }
 
       const slug = await empresaSlug(ctx.empresaId)
@@ -695,6 +719,10 @@ export const leadsRouter = router({
       if (input.lossReason !== undefined) updates.lossReason = input.lossReason
       if (input.disqualifyReason !== undefined) updates.disqualifyReason = input.disqualifyReason
       if (input.finalConsumerReason !== undefined) updates.finalConsumerReason = input.finalConsumerReason
+      if (repasseVendedor) {
+        updates.repasseVendedorId = repasseVendedor.id
+        updates.repasseEm = now
+      }
 
       // Desqualificado sempre cai pro admin da empresa revisar (ver adaptação 3 no
       // topo do arquivo) — vendedor não fica dono de um lead que ele mesmo desqualificou.
@@ -713,8 +741,30 @@ export const leadsRouter = router({
         action: 'status_alterado',
         fromStatus: existing.status,
         toStatus: input.status,
-        details: `Status alterado de "${existing.status}" para "${input.status}"`,
+        details: repasseVendedor
+          ? `Repasse Comercial para ${repasseVendedor.name} (vendedor externo) — por ${ctx.user.name}`
+          : `Status alterado de "${existing.status}" para "${input.status}"`,
       })
+
+      if (repasseVendedor && repasseVendedor.id !== ctx.user.id) {
+        await db.insert(notifications).values({
+          vendedorId: repasseVendedor.id,
+          type: 'info',
+          title: 'Lead repassado pra você',
+          message: `${ctx.user.name} repassou o lead "${existing.name}" pra visita/negociação (comissão dividida).`,
+        })
+      }
+
+      if (existing.convertidoParaPropostaId && existing.status !== input.status) {
+        await sincronizarPropostaDoLead({
+          propostaId: existing.convertidoParaPropostaId,
+          empresaId: ctx.empresaId,
+          userId: ctx.user.id,
+          novoStatus: input.status,
+          nextContactAt: input.nextContactAt ?? null,
+          motivo: input.lossReason ?? input.disqualifyReason ?? input.finalConsumerReason ?? null,
+        })
+      }
 
       if (reassignedAdmin && reassignedAdmin.id !== ctx.user.id) {
         await db.insert(notifications).values({
@@ -1825,6 +1875,17 @@ export const leadsRouter = router({
         fromStatus: lead.status,
         toStatus: 'perdido',
         details: `Marcado como Perdido por ${ctx.user.name} (já transferido pra Proposta #${lead.convertidoParaPropostaId}) — motivo: ${input.lossReason}`,
+      })
+
+      // A proposta acompanha (vira Perdida com o mesmo motivo) — ver
+      // sincronizarPropostaDoLead. Pedido do João, 2026-11-11.
+      await sincronizarPropostaDoLead({
+        propostaId: lead.convertidoParaPropostaId,
+        empresaId: ctx.empresaId,
+        userId: ctx.user.id,
+        novoStatus: 'perdido',
+        nextContactAt: null,
+        motivo: input.lossReason,
       })
 
       return { success: true }

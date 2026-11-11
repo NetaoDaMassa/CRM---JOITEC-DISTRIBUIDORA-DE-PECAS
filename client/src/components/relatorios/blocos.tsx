@@ -53,6 +53,7 @@ export function KpiCard({
   icone: Icone,
   cor = '#24aff4',
   href,
+  onClick,
   destaque,
 }: {
   titulo: string
@@ -65,6 +66,8 @@ export function KpiCard({
   icone?: LucideIcon
   cor?: string
   href?: string
+  // Abre algo na própria tela (ex: lista do que o número conta) em vez de navegar.
+  onClick?: () => void
   destaque?: 'ruim' | 'bom'
 }) {
   const conteudo = (
@@ -96,7 +99,7 @@ export function KpiCard({
           {detalhe}
         </p>
       )}
-      {href && (
+      {(href || onClick) && (
         <span className="absolute right-3 bottom-3 text-dark-500 group-hover:text-gold-400 transition-colors print:hidden">
           <ChevronRight size={16} />
         </span>
@@ -109,6 +112,23 @@ export function KpiCard({
     <Link data-kpi to={href} className={`${classe} hover:border-gold-500/60 hover:shadow-lg hover:-translate-y-0.5`}>
       {conteudo}
     </Link>
+  ) : onClick ? (
+    <div
+      data-kpi
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick()
+        }
+      }}
+      title="Clique para ver a lista"
+      className={`${classe} cursor-pointer hover:border-gold-500/60 hover:shadow-lg hover:-translate-y-0.5`}
+    >
+      {conteudo}
+    </div>
   ) : (
     <div data-kpi className={classe}>
       {conteudo}

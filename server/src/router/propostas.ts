@@ -189,6 +189,9 @@ export const propostasRouter = router({
       const proposta = await assertPropostaAlcancavel(input.propostaId, ctx.empresaId)
       assertDonoOuGestor(proposta, ctx.user.id, ctx.user.role)
       const result = await db.insert(propostaArquivos).values({ ...input, enviadoPor: ctx.user.id })
+      // Anexar arquivo conta como movimento: tira o "parada há X dias" e
+      // (com o PDF) leva o card pro topo da coluna. Pedido do João, 2026-11-11.
+      await db.update(propostas).set({ updatedAt: agoraSqlite() }).where(eq(propostas.id, input.propostaId))
       return { id: Number(result.lastInsertRowid) }
     }),
 

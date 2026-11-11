@@ -78,12 +78,12 @@ export async function montarPainelTvOdin(empresaId: number) {
             columns: { vendedorId: true, createdAt: true, convertidoParaOrdemId: true },
           }),
       db.query.leads.findMany({
-        where: and(eq(leads.empresaId, empresaId), gte(leads.createdAt, mesUtc.de), lt(leads.createdAt, mesUtc.ate)),
+        where: and(eq(leads.empresaId, empresaId), isNull(leads.deletedAt), gte(leads.createdAt, mesUtc.de), lt(leads.createdAt, mesUtc.ate)),
         columns: { vendorId: true, createdAt: true },
       }),
       // Foto do momento: lead com dono ainda sem nenhum atendimento.
       db.query.leads.findMany({
-        where: and(eq(leads.empresaId, empresaId), inArray(leads.status, ['novo', 'novo_consumidor_final'])),
+        where: and(eq(leads.empresaId, empresaId), isNull(leads.deletedAt), inArray(leads.status, ['novo', 'novo_consumidor_final'])),
         columns: { vendorId: true },
       }),
       semIds
