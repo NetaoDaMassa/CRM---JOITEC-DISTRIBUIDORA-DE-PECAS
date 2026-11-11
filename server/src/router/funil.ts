@@ -515,7 +515,15 @@ export const funilRouter = router({
       // abaixo, e decidir se lança automaticamente no Caixa mais adiante.
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId) })
 
-      if (input.etapa === 'fechado') {
+      // Card que já tem venda (ex.: veio do pedido do SAP e alguém tirou de
+      // Fechado sem querer — pedido 9299, 2026-11-11): voltar pra Fechado só
+      // muda a etapa, sem pedir PDF nem criar outra venda.
+      const voltaComVendaExistente =
+        input.etapa === 'fechado' &&
+        funil.etapa !== 'fechado' &&
+        !!(await db.query.vendas.findFirst({ where: and(eq(vendas.funilMensalId, funil.id), isNull(vendas.deletedAt)), columns: { id: true } }))
+
+      if (input.etapa === 'fechado' && !voltaComVendaExistente) {
         // `moverEtapa` só cobre a *primeira* venda (é o que efetivamente
         // muda a etapa) — reenviar "fechado" com o cliente já fechado
         // duplicaria a venda. Pra comprar de novo no mesmo mês é
@@ -582,7 +590,7 @@ export const funilRouter = router({
         })
       }
 
-      if (input.etapa === 'fechado') {
+      if (input.etapa === 'fechado' && !voltaComVendaExistente) {
         // Cliente com CNPJ vinculado (matriz/filial, cadastro duplicado) —
         // o vendedor escolhe qual CNPJ recebe a venda; por padrão é o
         // próprio cliente do card.
