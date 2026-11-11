@@ -328,7 +328,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const status = (existente?.status ?? 'rascunho') as Status
   const somenteLeitura = existente != null && status !== 'rascunho'
   const podeMexer = !existente || existente.souDono || !!ctx?.veTudo
-  const [modal, setModal] = useState<null | 'perder' | 'ganhar' | 'reprovar'>(null)
+  const [modal, setModal] = useState<null | 'perder' | 'ganhar' | 'reprovar' | 'pedido'>(null)
   const depoisDeAcao = (msg: string) => () => {
     toast.success(msg)
     utils.cotacoesCrm.listar.invalidate()
@@ -366,13 +366,17 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     if (confirm(`Criar a cotação nº ${id} no SAP?`)) enviarSap.mutate({ id })
     else travaSap.current = false
   }
+  // Abre "Dados do pedido": forma de pagamento, frete, embalagens e peso são
+  // obrigatórios no pedido (na cotação não). Sem limite de crédito (venda a
+  // prazo) o servidor barra e pede a liberação do financeiro.
   const onGerarPedido = () => {
-    if (travaSap.current || id == null || !existente) return
+    if (id == null || !existente) return
+    setModal('pedido')
+  }
+  const confirmarPedido = (dados: DadosPedido) => {
+    if (travaSap.current || id == null) return
     travaSap.current = true
-    const aceitos = existente.itens.filter((i) => i.aceito)
-    // Sem limite de crédito (venda a prazo) o servidor barra e pede a liberação do financeiro.
-    if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?`)) gerarPedido.mutate({ id })
-    else travaSap.current = false
+    gerarPedido.mutate({ id, dados })
   }
   const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
     onSuccess: (r) => {
@@ -1018,6 +1022,16 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
           carregando={reprovar.isPending}
           onFechar={() => setModal(null)}
           onConfirmar={(motivo) => reprovar.mutate({ id, motivo })}
+        />
+      )}
+      {modal === 'pedido' && id != null && existente && ctx && (
+        <ModalDadosPedido
+          c={existente}
+          ctx={ctx}
+          pesoItens={existente.itens.filter((i) => i.aceito).reduce((s, i) => s + (porCodigo.get(i.itemCodigo)?.pesoKg ?? 0) * i.quantidade, 0)}
+          carregando={gerarPedido.isPending}
+          onFechar={() => setModal(null)}
+          onConfirmar={confirmarPedido}
         />
       )}
       {modal === 'ganhar' && id != null && existente && (
@@ -1701,5 +1715,158 @@ function Anexos({ anexos, podeMexer, onMudar }: { anexos: AnexoCot[]; podeMexer:
         </label>
       )}
     </div>
+  )
+}
+
+type DadosPedido = {
+  prazoCodigo: number
+  formaPagamento: string
+  tipoEnvio: 'CIF' | 'FOB' | 'SEM_FRETE'
+  transportadoraCodigo: string | null
+  transportadora: string | null
+  qtdEmbalagens: number
+  descEmbalagem: string | null
+  marca: string | null
+  pesoLiquido: number
+  pesoBruto: number
+}
+
+// "Gerar pedido no SAP": a cotação pode ter ido sem esses dados, o pedido não
+// (João, 2026-11-11). Vem preenchido com o que já está na cotação.
+function ModalDadosPedido({
+  c,
+  ctx,
+  pesoItens,
+  carregando,
+  onFechar,
+  onConfirmar,
+}: {
+  c: Cotacao
+  ctx: Saidas['contexto']
+  pesoItens: number
+  carregando: boolean
+  onFechar: () => void
+  onConfirmar: (d: DadosPedido) => void
+}) {
+  const [prazo, setPrazo] = useState<number | null>(c.prazoCodigo)
+  const [forma, setForma] = useState(c.formaPagamento ?? (ctx.formasPagamento.length === 1 ? ctx.formasPagamento[0].codigo : ''))
+  const [tipoEnvio, setTipoEnvio] = useState<DadosPedido['tipoEnvio'] | ''>(c.tipoEnvio ?? '')
+  const [transp, setTransp] = useState(c.transportadoraCodigo ?? '')
+  const [qtd, setQtd] = useState(c.qtdEmbalagens ?? 0)
+  const [desc, setDesc] = useState(c.descEmbalagem ?? '')
+  const [marca, setMarca] = useState(c.marca ?? '')
+  const kgItens = Math.round(pesoItens * 100) / 100
+  const [liq, setLiq] = useState(c.pesoLiquido ?? kgItens)
+  const [bruto, setBruto] = useState(c.pesoBruto ?? kgItens)
+  const semFrete = tipoEnvio === 'SEM_FRETE'
+  const faltando = [
+    prazo == null && 'prazo de pagamento',
+    !forma && 'forma de pagamento',
+    !tipoEnvio && 'tipo de envio',
+    !semFrete && !transp && 'transportadora',
+    !qtd && 'qtde. de embalagens',
+    !liq && 'peso líquido',
+    !bruto && 'peso bruto',
+  ].filter(Boolean) as string[]
+  const cls = 'w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600'
+  const aceitos = c.itens.filter((i) => i.aceito)
+  return (
+    <Modal open onClose={onFechar} title="Dados do pedido">
+      <div className="space-y-3">
+        <p className="text-sm text-dark-300">
+          Pedido com {aceitos.length} item(ns) aprovados pelo cliente. Confira e complete — esses dados vão para o SAP (Financeiro e Expedição).
+        </p>
+        <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
+          <Campo rotulo="Prazo de pagamento *">
+            <select className={cls} value={prazo ?? ''} onChange={(e) => setPrazo(e.target.value === '' ? null : Number(e.target.value))}>
+              <option value="">Escolha…</option>
+              {ctx.prazos.map((p) => (
+                <option key={p.codigo} value={p.codigo}>
+                  {p.nome}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <Campo rotulo="Forma de pagamento *">
+            <select className={cls} value={forma} onChange={(e) => setForma(e.target.value)}>
+              <option value="">Escolha…</option>
+              {forma && !ctx.formasPagamento.some((f) => f.codigo === forma) && <option value={forma}>{forma}</option>}
+              {ctx.formasPagamento.map((f) => (
+                <option key={f.codigo} value={f.codigo}>
+                  {f.nome}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <Campo rotulo="Tipo de envio *">
+            <select className={cls} value={tipoEnvio} onChange={(e) => setTipoEnvio(e.target.value as DadosPedido['tipoEnvio'] | '')}>
+              <option value="">Escolha…</option>
+              <option value="CIF">CIF — nós pagamos</option>
+              <option value="FOB">FOB — cliente paga</option>
+              <option value="SEM_FRETE">Sem frete (cliente retira)</option>
+            </select>
+          </Campo>
+          <Campo rotulo={semFrete ? 'Transportadora' : 'Transportadora *'}>
+            <select className={cls} disabled={semFrete} value={semFrete ? '' : transp} onChange={(e) => setTransp(e.target.value)}>
+              <option value="">{semFrete ? '— (sem frete)' : 'Escolha…'}</option>
+              {transp && !ctx.transportadoras.some((t) => t.codigo === transp) && <option value={transp}>{c.transportadora || transp}</option>}
+              {ctx.transportadoras.map((t) => (
+                <option key={t.codigo} value={t.codigo}>
+                  {t.nome} · {t.codigo}
+                </option>
+              ))}
+            </select>
+          </Campo>
+          <Campo rotulo="Qtde. embalagens *">
+            <CampoNumero className={cls} valor={qtd} vazioVale={0} placeholder="0" valido={(n) => n >= 0 && Number.isInteger(n)} onValor={setQtd} />
+          </Campo>
+          <Campo rotulo="Desc. embalagem">
+            <input className={cls} maxLength={60} value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Ex.: caixa, fardo" />
+          </Campo>
+          <Campo rotulo="Peso líquido (kg) *">
+            <CampoNumero className={cls} valor={liq} vazioVale={0} placeholder="0,00" valido={(n) => n >= 0} onValor={setLiq} />
+          </Campo>
+          <Campo rotulo="Peso bruto (kg) *">
+            <CampoNumero className={cls} valor={bruto} vazioVale={0} placeholder="0,00" valido={(n) => n >= 0} onValor={setBruto} />
+          </Campo>
+          <Campo rotulo="Marca">
+            <input className={cls} maxLength={60} value={marca} onChange={(e) => setMarca(e.target.value)} placeholder="Opcional" />
+          </Campo>
+          {kgItens > 0 && (
+            <div className="flex items-end">
+              <button type="button" className="w-full rounded-lg border border-dark-600 px-3 py-2 text-xs text-dark-200 hover:border-gold-600" onClick={() => (setLiq(kgItens), setBruto(kgItens))}>
+                ⚖ Usar peso dos itens ({fmtQtd(kgItens)} kg)
+              </button>
+            </div>
+          )}
+        </div>
+        {faltando.length > 0 && <p className="text-xs text-amber-300">Falta preencher: {faltando.join(', ')}.</p>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onFechar}>
+            Cancelar
+          </Button>
+          <Button
+            loading={carregando}
+            disabled={faltando.length > 0 || carregando}
+            onClick={() =>
+              onConfirmar({
+                prazoCodigo: prazo!,
+                formaPagamento: forma,
+                tipoEnvio: tipoEnvio as DadosPedido['tipoEnvio'],
+                transportadoraCodigo: semFrete ? null : transp,
+                transportadora: semFrete ? null : (ctx.transportadoras.find((t) => t.codigo === transp)?.nome ?? c.transportadora),
+                qtdEmbalagens: qtd,
+                descEmbalagem: desc.trim() || null,
+                marca: marca.trim() || null,
+                pesoLiquido: liq,
+                pesoBruto: bruto,
+              })
+            }
+          >
+            {carregando ? 'Enviando ao SAP… (pode levar até 1 minuto)' : 'Gerar pedido no SAP'}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   )
 }

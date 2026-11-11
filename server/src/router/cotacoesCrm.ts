@@ -833,11 +833,68 @@ export const cotacoesCrmRouter = router({
   // Cliente aprovou → Pedido de Venda no SAP baseado na cotação, só com os
   // itens aceitos. Se a cotação ainda não estava no SAP, envia antes.
   // O pedido no SAP vira venda no card (Fechado) pela venda automática.
-  gerarPedido: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(({ ctx, input }) => umaPorVez(input.id, async () => {
-    const c = await acharCotacao(ctx, input.id)
+  // A cotação pode ir sem esses dados; o PEDIDO não (João, 2026-11-11: "na
+  // hora de transformar em pedido tenho que colocar as coisas importantes").
+  // A janela "Dados do pedido" manda o que o vendedor preencheu/conferiu.
+  gerarPedido: cotacoesProcedure
+    .input(
+      z.object({
+        id: z.number().int(),
+        dados: z
+          .object({
+            prazoCodigo: z.number().int(),
+            formaPagamento: z.string().trim().min(1).max(40),
+            tipoEnvio: z.enum(['CIF', 'FOB', 'SEM_FRETE']),
+            transportadoraCodigo: z.string().trim().max(30).nullable(),
+            transportadora: z.string().trim().max(160).nullable(),
+            qtdEmbalagens: z.number().int().min(0).max(100_000),
+            descEmbalagem: z.string().trim().max(60).nullable(),
+            marca: z.string().trim().max(60).nullable(),
+            pesoLiquido: z.number().min(0).max(1_000_000),
+            pesoBruto: z.number().min(0).max(1_000_000),
+          })
+          .optional(),
+      })
+    )
+    .mutation(({ ctx, input }) => umaPorVez(input.id, async () => {
+    let c = await acharCotacao(ctx, input.id)
     exigirDono(ctx, c)
     exigirStatus(c, ['ganha'], 'gerar pedido de')
     if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido já gerado (SAP nº ${c.sapPedidoNum})` })
+    if (input.dados) {
+      const d = input.dados
+      const semFrete = d.tipoEnvio === 'SEM_FRETE'
+      const mudou = d.prazoCodigo !== c.prazoCodigo
+      await db
+        .update(cotacoesCrm)
+        .set({
+          prazoCodigo: d.prazoCodigo,
+          formaPagamento: d.formaPagamento,
+          tipoEnvio: d.tipoEnvio,
+          transportadoraCodigo: semFrete ? null : d.transportadoraCodigo || null,
+          transportadora: semFrete ? null : d.transportadora || null,
+          qtdEmbalagens: d.qtdEmbalagens || null,
+          descEmbalagem: d.descEmbalagem || null,
+          marca: d.marca || null,
+          pesoLiquido: d.pesoLiquido || null,
+          pesoBruto: d.pesoBruto || null,
+          updatedAt: agoraSqlite(),
+        })
+        .where(eq(cotacoesCrm.id, c.id))
+      if (mudou) await registrar(c.id, ctx.user.id, 'Mudou o prazo de pagamento no pedido', null)
+      c = await acharCotacao(ctx, input.id)
+    }
+    // Obrigatórios no pedido (vão pro Financeiro/Expedição pelo SAP).
+    const faltando = [
+      c.prazoCodigo == null && 'prazo de pagamento',
+      !c.formaPagamento && 'forma de pagamento',
+      !c.tipoEnvio && 'tipo de envio',
+      c.tipoEnvio !== 'SEM_FRETE' && !c.transportadoraCodigo && 'transportadora',
+      !c.qtdEmbalagens && 'quantidade de embalagens',
+      !c.pesoLiquido && 'peso líquido',
+      !c.pesoBruto && 'peso bruto',
+    ].filter(Boolean)
+    if (faltando.length) throw new TRPCError({ code: 'BAD_REQUEST', message: `Para gerar o pedido, preencha: ${faltando.join(', ')}.` })
     const credito = await situacaoCredito(c, await valorDoPedido(c))
     if (credito.precisaLiberacao) {
       const pendente = credito.solicitacao?.status === 'pendente'
