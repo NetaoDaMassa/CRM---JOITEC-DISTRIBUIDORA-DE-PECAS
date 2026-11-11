@@ -5207,6 +5207,10 @@ export const cotacoesCrm = sqliteTable(
     pesoBruto: real('peso_bruto'),
     despesasExtras: text('despesas_extras'),
     anexos: text('anexos'),
+    // Impostos calculados pelo SAP (ICMS/IPI/ST por item + total com
+    // impostos), lidos de volta quando a cotação/pedido é criada no SAP
+    // (João, 2026-11-11). JSON — ver ImpostosSap em lib/sapCotacoesEscrita.ts.
+    impostos: text('impostos'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
     deletedAt: text('deleted_at'),

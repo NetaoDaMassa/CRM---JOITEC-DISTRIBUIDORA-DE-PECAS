@@ -46,7 +46,7 @@ import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
 import { fotosPorItem } from '../lib/fotosProdutos.js'
-import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
+import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, impostosDoDocumentoSap, type ImpostosSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { limiteAgora, limiteDaFoto } from '../lib/sapLimiteCredito.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
@@ -163,6 +163,13 @@ function lerDespesas(json: string | null): Record<string, number> {
     return Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v === 'number' && v > 0))
   } catch {
     return {}
+  }
+}
+function lerImpostos(json: string | null): ImpostosSap | null {
+  try {
+    return json ? (JSON.parse(json) as ImpostosSap) : null
+  } catch {
+    return null
   }
 }
 function lerAnexos(json: string | null): Anexo[] {
@@ -507,6 +514,7 @@ export const cotacoesCrmRouter = router({
     if (cliente && !clienteSap) void atualizarDadosClienteSap(cliente.codigo).catch(() => null)
     return {
       ...c,
+      impostos: lerImpostos(c.impostos),
       despesasExtras: lerDespesas(c.despesasExtras),
       anexos: lerAnexos(c.anexos),
       listaCliente: await listaDoCliente(c.clienteId),
@@ -763,7 +771,7 @@ export const cotacoesCrmRouter = router({
     await db.transaction(async (tx) => {
       await tx
         .update(cotacoesCrm)
-        .set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, sapDocEntry: null, sapDocNum: null, encerradaEm: null, motivoPerda: null, motivoPerdaObs: null, updatedAt: agoraSqlite() })
+        .set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, sapDocEntry: null, sapDocNum: null, impostos: null, encerradaEm: null, motivoPerda: null, motivoPerdaObs: null, updatedAt: agoraSqlite() })
         .where(eq(cotacoesCrm.id, c.id))
       // "Cliente aprovou" parcial: volta todos os itens como aceitos.
       await tx.update(cotacoesCrmItens).set({ aceito: true }).where(eq(cotacoesCrmItens.cotacaoId, c.id))
@@ -827,7 +835,7 @@ export const cotacoesCrmRouter = router({
       await registrarRecusaSap(ctx, c, 'o envio', e)
       throw sapErro(e)
     }
-    await db.update(cotacoesCrm).set({ sapDocEntry: r.docEntry, sapDocNum: r.docNum, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+    await db.update(cotacoesCrm).set({ sapDocEntry: r.docEntry, sapDocNum: r.docNum, impostos: r.impostos ? JSON.stringify(r.impostos) : null, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
     await registrar(c.id, ctx.user.id, 'Enviou ao SAP', `Cotação SAP nº ${r.docNum} · ${brl(r.total)} com impostos`)
     return { docNum: r.docNum, total: r.total }
   })),
@@ -915,12 +923,12 @@ export const cotacoesCrmRouter = router({
       if (!cotEntry) {
         const q = await enviarCotacaoSap(dados)
         cotEntry = q.docEntry
-        await db.update(cotacoesCrm).set({ sapDocEntry: q.docEntry, sapDocNum: q.docNum }).where(eq(cotacoesCrm.id, c.id))
+        await db.update(cotacoesCrm).set({ sapDocEntry: q.docEntry, sapDocNum: q.docNum, impostos: q.impostos ? JSON.stringify(q.impostos) : null }).where(eq(cotacoesCrm.id, c.id))
         await registrar(c.id, ctx.user.id, 'Enviou ao SAP', `Cotação SAP nº ${q.docNum}`)
       }
       const aceitas = itens.map((i, linha) => (i.aceito ? linha : -1)).filter((l) => l >= 0)
       const r = await gerarPedidoSap(dados, cotEntry, aceitas)
-      await db.update(cotacoesCrm).set({ sapPedidoEntry: r.docEntry, sapPedidoNum: r.docNum, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+      await db.update(cotacoesCrm).set({ sapPedidoEntry: r.docEntry, sapPedidoNum: r.docNum, ...(r.impostos ? { impostos: JSON.stringify(r.impostos) } : {}), updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
       await registrar(c.id, ctx.user.id, 'Gerou o pedido no SAP', `Pedido SAP nº ${r.docNum} · ${brl(r.total)} com impostos`)
       return { docNum: r.docNum, total: r.total }
     } catch (e) {
@@ -1050,6 +1058,22 @@ export const cotacoesCrmRouter = router({
       ultimaCompra: ultima,
       compras12m: { n: Number(ano?.n ?? 0), total: arred(Number(ano?.total ?? 0)) },
     }
+  }),
+
+  // Busca de novo no SAP o ICMS/IPI da cotação (ou do pedido, se já gerado) —
+  // pras cotações enviadas antes dessa leitura existir.
+  atualizarImpostos: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    const alvo = c.sapPedidoEntry ? (['pedido', c.sapPedidoEntry] as const) : c.sapDocEntry ? (['cotacao', c.sapDocEntry] as const) : null
+    if (!alvo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Envie a cotação ao SAP primeiro — é o SAP que calcula os impostos' })
+    let imp
+    try {
+      imp = await impostosDoDocumentoSap(alvo[0], alvo[1])
+    } catch (e) {
+      throw sapErro(e)
+    }
+    await db.update(cotacoesCrm).set({ impostos: JSON.stringify(imp) }).where(eq(cotacoesCrm.id, c.id))
+    return imp
   }),
 
   // Anexos podem mudar até o pedido existir (ex.: ordem de compra do cliente

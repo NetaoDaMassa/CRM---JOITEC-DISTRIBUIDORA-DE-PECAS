@@ -533,6 +533,13 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     }
   }
   const outrasDespesas = Object.values(despesasExtras).reduce((a, b) => a + (b || 0), 0)
+  // ICMS/IPI calculados pelo SAP (lidos ao enviar a cotação / gerar o pedido).
+  const impostos = existente?.impostos ?? null
+  const impostoDoItem = useMemo(() => impostosPorItem(impostos), [impostos])
+  const buscarImpostos = trpc.cotacoesCrm.atualizarImpostos.useMutation({
+    onSuccess: () => (toast.success('Impostos atualizados do SAP'), utils.cotacoesCrm.obter.invalidate()),
+    onError: erro,
+  })
   const valorTotal = total + frete + outrasDespesas
   const pesoCatalogo = calc.reduce((s, l) => s + (l.item?.pesoKg ?? 0) * l.quantidade, 0)
   // Anexos mudam até o pedido existir (rascunho salva junto; depois, na hora).
@@ -898,6 +905,12 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                           </select>
                         </label>
                       )}
+                      {impostoDoItem.get(l.itemCodigo) && (
+                        <span className="text-[10px] rounded bg-dark-700 text-dark-200 px-1.5 py-0.5" title="Calculado pelo SAP">
+                          ICMS {fmtQtd(impostoDoItem.get(l.itemCodigo)!.icmsPct)}% · IPI {fmtQtd(impostoDoItem.get(l.itemCodigo)!.ipiPct)}%
+                          {impostoDoItem.get(l.itemCodigo)!.st > 0 ? ` · ST ${formatarMoeda(impostoDoItem.get(l.itemCodigo)!.st)}` : ''}
+                        </span>
+                      )}
                       {l.descEfetivo < -0.005 && <span className="text-[10px] font-semibold rounded bg-sky-900/40 text-sky-300 px-1.5 py-0.5">+{fmtQtd(Math.round(-l.descEfetivo * 100) / 100)}% sobre a tabela</span>}
                       {ctx && l.descEfetivo > ctx.descontoLivre && (
                         <span className="text-[10px] font-semibold rounded bg-amber-900/40 text-amber-300 px-1.5 py-0.5" title={`Acima de ${fmtQtd(ctx.descontoLivre)}% precisa do gerente aprovar`}>
@@ -939,12 +952,46 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                   )}
                 </>
               )}
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-dark-300">
-                  Total {semPreco && <span className="text-amber-400">(há item sem preço)</span>}
-                </span>
-                <span className="text-xl font-bold text-gold-300">{formatarMoeda(valorTotal)}</span>
-              </div>
+              {impostos ? (
+                <>
+                  <div className="flex justify-between text-xs text-dark-400">
+                    <span>ICMS (já incluso no preço)</span>
+                    <span>{formatarMoeda(impostos.icms)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-dark-400">
+                    <span>IPI (soma no total)</span>
+                    <span>{formatarMoeda(impostos.ipi)}</span>
+                  </div>
+                  {impostos.st > 0 && (
+                    <div className="flex justify-between text-xs text-dark-400">
+                      <span>ICMS-ST (soma no total)</span>
+                      <span>{formatarMoeda(impostos.st)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-dark-300">Total com impostos <span className="text-[10px] text-dark-500">(SAP {impostos.documento === 'pedido' ? 'pedido' : 'cotação'} nº {impostos.docNum})</span></span>
+                    <span className="text-xl font-bold text-gold-300">{formatarMoeda(impostos.total)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-dark-300">
+                      Total {semPreco && <span className="text-amber-400">(há item sem preço)</span>}
+                    </span>
+                    <span className="text-xl font-bold text-gold-300">{formatarMoeda(valorTotal)}</span>
+                  </div>
+                  <p className="text-right text-[11px] text-dark-500">
+                    {existente?.sapDocEntry ? (
+                      <button type="button" className="text-blue-400 hover:underline" disabled={buscarImpostos.isPending} onClick={() => id != null && buscarImpostos.mutate({ id })}>
+                        {buscarImpostos.isPending ? 'Buscando…' : 'Buscar ICMS/IPI no SAP'}
+                      </button>
+                    ) : (
+                      'ICMS/IPI: o SAP calcula quando a cotação for enviada ao SAP'
+                    )}
+                  </p>
+                </>
+              )}
               {calc.some((l) => l.item?.pesoKg) && (
                 <p className="text-right text-[11px] text-dark-500">Peso total {fmtQtd(calc.reduce((s, l) => s + (l.item?.pesoKg ?? 0) * l.quantidade, 0))} kg</p>
               )}
@@ -987,7 +1034,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                   placeholder="Frete, entrega, condição combinada…"
                 />
               </Campo>
-              <p className="text-[11px] text-dark-500">Valores sem impostos — IPI/ICMS o SAP calcula na emissão.</p>
+              <p className="text-[11px] text-dark-500">{impostos ? 'ICMS/IPI calculados pelo SAP.' : 'ICMS/IPI aparecem depois de "Enviar ao SAP" (é o SAP que calcula).'}</p>
             </div>
           {existente && existente.historico.length > 0 && (
             <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
@@ -1057,6 +1104,14 @@ const LOGO_EMPRESA: Record<string, string> = {
 // totais (peso, sem IPI, IPI, despesas adicionais, desconto, valor total),
 // Benefício/Utilização/Observações. IPI e ICMS só o SAP calcula (por item e
 // por UF) — aqui saem como "na NF" até a cotação ir pro SAP (etapa 2).
+// Impostos do SAP por item (linhas na mesma ordem dos itens; pedido = só os aceitos).
+type ImpostoItem = { icmsPct: number; icms: number; ipiPct: number; ipi: number; st: number }
+function impostosPorItem(imp: Cotacao['impostos']): Map<string, ImpostoItem> {
+  const m = new Map<string, ImpostoItem>()
+  for (const l of imp?.linhas ?? []) if (!m.has(l.itemCodigo)) m.set(l.itemCodigo, l)
+  return m
+}
+
 function htmlCotacao(c: Cotacao, ctx: Saidas['contexto'], catalogo: Map<string, ItemCatalogo>): string {
   const esc = (s: string | null | undefined) => (s ?? '').replace(/[&<>"]/g, (x) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[x]!)
   const din = (n: number) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -1082,6 +1137,11 @@ function htmlCotacao(c: Cotacao, ctx: Saidas['contexto'], catalogo: Map<string, 
   const prazo = ctx.prazos.find((p) => p.codigo === c.prazoCodigo)?.nome ?? ''
   const itens = c.status === 'ganha' ? c.itens.filter((i) => i.aceito) : c.itens
   const totalItens = itens.reduce((s, i) => s + i.precoUnitario * i.quantidade, 0)
+  const imp = c.impostos
+  const impItem = impostosPorItem(imp)
+  const despesas = c.valorFrete + Object.values(c.despesasExtras ?? {}).reduce((a, b) => a + b, 0)
+  const pct = (n: number | undefined) => (n == null ? 'na NF' : `${din(n)}%`)
+  const usos = [...new Set(itens.map((i) => ctx.utilizacoes.find((u) => u.codigo === (i.utilizacao ?? 10))?.nome ?? 'V - Ven Comercial'))].join(' / ')
   const peso = itens.reduce((s, i) => s + (catalogo.get(i.itemCodigo)?.pesoKg ?? 0) * i.quantidade, 0)
   const logo = `${window.location.origin}${LOGO_EMPRESA[ctx.empresaSlug] ?? '/logos/grupo-odin.png'}`
   const dataDoc = dataBr(c.createdAt) || new Date().toLocaleDateString('pt-BR')
@@ -1123,23 +1183,26 @@ ${itens
   .map((i, n) => {
     const cat = catalogo.get(i.itemCodigo)
     const foto = cat?.foto ? `<img src="${window.location.origin}${cat.foto}" style="width:34px;height:34px;object-fit:contain">` : ''
-    return `<tr><td>${n + 1}</td><td class="c">${foto}</td><td>${esc(i.itemCodigo)}</td><td>${esc(i.nome)}</td><td class="c">${esc(cat?.ncm)}</td><td class="c">${esc(cat?.unidade)}</td><td class="n">${din(i.quantidade)}</td><td class="n">${din(Math.max(0, i.descontoPct))}</td><td class="n">R$ ${din4(i.precoUnitario)}</td><td class="c">na NF</td><td class="c">na NF</td><td class="n">R$ ${din(i.precoUnitario * i.quantidade)}</td></tr>`
+    return `<tr><td>${n + 1}</td><td class="c">${foto}</td><td>${esc(i.itemCodigo)}</td><td>${esc(i.nome)}</td><td class="c">${esc(cat?.ncm)}</td><td class="c">${esc(cat?.unidade)}</td><td class="n">${din(i.quantidade)}</td><td class="n">${din(Math.max(0, i.descontoPct))}</td><td class="n">R$ ${din4(i.precoUnitario)}</td><td class="c">${pct(impItem.get(i.itemCodigo)?.ipiPct)}</td><td class="c">${pct(impItem.get(i.itemCodigo)?.icmsPct)}</td><td class="n">R$ ${din(i.precoUnitario * i.quantidade)}</td></tr>`
   })
   .join('')}
 </tbody></table>
 <div class="rodape">
   <div><div class="peso"><span>PESO TOTAL:</span><span>${din(peso)} kG</span></div>
-    <p><b>Benefício:</b><br><b>Utilização:</b> Venda de Mercadoria Comercio</p>
+    <p><b>Benefício:</b><br><b>Utilização:</b> ${esc(usos)}</p>
     <p><b style="font-size:12px">OBSERVAÇÕES :</b></p><div class="obs">${esc(c.observacao)}</div></div>
   <div class="tot">
     <div><b>TOTAL SEM IPI:</b><span>R$ ${din(totalItens)}</span></div>
-    <div><b>VALOR DO IPI:</b><span>calculado na NF</span></div>
-    <div><b>DESPESAS ADICIONAIS:</b><span>R$ ${din(c.valorFrete)}</span></div>
+    <div><b>VALOR DO IPI:</b><span>${imp ? `R$ ${din(imp.ipi)}` : 'calculado na NF'}</span></div>
+    <div><b>VALOR DO ICMS (incluso):</b><span>${imp ? `R$ ${din(imp.icms)}` : 'calculado na NF'}</span></div>
+    ${imp && imp.st > 0 ? `<div><b>ICMS-ST:</b><span>R$ ${din(imp.st)}</span></div>` : ''}
+    <div><b>FRETE:</b><span>R$ ${din(c.valorFrete)}</span></div>
+    ${despesas - c.valorFrete > 0.004 ? `<div><b>OUTRAS DESPESAS:</b><span>R$ ${din(despesas - c.valorFrete)}</span></div>` : ''}
     <div><b>DESCONTO (-):</b><span>R$ 0,00</span></div>
-    <div class="final"><span>VALOR TOTAL:</span><span>R$ ${din(totalItens + c.valorFrete)}</span></div>
+    <div class="final"><span>VALOR TOTAL:</span><span>R$ ${din(imp ? imp.total : totalItens + despesas)}</span></div>
   </div>
 </div>
-<div class="pe"><span>Gerado pelo CRM Grupo Odin</span><span>Valores sujeitos a disponibilidade de estoque. IPI/ICMS calculados na emissão da nota.</span></div>
+<div class="pe"><span>Gerado pelo CRM Grupo Odin</span><span>Valores sujeitos a disponibilidade de estoque. ${imp ? 'Impostos calculados pelo SAP.' : 'IPI/ICMS calculados na emissão da nota.'}</span></div>
 <script>window.onload=()=>setTimeout(()=>window.print(),300)</script></body></html>`
 }
 

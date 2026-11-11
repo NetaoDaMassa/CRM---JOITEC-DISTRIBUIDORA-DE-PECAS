@@ -116,9 +116,47 @@ export async function subirAnexosSap(arquivos: { nome: string; dados: Buffer; ti
   })
 }
 
+// ── Impostos (João, 2026-11-11: "mostrar ICMS e IPI separados na cotação").
+// O SAP calcula por linha (LineTaxJurisdictions; JurisdictionType: 10 ICMS,
+// 13/14/15 ICMS-ST, 35 FCP-ST, 16/17/18 IPI). ICMS vem embutido no preço
+// (não soma); IPI e ST somam por fora — o DocTotal do SAP já é o total final.
+export interface ImpostosSap {
+  documento: 'cotacao' | 'pedido'
+  docNum: number
+  total: number
+  icms: number
+  ipi: number
+  st: number
+  linhas: { itemCodigo: string; icmsPct: number; icms: number; ipiPct: number; ipi: number; st: number }[]
+  lidoEm: string
+}
+const TIPOS_ICMS = new Set([10])
+const TIPOS_ST = new Set([13, 14, 15, 35])
+const TIPOS_IPI = new Set([16, 17, 18])
+type LinhaSap = { ItemCode: string; LineTaxJurisdictions?: { JurisdictionType: number; TaxRate: number; TaxAmount: number }[] }
+const r2 = (n: number) => Math.round(n * 100) / 100
+export async function lerImpostosSap(
+  sap: { get<T = unknown>(c: string): Promise<T> },
+  documento: 'cotacao' | 'pedido',
+  docEntry: number
+): Promise<ImpostosSap> {
+  const d = await sap.get<{ DocNum: number; DocTotal: number; DocumentLines: LinhaSap[] }>(
+    `/${documento === 'cotacao' ? 'Quotations' : 'Orders'}(${docEntry})?$select=DocNum,DocTotal,DocumentLines`
+  )
+  const linhas = (d.DocumentLines ?? []).map((l) => {
+    const j = l.LineTaxJurisdictions ?? []
+    const de = (tipos: Set<number>) => j.filter((x) => tipos.has(x.JurisdictionType))
+    const soma = (tipos: Set<number>) => r2(de(tipos).reduce((s, x) => s + (x.TaxAmount ?? 0), 0))
+    const pct = (tipos: Set<number>) => de(tipos).reduce((m, x) => Math.max(m, x.TaxRate ?? 0), 0)
+    return { itemCodigo: l.ItemCode, icmsPct: pct(TIPOS_ICMS), icms: soma(TIPOS_ICMS), ipiPct: pct(TIPOS_IPI), ipi: soma(TIPOS_IPI), st: soma(TIPOS_ST) }
+  })
+  const tot = (k: 'icms' | 'ipi' | 'st') => r2(linhas.reduce((s, l) => s + l[k], 0))
+  return { documento, docNum: d.DocNum, total: d.DocTotal, icms: tot('icms'), ipi: tot('ipi'), st: tot('st'), linhas, lidoEm: new Date().toISOString() }
+}
+
 // Cria a Cotação de Venda no SAP. Linhas na mesma ordem dos itens (LineNum
 // 0..n-1) — o pedido usa essa ordem pra apontar cada linha.
-export async function enviarCotacaoSap(c: CotacaoParaSap): Promise<{ docEntry: number; docNum: number; total: number }> {
+export async function enviarCotacaoSap(c: CotacaoParaSap): Promise<{ docEntry: number; docNum: number; total: number; impostos: ImpostosSap | null }> {
   const deposito = DEPOSITO_DA_FILIAL[c.filial]
   if (!deposito) throw new Error('Filial sem depósito de Revenda configurado')
   return comSessaoSap(async (sap) => {
@@ -131,12 +169,13 @@ export async function enviarCotacaoSap(c: CotacaoParaSap): Promise<{ docEntry: n
       ),
     })
     if (!r?.DocEntry) throw new Error('O SAP não devolveu o número da cotação')
-    return { docEntry: r.DocEntry, docNum: r.DocNum, total: r.DocTotal }
+    const impostos = await lerImpostosSap(sap, 'cotacao', r.DocEntry).catch(() => null)
+    return { docEntry: r.DocEntry, docNum: r.DocNum, total: r.DocTotal, impostos }
   })
 }
 
 // Pedido de venda baseado na cotação do SAP, só com as linhas aceitas.
-export async function gerarPedidoSap(c: CotacaoParaSap, cotacaoEntry: number, linhasAceitas: number[]): Promise<{ docEntry: number; docNum: number; total: number }> {
+export async function gerarPedidoSap(c: CotacaoParaSap, cotacaoEntry: number, linhasAceitas: number[]): Promise<{ docEntry: number; docNum: number; total: number; impostos: ImpostosSap | null }> {
   if (!linhasAceitas.length) throw new Error('Nenhum item aprovado pelo cliente')
   return comSessaoSap(async (sap) => {
     const r = await sap.escrever<{ DocEntry: number; DocNum: number; DocTotal: number }>('POST', '/Orders', {
@@ -149,7 +188,8 @@ export async function gerarPedidoSap(c: CotacaoParaSap, cotacaoEntry: number, li
     // a negociação acabou. Testado 2026-11-10: cotação 12277 → pedido 9294.
     const q = await sap.get<{ DocumentStatus: string }>(`/Quotations(${cotacaoEntry})?$select=DocumentStatus`)
     if (q.DocumentStatus === 'bost_Open') await sap.escrever('POST', `/Quotations(${cotacaoEntry})/Close`)
-    return { docEntry: r.DocEntry, docNum: r.DocNum, total: r.DocTotal }
+    const impostos = await lerImpostosSap(sap, 'pedido', r.DocEntry).catch(() => null)
+    return { docEntry: r.DocEntry, docNum: r.DocNum, total: r.DocTotal, impostos }
   })
 }
 
@@ -225,4 +265,9 @@ export async function formasPagamentoDaFilial(filial: number): Promise<Forma[]> 
     const deQual = empresas.find((e) => nome.endsWith(`- ${e}`))
     return !deQual || deQual === empresa
   })
+}
+
+// Relê os impostos de um documento que já está no SAP (botão na cotação).
+export async function impostosDoDocumentoSap(documento: 'cotacao' | 'pedido', docEntry: number): Promise<ImpostosSap> {
+  return comSessaoSap((sap) => lerImpostosSap(sap, documento, docEntry))
 }
