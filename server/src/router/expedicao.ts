@@ -20,6 +20,7 @@ import { agendamentosPorCard, type AgendamentoColeta } from '../lib/expedicaoAge
 // `controle_estoque`; quem está trabalhando escolhe o próprio nome a cada
 // ação (não precisa de login por pessoa).
 const FEATURE = 'controle_estoque'
+const gerandoPicking = new Set<string>()
 const FEATURE_DESCARTAR = 'expedicao_descartar'
 const FEATURE_PAINEL = 'painel_logistica'
 
@@ -643,11 +644,17 @@ export const expedicaoRouter = router({
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
       const filial = empresa ? filialDaEmpresa(empresa.slug) : null
       if (!filial || ![3, 4].includes(filial)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Gerar picking só na Joitec, Odin Automação e Odin Tubos' })
+      // Um picking por pedido de cada vez (clique duplo criava dois).
+      const chave = `${filial}:${input.numero}`
+      if (gerandoPicking.has(chave)) throw new TRPCError({ code: 'CONFLICT', message: 'Esse picking já está sendo gerado — aguarde' })
+      gerandoPicking.add(chave)
       let r
       try {
         r = await gerarPickingSap(filial, Number(input.numero), ctx.user.name)
       } catch (e) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
+      } finally {
+        gerandoPicking.delete(chave)
       }
       await db.delete(sapPedidosPendentes).where(and(eq(sapPedidosPendentes.tipo, 'pedido'), eq(sapPedidosPendentes.numero, input.numero), eq(sapPedidosPendentes.empresaSlug, empresa!.slug)))
       await sincronizarExpedicaoSap().catch((e) => console.error('[expedicao] sincronizar depois do picking:', e))

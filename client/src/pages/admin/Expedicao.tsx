@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PackageCheck, RefreshCw, Printer, Undo2, Trash2 } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -447,6 +447,7 @@ function PedidosSemPicking({ onGerado }: { onGerado: () => void }) {
   const utils = trpc.useUtils()
   const { data, isLoading, error } = trpc.expedicao.pedidosSemPicking.useQuery(undefined, { refetchInterval: 60_000 })
   const [gerando, setGerando] = useState<string | null>(null)
+  const trava = useRef(false)
   const gerar = trpc.expedicao.gerarPicking.useMutation({
     onSuccess: (r, v) => {
       toast.success(`Picking ${r.pickList} gerado no SAP para o pedido ${v.numero} (${r.linhas} linha(s)) — o card entrou na fila`)
@@ -454,7 +455,7 @@ function PedidosSemPicking({ onGerado }: { onGerado: () => void }) {
       onGerado()
     },
     onError: (e) => toast.error(e.message, { duration: 8000 }),
-    onSettled: () => setGerando(null),
+    onSettled: () => (setGerando(null), (trava.current = false)),
   })
   if (error) return <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
   if (isLoading) return <div className="h-32 rounded-2xl bg-dark-800 animate-pulse" />
@@ -480,7 +481,12 @@ function PedidosSemPicking({ onGerado }: { onGerado: () => void }) {
               size="sm"
               loading={gerando === p.numero}
               disabled={gerando != null}
-              onClick={() => confirm(`Gerar o picking do pedido ${p.numero} no SAP?`) && (setGerando(p.numero), gerar.mutate({ numero: p.numero }))}
+              onClick={() => {
+                if (trava.current) return
+                trava.current = true
+                if (confirm(`Gerar o picking do pedido ${p.numero} no SAP?`)) (setGerando(p.numero), gerar.mutate({ numero: p.numero }))
+                else trava.current = false
+              }}
             >
               <PackageCheck className="h-4 w-4 mr-1.5" /> Gerar picking
             </Button>

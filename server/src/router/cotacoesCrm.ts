@@ -151,6 +151,21 @@ async function exigirEstoque(cotacaoId: number, filial: number, soAceitos = fals
   if (faltas.length) throw new TRPCError({ code: 'BAD_REQUEST', message: `Sem estoque no SAP agora — ajuste a cotação: ${faltas.join('; ')}` })
 }
 
+// Uma gravação no SAP por cotação de cada vez: o envio pode demorar (a
+// conexão com o SAP é uma por vez, atrás das rotinas automáticas) e um
+// segundo clique criava cotação e pedido em dobro (11/11/2026: cotação CRM
+// nº 1 → SAP 12296/12297 e pedidos 9318/9319).
+const enviandoAoSap = new Set<number>()
+async function umaPorVez<T>(id: number, fn: () => Promise<T>): Promise<T> {
+  if (enviandoAoSap.has(id)) throw new TRPCError({ code: 'CONFLICT', message: 'Essa cotação já está sendo enviada ao SAP — aguarde terminar' })
+  enviandoAoSap.add(id)
+  try {
+    return await fn()
+  } finally {
+    enviandoAoSap.delete(id)
+  }
+}
+
 const sapErro = (e: unknown) => new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
 
 const brl = (n: number) => n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
@@ -616,7 +631,7 @@ export const cotacoesCrmRouter = router({
     }),
 
   // Cria a Cotação de Venda no SAP (pronta p/ enviar ou já enviada ao cliente).
-  enviarAoSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+  enviarAoSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(({ ctx, input }) => umaPorVez(input.id, async () => {
     const c = await acharCotacao(ctx, input.id)
     exigirDono(ctx, c)
     exigirStatus(c, ['aprovada', 'enviada'], 'enviar ao SAP')
@@ -632,12 +647,12 @@ export const cotacoesCrmRouter = router({
     await db.update(cotacoesCrm).set({ sapDocEntry: r.docEntry, sapDocNum: r.docNum, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
     await registrar(c.id, ctx.user.id, 'Enviou ao SAP', `Cotação SAP nº ${r.docNum} · ${brl(r.total)} com impostos`)
     return { docNum: r.docNum, total: r.total }
-  }),
+  })),
 
   // Cliente aprovou → Pedido de Venda no SAP baseado na cotação, só com os
   // itens aceitos. Se a cotação ainda não estava no SAP, envia antes.
   // O pedido no SAP vira venda no card (Fechado) pela venda automática.
-  gerarPedido: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
+  gerarPedido: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(({ ctx, input }) => umaPorVez(input.id, async () => {
     const c = await acharCotacao(ctx, input.id)
     exigirDono(ctx, c)
     exigirStatus(c, ['ganha'], 'gerar pedido de')
@@ -661,7 +676,7 @@ export const cotacoesCrmRouter = router({
       if (e instanceof TRPCError) throw e
       throw sapErro(e)
     }
-  }),
+  })),
 
   // Pra impressão: dados do cliente no SAP, buscando agora se ainda não tem.
   dadosClienteSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {

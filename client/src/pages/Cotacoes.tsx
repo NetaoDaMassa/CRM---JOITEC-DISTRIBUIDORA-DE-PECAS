@@ -323,22 +323,32 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const reabrir = trpc.cotacoesCrm.reabrir.useMutation({ onSuccess: depoisDeAcao('Reaberta para negociar'), onError: erro })
   const ganhar = trpc.cotacoesCrm.ganhar.useMutation({ onSuccess: depoisDeAcao('Registrado: cliente aprovou'), onError: erro })
   const perder = trpc.cotacoesCrm.perder.useMutation({ onSuccess: depoisDeAcao('Marcada como perdida'), onError: erro })
+  // Trava no mesmo instante do clique (o estado "enviando" só chega no
+  // próximo desenho da tela — um clique duplo passava e gerava em dobro).
+  const travaSap = useRef(false)
   const enviarSap = trpc.cotacoesCrm.enviarAoSap.useMutation({
     onSuccess: (r) => depoisDeAcao(`Cotação criada no SAP — nº ${r.docNum} (${formatarMoeda(r.total)} com impostos)`)(),
     onError: (e) => toast.error(e.message, { duration: 10000 }),
+    onSettled: () => (travaSap.current = false),
   })
   const gerarPedido = trpc.cotacoesCrm.gerarPedido.useMutation({
     onSuccess: (r) => depoisDeAcao(`Pedido de venda criado no SAP — nº ${r.docNum} (${formatarMoeda(r.total)} com impostos)`)(),
     onError: (e) => toast.error(e.message, { duration: 10000 }),
+    onSettled: () => (travaSap.current = false),
   })
   // O servidor confere o estoque no SAP na hora e bloqueia se faltar.
   const onEnviarSap = () => {
-    if (id != null && confirm(`Criar a cotação nº ${id} no SAP?`)) enviarSap.mutate({ id })
+    if (travaSap.current || id == null) return
+    travaSap.current = true
+    if (confirm(`Criar a cotação nº ${id} no SAP?`)) enviarSap.mutate({ id })
+    else travaSap.current = false
   }
   const onGerarPedido = () => {
-    if (id == null || !existente) return
+    if (travaSap.current || id == null || !existente) return
+    travaSap.current = true
     const aceitos = existente.itens.filter((i) => i.aceito)
     if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?`)) gerarPedido.mutate({ id })
+    else travaSap.current = false
   }
   const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
     onSuccess: (r) => {
@@ -541,13 +551,13 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
             </Button>
           )}
           {existente && ['aprovada', 'enviada'].includes(status) && !existente.sapDocNum && podeMexer && (
-            <Button variant="secondary" loading={enviarSap.isPending} onClick={onEnviarSap}>
+            <Button variant="secondary" loading={enviarSap.isPending} disabled={enviarSap.isPending || gerarPedido.isPending} onClick={onEnviarSap}>
               <Send className="h-4 w-4 mr-1.5" /> Enviar ao SAP
             </Button>
           )}
           {existente && status === 'ganha' && !existente.sapPedidoNum && podeMexer && (
-            <Button loading={gerarPedido.isPending} onClick={onGerarPedido}>
-              <Send className="h-4 w-4 mr-1.5" /> Gerar pedido no SAP
+            <Button loading={gerarPedido.isPending} disabled={gerarPedido.isPending || enviarSap.isPending} onClick={onGerarPedido}>
+              <Send className="h-4 w-4 mr-1.5" /> {gerarPedido.isPending ? 'Enviando ao SAP… (pode levar até 1 minuto)' : 'Gerar pedido no SAP'}
             </Button>
           )}
         </div>
