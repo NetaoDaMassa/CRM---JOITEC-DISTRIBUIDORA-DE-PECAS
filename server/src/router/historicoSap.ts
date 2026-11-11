@@ -20,6 +20,7 @@ import {
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { SLUG_COMPRESSORES } from '../lib/sapCompressores.js'
+import { fotosDosItens } from '../lib/fotosProdutos.js'
 
 // Histórico de vendas do SAP (só consulta) — ver sapImportacoes em schema.ts.
 
@@ -436,7 +437,9 @@ export const historicoSapRouter = router({
       lista.push({ codigoItem: l.codigoItem, descricao: l.descricao, quantidade: l.quantidade, valorUnitario: l.valorUnitario, valorTotal: l.valorTotal })
       itensPorNumero.set(l.numeroCotacao, lista)
     }
-    const cotacoes = cabecalhos.map((c) => ({ ...c, chave: `c${c.id}`, itens: itensPorNumero.get(c.numeroCotacao) ?? [] }))
+    const fotos = await fotosDosItens(linhasItens.map((l) => l.codigoItem))
+    const comFoto = (i: Item) => ({ ...i, foto: (i.codigoItem && fotos.get(i.codigoItem)) || null })
+    const cotacoes = cabecalhos.map((c) => ({ ...c, chave: `c${c.id}`, itens: (itensPorNumero.get(c.numeroCotacao) ?? []).map(comFoto) }))
     const comCabecalho = new Set(cabecalhos.map((c) => c.numeroCotacao))
     const soNosItens = new Set<string>()
     for (const l of linhasItens) {
@@ -449,7 +452,7 @@ export const historicoSapRouter = router({
         numeroCotacao: l.numeroCotacao,
         valor: l.valorCotacao ?? 0,
         status: l.status,
-        itens: itensPorNumero.get(l.numeroCotacao) ?? [],
+        itens: (itensPorNumero.get(l.numeroCotacao) ?? []).map(comFoto),
       })
     }
     cotacoes.sort((a, b) => b.dataCotacao.localeCompare(a.dataCotacao) || Number(b.numeroCotacao) - Number(a.numeroCotacao))

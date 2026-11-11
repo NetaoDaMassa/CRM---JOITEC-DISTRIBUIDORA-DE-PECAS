@@ -15,6 +15,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerTamanho, salvarTamanho } from '../../lib/etiquetasTermicas'
 import HistoricoAgendamentos from '../../components/HistoricoAgendamentos'
 import NotaSapBotoes from '../../components/NotaSapBotoes'
+import { FotoProduto } from '../../components/FotoProduto'
 
 // Controle do Estoque / Expedição (pedido do João, 2026-10-29) — fila que
 // nasce do picking gerado no SAP; o estoque anota separação → conferência →
@@ -887,6 +888,9 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                       <td className="py-1.5 pr-3 font-mono text-xs text-dark-400">{i.kit?.modo === 'peca' ? '↓ peças' : i.localizacao ?? '—'}</td>
                       <td className="py-1.5 pr-3 font-mono text-xs text-dark-300">{i.itemCodigo}</td>
                       <td className="py-1.5 pr-3 text-dark-200">
+                        <div className="flex items-center gap-2">
+                          <FotoProduto codigo={i.itemCodigo} nome={i.descricao} foto={i.foto?.url ?? null} ilustrativa={i.foto?.ilustrativa} tamanho="h-9 w-9" />
+                          <div className="min-w-0">
                         {i.kit && (
                           <span className="mr-1.5 rounded bg-violet-900/50 px-1.5 py-0.5 text-[10px] font-semibold text-violet-200">
                             KIT · {i.kit.modo === 'peca' ? 'montar com as peças' : 'por kit'}
@@ -895,6 +899,8 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                         {i.mudancaSap === 'novo' && <span className="mr-1.5 rounded bg-sky-700 px-1.5 py-0.5 text-[10px] font-bold text-white">NOVO</span>}
                         {i.mudancaSap === 'qtd' && <span className="mr-1.5 rounded bg-sky-700 px-1.5 py-0.5 text-[10px] font-bold text-white">QTD ALTERADA</span>}
                         {i.descricao}
+                          </div>
+                        </div>
                       </td>
                       <td className="py-1.5 pr-3 text-dark-400">{i.deposito}</td>
                       <td className="py-1.5 text-right font-mono whitespace-nowrap">
@@ -1270,6 +1276,7 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
             if (qtd !== '') conferir.mutate({ id: pedidoId, itemId: escolhido.id, quantidade: Number(qtd) })
           }}
         >
+          <FotoProduto codigo={escolhido.itemCodigo} nome={escolhido.descricao} foto={escolhido.foto?.url ?? null} ilustrativa={escolhido.foto?.ilustrativa} tamanho="h-28 w-28" />
           <div className="min-w-0 flex-1">
             <p className="text-[11px] text-dark-400">{escolhido.localizacao ?? escolhido.deposito} · {escolhido.itemCodigo}</p>
             <p className="text-base font-semibold text-dark-50 leading-tight">{escolhido.descricao}</p>
@@ -1314,16 +1321,14 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
           {faltam.length > 6 && <Input placeholder="Buscar por código ou nome" value={busca} onChange={(e) => setBusca(e.target.value)} />}
           <div className="grid sm:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto">
             {lista.map((i) => (
-              <button
-                key={i.id}
-                type="button"
-                onClick={() => (setEscolhidoId(i.id), setQtd(''), setAviso(null))}
-                className="text-left rounded-lg border border-dark-600 bg-dark-800 px-2.5 py-1.5 hover:border-blue-500"
-              >
-                <span className="block text-[11px] text-dark-400 font-mono">{i.itemCodigo}{i.localizacao ? ` · ${i.localizacao}` : ''}</span>
-                <span className="block text-sm text-dark-100 leading-tight">{i.descricao}</span>
-                {i.tentativasConferencia > 0 && <span className="block text-[10px] text-amber-300">{i.tentativasConferencia} contagem(ns) erradas</span>}
-              </button>
+              <div key={i.id} className="flex items-center gap-2 rounded-lg border border-dark-600 bg-dark-800 pl-1.5 hover:border-blue-500">
+                <FotoProduto codigo={i.itemCodigo} nome={i.descricao} foto={i.foto?.url ?? null} ilustrativa={i.foto?.ilustrativa} tamanho="h-11 w-11" />
+                <button type="button" onClick={() => (setEscolhidoId(i.id), setQtd(''), setAviso(null))} className="min-w-0 flex-1 text-left py-1.5 pr-2.5">
+                  <span className="block text-[11px] text-dark-400 font-mono">{i.itemCodigo}{i.localizacao ? ` · ${i.localizacao}` : ''}</span>
+                  <span className="block text-sm text-dark-100 leading-tight">{i.descricao}</span>
+                  {i.tentativasConferencia > 0 && <span className="block text-[10px] text-amber-300">{i.tentativasConferencia} contagem(ns) erradas</span>}
+                </button>
+              </div>
             ))}
           </div>
         </div>

@@ -16,6 +16,7 @@ import { and, eq, isNull, sql } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
 import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
 import { temFeature } from './router/_base.js'
+import { podeTrocarFotoProduto } from './router/fotosProdutos.js'
 import { semearFotosCatalogo } from './lib/fotosProdutos.js'
 import { baixarArquivoNotaSap, baixarArquivoNotaDoPedidoSap, FILIAL_SAP_POR_SLUG, type ArquivoNota } from './lib/sapDanfe.js'
 import { startScheduler } from './lib/scheduler.js'
@@ -470,7 +471,7 @@ const uploadFotoProduto = multer({
 app.post('/upload/foto-produto/:itemCodigo', uploadFotoProduto.single('file'), async (req, res) => {
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
-  if (!user.superAdmin && !(user.role === 'admin' && (await temFeature(user.id, 'cotacoes')))) return res.status(403).json({ error: 'Só admin com Cotações troca foto' })
+  if (!(await podeTrocarFotoProduto(user))) return res.status(403).json({ error: 'Só admin com Cotações ou Controle do Estoque troca foto' })
   const itemCodigo = String(req.params.itemCodigo)
   if (!/^[A-Za-z0-9._-]{1,30}$/.test(itemCodigo)) return res.status(400).json({ error: 'Código de item inválido' })
   if (!req.file) return res.status(400).json({ error: 'Envie uma imagem JPG, PNG ou WEBP de até 5 MB' })

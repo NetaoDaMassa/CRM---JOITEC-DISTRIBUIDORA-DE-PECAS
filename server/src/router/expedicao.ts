@@ -9,6 +9,7 @@ import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
+import { fotosDosItens } from '../lib/fotosProdutos.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
@@ -391,7 +392,8 @@ export const expedicaoRouter = router({
         db.select().from(expedicaoItens).where(eq(expedicaoItens.expedicaoId, p.id)).orderBy(asc(expedicaoItens.localizacao), asc(expedicaoItens.itemCodigo)),
         db.select().from(expedicaoErros).where(eq(expedicaoErros.expedicaoId, p.id)).orderBy(asc(expedicaoErros.id)),
       ])
-      return { itens: await kitsDosItens(itens), erros }
+      const [comKits, fotos] = await Promise.all([kitsDosItens(itens), fotosDosItens(itens.map((i) => i.itemCodigo))])
+      return { itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null })), erros }
     }),
 
   // Kits do SAP (estruturas) e como o estoque separa cada um. Ver lib/sapKits.ts.

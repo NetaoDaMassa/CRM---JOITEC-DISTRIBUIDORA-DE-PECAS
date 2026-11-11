@@ -19,6 +19,7 @@ import { enviarVencidasAoCartorio } from './reguaCobranca.js'
 import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
+import { sincronizarFotosMidia } from './fotosProdutos.js'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
 // (backup) e 14 (resumo diário).
@@ -191,6 +192,14 @@ export function startScheduler() {
   cron.schedule('* * * * *', () => {
     sincronizarPabxone360().catch(registrarErroPabx)
   })
+  // Fotos dos produtos: liga as fotos das pastas de produtos do
+  // Arquivos/Mídia aos itens (lib/fotosProdutos.ts) — e uma vez na subida.
+  const rodarFotos = () =>
+    sincronizarFotosMidia()
+      .then((r) => r.removidas && console.log(`[fotos-produtos] ${r.porCodigo} pelo código, ${r.porTipo} pelo tipo, ${r.removidas} removida(s)`))
+      .catch((err) => console.error('[fotos-produtos] erro:', (err as Error)?.message ?? err))
+  cron.schedule('7-59/15 * * * *', rodarFotos)
+  rodarFotos()
   cron.schedule('*/15 * * * *', () => {
     completarResumosPabx().catch((err) => console.error('[pabxone360] erro ao completar resumos:', (err as Error)?.message ?? err))
   })

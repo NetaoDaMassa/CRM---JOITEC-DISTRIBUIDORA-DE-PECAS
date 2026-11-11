@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { formatarMoeda } from '../lib/moeda'
+import { FotoProduto } from './FotoProduto'
 
 function dataBr(iso: string | null): string {
   if (!iso) return '—'
@@ -185,8 +186,13 @@ export default function HistoricoCotacoesSapCliente({ clienteId }: { clienteId: 
                                 {c.itens.map((i, idx) => (
                                   <tr key={idx}>
                                     <td className="px-3 py-1.5">
-                                      {i.descricao}
-                                      {i.codigoItem && <span className="ml-1.5 text-dark-500 font-mono">{i.codigoItem}</span>}
+                                      <div className="flex items-center gap-2">
+                                        {i.codigoItem && <FotoProduto codigo={i.codigoItem} nome={i.descricao} foto={i.foto?.url ?? null} ilustrativa={i.foto?.ilustrativa} tamanho="h-9 w-9" />}
+                                        <span>
+                                          {i.descricao}
+                                          {i.codigoItem && <span className="ml-1.5 text-dark-500 font-mono">{i.codigoItem}</span>}
+                                        </span>
+                                      </div>
                                     </td>
                                     <td className="px-3 py-1.5 text-right font-mono">{i.quantidade?.toLocaleString('pt-BR') ?? '—'}</td>
                                     <td className="px-3 py-1.5 text-right font-mono">{i.valorUnitario != null ? formatarMoeda(i.valorUnitario) : '—'}</td>
