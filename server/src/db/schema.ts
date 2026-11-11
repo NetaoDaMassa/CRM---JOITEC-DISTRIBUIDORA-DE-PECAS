@@ -3888,6 +3888,10 @@ export const solicitacoesCredito = sqliteTable(
     quemLiberou: text('quem_liberou'),
     motivoResposta: text('motivo_resposta'),
     serasaObservacao: text('serasa_observacao'),
+    // Pedido vindo da Cotação do CRM (cliente sem limite no SAP, venda a
+    // prazo — João, 2026-11-11): liberado com valor ≥ pedido libera a
+    // cotação pra gerar o pedido. Vale só aquele pedido.
+    cotacaoId: integer('cotacao_id'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -5191,6 +5195,18 @@ export const cotacoesCrm = sqliteTable(
     sapDocNum: integer('sap_doc_num'),
     sapPedidoEntry: integer('sap_pedido_entry'),
     sapPedidoNum: integer('sap_pedido_num'),
+    // Igual ao Portal One (vídeo do João, 2026-11-11): forma de pagamento
+    // (PaymentMethod, ex. BOL_ITAU_99136), embalagens e peso (TaxExtension),
+    // outras despesas além do frete (JSON {"2": seguro, "3": outros,
+    // "4": custo importação, "5": armazenagem}) e anexos (JSON [{nome, url}]).
+    formaPagamento: text('forma_pagamento'),
+    qtdEmbalagens: integer('qtd_embalagens'),
+    descEmbalagem: text('desc_embalagem'),
+    marca: text('marca'),
+    pesoLiquido: real('peso_liquido'),
+    pesoBruto: real('peso_bruto'),
+    despesasExtras: text('despesas_extras'),
+    anexos: text('anexos'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
     deletedAt: text('deleted_at'),
@@ -5218,6 +5234,9 @@ export const cotacoesCrmItens = sqliteTable(
     precoManual: integer('preco_manual', { mode: 'boolean' }).notNull().default(false),
     // Cliente aprovou esse item (pedido parcial: só os aceitos viram pedido).
     aceito: integer('aceito', { mode: 'boolean' }).notNull().default(true),
+    // Utilização no SAP (Usage): 10 = V - Ven Comercial, 9 = V - Ven Prod
+    // Própria. Só a Odin Tubos escolhe (tem revenda e produção própria).
+    utilizacao: integer('utilizacao'),
   },
   (t) => ({ cotacaoIdx: index('idx_cotacoes_crm_itens_cotacao').on(t.cotacaoId) })
 )

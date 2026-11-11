@@ -27,8 +27,32 @@ export interface CotacaoParaSap {
   transportadoraCodigo: string | null
   valorFrete: number
   vendedorNome: string
-  itens: { itemCodigo: string; quantidade: number; precoTabela: number; descontoPct: number; precoUnitario: number; precoManual: boolean }[]
+  // Portal One (João, 2026-11-11): forma de pagamento, embalagens/peso,
+  // despesas além do frete (código da despesa no SAP → valor) e anexo.
+  formaPagamento: string | null
+  qtdEmbalagens: number | null
+  descEmbalagem: string | null
+  marca: string | null
+  pesoLiquido: number | null
+  pesoBruto: number | null
+  despesasExtras: Record<string, number>
+  anexoEntry: number | null
+  itens: { itemCodigo: string; quantidade: number; precoTabela: number; descontoPct: number; precoUnitario: number; precoManual: boolean; utilizacao: number | null }[]
 }
+
+// Utilizações de venda (NotaFiscalUsage). Só a Odin Tubos escolhe por item.
+export const UTILIZACOES_VENDA = [
+  { codigo: 10, nome: 'V - Ven Comercial' },
+  { codigo: 9, nome: 'V - Ven Prod Própria' },
+] as const
+export const UTILIZACAO_PADRAO = 10
+// Despesas adicionais do SAP (1 = frete fica no campo próprio da cotação).
+export const DESPESAS_SAP = [
+  { codigo: 2, nome: 'Seguro' },
+  { codigo: 3, nome: 'Outros' },
+  { codigo: 4, nome: 'Custo importação' },
+  { codigo: 5, nome: 'Armazenagem' },
+] as const
 
 function comentario(c: CotacaoParaSap): string {
   return [
@@ -58,9 +82,35 @@ function cabecalho(c: CotacaoParaSap) {
     TaxExtension: {
       Incoterms: c.tipoEnvio === 'FOB' ? '1' : c.tipoEnvio === 'SEM_FRETE' ? '9' : '0',
       ...(c.transportadoraCodigo && c.tipoEnvio !== 'SEM_FRETE' ? { Carrier: c.transportadoraCodigo } : {}),
+      // Aba "Imposto" do Portal One: Qtde. Embalagens, Desc. Embalagem, Marca, pesos.
+      ...(c.qtdEmbalagens ? { PackQuantity: c.qtdEmbalagens } : {}),
+      ...(c.descEmbalagem ? { PackDescription: c.descEmbalagem } : {}),
+      ...(c.marca ? { Brand: c.marca } : {}),
+      ...(c.pesoLiquido ? { NetWeight: c.pesoLiquido } : {}),
+      ...(c.pesoBruto ? { GrossWeight: c.pesoBruto } : {}),
     },
-    ...(c.valorFrete > 0 ? { DocumentAdditionalExpenses: [{ ExpenseCode: 1, LineTotal: c.valorFrete }] } : {}),
+    ...(c.formaPagamento ? { PaymentMethod: c.formaPagamento } : {}),
+    ...(c.anexoEntry ? { AttachmentEntry: c.anexoEntry } : {}),
+    ...(despesas(c).length ? { DocumentAdditionalExpenses: despesas(c) } : {}),
   }
+}
+
+function despesas(c: CotacaoParaSap): { ExpenseCode: number; LineTotal: number }[] {
+  const lista = c.valorFrete > 0 ? [{ ExpenseCode: 1, LineTotal: c.valorFrete }] : []
+  for (const [codigo, valor] of Object.entries(c.despesasExtras ?? {})) if (valor > 0) lista.push({ ExpenseCode: Number(codigo), LineTotal: valor })
+  return lista
+}
+
+// Anexos da cotação → Attachments2 do SAP (pasta de anexos do SAP). Devolve o
+// AbsoluteEntry pra ir no documento. Arquivo lido do disco do CRM (uploads).
+export async function subirAnexosSap(arquivos: { nome: string; dados: Buffer; tipo: string }[]): Promise<number | null> {
+  if (!arquivos.length) return null
+  return comSessaoSap(async (sap) => {
+    const form = new FormData()
+    for (const a of arquivos) form.append('files', new Blob([new Uint8Array(a.dados)], { type: a.tipo }), a.nome)
+    const r = await sap.enviarArquivos<{ AbsoluteEntry: number }>('/Attachments2', form)
+    return r?.AbsoluteEntry ?? null
+  })
 }
 
 // Cria a Cotação de Venda no SAP. Linhas na mesma ordem dos itens (LineNum
@@ -73,8 +123,8 @@ export async function enviarCotacaoSap(c: CotacaoParaSap): Promise<{ docEntry: n
       ...cabecalho(c),
       DocumentLines: c.itens.map((i) =>
         i.precoManual || i.descontoPct < 0
-          ? { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoUnitario, DiscountPercent: 0, WarehouseCode: deposito, Usage: 10 }
-          : { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoTabela, DiscountPercent: i.descontoPct, WarehouseCode: deposito, Usage: 10 }
+          ? { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoUnitario, DiscountPercent: 0, WarehouseCode: deposito, Usage: i.utilizacao ?? UTILIZACAO_PADRAO }
+          : { ItemCode: i.itemCodigo, Quantity: i.quantidade, UnitPrice: i.precoTabela, DiscountPercent: i.descontoPct, WarehouseCode: deposito, Usage: i.utilizacao ?? UTILIZACAO_PADRAO }
       ),
     })
     if (!r?.DocEntry) throw new Error('O SAP não devolveu o número da cotação')
@@ -137,4 +187,39 @@ export async function faltasDeEstoqueSap(filial: number, itens: { itemCodigo: st
       const d = disponivel.get(codigo) ?? 0
       return `${p.nome} (${codigo}): ${d > 0 ? `só ${d} disponível` : 'sem estoque'}, pediu ${p.qtd}`
     })
+}
+
+// Formas de pagamento de recebimento do SAP (WizardPaymentMethods), em
+// memória por 6 h. Cada empresa tem a sua conta de boleto (o nome termina
+// com a empresa); "BOLETO" sem empresa vale pra todas.
+type Forma = { codigo: string; nome: string }
+let formasCache: { em: number; lista: Forma[] } | null = null
+const FORMAS_PADRAO: Forma[] = [
+  { codigo: 'BOL_ITAU_99136', nome: 'BOLETO COBRANÇA ITAÚ 99136-8 - ODIN TUBOS' },
+  { codigo: 'BOL_ITAU_22915', nome: 'BOLETO COBRANÇA ITAÚ 22915-7 - JOITEC' },
+  { codigo: 'BOL_SAF_582532', nome: 'BOLETO COBRANÇA SAFRA 00582532-2 - JOITEC' },
+  { codigo: 'BOL_ITAU_22912', nome: 'BOLETO COBRANÇA ITAÚ 22912-4 - ODIN COMPRESSORES' },
+  { codigo: 'BOL_SAF_582530', nome: 'BOLETO COBRANÇA SAFRA 00582530-6 - ODIN COMPRESSORES' },
+  { codigo: 'BOL_ITAU_22104', nome: 'BOLETO' },
+]
+const EMPRESA_DA_FILIAL: Record<number, string> = { 3: 'JOITEC', 4: 'ODIN TUBOS' }
+export async function formasPagamentoDaFilial(filial: number): Promise<Forma[]> {
+  if (!formasCache || Date.now() - formasCache.em > 6 * 3600_000) {
+    try {
+      const l = await comSessaoSap((sap) =>
+        sap.getTodos<{ PaymentMethodCode: string; Description: string; Active: string }>(`/WizardPaymentMethods?$filter=Type eq 'boptIncoming'&$select=PaymentMethodCode,Description,Active`)
+      )
+      formasCache = { em: Date.now(), lista: l.filter((m) => m.Active !== 'tNO').map((m) => ({ codigo: m.PaymentMethodCode, nome: m.Description })) }
+    } catch (e) {
+      console.error('[cotacoes] formas de pagamento do SAP:', e instanceof Error ? e.message : e)
+      formasCache = { em: Date.now() - 5.5 * 3600_000, lista: formasCache?.lista ?? FORMAS_PADRAO }
+    }
+  }
+  const empresa = EMPRESA_DA_FILIAL[filial]
+  const empresas = ['JOITEC', 'ODIN TUBOS', 'ODIN COMPRESSORES']
+  return formasCache.lista.filter((f) => {
+    const nome = f.nome.toUpperCase()
+    const deQual = empresas.find((e) => nome.endsWith(`- ${e}`))
+    return !deQual || deQual === empresa
+  })
 }

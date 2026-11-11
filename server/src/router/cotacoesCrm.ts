@@ -26,6 +26,7 @@ import {
   cotacoesCrmItens,
   empresas,
   notifications,
+  permissoesAdmin,
   sapCatalogoItens,
   sapCatalogoPrecos,
   sapClientesComercial,
@@ -33,14 +34,17 @@ import {
   sapListasPreco,
   sapPrazosPagamento,
   sapTransportadoras,
+  solicitacoesCredito,
   users,
 } from '../db/schema.js'
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
 import { fotosPorItem } from '../lib/fotosProdutos.js'
-import { enviarCotacaoSap, faltasDeEstoqueSap, fecharCotacaoSap, gerarPedidoSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
+import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { limiteAgora, limiteDaFoto } from '../lib/sapLimiteCredito.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
@@ -136,9 +140,103 @@ async function paraSap(c: typeof cotacoesCrm.$inferSelect, filial: number): Prom
       transportadoraCodigo: c.transportadoraCodigo,
       valorFrete: c.valorFrete,
       vendedorNome: vendedor?.name ?? '',
-      itens: itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual })),
+      formaPagamento: c.formaPagamento,
+      qtdEmbalagens: c.qtdEmbalagens,
+      descEmbalagem: c.descEmbalagem,
+      marca: c.marca,
+      pesoLiquido: c.pesoLiquido,
+      pesoBruto: c.pesoBruto,
+      despesasExtras: lerDespesas(c.despesasExtras),
+      anexoEntry: null,
+      itens: itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual, utilizacao: i.utilizacao })),
     },
   }
+}
+
+// ── Portal One (João, 2026-11-11) ──────────────────────────────────────────
+type Anexo = { nome: string; arquivo: string; tipo: string | null }
+function lerDespesas(json: string | null): Record<string, number> {
+  try {
+    const o = json ? (JSON.parse(json) as Record<string, number>) : {}
+    return Object.fromEntries(Object.entries(o).filter(([, v]) => typeof v === 'number' && v > 0))
+  } catch {
+    return {}
+  }
+}
+function lerAnexos(json: string | null): Anexo[] {
+  try {
+    const l = json ? (JSON.parse(json) as Anexo[]) : []
+    return Array.isArray(l) ? l.filter((a) => a && a.arquivo) : []
+  } catch {
+    return []
+  }
+}
+// Lista de preços do cadastro do cliente no SAP (null = não achou: fica a escolhida).
+async function listaDoCliente(clienteId: number): Promise<number | null> {
+  const [r] = await db
+    .select({ lista: sapClientesComercial.listaPreco })
+    .from(clientes)
+    .innerJoin(sapClientesComercial, eq(sapClientesComercial.cardCode, clientes.codigo))
+    .where(eq(clientes.id, clienteId))
+    .limit(1)
+  return r?.lista ?? null
+}
+const somaDespesas = (c: { valorFrete: number; despesasExtras: string | null }) => c.valorFrete + Object.values(lerDespesas(c.despesasExtras)).reduce((a, b) => a + b, 0)
+const UPLOADS_DIR = process.env.UPLOADS_DIR ?? './uploads'
+// Anexos → SAP. Erro aqui não segura o documento: segue sem anexo e avisa no histórico.
+async function anexoParaSap(c: { id: number; anexos: string | null }, userId: number): Promise<number | null> {
+  const anexos = lerAnexos(c.anexos)
+  if (!anexos.length) return null
+  try {
+    const arquivos = await Promise.all(
+      anexos.map(async (a) => ({ nome: a.nome, tipo: a.tipo ?? 'application/octet-stream', dados: await readFile(path.resolve(UPLOADS_DIR, path.basename(a.arquivo))) }))
+    )
+    return await subirAnexosSap(arquivos)
+  } catch (e) {
+    await registrar(c.id, userId, 'Anexos não foram pro SAP', (e as Error).message.slice(0, 300))
+    return null
+  }
+}
+
+// Venda a prazo pra cliente sem limite (ou passando do limite) no SAP: o SAP
+// recusa o pedido ("(13) CLIENTE SEM LIMITE DE CRÉDITO"). À vista passa.
+// O vendedor pede liberação ao financeiro (Consulta/Solicitação de Crédito,
+// ligada à cotação); liberado com valor ≥ pedido, vale só aquele pedido —
+// quem ajusta no SAP é o financeiro (João, 2026-11-11).
+const PRAZO_A_VISTA = -1
+async function situacaoCredito(c: typeof cotacoesCrm.$inferSelect, valorPedido: number) {
+  const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { codigo: true } })
+  let limite = null as Awaited<ReturnType<typeof limiteAgora>>
+  let erro: string | null = null
+  if (cliente?.codigo) {
+    try {
+      limite = await limiteAgora(cliente.codigo)
+    } catch (e) {
+      erro = (e as Error).message
+      limite = limiteDaFoto(cliente.codigo)
+    }
+  }
+  const aVista = c.prazoCodigo === PRAZO_A_VISTA
+  // Sem conseguir ler o limite: não trava (o SAP decide na hora).
+  const faltaLimite = !!limite && !aVista && valorPedido > limite.disponivel + 0.009
+  const [sol] = await db.select().from(solicitacoesCredito).where(eq(solicitacoesCredito.cotacaoId, c.id)).orderBy(desc(solicitacoesCredito.id)).limit(1)
+  const liberada = !!sol && sol.status === 'liberado' && (sol.valorLiberado == null || sol.valorLiberado + 0.009 >= valorPedido)
+  return {
+    limite,
+    erro,
+    aVista,
+    valorPedido,
+    precisaLiberacao: faltaLimite && !liberada,
+    solicitacao: sol
+      ? { id: sol.id, status: sol.status, valorSolicitado: sol.valorSolicitado, valorLiberado: sol.valorLiberado, motivo: sol.motivoResposta, quem: sol.quemLiberou, em: sol.decididoEm ?? sol.createdAt }
+      : null,
+    liberada: faltaLimite && liberada,
+  }
+}
+async function valorDoPedido(c: typeof cotacoesCrm.$inferSelect): Promise<number> {
+  const itens = await db.select().from(cotacoesCrmItens).where(eq(cotacoesCrmItens.cotacaoId, c.id))
+  const soAceitos = c.status === 'ganha'
+  return arred(itens.filter((i) => !soAceitos || i.aceito).reduce((s, i) => s + i.precoUnitario * i.quantidade, 0) + somaDespesas(c))
 }
 
 // Confere no SAP, na hora, o saldo disponível dos itens (só os aceitos pelo
@@ -229,6 +327,10 @@ export const cotacoesCrmRouter = router({
       empresaSlug: ctx.empresaSlug,
       emitente,
       transportadoras,
+      formasPagamento: await formasPagamentoDaFilial(ctx.filial).catch(() => []),
+      // Utilização por item: só a Odin Tubos (revenda + produção própria).
+      utilizacoes: ctx.empresaSlug === 'odin-tubos' ? UTILIZACOES_VENDA : [],
+      despesas: DESPESAS_SAP,
     }
   }),
 
@@ -401,7 +503,20 @@ export const cotacoesCrmRouter = router({
     // tem que abrir na hora); se faltar, busca em segundo plano.
     const clienteSap = cliente ? await dadosClienteSap(cliente.codigo) : null
     if (cliente && !clienteSap) void atualizarDadosClienteSap(cliente.codigo).catch(() => null)
-    return { ...c, cliente, clienteSap, itens, historico, vendedorNome: vendedor?.name ?? '', aprovadorNome: aprovador?.name ?? null, vencida, souDono: c.vendedorId === ctx.user.id }
+    return {
+      ...c,
+      despesasExtras: lerDespesas(c.despesasExtras),
+      anexos: lerAnexos(c.anexos),
+      listaCliente: await listaDoCliente(c.clienteId),
+      cliente,
+      clienteSap,
+      itens,
+      historico,
+      vendedorNome: vendedor?.name ?? '',
+      aprovadorNome: aprovador?.name ?? null,
+      vencida,
+      souDono: c.vendedorId === ctx.user.id,
+    }
   }),
 
   // Cria ou atualiza o rascunho. O preço de tabela é sempre o do catálogo
@@ -422,6 +537,14 @@ export const cotacoesCrmRouter = router({
         tipoEnvio: z.enum(['CIF', 'FOB', 'SEM_FRETE']).nullable().optional(),
         transportadoraCodigo: z.string().trim().max(30).nullable().optional(),
         valorFrete: z.number().min(0).max(1_000_000).optional(),
+        formaPagamento: z.string().trim().max(40).nullable().optional(),
+        qtdEmbalagens: z.number().int().min(0).max(100_000).nullable().optional(),
+        descEmbalagem: z.string().trim().max(60).nullable().optional(),
+        marca: z.string().trim().max(60).nullable().optional(),
+        pesoLiquido: z.number().min(0).max(1_000_000).nullable().optional(),
+        pesoBruto: z.number().min(0).max(1_000_000).nullable().optional(),
+        despesasExtras: z.record(z.string(), z.number().min(0).max(1_000_000)).optional(),
+        anexos: z.array(z.object({ nome: z.string().max(200), arquivo: z.string().max(300), tipo: z.string().max(120).nullable() })).max(10).optional(),
         itens: z
           .array(
             z.object({
@@ -430,6 +553,7 @@ export const cotacoesCrmRouter = router({
               descontoPct: z.number().min(0).max(100),
               // Preço digitado pelo vendedor (substitui o desconto).
               precoUnitario: z.number().positive().max(10_000_000).optional(),
+              utilizacao: z.number().int().nullable().optional(),
             })
           )
           .max(300),
@@ -446,6 +570,11 @@ export const cotacoesCrmRouter = router({
         columns: { id: true, vendedorAtualId: true },
       })
       if (!cliente || (!ctx.veTudo && cliente.vendedorAtualId !== ctx.user.id)) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cliente fora da sua carteira' })
+      // Lista de preços travada na do cadastro do cliente no SAP (João,
+      // 2026-11-11: "pra não dar erro") — o que vier da tela é ignorado.
+      const listaCliente = await listaDoCliente(input.clienteId)
+      if (listaCliente != null) input.listaPreco = listaCliente
+      const utilizacoesOk = new Set<number>(ctx.empresaSlug === 'odin-tubos' ? UTILIZACOES_VENDA.map((u) => u.codigo) : [])
 
       const codigos = [...new Set(input.itens.map((i) => i.itemCodigo))]
       const [catalogo, precos] = codigos.length
@@ -475,6 +604,7 @@ export const cotacoesCrmRouter = router({
           descontoPct: manual ? arred((1 - unitario / tabela) * 100, 2) : arred(i.descontoPct, 2),
           precoUnitario: unitario,
           precoManual: manual,
+          utilizacao: i.utilizacao != null && utilizacoesOk.has(i.utilizacao) ? i.utilizacao : null,
         }
       })
       // Item sem estoque é proibido (João, 2026-11-10). Aqui pela foto de
@@ -511,6 +641,16 @@ export const cotacoesCrmRouter = router({
           tipoEnvio: input.tipoEnvio ?? null,
           transportadoraCodigo: input.transportadoraCodigo || null,
           valorFrete: arred(input.valorFrete ?? 0),
+          formaPagamento: input.formaPagamento || null,
+          qtdEmbalagens: input.qtdEmbalagens || null,
+          descEmbalagem: input.descEmbalagem || null,
+          marca: input.marca || null,
+          pesoLiquido: input.pesoLiquido || null,
+          pesoBruto: input.pesoBruto || null,
+          despesasExtras: JSON.stringify(
+            Object.fromEntries(Object.entries(input.despesasExtras ?? {}).filter(([k, v]) => DESPESAS_SAP.some((d) => String(d.codigo) === k) && v > 0).map(([k, v]) => [k, arred(v)]))
+          ),
+          ...(input.anexos ? { anexos: JSON.stringify(input.anexos) } : {}),
           total,
           maiorDescontoPct,
           updatedAt: agora,
@@ -677,6 +817,7 @@ export const cotacoesCrmRouter = router({
     if (c.sapDocNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Já está no SAP (cotação nº ${c.sapDocNum})` })
     const { dados } = await paraSap(c, ctx.filial)
     await exigirEstoque(c.id, ctx.filial)
+    dados.anexoEntry = await anexoParaSap(c, ctx.user.id)
     let r
     try {
       r = await enviarCotacaoSap(dados)
@@ -697,8 +838,19 @@ export const cotacoesCrmRouter = router({
     exigirDono(ctx, c)
     exigirStatus(c, ['ganha'], 'gerar pedido de')
     if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido já gerado (SAP nº ${c.sapPedidoNum})` })
+    const credito = await situacaoCredito(c, await valorDoPedido(c))
+    if (credito.precisaLiberacao) {
+      const pendente = credito.solicitacao?.status === 'pendente'
+      throw new TRPCError({
+        code: 'PRECONDITION_FAILED',
+        message: pendente
+          ? 'Aguardando a liberação do financeiro (cliente sem limite de crédito no SAP para venda a prazo).'
+          : 'Cliente sem limite de crédito no SAP para esta venda a prazo — o SAP vai recusar. Clique em "Pedir liberação ao financeiro" ou mude o prazo para À vista.',
+      })
+    }
     const { dados, itens } = await paraSap(c, ctx.filial)
     await exigirEstoque(c.id, ctx.filial, true)
+    dados.anexoEntry = await anexoParaSap(c, ctx.user.id)
     let cotEntry = c.sapDocEntry
     try {
       if (!cotEntry) {
@@ -723,14 +875,59 @@ export const cotacoesCrmRouter = router({
   // de mandar o pedido). null = sem limite cadastrado; erro = não deu pra ver.
   limiteCredito: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
-    const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { codigo: true } })
-    if (!cliente?.codigo) return { limite: null, erro: null }
-    try {
-      return { limite: await limiteAgora(cliente.codigo), erro: null }
-    } catch (e) {
-      return { limite: limiteDaFoto(cliente.codigo), erro: (e as Error).message }
-    }
+    return situacaoCredito(c, await valorDoPedido(c))
   }),
+
+  // Pede ao financeiro a liberação desta venda a prazo (cai em Consulta/
+  // Solicitação de Crédito, ligada à cotação).
+  pedirLiberacao: cotacoesProcedure.input(z.object({ id: z.number().int(), observacao: z.string().trim().max(1000).optional() })).mutation(async ({ ctx, input }) => {
+    const c = await acharCotacao(ctx, input.id)
+    exigirDono(ctx, c)
+    if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `O pedido já foi gerado (SAP nº ${c.sapPedidoNum})` })
+    if (!['aprovada', 'enviada', 'ganha'].includes(c.status)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Conclua a cotação antes de pedir a liberação' })
+    const valor = await valorDoPedido(c)
+    const credito = await situacaoCredito(c, valor)
+    if (!credito.precisaLiberacao) throw new TRPCError({ code: 'BAD_REQUEST', message: credito.liberada ? 'Já está liberada pelo financeiro' : 'Esta venda não precisa de liberação' })
+    if (credito.solicitacao?.status === 'pendente') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Já existe um pedido de liberação esperando o financeiro' })
+    const prazo = c.prazoCodigo != null ? (await db.select({ nome: sapPrazosPagamento.nome }).from(sapPrazosPagamento).where(eq(sapPrazosPagamento.codigo, c.prazoCodigo)))[0]?.nome : null
+    const l = credito.limite
+    const resumo = [
+      `Pedido da cotação do CRM nº ${c.id}${c.sapDocNum ? ` (cotação SAP nº ${c.sapDocNum})` : ''} — ${brl(valor)} a prazo${prazo ? ` (${prazo})` : ''}.`,
+      l ? `Limite no SAP: ${brl(l.limite)} · usado ${brl(l.usado)} · disponível ${brl(Math.max(0, l.disponivel))}.` : null,
+      'O SAP recusa o pedido sem limite (erro 13). Liberado: ajuste no SAP e responda aqui — vale só este pedido.',
+      input.observacao ? `Vendedor: ${input.observacao}` : null,
+    ]
+      .filter(Boolean)
+      .join('\n')
+    const [nova] = await db
+      .insert(solicitacoesCredito)
+      .values({ empresaId: c.empresaId, clienteId: c.clienteId, vendedorSolicitanteId: ctx.user.id, tipo: 'consulta', tipoConsulta: 'geral', valorSolicitado: valor, observacoes: resumo, cotacaoId: c.id })
+      .returning({ id: solicitacoesCredito.id })
+    await registrar(c.id, ctx.user.id, 'Pediu liberação de crédito ao financeiro', `${brl(valor)} a prazo · solicitação nº ${nova.id}`)
+    // Avisa quem responde as solicitações de crédito (Financeiro, todas as empresas).
+    const financeiro = await db
+      .selectDistinct({ id: users.id })
+      .from(users)
+      .innerJoin(permissoesAdmin, eq(permissoesAdmin.userId, users.id))
+      .where(and(eq(permissoesAdmin.feature, 'solicitacao_credito'), eq(users.isActive, true)))
+    const cliente = await nomeCliente(c.clienteId)
+    for (const f of financeiro)
+      if (f.id !== ctx.user.id)
+        await avisar(f.id, c.clienteId, 'Liberação de crédito pedida', `${ctx.user.name} pediu liberação para vender ${brl(valor)} a prazo para ${cliente} (cotação nº ${c.id}). Abra em Consulta/Solicitação de Crédito.`)
+    return { id: nova.id }
+  }),
+
+  // Anexos podem mudar até o pedido existir (ex.: ordem de compra do cliente
+  // que chegou depois da aprovação).
+  salvarAnexos: cotacoesProcedure
+    .input(z.object({ id: z.number().int(), anexos: z.array(z.object({ nome: z.string().max(200), arquivo: z.string().max(300), tipo: z.string().max(120).nullable() })).max(10) }))
+    .mutation(async ({ ctx, input }) => {
+      const c = await acharCotacao(ctx, input.id)
+      exigirDono(ctx, c)
+      if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: 'O pedido já foi gerado no SAP' })
+      await db.update(cotacoesCrm).set({ anexos: JSON.stringify(input.anexos), updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
+      return { ok: true }
+    }),
 
   // Pra impressão: dados do cliente no SAP, buscando agora se ainda não tem.
   dadosClienteSap: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
@@ -765,6 +962,8 @@ export const cotacoesCrmRouter = router({
           tipoEnvio: c.tipoEnvio,
           transportadoraCodigo: c.transportadoraCodigo,
           valorFrete: c.valorFrete,
+          formaPagamento: c.formaPagamento,
+          despesasExtras: c.despesasExtras,
           total: c.total,
           maiorDescontoPct: c.maiorDescontoPct,
           createdAt: agora,
@@ -773,7 +972,7 @@ export const cotacoesCrmRouter = router({
         .returning({ id: cotacoesCrm.id })
       if (itens.length) {
         await tx.insert(cotacoesCrmItens).values(
-          itens.map((i) => ({ cotacaoId: nova.id, itemCodigo: i.itemCodigo, nome: i.nome, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual }))
+          itens.map((i) => ({ cotacaoId: nova.id, itemCodigo: i.itemCodigo, nome: i.nome, quantidade: i.quantidade, precoTabela: i.precoTabela, descontoPct: i.descontoPct, precoUnitario: i.precoUnitario, precoManual: i.precoManual, utilizacao: i.utilizacao }))
         )
       }
       return nova.id

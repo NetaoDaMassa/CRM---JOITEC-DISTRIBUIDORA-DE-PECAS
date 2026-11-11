@@ -333,11 +333,14 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,
-    // Limite de crédito do SAP estourado (selo no card) — só empresas do SAP.
-    limiteCreditoEstourado: (() => {
-      if (!empresasSap.has(f.cliente.empresaId)) return null
-      const l = limiteDaFoto(f.cliente.codigo)
-      return l && l.disponivel <= 0 ? l : null
+    // Limite de crédito do SAP (selo no card) — só empresas do SAP.
+    // Estourado = tem limite e passou; só à vista = limite 0 no SAP.
+    ...(() => {
+      const l = empresasSap.has(f.cliente.empresaId) ? limiteDaFoto(f.cliente.codigo) : null
+      return {
+        limiteCreditoEstourado: l && l.limite > 0 && l.disponivel <= 0 ? l : null,
+        soAVista: !!l && l.limite <= 0,
+      }
     })(),
     contatos: (contatosPorFunil.get(f.id) ?? []).map((c) => ({
       id: c.id,

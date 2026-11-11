@@ -21,7 +21,8 @@ type ItemCatalogo = Saidas['catalogo'][number]
 type ClienteBusca = Saidas['clientes'][number]
 // preco = preço digitado pelo vendedor (pode ser acima da tabela, como no SAP);
 // sem ele, vale tabela − desconto.
-type Linha = { itemCodigo: string; quantidade: number; descontoPct: number; preco?: number | null }
+type Linha = { itemCodigo: string; quantidade: number; descontoPct: number; preco?: number | null; utilizacao?: number | null }
+type AnexoCot = { nome: string; arquivo: string; tipo: string | null }
 
 const normalizar = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 // Aceita "1,5" e "1.5" (lib/valorBr — já evitou o bug do ponto virar milhar).
@@ -279,6 +280,17 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const [transportadoraCodigo, setTransportadoraCodigo] = useState('')
   const [tipoEnvio, setTipoEnvio] = useState<'CIF' | 'FOB' | 'SEM_FRETE' | ''>('CIF')
   const [frete, setFrete] = useState(0)
+  // Portal One (João, 2026-11-11): forma de pagamento, embalagens/peso,
+  // outras despesas e anexos.
+  const [formaPagamento, setFormaPagamento] = useState('')
+  const [qtdEmbalagens, setQtdEmbalagens] = useState(0)
+  const [descEmbalagem, setDescEmbalagem] = useState('')
+  const [marca, setMarca] = useState('')
+  const [pesoLiquido, setPesoLiquido] = useState(0)
+  const [pesoBruto, setPesoBruto] = useState(0)
+  const [despesasExtras, setDespesasExtras] = useState<Record<string, number>>({})
+  const [anexos, setAnexos] = useState<AnexoCot[]>([])
+  const [listaTravada, setListaTravada] = useState(false)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [alterado, setAlterado] = useState(false)
 
@@ -298,7 +310,16 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     setTransportadoraCodigo(existente.transportadoraCodigo ?? '')
     setTipoEnvio(existente.tipoEnvio ?? '')
     setFrete(existente.valorFrete ?? 0)
-    setLinhas(existente.itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, descontoPct: Math.max(0, i.descontoPct), preco: i.precoManual ? i.precoUnitario : null })))
+    setFormaPagamento(existente.formaPagamento ?? '')
+    setQtdEmbalagens(existente.qtdEmbalagens ?? 0)
+    setDescEmbalagem(existente.descEmbalagem ?? '')
+    setMarca(existente.marca ?? '')
+    setPesoLiquido(existente.pesoLiquido ?? 0)
+    setPesoBruto(existente.pesoBruto ?? 0)
+    setDespesasExtras(existente.despesasExtras ?? {})
+    setAnexos(existente.anexos ?? [])
+    setListaTravada(existente.listaCliente != null)
+    setLinhas(existente.itens.map((i) => ({ itemCodigo: i.itemCodigo, quantidade: i.quantidade, descontoPct: Math.max(0, i.descontoPct), preco: i.precoManual ? i.precoUnitario : null, utilizacao: i.utilizacao })))
   }, [existente])
 
   const listaEfetiva = lista ?? ctx?.listaBase ?? 1
@@ -345,18 +366,12 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     if (confirm(`Criar a cotação nº ${id} no SAP?`)) enviarSap.mutate({ id })
     else travaSap.current = false
   }
-  const { data: credito } = trpc.cotacoesCrm.limiteCredito.useQuery({ id: id ?? 0 }, { enabled: id != null && !!existente, staleTime: 5 * 60_000 })
   const onGerarPedido = () => {
     if (travaSap.current || id == null || !existente) return
     travaSap.current = true
     const aceitos = existente.itens.filter((i) => i.aceito)
-    const valorAceito = aceitos.reduce((s, i) => s + i.quantidade * i.precoUnitario, 0)
-    const lim = credito?.limite
-    const aviso =
-      lim && valorAceito > lim.disponivel
-        ? `\n\n⚠ ATENÇÃO: o pedido (${formatarMoeda(valorAceito)}) passa do limite de crédito disponível do cliente no SAP (${formatarMoeda(Math.max(0, lim.disponivel))}). O SAP pode recusar — confira com o financeiro.`
-        : ''
-    if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?${aviso}`)) gerarPedido.mutate({ id })
+    // Sem limite de crédito (venda a prazo) o servidor barra e pede a liberação do financeiro.
+    if (confirm(`Gerar o pedido de venda no SAP com ${aceitos.length} item(ns) aprovados pelo cliente?`)) gerarPedido.mutate({ id })
     else travaSap.current = false
   }
   const duplicar = trpc.cotacoesCrm.duplicar.useMutation({
@@ -426,6 +441,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
   const escolherCliente = (c: ClienteBusca) => {
     setCliente({ id: c.id, codigo: c.codigo, nome: c.nome, cidade: c.cidade, estado: c.estado })
     if (c.listaPreco) setLista(c.listaPreco)
+    setListaTravada(!!c.listaPreco)
     if (c.prazoCodigo != null) setPrazo(c.prazoCodigo)
     if (c.nomeContato && !contato) setContato(c.nomeContato)
     if (c.bloqueado) toast('Atenção: esse cliente está bloqueado/inativo no SAP', { icon: '⚠️' })
@@ -445,7 +461,21 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
     tipoEnvio: tipoEnvio || null,
     transportadoraCodigo: transportadoraCodigo || null,
     valorFrete: frete,
-    itens: linhas.map((l) => ({ itemCodigo: l.itemCodigo, quantidade: l.quantidade, descontoPct: l.preco != null ? 0 : l.descontoPct, ...(l.preco != null ? { precoUnitario: l.preco } : {}) })),
+    formaPagamento: formaPagamento || null,
+    qtdEmbalagens: qtdEmbalagens || null,
+    descEmbalagem: descEmbalagem.trim() || null,
+    marca: marca.trim() || null,
+    pesoLiquido: pesoLiquido || null,
+    pesoBruto: pesoBruto || null,
+    despesasExtras,
+    anexos,
+    itens: linhas.map((l) => ({
+      itemCodigo: l.itemCodigo,
+      quantidade: l.quantidade,
+      descontoPct: l.preco != null ? 0 : l.descontoPct,
+      ...(l.preco != null ? { precoUnitario: l.preco } : {}),
+      utilizacao: l.utilizacao ?? null,
+    })),
   })
   const onSalvar = () => {
     if (!cliente) return toast.error('Escolha o cliente')
@@ -498,7 +528,17 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
       toast.error((e as Error).message)
     }
   }
-  const valorTotal = total + frete
+  const outrasDespesas = Object.values(despesasExtras).reduce((a, b) => a + (b || 0), 0)
+  const valorTotal = total + frete + outrasDespesas
+  const pesoCatalogo = calc.reduce((s, l) => s + (l.item?.pesoKg ?? 0) * l.quantidade, 0)
+  // Anexos mudam até o pedido existir (rascunho salva junto; depois, na hora).
+  const salvarAnexos = trpc.cotacoesCrm.salvarAnexos.useMutation({ onSuccess: () => utils.cotacoesCrm.obter.invalidate(), onError: erro })
+  const podeAnexar = podeMexer && !existente?.sapPedidoNum && status !== 'perdida'
+  const mudarAnexos = (novos: AnexoCot[]) => {
+    setAnexos(novos)
+    if (somenteLeitura && id != null) salvarAnexos.mutate({ id, anexos: novos })
+    else setAlterado(true)
+  }
 
   return (
     <div className="space-y-4">
@@ -574,7 +614,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
       </div>
 
       {existente && <FaixaSituacao c={existente} status={status} descontoLivre={ctx?.descontoLivre ?? 0} gerente={ctx?.gerente?.name ?? null} />}
-      {existente && id != null && status !== 'perdida' && !existente.sapPedidoNum && <LimiteCredito id={id} valor={valorTotal} />}
+      {existente && id != null && status !== 'perdida' && !existente.sapPedidoNum && <LimiteCredito id={id} podePedir={podeMexer && ['aprovada', 'enviada', 'ganha'].includes(status)} />}
 
       {/* Faixa de cima: cliente e condições, na largura toda. */}
       <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
@@ -602,7 +642,13 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
           </div>
           <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
             <Campo rotulo="Tabela de preço">
-              <select disabled={somenteLeitura} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={listaEfetiva} onChange={(e) => (setLista(Number(e.target.value)), setAlterado(true))}>
+              <select
+                disabled={somenteLeitura || listaTravada}
+                title={listaTravada ? 'Travada na lista do cadastro do cliente no SAP' : undefined}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                value={listaEfetiva}
+                onChange={(e) => (setLista(Number(e.target.value)), setAlterado(true))}
+              >
                 {(ctx?.listas ?? []).map((l) => (
                   <option key={l.numero} value={l.numero}>
                     {l.nome}
@@ -680,6 +726,78 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                 onValor={(n) => (setFrete(n), setAlterado(true))}
               />
             </Campo>
+            <Campo rotulo="Forma de pagamento">
+              <select
+                disabled={somenteLeitura}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                value={formaPagamento}
+                onChange={(e) => (setFormaPagamento(e.target.value), setAlterado(true))}
+              >
+                <option value="">Escolha…</option>
+                {formaPagamento && !ctx?.formasPagamento.some((f) => f.codigo === formaPagamento) && <option value={formaPagamento}>{formaPagamento}</option>}
+                {(ctx?.formasPagamento ?? []).map((f) => (
+                  <option key={f.codigo} value={f.codigo}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+            </Campo>
+            <Campo rotulo="Qtde. embalagens">
+              <CampoNumero
+                disabled={somenteLeitura}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                valor={qtdEmbalagens}
+                vazioVale={0}
+                placeholder="0"
+                valido={(n) => n >= 0 && Number.isInteger(n)}
+                onValor={(n) => (setQtdEmbalagens(n), setAlterado(true))}
+              />
+            </Campo>
+            <Campo rotulo="Desc. embalagem">
+              <input disabled={somenteLeitura} maxLength={60} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={descEmbalagem} onChange={(e) => (setDescEmbalagem(e.target.value), setAlterado(true))} placeholder="Ex.: caixa, fardo" />
+            </Campo>
+            <Campo rotulo="Marca">
+              <input disabled={somenteLeitura} maxLength={60} className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70" value={marca} onChange={(e) => (setMarca(e.target.value), setAlterado(true))} placeholder="Opcional" />
+            </Campo>
+            <Campo rotulo="Peso líquido (kg)">
+              <CampoNumero
+                disabled={somenteLeitura}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                valor={pesoLiquido}
+                vazioVale={0}
+                placeholder="0,00"
+                valido={(n) => n >= 0}
+                onValor={(n) => (setPesoLiquido(n), setAlterado(true))}
+              />
+            </Campo>
+            <Campo rotulo="Peso bruto (kg)">
+              <CampoNumero
+                disabled={somenteLeitura}
+                className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                valor={pesoBruto}
+                vazioVale={0}
+                placeholder="0,00"
+                valido={(n) => n >= 0}
+                onValor={(n) => (setPesoBruto(n), setAlterado(true))}
+              />
+            </Campo>
+            {!somenteLeitura && pesoCatalogo > 0 && (
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  className="w-full rounded-lg border border-dark-600 px-3 py-2 text-xs text-dark-200 hover:border-gold-600"
+                  title="Peso de cada item no cadastro do SAP × quantidade"
+                  onClick={() => {
+                    const kg = Math.round(pesoCatalogo * 100) / 100
+                    setPesoLiquido(kg)
+                    setPesoBruto(kg)
+                    setAlterado(true)
+                  }}
+                >
+                  ⚖ Usar peso dos itens ({fmtQtd(Math.round(pesoCatalogo * 100) / 100)} kg)
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -758,6 +876,23 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                           onValor={(n) => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, preco: n, descontoPct: 0 } : x)))}
                         />
                       </label>
+                      {ctx && ctx.utilizacoes.length > 0 && (
+                        <label className="flex items-center gap-1 text-xs text-dark-400">
+                          Utilização
+                          <select
+                            disabled={somenteLeitura}
+                            className="rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-xs text-dark-100 outline-none disabled:opacity-70"
+                            value={l.utilizacao ?? ctx.utilizacoes[0].codigo}
+                            onChange={(e) => mexer((ls) => ls.map((x) => (x.itemCodigo === l.itemCodigo ? { ...x, utilizacao: Number(e.target.value) } : x)))}
+                          >
+                            {ctx.utilizacoes.map((u) => (
+                              <option key={u.codigo} value={u.codigo}>
+                                {u.nome}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       {l.descEfetivo < -0.005 && <span className="text-[10px] font-semibold rounded bg-sky-900/40 text-sky-300 px-1.5 py-0.5">+{fmtQtd(Math.round(-l.descEfetivo * 100) / 100)}% sobre a tabela</span>}
                       {ctx && l.descEfetivo > ctx.descontoLivre && (
                         <span className="text-[10px] font-semibold rounded bg-amber-900/40 text-amber-300 px-1.5 py-0.5" title={`Acima de ${fmtQtd(ctx.descontoLivre)}% precisa do gerente aprovar`}>
@@ -779,16 +914,24 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
               </div>
             )}
             <div className="px-4 py-3 border-t border-dark-700 bg-dark-900/40 space-y-1">
-              {frete > 0 && (
+              {(frete > 0 || outrasDespesas > 0) && (
                 <>
                   <div className="flex justify-between text-xs text-dark-400">
                     <span>Itens (sem IPI)</span>
                     <span>{formatarMoeda(total)}</span>
                   </div>
-                  <div className="flex justify-between text-xs text-dark-400">
-                    <span>Frete (despesas adicionais)</span>
-                    <span>{formatarMoeda(frete)}</span>
-                  </div>
+                  {frete > 0 && (
+                    <div className="flex justify-between text-xs text-dark-400">
+                      <span>Frete (despesas adicionais)</span>
+                      <span>{formatarMoeda(frete)}</span>
+                    </div>
+                  )}
+                  {outrasDespesas > 0 && (
+                    <div className="flex justify-between text-xs text-dark-400">
+                      <span>Outras despesas</span>
+                      <span>{formatarMoeda(outrasDespesas)}</span>
+                    </div>
+                  )}
                 </>
               )}
               <div className="flex items-center justify-between">
@@ -802,6 +945,30 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
               )}
             </div>
           </div>
+
+          {ctx && ctx.despesas.length > 0 && (!somenteLeitura || outrasDespesas > 0) && (
+            <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-2">
+              <p className="text-sm font-semibold text-dark-100">Outras despesas adicionais</p>
+              <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
+                {ctx.despesas.map((d) => (
+                  <Campo key={d.codigo} rotulo={`${d.nome} (R$)`}>
+                    <CampoNumero
+                      disabled={somenteLeitura}
+                      className="w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600 disabled:opacity-70"
+                      valor={despesasExtras[String(d.codigo)] ?? 0}
+                      vazioVale={0}
+                      placeholder="0,00"
+                      valido={(n) => n >= 0}
+                      onValor={(n) => (setDespesasExtras((o) => ({ ...o, [String(d.codigo)]: n })), setAlterado(true))}
+                    />
+                  </Campo>
+                ))}
+              </div>
+              <p className="text-[11px] text-dark-500">O frete fica no campo "Frete cobrado" lá em cima. Tudo vai para a aba Despesas Adicionais do SAP.</p>
+            </div>
+          )}
+
+          <Anexos anexos={anexos} podeMexer={podeAnexar} onMudar={mudarAnexos} />
 
           <div className={`grid gap-4 ${somenteLeitura ? 'lg:grid-cols-2' : ''}`}>
             <div className="space-y-1">
@@ -1397,33 +1564,142 @@ function BuscaCliente({ onEscolher }: { onEscolher: (c: ClienteBusca) => void })
   )
 }
 
-// Limite de crédito do cliente no SAP (João, 2026-11-11): avisa antes de
-// mandar o pedido — no SAP o bloqueio por crédito só aparece na hora de lançar.
-function LimiteCredito({ id, valor }: { id: number; valor: number }) {
-  const { data, isLoading } = trpc.cotacoesCrm.limiteCredito.useQuery({ id }, { staleTime: 5 * 60_000 })
+// Limite de crédito do cliente no SAP (João, 2026-11-11). Venda a prazo sem
+// limite (ou passando dele) o SAP recusa — o vendedor pede liberação ao
+// financeiro (vai para Consulta/Solicitação de Crédito) e, liberado, gera o
+// pedido. À vista passa sempre. Vale só aquele pedido.
+function LimiteCredito({ id, podePedir }: { id: number; podePedir: boolean }) {
+  const utils = trpc.useUtils()
+  const { data, isLoading } = trpc.cotacoesCrm.limiteCredito.useQuery({ id }, { staleTime: 60_000 })
+  const [obs, setObs] = useState('')
+  const [abrindo, setAbrindo] = useState(false)
+  const pedir = trpc.cotacoesCrm.pedirLiberacao.useMutation({
+    onSuccess: () => {
+      toast.success('Pedido de liberação enviado ao financeiro')
+      setAbrindo(false)
+      utils.cotacoesCrm.limiteCredito.invalidate({ id })
+      utils.cotacoesCrm.obter.invalidate()
+    },
+    onError: (e) => toast.error(e.message),
+  })
   if (isLoading || !data) return null
   const l = data.limite
-  if (!l) {
-    return data.erro ? <p className="text-xs text-dark-500">Não deu para conferir o limite de crédito no SAP agora.</p> : null
+  if (!l) return data.erro ? <p className="text-xs text-dark-500">Não deu para conferir o limite de crédito no SAP agora.</p> : null
+  const semLimite = l.limite <= 0
+  const sol = data.solicitacao
+  const resumo = semLimite ? 'Sem limite de crédito no SAP — só vende à vista' : `Limite ${formatarMoeda(l.limite)} · Usado ${formatarMoeda(l.usado)} · Disponível ${formatarMoeda(Math.max(0, l.disponivel))}`
+  if (data.aVista || (!data.precisaLiberacao && !data.liberada)) {
+    return (
+      <div className="rounded-xl border border-dark-600 bg-dark-800 px-4 py-2.5 text-sm text-dark-200">
+        <span className="font-semibold">💳 Crédito no SAP</span>
+        <span className="ml-2 text-xs opacity-90">{resumo}</span>
+        {data.aVista && <span className="ml-2 text-xs text-green-300">· À vista: não usa limite</span>}
+      </div>
+    )
   }
-  const disponivel = Math.max(0, l.disponivel)
-  const estourado = l.disponivel <= 0
-  const passa = !estourado && valor > l.disponivel
-  const cor = estourado || passa ? 'border-red-700/60 bg-red-900/20 text-red-100' : 'border-dark-600 bg-dark-800 text-dark-200'
+  if (data.liberada) {
+    return (
+      <div className="rounded-xl border border-green-700/60 bg-green-900/20 px-4 py-2.5 text-sm text-green-100">
+        <span className="font-semibold">✅ Crédito liberado pelo financeiro para este pedido</span>
+        <span className="ml-2 text-xs opacity-90">
+          {sol?.valorLiberado ? `${formatarMoeda(sol.valorLiberado)} · ` : ''}
+          {sol?.quem ?? ''}
+          {sol?.motivo ? ` — ${sol.motivo}` : ''}
+        </span>
+        <p className="text-xs mt-1 opacity-90">Já pode gerar o pedido no SAP. Se o SAP ainda recusar, o financeiro precisa ajustar o limite lá.</p>
+      </div>
+    )
+  }
   return (
-    <div className={`rounded-xl border px-4 py-2.5 text-sm ${cor}`}>
-      <span className="font-semibold">
-        {estourado ? '⚠ Cliente sem limite de crédito no SAP' : passa ? '⚠ Esta cotação passa do limite de crédito do cliente' : '💳 Limite de crédito no SAP'}
-      </span>
-      <span className="ml-2 text-xs opacity-90">
-        Limite {formatarMoeda(l.limite)} · Usado {formatarMoeda(l.usado)} (títulos em aberto{l.pedidosAbertos > 0 ? ' + pedidos abertos' : ''}) · Disponível <b>{formatarMoeda(disponivel)}</b>
-      </span>
-      {(estourado || passa) && (
-        <p className="text-xs mt-1 opacity-90">
-          {estourado ? 'O SAP pode recusar qualquer pedido a prazo para este cliente.' : `Esta cotação é de ${formatarMoeda(valor)}.`} Fale com o financeiro antes de gerar o pedido (liberar limite ou pagamento à vista).
-        </p>
+    <div className="rounded-xl border border-red-700/60 bg-red-900/20 px-4 py-3 text-sm text-red-100 space-y-2">
+      <p>
+        <span className="font-semibold">⚠ O SAP vai recusar este pedido a prazo ({formatarMoeda(data.valorPedido)})</span>
+        <span className="ml-2 text-xs opacity-90">{resumo}</span>
+      </p>
+      {sol?.status === 'pendente' ? (
+        <p className="text-xs">⏳ Pedido de liberação enviado ao financeiro — aguardando resposta. Você recebe um aviso quando responderem.</p>
+      ) : (
+        <>
+          {sol?.status === 'negado' && (
+            <p className="text-xs">
+              ❌ O financeiro negou{sol.motivo ? `: ${sol.motivo}` : ''}. Dá para mudar o prazo para <b>À vista</b> (Reabrir p/ negociar) ou pedir de novo.
+            </p>
+          )}
+          <p className="text-xs opacity-90">Para vender a prazo, peça a liberação ao financeiro (vale só este pedido) — ou mude o prazo para À vista.</p>
+          {podePedir &&
+            (abrindo ? (
+              <div className="flex flex-wrap items-end gap-2">
+                <textarea
+                  rows={2}
+                  className="min-w-[260px] flex-1 rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600"
+                  placeholder="Algo que ajude o financeiro a decidir (opcional): cliente antigo, pagou em dia, etc."
+                  value={obs}
+                  onChange={(e) => setObs(e.target.value)}
+                />
+                <Button loading={pedir.isPending} onClick={() => pedir.mutate({ id, observacao: obs || undefined })}>
+                  Enviar ao financeiro
+                </Button>
+                <Button variant="secondary" onClick={() => setAbrindo(false)}>
+                  Cancelar
+                </Button>
+              </div>
+            ) : (
+              <Button onClick={() => setAbrindo(true)}>Pedir liberação ao financeiro</Button>
+            ))}
+        </>
       )}
-      {data.erro && <p className="text-[11px] mt-1 opacity-70">Valor da última consulta — o SAP não respondeu agora.</p>}
+    </div>
+  )
+}
+
+// Anexos da cotação (aba Anexos do Portal One) — vão junto para o SAP.
+function Anexos({ anexos, podeMexer, onMudar }: { anexos: AnexoCot[]; podeMexer: boolean; onMudar: (a: AnexoCot[]) => void }) {
+  const [enviando, setEnviando] = useState(false)
+  if (!podeMexer && !anexos.length) return null
+  const enviar = async (arquivos: FileList | null) => {
+    if (!arquivos?.length) return
+    setEnviando(true)
+    try {
+      const novos: AnexoCot[] = []
+      for (const f of Array.from(arquivos)) {
+        const form = new FormData()
+        form.append('file', f)
+        const r = await fetch('/upload/lead-attachment', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
+        if (!r.ok) throw new Error(`Falha ao enviar ${f.name}`)
+        const j = (await r.json()) as { path: string; originalName: string; mimeType: string }
+        novos.push({ nome: j.originalName || f.name, arquivo: j.path, tipo: j.mimeType || null })
+      }
+      onMudar([...anexos, ...novos].slice(0, 10))
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-2">
+      <p className="text-sm font-semibold text-dark-100">Anexos</p>
+      {anexos.length === 0 && <p className="text-xs text-dark-500">Nenhum anexo. Vão junto para a cotação e o pedido no SAP (ex.: ordem de compra do cliente).</p>}
+      <ul className="space-y-1">
+        {anexos.map((a, i) => (
+          <li key={a.arquivo} className="flex items-center gap-2 text-sm">
+            <a className="text-blue-400 hover:underline truncate" href={`/uploads/${a.arquivo}`} target="_blank" rel="noreferrer">
+              📎 {a.nome}
+            </a>
+            {podeMexer && (
+              <button type="button" className="text-dark-500 hover:text-red-400" aria-label="Tirar anexo" onClick={() => onMudar(anexos.filter((_, j) => j !== i))}>
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {podeMexer && anexos.length < 10 && (
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dark-600 px-3 py-1.5 text-xs text-dark-200 hover:border-gold-600">
+          {enviando ? 'Enviando…' : '+ Anexar arquivo'}
+          <input type="file" multiple className="hidden" disabled={enviando} onChange={(e) => (enviar(e.target.files), (e.target.value = ''))} />
+        </label>
+      )}
     </div>
   )
 }

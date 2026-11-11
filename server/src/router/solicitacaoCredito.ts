@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { solicitacoesCredito, solicitacaoCreditoAnexos, solicitacaoCreditoRespostas, liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
+import { solicitacoesCredito, solicitacaoCreditoAnexos, solicitacaoCreditoRespostas, liberacoesCredito, clientes, empresas, users, cotacoesCrmHistorico, notifications } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { buildHistoricoCliente } from './clientes.js'
 
@@ -206,6 +206,7 @@ export const solicitacaoCreditoRouter = router({
           tipoConsulta: solicitacoesCredito.tipoConsulta,
           status: solicitacoesCredito.status,
           valorSolicitado: solicitacoesCredito.valorSolicitado,
+          cotacaoId: solicitacoesCredito.cotacaoId,
           createdAt: solicitacoesCredito.createdAt,
         })
         .from(solicitacoesCredito)
@@ -343,6 +344,29 @@ export const solicitacaoCreditoRouter = router({
           valorLiberado: input.decisao === 'liberado' ? input.valorLiberado : undefined,
           origemSolicitacaoId: input.id,
           criadoPor: ctx.user.id,
+        })
+      }
+
+      // Veio da Cotação do CRM (venda a prazo sem limite no SAP): a resposta
+      // aparece na cotação e o vendedor é avisado (João, 2026-11-11).
+      if (solicitacao.cotacaoId) {
+        const valor = input.valorLiberado ? ` · ${input.valorLiberado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''
+        const liberou = input.decisao === 'liberado'
+        await db.insert(cotacoesCrmHistorico).values({
+          cotacaoId: solicitacao.cotacaoId,
+          userId: ctx.user.id,
+          acao: liberou ? 'Financeiro liberou o crédito' : 'Financeiro negou o crédito',
+          detalhe: `${input.motivoResposta.trim()}${valor} (${input.quemLiberou.trim()})`,
+        })
+        const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId), columns: { razaoSocial: true } })
+        await db.insert(notifications).values({
+          vendedorId: solicitacao.vendedorSolicitanteId,
+          clienteId: solicitacao.clienteId,
+          type: 'info',
+          title: liberou ? 'Crédito liberado — pode gerar o pedido' : 'Crédito negado pelo financeiro',
+          message: liberou
+            ? `O financeiro liberou a venda a prazo da cotação nº ${solicitacao.cotacaoId} (${cliente?.razaoSocial ?? ''})${valor}. Abra em Cotações e clique em Gerar pedido no SAP.`
+            : `O financeiro negou a venda a prazo da cotação nº ${solicitacao.cotacaoId} (${cliente?.razaoSocial ?? ''}): ${input.motivoResposta.trim()}. Dá para mudar o prazo para À vista.`,
         })
       }
 

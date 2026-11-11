@@ -914,6 +914,11 @@ export default function FunilBoard({
                       {card.carregadoMesAnterior && (
                         <p className="text-xs text-amber-500 mb-1">Carregado do mês anterior</p>
                       )}
+                      {card.soAVista && (
+                        <p className="text-[11px] text-amber-200/90 bg-amber-900/20 border border-amber-700/40 rounded px-1.5 py-0.5 mb-1" title="Limite de crédito R$ 0 no SAP: venda a prazo é recusada. À vista passa; a prazo precisa de liberação do financeiro (pela Cotação).">
+                          💳 Só à vista (sem limite de crédito no SAP)
+                        </p>
+                      )}
                       {card.limiteCreditoEstourado && (
                         <p
                           className="text-[11px] font-semibold text-red-200 bg-red-900/30 border border-red-700/60 rounded px-1.5 py-0.5 mb-1"

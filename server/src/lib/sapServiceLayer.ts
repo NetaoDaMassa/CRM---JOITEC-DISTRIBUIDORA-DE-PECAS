@@ -22,6 +22,8 @@ export interface SapSessao {
   getArquivo(caminho: string): Promise<{ dados: Buffer; tipo: string }>
   // POST/PATCH. Erro do SAP vira exceção com a mensagem dele.
   escrever<T = unknown>(metodo: 'POST' | 'PATCH', caminho: string, corpo?: unknown): Promise<T | null>
+  // POST multipart (anexos: /Attachments2 com o campo "files").
+  enviarArquivos<T = unknown>(caminho: string, form: FormData): Promise<T | null>
 }
 
 export function sapConfigurado(): boolean {
@@ -102,6 +104,12 @@ async function sessaoSap<T>(fn: (sap: SapSessao) => Promise<T>): Promise<T> {
     },
     async escrever(metodo, caminho, corpo) {
       const r = await fetch(`${base}${caminho}`, { method: metodo, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, body: corpo === undefined ? undefined : JSON.stringify(corpo) })
+      const texto = await r.text()
+      if (!r.ok) throw new Error(mensagemErro(texto))
+      return texto ? JSON.parse(texto) : null
+    },
+    async enviarArquivos(caminho, form) {
+      const r = await fetch(`${base}${caminho}`, { method: 'POST', headers: { Cookie: cookie }, body: form })
       const texto = await r.text()
       if (!r.ok) throw new Error(mensagemErro(texto))
       return texto ? JSON.parse(texto) : null

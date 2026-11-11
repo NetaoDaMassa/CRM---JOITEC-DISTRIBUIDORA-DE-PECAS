@@ -124,7 +124,12 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
         <div className="space-y-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-dark-100 font-medium">{data.clienteNome}</p>
+              <p className="text-dark-100 font-medium">
+                {data.clienteNome}
+                {data.cotacaoId && (
+                  <span className="ml-2 text-[11px] font-semibold rounded bg-amber-900/40 text-amber-200 border border-amber-700/50 px-1.5 py-0.5">Pedido da cotação nº {data.cotacaoId}</span>
+                )}
+              </p>
               <p className="text-xs text-dark-500">
                 {data.tipo === 'consulta' && data.tipoConsulta ? TIPO_CONSULTA_LABEL[data.tipoConsulta] : TIPO_LABEL[data.tipo]} · Cód.{' '}
                 {data.clienteCodigo} · {data.empresaNome} · pedido de {data.vendedorNome} · {formatDateTime(data.createdAt)}
@@ -378,7 +383,14 @@ export default function SolicitacaoCredito({ tipo = 'consulta', embutido = false
             className="w-full text-left p-4 flex items-center justify-between gap-3 hover:bg-dark-700/40 transition-colors"
           >
             <div>
-              <p className="text-sm text-dark-100 font-medium">{l.clienteNome}</p>
+              <p className="text-sm text-dark-100 font-medium">
+                {l.clienteNome}
+                {l.cotacaoId && (
+                  <span className="ml-2 text-[11px] font-semibold rounded bg-amber-900/40 text-amber-200 border border-amber-700/50 px-1.5 py-0.5" title="Venda a prazo da Cotação do CRM — cliente sem limite no SAP. Liberado com valor ≥ pedido libera só este pedido.">
+                    Pedido da cotação nº {l.cotacaoId}
+                  </span>
+                )}
+              </p>
               <p className="text-xs text-dark-500">
                 {l.tipo === 'consulta' && l.tipoConsulta ? TIPO_CONSULTA_LABEL[l.tipoConsulta] : TIPO_LABEL[l.tipo]} · Cód. {l.clienteCodigo} ·{' '}
                 {l.empresaNome} · pedido de {l.vendedorNome} · {formatDateTime(l.createdAt)}
