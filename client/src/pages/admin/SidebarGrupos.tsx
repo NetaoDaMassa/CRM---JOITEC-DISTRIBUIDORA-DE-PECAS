@@ -25,6 +25,9 @@ const ITENS_ADMIN = ADMIN_LINKS.map((l) => ({ to: l.to, label: `${l.label} (admi
 const ITENS_VENDEDOR = VENDOR_LINKS.map((l) => ({ to: l.to, label: `${l.label} (vendedor)` }))
 const ITENS_EXTRAS = [
   { to: '/painel-tv', label: 'Painel de TV' },
+  { to: '/admin/acessos', label: 'Funções e permissões' },
+  { to: '/admin/guia-financeiro', label: 'Guia do Financeiro' },
+  { to: '/painel-tv-logistica', label: 'Painel Controle Logístico' },
   { to: '/admin/permissoes', label: 'Permissões' },
   { to: '/admin/funcoes', label: 'Funções' },
   { to: '/admin/leads-regioes', label: 'Regiões de Leads' },
