@@ -5,6 +5,7 @@ import { router, featureProcedure, adminProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadHistory, leadContactAttempts, users, metasMarketing } from '../db/schema.js'
 import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
+import { carregarAtribuicoes, tempoPrimeiroContatoMs } from '../lib/leadTempoResposta.js'
 import { STATUS_VALUES, STATUS_LABELS, getLeadEffectiveDate } from '../lib/leadsStatus.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { linhasPainelLeads } from '../lib/leadsPainel.js'
@@ -79,15 +80,17 @@ export async function calcularReportGeral(empresaId: number, dataInicio?: string
     where: and(inArray(leadContactAttempts.leadId, todosLeadsEmpresa.map((l) => l.id)), isNotNull(leadContactAttempts.result)),
     orderBy: (c, { asc }) => [asc(c.createdAt)],
   })
-  const primeiraTentativaPorLead = new Map<number, string>()
+  const primeiraTentativaPorLead = new Map<number, { createdAt: string; userId: number }>()
   for (const t of primeirasTentativas) {
-    if (!primeiraTentativaPorLead.has(t.leadId)) primeiraTentativaPorLead.set(t.leadId, t.createdAt)
+    if (!primeiraTentativaPorLead.has(t.leadId)) primeiraTentativaPorLead.set(t.leadId, { createdAt: t.createdAt, userId: t.userId })
   }
+  // Relógio começa quando o lead chegou pra quem fez o contato (lib/leadTempoResposta.ts).
+  const atribuicoes = await carregarAtribuicoes(todosLeads.map((l) => l.id))
 
   const temposPrimeiroContato: number[] = []
   for (const l of todosLeads) {
     const primeira = primeiraTentativaPorLead.get(l.id)
-    if (primeira) temposPrimeiroContato.push(businessHoursElapsedMs(l.createdAt, primeira) / (60 * 60 * 1000))
+    if (primeira) temposPrimeiroContato.push(tempoPrimeiroContatoMs(l.createdAt, primeira.userId, primeira.createdAt, atribuicoes.get(l.id)) / (60 * 60 * 1000))
   }
   const avg = (values: number[]) => (values.length ? values.reduce((a, b) => a + b, 0) / values.length : 0)
 

@@ -1,7 +1,8 @@
+import { carregarAtribuicoes, tempoPrimeiroContatoMs } from './leadTempoResposta.js'
 import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, leadHistory, leadContactAttempts, leadCampaigns, leadRegions, leadTrackingVisitors, users } from '../db/schema.js'
-import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from './businessHours.js'
+import { toLocalDateKey, toUtcISO } from './businessHours.js'
 import { isTerminalStatus } from './leadsStatus.js'
 import { regiaoDaUf, ufDoDdd } from './dddUf.js'
 
@@ -94,7 +95,7 @@ export async function linhasPainelLeads(empresaId: number, desde: string, ate: s
     db.query.users.findMany({ columns: { id: true, name: true } }),
     db.query.leadContactAttempts.findMany({
       where: inArray(leadContactAttempts.leadId, ids),
-      columns: { leadId: true, result: true, channel: true, createdAt: true },
+      columns: { leadId: true, userId: true, result: true, channel: true, createdAt: true },
       orderBy: (c, { asc }) => [asc(c.createdAt)],
     }),
     db.query.leadHistory.findMany({
@@ -119,11 +120,12 @@ export async function linhasPainelLeads(empresaId: number, desde: string, ate: s
     if (!atual || (!atual.utmSource && v.utmSource)) visitaPorLead.set(v.leadId, v)
   }
 
-  const tentPorLead = new Map<number, { total: number; confirmadas: number; primeiraConfirmada: string | null; whatsapp: number; ligacao: number }>()
+  const atribuicoes = await carregarAtribuicoes(ids)
+  const tentPorLead = new Map<number, { total: number; confirmadas: number; primeiraConfirmada: string | null; primeiraConfirmadaPor: number | null; whatsapp: number; ligacao: number }>()
   for (const t of tentativas) {
     let e = tentPorLead.get(t.leadId)
     if (!e) {
-      e = { total: 0, confirmadas: 0, primeiraConfirmada: null, whatsapp: 0, ligacao: 0 }
+      e = { total: 0, confirmadas: 0, primeiraConfirmada: null, primeiraConfirmadaPor: null, whatsapp: 0, ligacao: 0 }
       tentPorLead.set(t.leadId, e)
     }
     e.total++
@@ -131,7 +133,10 @@ export async function linhasPainelLeads(empresaId: number, desde: string, ate: s
     if (t.channel === 'ligacao') e.ligacao++
     if (t.result) {
       e.confirmadas++
-      if (!e.primeiraConfirmada) e.primeiraConfirmada = t.createdAt
+      if (!e.primeiraConfirmada) {
+        e.primeiraConfirmada = t.createdAt
+        e.primeiraConfirmadaPor = t.userId
+      }
     }
   }
 
@@ -176,7 +181,14 @@ export async function linhasPainelLeads(empresaId: number, desde: string, ate: s
       diaSemanaEntrada: entrada.diaSemana,
       dataFechamento: fechado ? toLocalDateKey(toUtcISO(l.statusChangedAt!)) : null,
       diasAteFechar: fechado ? Math.max(0, (new Date(toUtcISO(l.statusChangedAt!)).getTime() - new Date(toUtcISO(l.createdAt)).getTime()) / 86400000) : null,
-      primeiroContatoHoras: tent?.primeiraConfirmada ? businessHoursElapsedMs(l.createdAt, tent.primeiraConfirmada) / 3600000 : null,
+      // Relógio desde que o lead chegou pra quem fez o 1º contato. Se esse
+      // contato foi de OUTRA pessoa (o lead mudou de dono depois), não entra
+      // na média do vendedor atual — era isso que jogava 100h+ na conta de
+      // quem recebeu o lead já atendido (revisão Guilherme, 2026-11-11).
+      primeiroContatoHoras:
+        tent?.primeiraConfirmada && tent.primeiraConfirmadaPor != null && (l.vendorId == null || l.vendorId === tent.primeiraConfirmadaPor)
+          ? tempoPrimeiroContatoMs(l.createdAt, tent.primeiraConfirmadaPor, tent.primeiraConfirmada, atribuicoes.get(l.id)) / 3600000
+          : null,
       tentativas: tent?.total ?? 0,
       tentativasWhats: tent?.whatsapp ?? 0,
       tentativasLigacao: tent?.ligacao ?? 0,

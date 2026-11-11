@@ -2,7 +2,8 @@ import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, leadContactAttempts, leadCampaigns, users, empresas, metasMarketing } from '../db/schema.js'
-import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
+import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
+import { carregarAtribuicoes, tempoPrimeiroContatoMs } from '../lib/leadTempoResposta.js'
 import { isTerminalStatus } from '../lib/leadsStatus.js'
 import { calcularReportGeral } from './leadsRelatorios.js'
 import { diasUteisDecorridos, diasUteisNoMes } from '../lib/dataBr.js'
@@ -94,7 +95,7 @@ export const painelMarketingRouter = router({
     const tentativas = ids.length
       ? await db.query.leadContactAttempts.findMany({
           where: inArray(leadContactAttempts.leadId, ids),
-          columns: { leadId: true, result: true, createdAt: true },
+          columns: { leadId: true, userId: true, result: true, createdAt: true },
           orderBy: (c, { asc }) => [asc(c.createdAt)],
         })
       : []
@@ -102,21 +103,25 @@ export const painelMarketingRouter = router({
 
     // 1ª resposta = 1ª tentativa CONFIRMADA (result preenchido), em horas
     // úteis — mesmo critério do "Tempo médio até 1º contato" do relatório.
-    const primeiraPorLead = new Map<number, string>()
+    const primeiraPorLead = new Map<number, { createdAt: string; userId: number }>()
     for (const t of tentativas) {
-      if (t.result && !primeiraPorLead.has(t.leadId)) primeiraPorLead.set(t.leadId, t.createdAt)
+      if (t.result && !primeiraPorLead.has(t.leadId)) primeiraPorLead.set(t.leadId, { createdAt: t.createdAt, userId: t.userId })
     }
 
     const leadsDoMes = todos.filter((l) => criadoLocal(l) >= mesReferencia && criadoLocal(l) <= fimMes)
     const leadsHoje = todos.filter((l) => criadoLocal(l) === hoje).length
 
+    const atribuicoes = await carregarAtribuicoes(leadsDoMes.map((l) => l.id))
     const temposPorVendedor = new Map<number, number[]>()
     for (const l of leadsDoMes) {
       const primeira = primeiraPorLead.get(l.id)
-      if (!primeira || l.vendorId == null) continue
-      const minutos = businessHoursElapsedMs(l.createdAt, primeira) / 60000
-      if (!temposPorVendedor.has(l.vendorId)) temposPorVendedor.set(l.vendorId, [])
-      temposPorVendedor.get(l.vendorId)!.push(minutos)
+      if (!primeira) continue
+      // Conta pra quem fez o 1º contato, desde que o lead chegou pra essa
+      // pessoa (lib/leadTempoResposta.ts) — não pro dono atual desde a criação.
+      const quem = primeira.userId
+      const minutos = tempoPrimeiroContatoMs(l.createdAt, quem, primeira.createdAt, atribuicoes.get(l.id)) / 60000
+      if (!temposPorVendedor.has(quem)) temposPorVendedor.set(quem, [])
+      temposPorVendedor.get(quem)!.push(minutos)
     }
     const media = (v: number[]) => v.reduce((a, b) => a + b, 0) / v.length
     const rankingResposta = [...temposPorVendedor.entries()]
