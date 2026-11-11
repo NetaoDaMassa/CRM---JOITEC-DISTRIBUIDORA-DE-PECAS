@@ -643,6 +643,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
             ) : (
               <BuscaCliente onEscolher={escolherCliente} />
             )}
+            {cliente && <FichaCliente clienteId={cliente.id} />}
           </div>
           <div className="grid gap-3 grid-cols-2 md:grid-cols-4">
             <Campo rotulo="Tabela de preço">
@@ -1868,5 +1869,75 @@ function ModalDadosPedido({
         </div>
       </div>
     </Modal>
+  )
+}
+
+// Resumo do cliente embaixo do nome (João, 2026-11-11): contato, documentos,
+// condições do SAP, crédito, títulos e última compra.
+function FichaCliente({ clienteId }: { clienteId: number }) {
+  const { data: f } = trpc.cotacoesCrm.fichaCliente.useQuery({ clienteId }, { staleTime: 5 * 60_000 })
+  if (!f) return <div className="h-24 rounded-xl bg-dark-900/40 animate-pulse" />
+  const linha = (rotulo: string, valor: React.ReactNode) =>
+    valor ? (
+      <div className="flex gap-2 text-xs">
+        <span className="w-20 shrink-0 text-dark-500">{rotulo}</span>
+        <span className="min-w-0 break-words text-dark-200">{valor}</span>
+      </div>
+    ) : null
+  const c = f.credito
+  const dataBrCurta = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}`
+  return (
+    <div className="space-y-2 pt-1">
+      {!f.ehSap && (
+        <p className="text-[11px] rounded-lg border border-amber-700/50 bg-amber-900/20 px-2 py-1.5 text-amber-200">
+          ⚠ Cadastro só do CRM (sem código do SAP) — para ir ao SAP o cliente precisa estar cadastrado lá.
+        </p>
+      )}
+      {f.bloqueado && <p className="text-[11px] rounded-lg border border-red-700/50 bg-red-900/20 px-2 py-1.5 text-red-200">⚠ Cliente bloqueado/inativo no SAP</p>}
+      <div className="space-y-1">
+        {linha('Fantasia', f.nomeFantasia)}
+        {linha(f.documento && f.documento.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ', f.documento)}
+        {linha('IE', f.ie)}
+        {linha('Contato', f.contato)}
+        {linha('Telefone', f.telefone)}
+        {linha('E-mail', f.email)}
+        {linha('Endereço', [f.endereco, f.cep].filter(Boolean).join(' · '))}
+        {linha('Vendedor', f.vendedor)}
+        {linha('Cód. antigo', f.codigoAntigo)}
+        {f.statusFiscal === 'isento' && linha('Fiscal', <span className="font-semibold text-violet-300">CLIENTE ISENTO</span>)}
+      </div>
+      {f.ehSap && (
+        <div className="grid grid-cols-2 gap-2">
+          <Mini titulo="Lista / prazo padrão" valor={f.lista ?? '—'} sub={f.prazoPadrao ?? ''} />
+          <Mini
+            titulo="Crédito no SAP"
+            valor={!c ? '—' : c.limite <= 0 ? 'Só à vista' : formatarMoeda(Math.max(0, c.disponivel))}
+            sub={c && c.limite > 0 ? `disponível de ${formatarMoeda(c.limite)}` : c ? 'sem limite cadastrado' : ''}
+            cor={!c ? undefined : c.limite <= 0 ? 'text-amber-300' : c.disponivel <= 0 ? 'text-red-300' : 'text-green-300'}
+          />
+          <Mini
+            titulo="Títulos em aberto"
+            valor={formatarMoeda(f.emAberto)}
+            sub={f.vencido > 0 ? `${formatarMoeda(f.vencido)} vencido (${f.titulosVencidos}) · até ${f.diasAtraso} dia(s)` : 'nada vencido'}
+            cor={f.vencido > 0 ? 'text-red-300' : undefined}
+          />
+          <Mini
+            titulo="Última compra"
+            valor={f.ultimaCompra ? dataBrCurta(f.ultimaCompra.data) : 'nunca'}
+            sub={f.ultimaCompra ? `${formatarMoeda(f.ultimaCompra.valor)} · 12 meses: ${f.compras12m.n} compra(s), ${formatarMoeda(f.compras12m.total)}` : ''}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Mini({ titulo, valor, sub, cor }: { titulo: string; valor: string; sub?: string; cor?: string }) {
+  return (
+    <div className="rounded-lg border border-dark-700 bg-dark-900/50 px-2.5 py-2 min-w-0">
+      <p className="text-[10px] uppercase tracking-wide text-dark-500">{titulo}</p>
+      <p className={`text-sm font-semibold break-words ${cor ?? 'text-dark-100'}`}>{valor}</p>
+      {sub && <p className="text-[10px] text-dark-400 break-words">{sub}</p>}
+    </div>
   )
 }

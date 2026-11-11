@@ -33,8 +33,10 @@ import {
   sapEstoqueItens,
   sapListasPreco,
   sapPrazosPagamento,
+  sapTitulosAbertos,
   sapTransportadoras,
   solicitacoesCredito,
+  vendas,
   users,
 } from '../db/schema.js'
 import { readFile } from 'node:fs/promises'
@@ -972,6 +974,82 @@ export const cotacoesCrmRouter = router({
       if (f.id !== ctx.user.id)
         await avisar(f.id, c.clienteId, 'Liberação de crédito pedida', `${ctx.user.name} pediu liberação para vender ${brl(valor)} a prazo para ${cliente} (cotação nº ${c.id}). Abra em Consulta/Solicitação de Crédito.`)
     return { id: nova.id }
+  }),
+
+  // Resumo do cliente no editor (João, 2026-11-11: "aproveitar esse espaço
+  // para colocar info do cliente"): contato e documentos (CRM, completando
+  // com o cadastro do SAP), lista/prazo padrão, crédito, títulos em aberto e
+  // vencidos, última compra. Só leitura do banco do CRM (nada vai ao SAP aqui).
+  fichaCliente: cotacoesProcedure.input(z.object({ clienteId: z.number().int() })).query(async ({ ctx, input }) => {
+    const cli = await db.query.clientes.findFirst({
+      where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
+      columns: {
+        id: true, codigo: true, codigoAntigo: true, cnpj: true, cpf: true, inscricaoEstadual: true, telefoneWhatsapp: true, email: true, nomeContato: true,
+        endereco: true, numero: true, bairro: true, cidade: true, estado: true, statusFiscal: true, vendedorAtualId: true,
+      },
+    })
+    if (!cli || (!ctx.veTudo && cli.vendedorAtualId !== ctx.user.id)) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cliente fora da sua carteira' })
+    const codigo = cli.codigo ?? ''
+    const ehSap = /^C\d{4,}$/i.test(codigo.trim())
+    const hoje = hojeBrString()
+    const [sap, comercial, titulos, ultima, ano, vendedor] = await Promise.all([
+      ehSap ? dadosClienteSap(codigo) : null,
+      ehSap
+        ? db
+            .select({ nomeFantasia: sapClientesComercial.nomeFantasia, lista: sapListasPreco.nome, prazo: sapPrazosPagamento.nome, bloqueado: sapClientesComercial.bloqueado })
+            .from(sapClientesComercial)
+            .leftJoin(sapListasPreco, eq(sapListasPreco.numero, sapClientesComercial.listaPreco))
+            .leftJoin(sapPrazosPagamento, eq(sapPrazosPagamento.codigo, sapClientesComercial.prazoCodigo))
+            .where(eq(sapClientesComercial.cardCode, codigo))
+            .then((r) => r[0] ?? null)
+        : null,
+      ehSap ? db.select().from(sapTitulosAbertos).where(eq(sapTitulosAbertos.codigoCliente, codigo)) : [],
+      db
+        .select({ data: vendas.dataFechamento, valor: vendas.valorFechado, pedido: vendas.numeroPedido })
+        .from(vendas)
+        .where(and(eq(vendas.clienteId, cli.id), isNull(vendas.deletedAt)))
+        .orderBy(desc(vendas.dataFechamento))
+        .limit(1)
+        .then((r) => r[0] ?? null),
+      db
+        .select({ n: sql<number>`count(*)`, total: sql<number>`coalesce(sum(${vendas.valorFechado}), 0)` })
+        .from(vendas)
+        .where(and(eq(vendas.clienteId, cli.id), isNull(vendas.deletedAt), sql`${vendas.dataFechamento} >= date('now', '-12 months')`))
+        .then((r) => r[0]),
+      cli.vendedorAtualId ? db.query.users.findFirst({ where: eq(users.id, cli.vendedorAtualId), columns: { name: true } }) : null,
+    ])
+    if (ehSap && !sap) void atualizarDadosClienteSap(codigo).catch(() => null)
+    // Títulos: notas e títulos antigos a receber (devolução/adiantamento abatem).
+    const aReceber = titulos.filter((t) => t.tipo === 'nota' || t.tipo === 'titulo_antigo')
+    const vencidos = aReceber.filter((t) => t.vencimento && t.vencimento < hoje && t.valorAberto > 0)
+    const diasAtraso = vencidos.reduce((m, t) => Math.max(m, Math.round((Date.parse(hoje) - Date.parse(t.vencimento!)) / 86_400_000)), 0)
+    const endereco = [cli.endereco ? `${cli.endereco}${cli.numero ? `, ${cli.numero}` : ''}` : sap?.endereco, cli.bairro ?? sap?.bairro].filter(Boolean).join(' · ')
+    return {
+      ehSap,
+      codigoAntigo: cli.codigoAntigo,
+      nomeFantasia: comercial?.nomeFantasia ?? null,
+      documento: cli.cnpj || sap?.cnpj || cli.cpf || sap?.cpf || null,
+      ie: cli.inscricaoEstadual || sap?.ie || null,
+      telefone: cli.telefoneWhatsapp || sap?.telefone || null,
+      email: cli.email || sap?.email || null,
+      contato: cli.nomeContato || sap?.contato || null,
+      endereco: endereco || null,
+      cidade: cli.cidade || sap?.cidade || null,
+      uf: cli.estado || sap?.uf || null,
+      cep: sap?.cep ?? null,
+      statusFiscal: cli.statusFiscal,
+      vendedor: vendedor?.name ?? null,
+      lista: comercial?.lista ?? null,
+      prazoPadrao: comercial?.prazo ?? null,
+      bloqueado: !!comercial?.bloqueado,
+      credito: ehSap ? limiteDaFoto(codigo) : null,
+      emAberto: arred(aReceber.reduce((s, t) => s + t.valorAberto, 0)),
+      vencido: arred(vencidos.reduce((s, t) => s + t.valorAberto, 0)),
+      titulosVencidos: vencidos.length,
+      diasAtraso,
+      ultimaCompra: ultima,
+      compras12m: { n: Number(ano?.n ?? 0), total: arred(Number(ano?.total ?? 0)) },
+    }
   }),
 
   // Anexos podem mudar até o pedido existir (ex.: ordem de compra do cliente
