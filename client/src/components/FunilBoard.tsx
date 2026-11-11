@@ -1625,6 +1625,13 @@ function CardModal({
       return toast.error('Valor orçado inválido — use só números, ex: 1.250,50.')
     }
 
+    // Card que já tem venda (ex.: pedido do SAP) e saiu de Fechado: volta só
+    // mudando a etapa — sem valor, PDF nem venda nova (pedido 9299, 2026-11-11).
+    if (etapaSelecionada === 'fechado' && card.etapa !== 'fechado' && card.vendas.length > 0) {
+      moverMut.mutate({ funilMensalId: card.funilMensalId, versao: card.versao, etapa: 'fechado' })
+      return
+    }
+
     if (etapaSelecionada === 'fechado') {
       const erroMes = validarMesPassado()
       if (erroMes) return toast.error(erroMes)
