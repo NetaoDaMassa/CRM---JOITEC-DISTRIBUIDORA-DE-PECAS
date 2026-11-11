@@ -40,10 +40,13 @@ export interface CotacaoParaSap {
   itens: { itemCodigo: string; quantidade: number; precoTabela: number; descontoPct: number; precoUnitario: number; precoManual: boolean; utilizacao: number | null }[]
 }
 
-// Utilizações de venda (NotaFiscalUsage). Só a Odin Tubos escolhe por item.
+// Utilizações de venda (NotaFiscalUsage do SAP), escolhidas item a item.
+// Era só Odin Tubos; liberado pra todas as empresas por questões fiscais
+// (João, 2026-11-11). Venda pra consumo (cliente não revende) muda o imposto.
 export const UTILIZACOES_VENDA = [
   { codigo: 10, nome: 'V - Ven Comercial' },
   { codigo: 9, nome: 'V - Ven Prod Própria' },
+  { codigo: 21, nome: 'V - Ven Consumo' },
 ] as const
 export const UTILIZACAO_PADRAO = 10
 // Despesas adicionais do SAP (1 = frete fica no campo próprio da cotação).

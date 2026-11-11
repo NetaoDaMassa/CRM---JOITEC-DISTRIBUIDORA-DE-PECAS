@@ -5235,7 +5235,7 @@ export const cotacoesCrmItens = sqliteTable(
     // Cliente aprovou esse item (pedido parcial: só os aceitos viram pedido).
     aceito: integer('aceito', { mode: 'boolean' }).notNull().default(true),
     // Utilização no SAP (Usage): 10 = V - Ven Comercial, 9 = V - Ven Prod
-    // Própria. Só a Odin Tubos escolhe (tem revenda e produção própria).
+    // Própria, 21 = V - Ven Consumo. Todas as empresas escolhem (fiscal, 2026-11-11).
     utilizacao: integer('utilizacao'),
   },
   (t) => ({ cotacaoIdx: index('idx_cotacoes_crm_itens_cotacao').on(t.cotacaoId) })

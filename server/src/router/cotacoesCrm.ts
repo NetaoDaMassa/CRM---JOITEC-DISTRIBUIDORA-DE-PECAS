@@ -330,8 +330,8 @@ export const cotacoesCrmRouter = router({
       emitente,
       transportadoras,
       formasPagamento: await formasPagamentoDaFilial(ctx.filial).catch(() => []),
-      // Utilização por item: só a Odin Tubos (revenda + produção própria).
-      utilizacoes: ctx.empresaSlug === 'odin-tubos' ? UTILIZACOES_VENDA : [],
+      // Utilização por item: todas as empresas (questões fiscais — João, 2026-11-11).
+      utilizacoes: UTILIZACOES_VENDA,
       despesas: DESPESAS_SAP,
     }
   }),
@@ -576,7 +576,7 @@ export const cotacoesCrmRouter = router({
       // 2026-11-11: "pra não dar erro") — o que vier da tela é ignorado.
       const listaCliente = await listaDoCliente(input.clienteId)
       if (listaCliente != null) input.listaPreco = listaCliente
-      const utilizacoesOk = new Set<number>(ctx.empresaSlug === 'odin-tubos' ? UTILIZACOES_VENDA.map((u) => u.codigo) : [])
+      const utilizacoesOk = new Set<number>(UTILIZACOES_VENDA.map((u) => u.codigo))
 
       const codigos = [...new Set(input.itens.map((i) => i.itemCodigo))]
       const [catalogo, precos] = codigos.length
