@@ -540,9 +540,9 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
               </Button>
             </>
           )}
-          {['aguardando_aprovacao', 'aprovada', 'enviada'].includes(status) && podeMexer && id != null && (
-            <Button variant="secondary" loading={reabrir.isPending} onClick={() => confirm('Reabrir para mudar itens/preço? Se o desconto passar do livre, vai precisar de aprovação de novo.') && reabrir.mutate({ id })}>
-              <Undo2 className="h-4 w-4 mr-1.5" /> Reabrir p/ negociar
+          {(['aguardando_aprovacao', 'aprovada', 'enviada', 'perdida'].includes(status) || (status === 'ganha' && !existente?.sapPedidoNum)) && podeMexer && id != null && (
+            <Button variant="secondary" loading={reabrir.isPending} onClick={() => confirm(`Voltar para rascunho e editar?${existente?.sapDocNum ? `\n\nA cotação SAP nº ${existente.sapDocNum} será fechada no SAP (ao reenviar, nasce uma nova).` : ''}\n\nSe o desconto passar do livre, vai precisar de aprovação de novo.`) && reabrir.mutate({ id })}>
+              <Undo2 className="h-4 w-4 mr-1.5" /> {status === 'ganha' || status === 'perdida' ? 'Voltar e editar' : 'Reabrir p/ negociar'}
             </Button>
           )}
           {['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'].includes(status) && podeMexer && id != null && (

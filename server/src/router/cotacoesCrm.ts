@@ -584,11 +584,22 @@ export const cotacoesCrmRouter = router({
   reabrir: cotacoesProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
     exigirDono(ctx, c)
-    exigirStatus(c, ['aguardando_aprovacao', 'aprovada', 'enviada'], 'reabrir')
+    // Volta pra rascunho (editável) de qualquer etapa até o pedido existir —
+    // inclusive "Cliente aprovou" e "Perdida" (João, 2026-11-11).
+    exigirStatus(c, ['aguardando_aprovacao', 'aprovada', 'enviada', 'ganha', 'perdida'], 'reabrir')
+    if (c.sapPedidoNum) throw new TRPCError({ code: 'BAD_REQUEST', message: `O pedido já foi gerado no SAP (nº ${c.sapPedidoNum}) — para mudar, cancele o pedido no SAP` })
     // Já estava no SAP: fecha lá (ao reenviar, nasce uma cotação nova no SAP).
     if (c.sapDocEntry) await fecharCotacaoSap(c.sapDocEntry).catch((e) => { throw sapErro(e) })
-    await db.update(cotacoesCrm).set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, sapDocEntry: null, sapDocNum: null, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
-    await registrar(c.id, ctx.user.id, 'Reabriu para negociar', c.sapDocNum ? `Cotação SAP nº ${c.sapDocNum} fechada no SAP` : null)
+    await db.transaction(async (tx) => {
+      await tx
+        .update(cotacoesCrm)
+        .set({ status: 'rascunho', aprovadoPorId: null, aprovadoEm: null, sapDocEntry: null, sapDocNum: null, encerradaEm: null, motivoPerda: null, motivoPerdaObs: null, updatedAt: agoraSqlite() })
+        .where(eq(cotacoesCrm.id, c.id))
+      // "Cliente aprovou" parcial: volta todos os itens como aceitos.
+      await tx.update(cotacoesCrmItens).set({ aceito: true }).where(eq(cotacoesCrmItens.cotacaoId, c.id))
+    })
+    const de = c.status === 'ganha' ? ' (estava como Cliente aprovou)' : c.status === 'perdida' ? ' (estava como Perdida)' : ''
+    await registrar(c.id, ctx.user.id, `Reabriu para negociar${de}`, c.sapDocNum ? `Cotação SAP nº ${c.sapDocNum} fechada no SAP` : null)
     return { ok: true }
   }),
 
