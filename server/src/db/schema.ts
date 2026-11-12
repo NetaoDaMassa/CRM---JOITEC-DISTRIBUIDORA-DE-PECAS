@@ -4582,6 +4582,10 @@ export const expedicaoPedidos = sqliteTable(
     transportadoraSap: text('transportadora_sap'),
     transportadoraSapCodigo: text('transportadora_sap_codigo'),
     cabecotes: integer('cabecotes'),
+    // Odin Tubos embala em packs (tubos), sacos e caixas (conexões); volumes = soma (João 2026-11-12).
+    packs: integer('packs'),
+    sacos: integer('sacos'),
+    caixas: integer('caixas'),
     paletes: integer('paletes'),
     // Vem sozinho do SAP (nota baseada no pedido): nº da NF-e e emissão (UTC).
     nfNumero: text('nf_numero'),
@@ -4715,6 +4719,8 @@ export const expedicaoFotos = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     expedicaoId: integer('expedicao_id').notNull().references(() => expedicaoPedidos.id, { onDelete: 'cascade' }),
     url: text('url').notNull(),
+    // 'conferencia' = bancada no fim da conferência; 'nf' = pedido completo com a NF (Odin Tubos, 2026-11-12).
+    tipo: text('tipo', { enum: ['conferencia', 'nf'] }).notNull().default('conferencia'),
     colaboradorId: integer('colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
     enviadoPorId: integer('enviado_por_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),

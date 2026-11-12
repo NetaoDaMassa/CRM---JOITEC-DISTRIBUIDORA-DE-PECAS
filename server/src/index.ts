@@ -501,13 +501,16 @@ app.post('/upload/expedicao-foto/:id', uploadFotoExpedicao.array('fotos', 10), a
   const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
   const pedido = await db.query.expedicaoPedidos.findFirst({
     where: and(eq(expedicaoPedidos.id, Number(req.params.id)), eq(expedicaoPedidos.empresaId, empresaId ?? -1)),
-    columns: { id: true, etapa: true, conferenciaColaboradorId: true },
+    columns: { id: true, etapa: true, conferenciaColaboradorId: true, embalagemColaboradorId: true, nfNumero: true },
   })
   if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado' })
+  // ?tipo=nf → foto do pedido completo com a NF (só depois que a NF sai).
+  const tipo: 'nf' | 'conferencia' = req.query.tipo === 'nf' ? 'nf' : 'conferencia'
+  if (tipo === 'nf' && !pedido.nfNumero) return res.status(400).json({ error: 'A NF ainda não saiu no SAP' })
   const arquivos = (req.files as Express.Multer.File[] | undefined) ?? []
   if (!arquivos.length) return res.status(400).json({ error: 'Envie pelo menos uma foto (imagem de até 15 MB)' })
   await db.insert(expedicaoFotos).values(
-    arquivos.map((f) => ({ expedicaoId: pedido.id, url: `/uploads/${f.filename}`, colaboradorId: pedido.conferenciaColaboradorId, enviadoPorId: user.id }))
+    arquivos.map((f) => ({ expedicaoId: pedido.id, url: `/uploads/${f.filename}`, tipo, colaboradorId: tipo === 'nf' ? pedido.embalagemColaboradorId : pedido.conferenciaColaboradorId, enviadoPorId: user.id }))
   )
   res.json({ enviadas: arquivos.length })
 })

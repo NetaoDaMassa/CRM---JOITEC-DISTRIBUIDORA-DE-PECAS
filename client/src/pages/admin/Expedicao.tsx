@@ -16,6 +16,7 @@ import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtique
 import HistoricoAgendamentos from '../../components/HistoricoAgendamentos'
 import NotaSapBotoes from '../../components/NotaSapBotoes'
 import { FotoProduto } from '../../components/FotoProduto'
+import { textoVolumes } from '../../lib/volumesExpedicao'
 
 // Controle do Estoque / Expedição (pedido do João, 2026-10-29) — fila que
 // nasce do picking gerado no SAP; o estoque anota separação → conferência →
@@ -405,7 +406,7 @@ export default function Expedicao() {
                         )}
                         {p.erros > 0 && <span className="text-[10px] font-semibold rounded bg-red-900/30 text-red-300 px-1.5 py-0.5">{p.erros} erro(s)</span>}
                         {p.volumes != null && p.etapa !== 'embalagem' && (
-                          <span className="text-[10px] rounded bg-dark-700 text-dark-300 px-1.5 py-0.5">{p.volumes} vol.</span>
+                          <span className="text-[10px] rounded bg-dark-700 text-dark-300 px-1.5 py-0.5">{p.packs != null ? textoVolumes(p) : `${p.volumes} vol.`}</span>
                         )}
                       </div>
                     </button>
@@ -553,6 +554,10 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   // Volumes e transportadora já vêm do pedido do SAP; o embalador confere e ajusta.
   const [volumes, setVolumes] = useState(p.volumes != null ? String(p.volumes) : p.volumesSap != null ? String(p.volumesSap) : '')
   const [cabecotes, setCabecotes] = useState('')
+  // Odin Tubos embala em packs (tubos), sacos e caixas (conexões) — volumes = soma.
+  const [packs, setPacks] = useState(p.packs != null ? String(p.packs) : '')
+  const [sacos, setSacos] = useState(p.sacos != null ? String(p.sacos) : '')
+  const [caixas, setCaixas] = useState(p.caixas != null ? String(p.caixas) : '')
   const [paletes, setPaletes] = useState('')
   const [transportadora, setTransportadora] = useState(p.transportadora ?? p.transportadoraSap ?? '')
   const [coletaAgendada, setColetaAgendada] = useState(p.coletaAgendada ?? '')
@@ -579,6 +584,13 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const remetente = empresas?.find((e) => e.id === empresaAtivaId)?.nome ?? ''
+  const ehTubos = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-tubos'
+  const volumesTubos = (Number(packs) || 0) + (Number(sacos) || 0) + (Number(caixas) || 0)
+  const volumesEmbalagem = ehTubos ? volumesTubos : Number(volumes) || 0
+  const fotosConf = data?.fotosPedido.filter((f) => f.tipo === 'conferencia') ?? []
+  const fotosNf = data?.fotosPedido.filter((f) => f.tipo === 'nf') ?? []
+  const regraFotos = data?.minimoFotos ?? { conferencia: 0, nf: 0 }
+  const tituloFotoConf = regraFotos.nf > 0 ? 'Foto da bancada (conferência)' : 'Fotos gerais do pedido'
   const [transpEmbalagem, setTranspEmbalagem] = useState(p.transportadora ?? p.transportadoraSap ?? '')
   const [etiquetasItens, setEtiquetasItens] = useState(false)
   const imprimirVolumes = (qtd: number, transportadora: string | null) => {
@@ -695,34 +707,51 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                 {conferindo && data && (
                   <FotosPedido
                     pedidoId={p.id}
-                    fotos={data.fotosPedido}
-                    minimo={data.minimoFotos}
+                    tipo="conferencia"
+                    titulo={tituloFotoConf}
+                    fotos={fotosConf}
+                    minimo={regraFotos.conferencia}
                     liberado={itensConferidos >= data.itens.length}
                     podeApagar
+                    travadoTexto="Termine de conferir todos os itens para liberar a foto."
+                    faltaTexto="para poder terminar a conferência"
                   />
                 )}
                 {etapaPessoa === 'embalagem' && (
                   <>
                     <FreteSap p={p} volumesDigitados={volumes} />
-                    <div className="w-24"><Input label="Volumes" type="number" min={0} value={volumes} onChange={(e) => setVolumes(e.target.value)} /></div>
-                    <div className="w-24"><Input label="Cabeçotes" type="number" min={0} value={cabecotes} onChange={(e) => setCabecotes(e.target.value)} /></div>
-                    <div className="w-24"><Input label="Paletes" type="number" min={0} value={paletes} onChange={(e) => setPaletes(e.target.value)} /></div>
+                    {ehTubos ? (
+                      <>
+                        <div className="w-28"><Input label="Packs (tubos)" type="number" min={0} value={packs} onChange={(e) => setPacks(e.target.value)} /></div>
+                        <div className="w-28"><Input label="Sacos (conexões)" type="number" min={0} value={sacos} onChange={(e) => setSacos(e.target.value)} /></div>
+                        <div className="w-28"><Input label="Caixas (conexões)" type="number" min={0} value={caixas} onChange={(e) => setCaixas(e.target.value)} /></div>
+                        <p className="text-sm text-dark-300 pb-2">= <b className="text-dark-100">{volumesTubos}</b> volume{volumesTubos === 1 ? '' : 's'}</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-24"><Input label="Volumes" type="number" min={0} value={volumes} onChange={(e) => setVolumes(e.target.value)} /></div>
+                        <div className="w-24"><Input label="Cabeçotes" type="number" min={0} value={cabecotes} onChange={(e) => setCabecotes(e.target.value)} /></div>
+                        <div className="w-24"><Input label="Paletes" type="number" min={0} value={paletes} onChange={(e) => setPaletes(e.target.value)} /></div>
+                      </>
+                    )}
                     <div className="min-w-[180px] flex-1"><Input label="Transportadora" value={transpEmbalagem} onChange={(e) => setTranspEmbalagem(e.target.value)} /></div>
-                    <Button variant="secondary" disabled={!Number(volumes)} onClick={() => imprimirVolumes(Number(volumes), transpEmbalagem || null)}>
-                      🏷️ Etiquetas de volume ({Number(volumes) || 0})
+                    <Button variant="secondary" disabled={!volumesEmbalagem} onClick={() => imprimirVolumes(volumesEmbalagem, transpEmbalagem || null)}>
+                      🏷️ Etiquetas de volume ({volumesEmbalagem})
                     </Button>
                   </>
                 )}
                 <Button
                   size="lg"
                   loading={terminar.isPending}
-                  disabled={conferindo && (itensConferidos < (data?.itens.length ?? 0) || (data?.fotosPedido.length ?? 0) < (data?.minimoFotos ?? 0))}
+                  disabled={conferindo && (itensConferidos < (data?.itens.length ?? 0) || fotosConf.length < regraFotos.conferencia)}
                   onClick={() =>
                     terminar.mutate({
                       id: p.id,
                       etapa: etapaPessoa,
                       ...(etapaPessoa === 'embalagem'
-                        ? { volumes: Number(volumes) || 0, cabecotes: Number(cabecotes) || 0, paletes: Number(paletes) || 0, transportadora: transpEmbalagem }
+                        ? ehTubos
+                          ? { packs: Number(packs) || 0, sacos: Number(sacos) || 0, caixas: Number(caixas) || 0, transportadora: transpEmbalagem }
+                          : { volumes: Number(volumes) || 0, cabecotes: Number(cabecotes) || 0, paletes: Number(paletes) || 0, transportadora: transpEmbalagem }
                         : {}),
                     })
                   }
@@ -738,15 +767,31 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             da conferência fica travado com a explicação; depois dela dá pra
             anexar mais (ex.: esqueceu uma foto). */}
         {!conferindo && data && !['cancelado', 'descartado'].includes(p.etapa) && (
-          <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4">
+          <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4 space-y-3">
             <FotosPedido
               pedidoId={p.id}
-              fotos={data.fotosPedido}
-              minimo={data.minimoFotos}
+              tipo="conferencia"
+              titulo={tituloFotoConf}
+              fotos={fotosConf}
+              minimo={regraFotos.conferencia}
               liberado={['embalagem', 'nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa)}
               podeApagar={!!podeDescartar}
-              antesDaConferencia={p.etapa === 'separacao' || p.etapa === 'conferencia'}
+              travadoTexto="A foto é tirada no fim da conferência: inicie a conferência e confira todos os itens — aí o botão libera."
+              faltaTexto="da conferência"
             />
+            {(regraFotos.nf > 0 || fotosNf.length > 0) && (
+              <FotosPedido
+                pedidoId={p.id}
+                tipo="nf"
+                titulo="Foto do pedido completo com a NF"
+                fotos={fotosNf}
+                minimo={regraFotos.nf}
+                liberado={!!p.nfNumero}
+                podeApagar={!!podeDescartar || p.etapa !== 'coletado'}
+                travadoTexto="Libera quando a NF sair no SAP: foto do pedido completo, embalado, com a NF."
+                faltaTexto="para poder marcar como coletado"
+              />
+            )}
           </div>
         )}
 
@@ -757,6 +802,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             ) : (
               <>
                 {p.etapa !== 'coleta' && <p className="text-base font-bold text-green-300">✅ NF emitida — LIBERADO PRÓXIMA ETAPA (agende a coleta)</p>}
+                {textoVolumes(p) && <p className="text-sm font-semibold text-dark-100">📦 {textoVolumes(p)}</p>}
                 <p className="text-xs text-dark-400">
                   NF <b className="text-green-300">{p.nfNumero}</b> emitida em {hora(p.nfEmissao)}
                   {p.etapa === 'coleta' && <> · coleta agendada para <b className="text-dark-100">{agendaBr(p.coletaAgendada)}</b></>}
@@ -777,9 +823,12 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             )}
             {p.agendamentos.length > 0 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.etapa === 'coleta' && (
-              <Button size="lg" loading={coletar.isPending} onClick={() => coletar.mutate({ id: p.id })}>
-                🚚 Coletado agora
-              </Button>
+              <div className="space-y-1">
+                <Button size="lg" loading={coletar.isPending} disabled={fotosNf.length < regraFotos.nf} onClick={() => coletar.mutate({ id: p.id })}>
+                  🚚 Coletado agora
+                </Button>
+                {fotosNf.length < regraFotos.nf && <p className="text-xs text-amber-300">Tire a foto do pedido completo com a NF (acima) para marcar como coletado.</p>}
+              </div>
             )}
           </div>
         )}
@@ -1257,8 +1306,32 @@ function DescartadosModal({ onClose }: { onClose: () => void }) {
 // "Erros encontrados" e corrige.
 // Fotos gerais do pedido no fim da conferência (João 2026-11-12, Odin Tubos).
 // No celular o botão abre a câmera; no computador, escolhe o arquivo.
-type FotoPedidoExp = { id: number; url: string; createdAt: string; colaborador: string | null }
-function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer, antesDaConferencia }: { pedidoId: number; fotos: FotoPedidoExp[]; minimo: number; liberado: boolean; podeApagar: boolean; somenteVer?: boolean; antesDaConferencia?: boolean }) {
+// Odin Tubos (2026-11-12): 2 fotos — 1 da bancada na conferência (tipo
+// 'conferencia') e 1 do pedido completo com a NF (tipo 'nf').
+type FotoPedidoExp = { id: number; url: string; tipo: 'conferencia' | 'nf'; createdAt: string; colaborador: string | null }
+function FotosPedido({
+  pedidoId,
+  tipo,
+  titulo,
+  fotos,
+  minimo,
+  liberado,
+  podeApagar,
+  somenteVer,
+  travadoTexto,
+  faltaTexto,
+}: {
+  pedidoId: number
+  tipo: 'conferencia' | 'nf'
+  titulo: string
+  fotos: FotoPedidoExp[]
+  minimo: number
+  liberado: boolean
+  podeApagar: boolean
+  somenteVer?: boolean
+  travadoTexto: string
+  faltaTexto: string
+}) {
   const utils = trpc.useUtils()
   const [enviando, setEnviando] = useState(false)
   const [aberta, setAberta] = useState<string | null>(null)
@@ -1274,7 +1347,7 @@ function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer
       const form = new FormData()
       arquivos.forEach((f) => form.append('fotos', f))
       const empresa = localStorage.getItem('empresa_ativa_id')
-      const r = await fetch(`/upload/expedicao-foto/${pedidoId}`, {
+      const r = await fetch(`/upload/expedicao-foto/${pedidoId}?tipo=${tipo}`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}`, ...(empresa ? { 'x-empresa-id': empresa } : {}) },
         body: form,
@@ -1293,7 +1366,7 @@ function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer
     <div className={`w-full space-y-2 ${somenteVer ? '' : `rounded-lg border p-3 ${liberado && falta > 0 ? 'border-amber-500/70 bg-amber-900/15' : 'border-dark-600 bg-dark-900/40'}`}`}>
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-sm font-semibold text-dark-100">
-          📷 Fotos gerais do pedido{' '}
+          📷 {titulo}{' '}
           {!somenteVer && (minimo > 0 ? <span className="text-xs font-normal text-dark-400">(obrigatório — mínimo {minimo})</span> : <span className="text-xs font-normal text-dark-400">(opcional)</span>)}
         </p>
         {!somenteVer && (
@@ -1305,10 +1378,10 @@ function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer
       </div>
       {!somenteVer && !liberado && (
         <p className="text-xs text-dark-400">
-          {antesDaConferencia ? 'As fotos são tiradas no fim da conferência: inicie a conferência e confira todos os itens — aí o botão libera.' : 'Termine de conferir todos os itens para liberar as fotos.'}
+          {travadoTexto}
         </p>
       )}
-      {!somenteVer && liberado && falta > 0 && <p className="text-xs text-amber-300">Falta{falta > 1 ? 'm' : ''} {falta} foto{falta > 1 ? 's' : ''} para poder terminar a conferência.</p>}
+      {!somenteVer && liberado && falta > 0 && <p className="text-xs text-amber-300">Falta{falta > 1 ? 'm' : ''} {falta} foto{falta > 1 ? 's' : ''} {faltaTexto}.</p>}
       {fotos.length > 0 && (
         <div className="flex flex-wrap gap-2">
           {fotos.map((f) => (
@@ -1523,6 +1596,9 @@ function MaisAcoes({
   onFechar: () => void
 }) {
   const utils = trpc.useUtils()
+  const { empresaAtivaId } = useAuth()
+  const { data: empresasLista } = trpc.empresas.list.useQuery()
+  const ehTubos = empresasLista?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-tubos'
   const erro = (e: { message: string }) => toast.error(e.message)
   const pausar = trpc.expedicao.pausar.useMutation({ onSuccess: () => (toast.success('Pedido pausado'), onFeito(), setAberto(null)), onError: erro })
   const retomar = trpc.expedicao.retomar.useMutation({ onSuccess: () => (toast.success('Pedido retomado'), onFeito()), onError: erro })
@@ -1540,6 +1616,9 @@ function MaisAcoes({
     volumes: p.volumes == null ? '' : String(p.volumes),
     cabecotes: p.cabecotes == null ? '' : String(p.cabecotes),
     paletes: p.paletes == null ? '' : String(p.paletes),
+    packs: p.packs == null ? '' : String(p.packs),
+    sacos: p.sacos == null ? '' : String(p.sacos),
+    caixas: p.caixas == null ? '' : String(p.caixas),
     transportadora: p.transportadora ?? '',
     observacao: p.observacao ?? '',
     separacao: p.separacaoColaboradorId ? String(p.separacaoColaboradorId) : '',
@@ -1647,9 +1726,19 @@ function MaisAcoes({
       {aberto === 'editar' && (
         <div className="space-y-2">
           <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-            <Input label="Volumes" type="number" min={0} value={ed.volumes} onChange={(e) => setEd({ ...ed, volumes: e.target.value })} />
-            <Input label="Cabeçotes" type="number" min={0} value={ed.cabecotes} onChange={(e) => setEd({ ...ed, cabecotes: e.target.value })} />
-            <Input label="Paletes" type="number" min={0} value={ed.paletes} onChange={(e) => setEd({ ...ed, paletes: e.target.value })} />
+            {ehTubos ? (
+              <>
+                <Input label="Packs (tubos)" type="number" min={0} value={ed.packs} onChange={(e) => setEd({ ...ed, packs: e.target.value })} />
+                <Input label="Sacos" type="number" min={0} value={ed.sacos} onChange={(e) => setEd({ ...ed, sacos: e.target.value })} />
+                <Input label="Caixas" type="number" min={0} value={ed.caixas} onChange={(e) => setEd({ ...ed, caixas: e.target.value })} />
+              </>
+            ) : (
+              <>
+                <Input label="Volumes" type="number" min={0} value={ed.volumes} onChange={(e) => setEd({ ...ed, volumes: e.target.value })} />
+                <Input label="Cabeçotes" type="number" min={0} value={ed.cabecotes} onChange={(e) => setEd({ ...ed, cabecotes: e.target.value })} />
+                <Input label="Paletes" type="number" min={0} value={ed.paletes} onChange={(e) => setEd({ ...ed, paletes: e.target.value })} />
+              </>
+            )}
             <div className="col-span-3">
               <Input label="Transportadora" value={ed.transportadora} onChange={(e) => setEd({ ...ed, transportadora: e.target.value })} />
             </div>
@@ -1667,9 +1756,9 @@ function MaisAcoes({
             onClick={() =>
               editar.mutate({
                 id: p.id,
-                volumes: nOuNull(ed.volumes),
-                cabecotes: nOuNull(ed.cabecotes),
-                paletes: nOuNull(ed.paletes),
+                ...(ehTubos
+                  ? { packs: nOuNull(ed.packs), sacos: nOuNull(ed.sacos), caixas: nOuNull(ed.caixas) }
+                  : { volumes: nOuNull(ed.volumes), cabecotes: nOuNull(ed.cabecotes), paletes: nOuNull(ed.paletes) }),
                 transportadora: ed.transportadora,
                 observacao: ed.observacao,
                 ...(podeAdmin

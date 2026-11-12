@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
+import { textoVolumes } from '../lib/volumesExpedicao'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import HistoricoAgendamentos from './HistoricoAgendamentos'
 
@@ -63,7 +64,7 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
               })}
             </ol>
             {p.podeAgendar && p.expedicaoId && (
-              <AgendarColeta expedicaoId={p.expedicaoId} pedido={p.pedido} jaAgendada={p.etapa === 'coleta'} transportadora={p.transportadora ?? ''} coletaAgendada={p.coletaAgendada ?? ''} />
+              <AgendarColeta expedicaoId={p.expedicaoId} pedido={p.pedido} jaAgendada={p.etapa === 'coleta'} transportadora={p.transportadora ?? ''} coletaAgendada={p.coletaAgendada ?? ''} volumes={textoVolumes(p)} />
             )}
             {p.agendamentos && p.agendamentos.length > 1 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.entrySap ? (
@@ -78,7 +79,7 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
 
 // Odin Tubos: o vendedor agenda (ou reagenda) a coleta pelo card, depois que
 // a NF sai (João 2026-11-12). Cada mudança fica no histórico de tentativas.
-function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, coletaAgendada: c0 }: { expedicaoId: number; pedido: string; jaAgendada: boolean; transportadora: string; coletaAgendada: string }) {
+function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, coletaAgendada: c0, volumes }: { expedicaoId: number; pedido: string; jaAgendada: boolean; transportadora: string; coletaAgendada: string; volumes: string | null }) {
   const utils = trpc.useUtils()
   const [aberto, setAberto] = useState(!jaAgendada)
   const [transportadora, setTransportadora] = useState(t0)
@@ -101,6 +102,7 @@ function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, co
   return (
     <div className="rounded-lg border border-amber-500/60 bg-amber-900/15 p-2.5 space-y-2">
       <p className="text-sm font-bold text-amber-200">📅 {jaAgendada ? 'Reagendar' : 'Agendar'} a coleta — a NF já saiu</p>
+      <p className="text-sm text-dark-100">📦 {volumes ?? 'Volumes ainda não informados pelo estoque'}</p>
       <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] items-end">
         <label className="text-xs text-dark-300 space-y-1">
           <span>Transportadora</span>

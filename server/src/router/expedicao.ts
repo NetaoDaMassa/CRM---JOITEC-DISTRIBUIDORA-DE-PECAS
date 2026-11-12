@@ -96,10 +96,18 @@ type PassoJornada = {
   // Odin Tubos: quem agenda a coleta é o próprio vendedor, pelo card do
   // Kanban (João 2026-11-12). Só com a NF emitida.
   expedicaoId?: number; podeAgendar?: boolean; transportadora?: string | null; coletaAgendada?: string | null
+  volumes?: number | null; packs?: number | null; sacos?: number | null; caixas?: number | null
 }
 
 // Empresas onde o vendedor agenda a coleta pelo card (não o estoque).
 const EMPRESAS_VENDEDOR_AGENDA = ['odin-tubos']
+
+// "3 volumes (2 packs · 1 saco)" — Odin Tubos detalha packs/sacos/caixas.
+function volumesTexto(p: { volumes: number | null; packs: number | null; sacos: number | null; caixas: number | null }): string | null {
+  if (!p.volumes) return null
+  const partes = [p.packs ? `${p.packs} pack(s)` : null, p.sacos ? `${p.sacos} saco(s)` : null, p.caixas ? `${p.caixas} caixa(s)` : null].filter(Boolean)
+  return `${p.volumes} volume(s)${partes.length ? ` (${partes.join(' · ')})` : ''}`
+}
 
 async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJornada[]>> {
   const mapa = new Map<string, PassoJornada[]>()
@@ -151,10 +159,10 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
           return [p.embalagemInicio ? `Embalando (${nome(p.embalagemColaboradorId)})` : 'Conferido — aguardando embalagem', nf]
         case 'nf':
           return p.nfNumero
-            ? [`Faturado ${nf} — liberado para a coleta`, p.volumes ? `${p.volumes} volume(s)` : null]
-            : ['Embalado — aguardando a NF', p.volumes ? `${p.volumes} volume(s)` : null]
+            ? [`Faturado ${nf} — liberado para a coleta`, volumesTexto(p)]
+            : ['Embalado — aguardando a NF', volumesTexto(p)]
         case 'agendamento':
-          return [`Faturado ${nf} — aguardando agendar a coleta`, p.volumes ? `${p.volumes} volume(s)` : null]
+          return [`Faturado ${nf} — aguardando agendar a coleta`, volumesTexto(p)]
         case 'coleta':
           return [`Coleta agendada ${p.coletaAgendada ? `${p.coletaAgendada.slice(8, 10)}/${p.coletaAgendada.slice(5, 7)} ${p.coletaAgendada.slice(11, 16)}` : ''}${tentativas.length > 1 ? ` · ${tentativas.length}ª tentativa` : ''}`, [nf, p.transportadora].filter(Boolean).join(' · ') || null]
         default:
@@ -175,6 +183,10 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
       podeAgendar: empresasVendedorAgenda.has(p.empresaId) && !!p.nfNumero && ['nf', 'agendamento', 'coleta'].includes(p.etapa),
       transportadora: p.transportadora ?? p.transportadoraSap ?? null,
       coletaAgendada: p.coletaAgendada,
+      volumes: p.volumes,
+      packs: p.packs,
+      sacos: p.sacos,
+      caixas: p.caixas,
     })
   }
   return mapa
@@ -260,15 +272,25 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
   })
 }
 
-// Quantas fotos gerais do pedido a conferência exige antes de terminar.
-// Config `expedicao_fotos_min_<empresaId>`; sem config: Odin Tubos 1 (pedido
-// do João, 2026-11-12), as outras empresas 0 (podem tirar, não é obrigatório).
-export async function minimoFotosConferencia(empresaId: number): Promise<number> {
-  const v = await getConfigTexto(`expedicao_fotos_min_${empresaId}`)
-  if (v != null && v.trim() !== '') return Math.max(0, Math.floor(Number(v) || 0))
+// Fotos obrigatórias do pedido por empresa: na conferência (bancada) e com a
+// NF (pedido completo). Config `expedicao_fotos_min_<empresaId>` e
+// `expedicao_fotos_nf_min_<empresaId>`; sem config: Odin Tubos 1 + 1 (João,
+// 2026-11-12: "mínimo 2 — 1 da bancada na conferência e 1 na NF com o pedido
+// completo"), outras empresas 0 (podem tirar, não é obrigatório).
+export async function regraFotosPedido(empresaId: number): Promise<{ conferencia: number; nf: number }> {
   const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
-  return e?.slug === 'odin-tubos' ? 1 : 0
+  const padrao = e?.slug === 'odin-tubos' ? 1 : 0
+  const ler = async (chave: string) => {
+    const v = await getConfigTexto(chave)
+    return v != null && v.trim() !== '' ? Math.max(0, Math.floor(Number(v) || 0)) : padrao
+  }
+  return { conferencia: await ler(`expedicao_fotos_min_${empresaId}`), nf: await ler(`expedicao_fotos_nf_min_${empresaId}`) }
 }
+async function contarFotos(expedicaoId: number, tipo: 'conferencia' | 'nf'): Promise<number> {
+  const [f] = await db.select({ n: sql<number>`count(*)` }).from(expedicaoFotos).where(and(eq(expedicaoFotos.expedicaoId, expedicaoId), eq(expedicaoFotos.tipo, tipo)))
+  return Number(f.n)
+}
+
 
 // Agendar (ou reagendar) a coleta — pelo estoque (agendar) ou, na Odin
 // Tubos, pelo vendedor (agendarPeloVendedor). Só com a NF emitida.
@@ -474,12 +496,12 @@ export const expedicaoRouter = router({
         kitsDosItens(itens),
         fotosDosItens(itens.map((i) => i.itemCodigo)),
         db
-          .select({ id: expedicaoFotos.id, url: expedicaoFotos.url, createdAt: expedicaoFotos.createdAt, colaborador: expedicaoColaboradores.nome })
+          .select({ id: expedicaoFotos.id, url: expedicaoFotos.url, tipo: expedicaoFotos.tipo, createdAt: expedicaoFotos.createdAt, colaborador: expedicaoColaboradores.nome })
           .from(expedicaoFotos)
           .leftJoin(expedicaoColaboradores, eq(expedicaoColaboradores.id, expedicaoFotos.colaboradorId))
           .where(eq(expedicaoFotos.expedicaoId, p.id))
           .orderBy(asc(expedicaoFotos.id)),
-        minimoFotosConferencia(ctx.empresaId),
+        regraFotosPedido(ctx.empresaId),
       ])
       return { itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null })), erros, fotosPedido, minimoFotos }
     }),
@@ -490,8 +512,12 @@ export const expedicaoRouter = router({
     .input(z.object({ id: z.number(), fotoId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      if (p.etapa !== 'conferencia' && !ctx.user.superAdmin && !(await temFeature(ctx.user.id, FEATURE_DESCARTAR)))
-        throw new TRPCError({ code: 'FORBIDDEN', message: 'Depois da conferência só um administrador apaga foto.' })
+      const foto = await db.query.expedicaoFotos.findFirst({ where: and(eq(expedicaoFotos.id, input.fotoId), eq(expedicaoFotos.expedicaoId, p.id)) })
+      if (!foto) return
+      // Estoque apaga a da bancada enquanto confere e a da NF até a coleta; depois, só admin.
+      const livre = foto.tipo === 'nf' ? p.etapa !== 'coletado' : p.etapa === 'conferencia'
+      if (!livre && !ctx.user.superAdmin && !(await temFeature(ctx.user.id, FEATURE_DESCARTAR)))
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Agora só um administrador apaga essa foto.' })
       await db.delete(expedicaoFotos).where(and(eq(expedicaoFotos.id, input.fotoId), eq(expedicaoFotos.expedicaoId, p.id)))
     }),
 
@@ -540,12 +566,18 @@ export const expedicaoRouter = router({
         volumes: z.number().int().min(0).optional(),
         cabecotes: z.number().int().min(0).optional(),
         paletes: z.number().int().min(0).optional(),
+        packs: z.number().int().min(0).optional(),
+        sacos: z.number().int().min(0).optional(),
+        caixas: z.number().int().min(0).optional(),
         transportadora: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
       const c = campos[input.etapa]
+      // Odin Tubos: volumes = packs + sacos + caixas.
+      const porTipo = input.packs !== undefined || input.sacos !== undefined || input.caixas !== undefined
+      if (porTipo) input.volumes = (input.packs ?? 0) + (input.sacos ?? 0) + (input.caixas ?? 0)
       if (p.etapa !== input.etapa || !p[c.inicio]) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Essa etapa ainda não foi iniciada.' })
       if (input.etapa === 'embalagem' && !input.volumes && !input.paletes) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe os volumes (ou paletes) embalados.' })
       if (input.etapa === 'conferencia') {
@@ -554,11 +586,9 @@ export const expedicaoRouter = router({
           .from(expedicaoItens)
           .where(and(eq(expedicaoItens.expedicaoId, p.id), isNull(expedicaoItens.conferidoEm)))
         if (Number(falta.n) > 0) throw new TRPCError({ code: 'BAD_REQUEST', message: `Faltam ${falta.n} item(ns) para conferir.` })
-        const minimo = await minimoFotosConferencia(ctx.empresaId)
-        if (minimo > 0) {
-          const [f] = await db.select({ n: sql<number>`count(*)` }).from(expedicaoFotos).where(eq(expedicaoFotos.expedicaoId, p.id))
-          if (Number(f.n) < minimo) throw new TRPCError({ code: 'BAD_REQUEST', message: `Tire as fotos gerais do pedido antes de terminar (mínimo ${minimo}, tem ${f.n}).` })
-        }
+        const minimo = (await regraFotosPedido(ctx.empresaId)).conferencia
+        const tem = minimo > 0 ? await contarFotos(p.id, 'conferencia') : 0
+        if (tem < minimo) throw new TRPCError({ code: 'BAD_REQUEST', message: `Tire a foto da bancada antes de terminar a conferência (mínimo ${minimo}, tem ${tem}).` })
       }
       // Embalagem → etapa NF: o pedido fica lá até agendarem a coleta —
       // "aguardando NF" ou, com a nota emitida, "liberado próxima etapa"
@@ -570,7 +600,13 @@ export const expedicaoRouter = router({
           [c.fim]: agoraSqlite(),
           etapa: proxima,
           ...(input.etapa === 'embalagem'
-            ? { volumes: input.volumes ?? 0, cabecotes: input.cabecotes ?? 0, paletes: input.paletes ?? 0, transportadora: input.transportadora?.trim() || p.transportadora }
+            ? {
+                volumes: input.volumes ?? 0,
+                cabecotes: input.cabecotes ?? 0,
+                paletes: input.paletes ?? 0,
+                ...(porTipo ? { packs: input.packs ?? 0, sacos: input.sacos ?? 0, caixas: input.caixas ?? 0 } : {}),
+                transportadora: input.transportadora?.trim() || p.transportadora,
+              }
             : {}),
           updatedAt: agoraSqlite(),
         })
@@ -715,6 +751,9 @@ export const expedicaoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
       if (p.etapa !== 'coleta' || !p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra marcar coleta com a NF emitida e a coleta agendada.' })
+      const minimoNf = (await regraFotosPedido(ctx.empresaId)).nf
+      const temNf = minimoNf > 0 ? await contarFotos(p.id, 'nf') : 0
+      if (temNf < minimoNf) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tire a foto do pedido completo com a NF antes de marcar como coletado.' })
       await db
         .update(expedicaoPedidos)
         .set({ etapa: 'coletado', coletadoEm: agoraSqlite(), coletadoColaboradorId: input.colaboradorId ?? null, updatedAt: agoraSqlite() })
@@ -909,6 +948,9 @@ export const expedicaoRouter = router({
         volumes: z.number().int().min(0).nullable().optional(),
         cabecotes: z.number().int().min(0).nullable().optional(),
         paletes: z.number().int().min(0).nullable().optional(),
+        packs: z.number().int().min(0).nullable().optional(),
+        sacos: z.number().int().min(0).nullable().optional(),
+        caixas: z.number().int().min(0).nullable().optional(),
         transportadora: z.string().nullable().optional(),
         observacao: z.string().nullable().optional(),
         separacaoColaboradorId: z.number().nullable().optional(),
@@ -926,6 +968,11 @@ export const expedicaoRouter = router({
       for (const v of Object.values(pessoas)) if (v) await acharColaborador(ctx.empresaId, v)
       const set: Record<string, unknown> = {}
       for (const [k, v] of Object.entries({ ...resto, ...pessoas })) if (v !== undefined) set[k] = typeof v === 'string' ? v.trim() || null : v
+      // Odin Tubos: mexeu em packs/sacos/caixas → volumes = soma.
+      if (input.packs !== undefined || input.sacos !== undefined || input.caixas !== undefined) {
+        const n = (v: number | null | undefined, atual: number | null) => (v === undefined ? atual ?? 0 : v ?? 0)
+        set.volumes = n(input.packs, p.packs) + n(input.sacos, p.sacos) + n(input.caixas, p.caixas)
+      }
       if (!Object.keys(set).length) return
       await db.update(expedicaoPedidos).set({ ...set, updatedAt: agoraSqlite() }).where(eq(expedicaoPedidos.id, p.id))
     }),
