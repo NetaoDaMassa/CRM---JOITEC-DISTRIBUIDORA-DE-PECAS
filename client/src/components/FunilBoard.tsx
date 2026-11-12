@@ -833,6 +833,17 @@ export default function FunilBoard({
                       )}
                       {jornadaPor.has(card.clienteId) && (() => {
                         const j = jornadaPor.get(card.clienteId)!
+                        // Odin Tubos: NF saiu e falta o vendedor agendar a coleta (João 2026-11-12).
+                        if (j.podeAgendar && j.etapa !== 'coleta')
+                          return (
+                            <p
+                              className="text-xs font-bold rounded-lg px-2 py-1 mb-2 border text-amber-200 bg-amber-900/30 border-amber-500/70 animate-pulse"
+                              title="A NF saiu — abra o card e agende a coleta"
+                            >
+                              📅 AGENDAR COLETA · pedido {j.pedido}
+                              {j.total > 1 ? ` (+${j.total - 1})` : ''}
+                            </p>
+                          )
                         return (
                           <p
                             className={`text-[11px] font-medium rounded-lg px-2 py-1 mb-2 border ${j.atrasado ? 'text-red-300 bg-red-900/20 border-red-700/40' : 'text-cyan-300 bg-cyan-900/15 border-cyan-700/30'}`}

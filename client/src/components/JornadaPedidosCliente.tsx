@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
 import HistoricoAgendamentos from './HistoricoAgendamentos'
@@ -60,6 +62,9 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
                 )
               })}
             </ol>
+            {p.podeAgendar && p.expedicaoId && (
+              <AgendarColeta expedicaoId={p.expedicaoId} pedido={p.pedido} jaAgendada={p.etapa === 'coleta'} transportadora={p.transportadora ?? ''} coletaAgendada={p.coletaAgendada ?? ''} />
+            )}
             {p.agendamentos && p.agendamentos.length > 1 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.entrySap ? (
               <ConversarSobreIssoButton tipoOrigem="expedicao" idOrigem={p.entrySap} titulo={`Pedido ${p.pedido} — expedição`} rotulo="Falar com a expedição" />
@@ -67,6 +72,60 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// Odin Tubos: o vendedor agenda (ou reagenda) a coleta pelo card, depois que
+// a NF sai (João 2026-11-12). Cada mudança fica no histórico de tentativas.
+function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, coletaAgendada: c0 }: { expedicaoId: number; pedido: string; jaAgendada: boolean; transportadora: string; coletaAgendada: string }) {
+  const utils = trpc.useUtils()
+  const [aberto, setAberto] = useState(!jaAgendada)
+  const [transportadora, setTransportadora] = useState(t0)
+  const [quando, setQuando] = useState(c0)
+  const agendar = trpc.expedicao.agendarPeloVendedor.useMutation({
+    onSuccess: () => {
+      toast.success(`Coleta do pedido ${pedido} agendada`)
+      utils.expedicao.jornadaCliente.invalidate()
+      utils.expedicao.jornadaMapa.invalidate()
+      setAberto(false)
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  if (!aberto)
+    return (
+      <button type="button" onClick={() => setAberto(true)} className="text-xs font-semibold text-amber-300 hover:text-amber-200 underline">
+        📅 Reagendar coleta
+      </button>
+    )
+  return (
+    <div className="rounded-lg border border-amber-500/60 bg-amber-900/15 p-2.5 space-y-2">
+      <p className="text-sm font-bold text-amber-200">📅 {jaAgendada ? 'Reagendar' : 'Agendar'} a coleta — a NF já saiu</p>
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] items-end">
+        <label className="text-xs text-dark-300 space-y-1">
+          <span>Transportadora</span>
+          <input value={transportadora} onChange={(e) => setTransportadora(e.target.value)} className="w-full rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-sm text-dark-100" />
+        </label>
+        <label className="text-xs text-dark-300 space-y-1">
+          <span>Dia e hora que pediram</span>
+          <input type="datetime-local" value={quando} onChange={(e) => setQuando(e.target.value)} className="w-full rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-sm text-dark-100" />
+        </label>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            disabled={!transportadora.trim() || !quando || agendar.isPending}
+            onClick={() => agendar.mutate({ id: expedicaoId, transportadora, coletaAgendada: quando })}
+            className="rounded-lg bg-gold-600 border border-gold-500 px-3 py-1.5 text-sm font-semibold text-dark-950 hover:bg-gold-500 disabled:opacity-50"
+          >
+            {agendar.isPending ? 'Salvando…' : 'Salvar'}
+          </button>
+          {jaAgendada && (
+            <button type="button" onClick={() => setAberto(false)} className="rounded-lg border border-dark-600 px-3 py-1.5 text-sm text-dark-300 hover:bg-dark-800">
+              Cancelar
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }

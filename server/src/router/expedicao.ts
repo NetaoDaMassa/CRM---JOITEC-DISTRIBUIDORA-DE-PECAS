@@ -91,7 +91,15 @@ const NOME_ETAPA: Record<EtapaPessoa, string> = { separacao: 'separando', confer
 // Jornada do pedido pro vendedor (pedido do João, 2026-10-29): do "aguardando
 // financeiro" até "coletado", de todos os pedidos em andamento do cliente
 // (código do SAP = mesmo nas empresas do grupo). Coletado some depois de 3 dias.
-type PassoJornada = { pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean; entrySap?: number; agendamentos?: AgendamentoColeta[] }
+type PassoJornada = {
+  pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean; entrySap?: number; agendamentos?: AgendamentoColeta[]
+  // Odin Tubos: quem agenda a coleta é o próprio vendedor, pelo card do
+  // Kanban (João 2026-11-12). Só com a NF emitida.
+  expedicaoId?: number; podeAgendar?: boolean; transportadora?: string | null; coletaAgendada?: string | null
+}
+
+// Empresas onde o vendedor agenda a coleta pelo card (não o estoque).
+const EMPRESAS_VENDEDOR_AGENDA = ['odin-tubos']
 
 async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJornada[]>> {
   const mapa = new Map<string, PassoJornada[]>()
@@ -125,6 +133,9 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
   const nomes = new Map(ids.length ? (await db.select({ id: expedicaoColaboradores.id, nome: expedicaoColaboradores.nome }).from(expedicaoColaboradores).where(inArray(expedicaoColaboradores.id, ids))).map((c) => [c.id, c.nome]) : [])
   const nome = (id: number | null) => (id ? nomes.get(id) ?? '' : '')
   const agendamentos = await agendamentosPorCard(exp.map((p) => p.id))
+  const empresasVendedorAgenda = new Set(
+    (await db.select({ id: empresas.id }).from(empresas).where(inArray(empresas.slug, EMPRESAS_VENDEDOR_AGENDA))).map((e) => e.id)
+  )
   const agora = Date.now()
   for (const p of exp) {
     const tentativas = agendamentos.get(p.id) ?? []
@@ -150,7 +161,21 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
           return [tentativas.length > 1 ? `Coletado · ${tentativas.length} agendamentos` : 'Coletado', [nf, p.transportadora].filter(Boolean).join(' · ') || null]
       }
     })()
-    add(p.clienteCodigo ?? '', { pedido: p.pedidosSap, empresaSlug: null, etapa: p.etapa, texto, detalhe, data: p.coletadoEm ?? p.inicioPrazo, atrasado, entrySap: Number(p.orderEntriesSap.split(',')[0]), agendamentos: tentativas })
+    add(p.clienteCodigo ?? '', {
+      pedido: p.pedidosSap,
+      empresaSlug: null,
+      etapa: p.etapa,
+      texto,
+      detalhe,
+      data: p.coletadoEm ?? p.inicioPrazo,
+      atrasado,
+      entrySap: Number(p.orderEntriesSap.split(',')[0]),
+      agendamentos: tentativas,
+      expedicaoId: p.id,
+      podeAgendar: empresasVendedorAgenda.has(p.empresaId) && !!p.nfNumero && ['nf', 'agendamento', 'coleta'].includes(p.etapa),
+      transportadora: p.transportadora ?? p.transportadoraSap ?? null,
+      coletaAgendada: p.coletaAgendada,
+    })
   }
   return mapa
 }
@@ -245,6 +270,47 @@ export async function minimoFotosConferencia(empresaId: number): Promise<number>
   return e?.slug === 'odin-tubos' ? 1 : 0
 }
 
+// Agendar (ou reagendar) a coleta — pelo estoque (agendar) ou, na Odin
+// Tubos, pelo vendedor (agendarPeloVendedor). Só com a NF emitida.
+async function gravarAgendamento(
+  p: typeof expedicaoPedidos.$inferSelect,
+  input: { transportadora: string; coletaAgendada: string; observacao?: string },
+  userId: number
+) {
+  if (!['nf', 'agendamento', 'coleta'].includes(p.etapa)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra agendar depois da embalagem.' })
+  if (!p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'A NF ainda não saiu no SAP — a coleta só é agendada depois da NF.' })
+  return db.transaction(async (tx) => {
+
+        await tx
+          .update(expedicaoPedidos)
+          .set({
+            etapa: 'coleta',
+            transportadora: input.transportadora,
+            coletaAgendada: input.coletaAgendada,
+            agendadoEm: p.agendadoEm ?? agoraSqlite(),
+            ...(input.observacao !== undefined ? { observacao: input.observacao.trim() || null } : {}),
+            updatedAt: agoraSqlite(),
+          })
+          .where(eq(expedicaoPedidos.id, p.id))
+        const anteriores = await tx
+          .select({ transportadora: expedicaoAgendamentos.transportadora, coletaAgendada: expedicaoAgendamentos.coletaAgendada })
+          .from(expedicaoAgendamentos)
+          .where(eq(expedicaoAgendamentos.expedicaoId, p.id))
+          .orderBy(asc(expedicaoAgendamentos.id))
+        // Mesma data e transportadora (clique duplo, por exemplo) não é nova tentativa.
+        const ultimo = anteriores[anteriores.length - 1]
+        if (ultimo?.coletaAgendada === input.coletaAgendada && ultimo.transportadora === input.transportadora) return { tentativa: anteriores.length, nova: false }
+        await tx.insert(expedicaoAgendamentos).values({
+          expedicaoId: p.id,
+          transportadora: input.transportadora,
+          coletaAgendada: input.coletaAgendada,
+          registradoEm: agoraSqlite(),
+          registradoPor: userId,
+        })
+        return { tentativa: anteriores.length + 1, nova: true }
+      })
+}
+
 export const expedicaoRouter = router({
   // Card aberto / ficha do cliente — o vendedor só vê cliente da carteira dele.
   jornadaCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
@@ -283,7 +349,8 @@ export const expedicaoRouter = router({
     return lista.flatMap((c) => {
       const passos = mapa.get(c.codigo) ?? []
       // O que está em andamento primeiro; coletado só se não tiver outro.
-      const p = passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
+      // Odin Tubos: pedido esperando o vendedor agendar a coleta vem antes de tudo.
+      const p = passos.find((x) => x.podeAgendar && x.etapa !== 'coleta') ?? passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
       if (!p) return []
       const { agendamentos: _lista, ...etiqueta } = p
       return [{ clienteId: c.id, total: passos.length, ...etiqueta }]
@@ -615,39 +682,32 @@ export const expedicaoRouter = router({
         observacao: z.string().optional(),
       })
     )
+    .mutation(async ({ ctx, input }) => gravarAgendamento(await acharPedido(ctx.empresaId, input.id), input, ctx.user.id)),
+
+  // Odin Tubos: o vendedor dono do cliente agenda a coleta pelo card do
+  // Kanban (João 2026-11-12). Mesma regra do estoque: só com a NF emitida.
+  agendarPeloVendedor: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        transportadora: z.string().trim().min(1, 'Informe a transportadora'),
+        coletaAgendada: z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, 'Informe dia e hora da coleta'),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      if (!['nf', 'agendamento', 'coleta'].includes(p.etapa)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra agendar depois da embalagem.' })
-      if (!p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'A NF ainda não saiu no SAP — a coleta só é agendada depois da NF.' })
-      return db.transaction(async (tx) => {
-        await tx
-          .update(expedicaoPedidos)
-          .set({
-            etapa: 'coleta',
-            transportadora: input.transportadora,
-            coletaAgendada: input.coletaAgendada,
-            agendadoEm: p.agendadoEm ?? agoraSqlite(),
-            observacao: input.observacao?.trim() || null,
-            updatedAt: agoraSqlite(),
-          })
-          .where(eq(expedicaoPedidos.id, p.id))
-        const anteriores = await tx
-          .select({ transportadora: expedicaoAgendamentos.transportadora, coletaAgendada: expedicaoAgendamentos.coletaAgendada })
-          .from(expedicaoAgendamentos)
-          .where(eq(expedicaoAgendamentos.expedicaoId, p.id))
-          .orderBy(asc(expedicaoAgendamentos.id))
-        // Mesma data e transportadora (clique duplo, por exemplo) não é nova tentativa.
-        const ultimo = anteriores[anteriores.length - 1]
-        if (ultimo?.coletaAgendada === input.coletaAgendada && ultimo.transportadora === input.transportadora) return { tentativa: anteriores.length, nova: false }
-        await tx.insert(expedicaoAgendamentos).values({
-          expedicaoId: p.id,
-          transportadora: input.transportadora,
-          coletaAgendada: input.coletaAgendada,
-          registradoEm: agoraSqlite(),
-          registradoPor: ctx.user.id,
-        })
-        return { tentativa: anteriores.length + 1, nova: true }
-      })
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, p.empresaId), columns: { slug: true } })
+      if (!EMPRESAS_VENDEDOR_AGENDA.includes(empresa?.slug ?? '')) throw new TRPCError({ code: 'FORBIDDEN', message: 'Nessa empresa quem agenda a coleta é o estoque.' })
+      if (ctx.user.role !== 'admin') {
+        const dono = p.clienteCodigo
+          ? await db.query.clientes.findFirst({
+              where: and(eq(clientes.empresaId, p.empresaId), isNull(clientes.deletedAt), eq(clientes.vendedorAtualId, ctx.user.id), or(eq(clientes.codigo, p.clienteCodigo), eq(clientes.codigoAntigo, p.clienteCodigo))),
+              columns: { id: true },
+            })
+          : null
+        if (!dono) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor do cliente agenda essa coleta.' })
+      }
+      return gravarAgendamento(p, input, ctx.user.id)
     }),
 
   coletar: featureProcedure(FEATURE)
