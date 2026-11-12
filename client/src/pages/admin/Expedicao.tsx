@@ -734,9 +734,19 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
           </div>
         )}
 
-        {!conferindo && data && data.fotosPedido.length > 0 && (
+        {/* Sempre visível (João 2026-11-12: "cadê o botão de anexar?"): antes
+            da conferência fica travado com a explicação; depois dela dá pra
+            anexar mais (ex.: esqueceu uma foto). */}
+        {!conferindo && data && !['cancelado', 'descartado'].includes(p.etapa) && (
           <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4">
-            <FotosPedido pedidoId={p.id} fotos={data.fotosPedido} minimo={0} liberado={false} podeApagar={!!podeDescartar} somenteVer />
+            <FotosPedido
+              pedidoId={p.id}
+              fotos={data.fotosPedido}
+              minimo={data.minimoFotos}
+              liberado={['embalagem', 'nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa)}
+              podeApagar={!!podeDescartar}
+              antesDaConferencia={p.etapa === 'separacao' || p.etapa === 'conferencia'}
+            />
           </div>
         )}
 
@@ -1248,7 +1258,7 @@ function DescartadosModal({ onClose }: { onClose: () => void }) {
 // Fotos gerais do pedido no fim da conferência (João 2026-11-12, Odin Tubos).
 // No celular o botão abre a câmera; no computador, escolhe o arquivo.
 type FotoPedidoExp = { id: number; url: string; createdAt: string; colaborador: string | null }
-function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer }: { pedidoId: number; fotos: FotoPedidoExp[]; minimo: number; liberado: boolean; podeApagar: boolean; somenteVer?: boolean }) {
+function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer, antesDaConferencia }: { pedidoId: number; fotos: FotoPedidoExp[]; minimo: number; liberado: boolean; podeApagar: boolean; somenteVer?: boolean; antesDaConferencia?: boolean }) {
   const utils = trpc.useUtils()
   const [enviando, setEnviando] = useState(false)
   const [aberta, setAberta] = useState<string | null>(null)
@@ -1293,7 +1303,11 @@ function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer
           </label>
         )}
       </div>
-      {!somenteVer && !liberado && <p className="text-xs text-dark-400">Termine de conferir todos os itens para liberar as fotos.</p>}
+      {!somenteVer && !liberado && (
+        <p className="text-xs text-dark-400">
+          {antesDaConferencia ? 'As fotos são tiradas no fim da conferência: inicie a conferência e confira todos os itens — aí o botão libera.' : 'Termine de conferir todos os itens para liberar as fotos.'}
+        </p>
+      )}
       {!somenteVer && liberado && falta > 0 && <p className="text-xs text-amber-300">Falta{falta > 1 ? 'm' : ''} {falta} foto{falta > 1 ? 's' : ''} para poder terminar a conferência.</p>}
       {fotos.length > 0 && (
         <div className="flex flex-wrap gap-2">
