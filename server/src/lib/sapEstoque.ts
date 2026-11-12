@@ -234,6 +234,13 @@ async function componentesDeMontagem(sap: SapSessao): Promise<Set<string>> {
   for (const a of arvores) for (const l of a.ProductTreeLines ?? []) if (l.ItemCode) codigos.add(l.ItemCode)
   const naoRevenda = await sap.getTodos<{ ItemCode: string }>("/Items?$select=ItemCode&$filter=MaterialType ne 'mt_GoodsForReseller'", 200)
   for (const i of naoRevenda) codigos.add(i.ItemCode)
+  // Grupos de itens ATIVO e CONSUMO também ficam fora, mesmo com tipo "0"
+  // (João, 2026-11-12: Espanador CON000368, moldes I000952/53/54).
+  const grupos = await sap.getTodos<{ Number: number; GroupName: string }>('/ItemGroups?$select=Number,GroupName', 200)
+  for (const g of grupos.filter((g) => ['ATIVO', 'CONSUMO'].includes(g.GroupName.trim().toUpperCase()))) {
+    const doGrupo = await sap.getTodos<{ ItemCode: string }>(`/Items?$select=ItemCode&$filter=ItemsGroupCode eq ${g.Number}`, 500)
+    for (const i of doGrupo) codigos.add(i.ItemCode)
+  }
   await setConfig(CHAVE_COMPONENTES, JSON.stringify([...codigos].sort()))
   return codigos
 }

@@ -47,7 +47,7 @@ function Rodape({ s, extra }: { s: Situacao | undefined; extra: string }) {
   const foto = s?.fotoEm ? new Date(`${s.fotoEm.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null
   return (
     <p className="text-xs text-dark-500">
-      {extra} Estoque só dos depósitos de Revenda (1-REV, 2-REV, 3-REV e 4-REV); só itens com Tipo de material "0 - Mercadoria para Revenda" no SAP; itens usados para montar outros (estruturas de montagem do SAP) ficam de fora; vendas de todos os clientes da filial, já descontadas as devoluções (nota cancelada no SAP sai na próxima atualização). O SAP começou em{' '}
+      {extra} Estoque só dos depósitos de Revenda (1-REV, 2-REV, 3-REV e 4-REV); só itens com Tipo de material "0 - Mercadoria para Revenda" no SAP, fora dos grupos ATIVO e CONSUMO; itens usados para montar outros (estruturas de montagem do SAP) ficam de fora; vendas de todos os clientes da filial, já descontadas as devoluções (nota cancelada no SAP sai na próxima atualização). O SAP começou em{' '}
       {formatarDataCurta(s?.inicioSap)}: antes disso não há histórico.{foto ? ` Estoque atualizado em ${foto}.` : ''}
     </p>
   )
