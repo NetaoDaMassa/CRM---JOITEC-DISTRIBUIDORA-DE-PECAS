@@ -114,7 +114,7 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
         prazoCodigo: d.prazoCodigo,
         listaPreco: d.listaPreco,
         limiteCredito: d.limiteCredito ?? 0,
-        filiais: d.filiais?.length ? d.filiais : data.filialPadrao ? [data.filialPadrao] : [],
+        filiais: d.filiais?.length ? d.filiais : data.opcoes.filiais.map((f) => f.v),
       })
     }
   }, [data, aj])

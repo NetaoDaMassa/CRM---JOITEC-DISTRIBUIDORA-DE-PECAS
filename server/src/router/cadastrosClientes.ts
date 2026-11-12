@@ -371,7 +371,7 @@ export const cadastrosClientesRouter = router({
     podeMexer(l, ctx)
     if (l.status === 'aguardando' || l.status === 'aprovado') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Já foi enviado' })
     const d = lerDados(l)
-    if (!d.filiais?.length) d.filiais = [ctx.filial]
+    if (!d.filiais?.length) d.filiais = FILIAIS_SAP.map((f) => f.v) // padrão: as 3 filiais
     const falta = faltando(d)
     if (falta.length) throw new TRPCError({ code: 'BAD_REQUEST', message: `Falta preencher: ${falta.join(', ')}` })
     if (d.pessoa === 'juridica' && !cnpjValido(d.cnpj)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CNPJ inválido' })

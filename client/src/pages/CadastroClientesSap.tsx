@@ -267,14 +267,15 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
   const status = existente.data?.status ?? 'rascunho'
   const travado = status === 'aguardando' || status === 'aprovado'
 
-  // Padrões: resp. comercial = o próprio vendedor; filial = a da empresa.
+  // Padrões: resp. comercial = o próprio vendedor; filiais = as 3 (João,
+  // 2026-11-12 — igual a Izabelly deixava no SAP).
   useEffect(() => {
     if (!carregado || !ctx.data || travado) return
     const op = ctx.data
     setD((x) => ({
       ...x,
       respComercial: x.respComercial ?? op.vendedorSap ?? null,
-      filiais: x.filiais.length ? x.filiais : op.filialPadrao ? [op.filialPadrao] : [],
+      filiais: x.filiais.length ? x.filiais : op.filiais.map((f) => f.v),
     }))
   }, [carregado, ctx.data, travado])
   const falta = useMemo(() => faltando(d), [d])
