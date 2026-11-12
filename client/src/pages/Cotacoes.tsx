@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Search, Plus, Minus, Trash2, RefreshCw, Printer, Send, ArrowLeft, ShoppingCart, User, Settings2, CheckCircle2, XCircle, ThumbsUp, Undo2, History, BadgeCheck, Clock, Copy } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
+import { Link, useLocation } from 'react-router-dom'
 import { trpc } from '../lib/trpc'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
@@ -1893,6 +1894,7 @@ function ModalDadosPedido({
 // condições do SAP, crédito, títulos e última compra.
 function FichaCliente({ clienteId }: { clienteId: number }) {
   const { data: f } = trpc.cotacoesCrm.fichaCliente.useQuery({ clienteId }, { staleTime: 5 * 60_000 })
+  const location = useLocation()
   if (!f) return <div className="h-24 rounded-xl bg-dark-900/40 animate-pulse" />
   const linha = (rotulo: string, valor: React.ReactNode) =>
     valor ? (
@@ -1907,7 +1909,10 @@ function FichaCliente({ clienteId }: { clienteId: number }) {
     <div className="space-y-2 pt-1">
       {!f.ehSap && (
         <p className="text-[11px] rounded-lg border border-amber-700/50 bg-amber-900/20 px-2 py-1.5 text-amber-200">
-          ⚠ Cadastro só do CRM (sem código do SAP) — para ir ao SAP o cliente precisa estar cadastrado lá.
+          ⚠ Cadastro só do CRM (sem código do SAP) — para ir ao SAP o cliente precisa estar cadastrado lá.{' '}
+          <Link to={`${location.pathname.startsWith('/admin') ? '/admin' : '/vendedor'}/cadastro-clientes?cliente=${clienteId}`} className="underline font-semibold text-amber-100">
+            Cadastrar no SAP
+          </Link>
         </p>
       )}
       {f.bloqueado && <p className="text-[11px] rounded-lg border border-red-700/50 bg-red-900/20 px-2 py-1.5 text-red-200">⚠ Cliente bloqueado/inativo no SAP</p>}

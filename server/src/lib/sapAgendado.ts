@@ -9,6 +9,7 @@ import { sincronizarVendasSap } from './sapVendasAuto.js'
 import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
 import { sincronizarExpedicaoSap } from './sapExpedicao.js'
 import { sincronizarClientesNovosSap } from './sapClientes.js'
+import { verificarCadastrosAprovadosNoSap } from '../router/cadastrosClientes.js'
 import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
 import { sincronizarEstoqueSap } from './sapEstoque.js'
 import { sincronizarCatalogoSap } from './sapCatalogo.js'
@@ -86,6 +87,13 @@ export async function rodarClientesSap(): Promise<void> {
     if (r?.criados) console.log(`[sap-clientes] ${r.criados} cliente(s) novo(s) do SAP cadastrado(s), ${r.pendentes} esperando o gestor`)
   } catch (err) {
     console.error('[sap-clientes] erro:', err instanceof Error ? err.message : err)
+  }
+  // Cadastro feito no CRM que a Izabelly ativou direto no SAP → aprovado.
+  try {
+    const n = await verificarCadastrosAprovadosNoSap()
+    if (n) console.log(`[sap-cadastros] ${n} cadastro(s) do CRM aprovado(s) direto no SAP`)
+  } catch (err) {
+    console.error('[sap-cadastros] erro:', err instanceof Error ? err.message : err)
   }
   try {
     const v = await verificarVendedoresNovosSap()

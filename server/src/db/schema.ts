@@ -5294,3 +5294,34 @@ export const sapTransportadoras = sqliteTable('sap_transportadoras', {
   usos: integer('usos').notNull().default(0),
   atualizadoEm: text('atualizado_em').notNull(),
 })
+
+// Cadastro de cliente feito no CRM → SAP (João, 2026-11-11: "vamos parar de
+// puxar novos cadastros do SAP; vendedor cadastra no CRM com o que o SAP
+// precisa, vai pro SAP e a Izabelly do financeiro aprova"). O CRM cria o
+// cliente INATIVO no SAP (Valid tNO / Frozen tYES, igual hoje) e o cliente
+// no CRM; aprovar = ativar no SAP. `dados` = JSON do formulário (ver
+// lib/sapCadastroCliente.ts → DadosCadastro). historico = [{em, por, acao, detalhe}].
+export const cadastrosClientesSap = sqliteTable(
+  'cadastros_clientes_sap',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    status: text('status', { enum: ['rascunho', 'aguardando', 'devolvido', 'aprovado'] }).notNull().default('rascunho'),
+    cardCode: text('card_code'),
+    dados: text('dados').notNull(),
+    motivoDevolucao: text('motivo_devolucao'),
+    erroSap: text('erro_sap'),
+    historico: text('historico').notNull().default('[]'),
+    enviadoEm: text('enviado_em'),
+    aprovadoEm: text('aprovado_em'),
+    aprovadoPorId: integer('aprovado_por_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    statusIdx: index('idx_cadastros_sap_status').on(t.status),
+    clienteIdx: index('idx_cadastros_sap_cliente').on(t.clienteId),
+  })
+)

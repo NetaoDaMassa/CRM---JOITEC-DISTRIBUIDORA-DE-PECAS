@@ -21,6 +21,9 @@ export interface CnpjLookupResult {
   atividade: string | null
   dataAbertura: string | null
   porte: string | null
+  // Optante pelo Simples Nacional (null = a Receita não informou) — sugere o
+  // grupo tributário no cadastro que vai pro SAP (2026-11-12).
+  simples: boolean | null
 }
 
 // BrasilAPI: gratuita, sem chave, dados públicos da Receita Federal. Não traz
@@ -53,6 +56,7 @@ export async function buscarCnpj(cnpj: string): Promise<CnpjLookupResult | null>
     cnae_fiscal_descricao?: string
     data_inicio_atividade?: string
     porte?: string
+    opcao_pelo_simples?: boolean | null
   }
   return {
     razaoSocial: data.razao_social ?? '',
@@ -70,5 +74,6 @@ export async function buscarCnpj(cnpj: string): Promise<CnpjLookupResult | null>
     atividade: data.cnae_fiscal_descricao || null,
     dataAbertura: data.data_inicio_atividade || null,
     porte: data.porte || null,
+    simples: typeof data.opcao_pelo_simples === 'boolean' ? data.opcao_pelo_simples : null,
   }
 }

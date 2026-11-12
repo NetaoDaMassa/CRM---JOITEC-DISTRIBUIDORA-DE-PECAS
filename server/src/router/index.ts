@@ -86,6 +86,7 @@ import { avisoLeadsRouter } from './avisoLeads.js'
 import { marketingRouter } from './marketing.js'
 import { router } from './_base.js'
 import { cotacoesCrmRouter } from './cotacoesCrm.js'
+import { cadastrosClientesRouter } from './cadastrosClientes.js'
 import { fotosProdutosRouter } from './fotosProdutos.js'
 
 export { router, publicProcedure, protectedProcedure, adminProcedure } from './_base.js'
@@ -178,6 +179,7 @@ export const appRouter = router({
   expedicao: expedicaoRouter,
   lojaRastreamento: lojaRastreamentoRouter,
   cotacoesCrm: cotacoesCrmRouter,
+  cadastrosClientes: cadastrosClientesRouter,
   fotosProdutos: fotosProdutosRouter,
 })
 

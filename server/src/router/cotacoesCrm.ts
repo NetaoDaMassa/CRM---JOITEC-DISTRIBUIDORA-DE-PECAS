@@ -48,6 +48,7 @@ import { levarParaNegociacao } from '../lib/sapCotacoesAuto.js'
 import { fotosDosItens } from '../lib/fotosProdutos.js'
 import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, impostosDoDocumentoSap, simularImpostosSap, type ImpostosSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { limiteAgora, limiteDaFoto } from '../lib/sapLimiteCredito.js'
+import { cadastroPendente } from './cadastrosClientes.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
@@ -126,6 +127,14 @@ async function paraSap(c: typeof cotacoesCrm.$inferSelect, filial: number): Prom
     db.query.users.findFirst({ where: eq(users.id, c.vendedorId), columns: { name: true } }),
   ])
   if (!cliente?.codigo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente sem código do SAP' })
+  // Cadastro feito no CRM ainda não aprovado pelo financeiro: no SAP o
+  // cliente está inativo e o SAP recusaria (cadastrosClientes.ts).
+  const pendente = await cadastroPendente(c.clienteId)
+  if (pendente)
+    throw new TRPCError({
+      code: 'PRECONDITION_FAILED',
+      message: pendente.status === 'devolvido' ? 'O financeiro devolveu o cadastro deste cliente — corrija em Cadastro de clientes e reenvie.' : 'O cadastro deste cliente está esperando a aprovação do financeiro.',
+    })
   return {
     itens,
     dados: {

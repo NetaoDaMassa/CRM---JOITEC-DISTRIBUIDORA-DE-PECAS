@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -65,6 +65,7 @@ export const FEATURES_GUIA_FINANCEIRO = [
   'negociacoes',
   'liberacao_credito',
   'solicitacao_credito',
+  'aprovacao_cadastro_cliente',
   'requisicao_posto',
   'controle_suframa',
   'cartao_credito_relatorio',
@@ -85,6 +86,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   // Cotações no CRM (troca do Portal One) — em teste, liberado por pessoa em Permissões.
   { to: '/admin/cotacoes', label: 'Cotações', icon: ShoppingCart, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
+  { to: '/admin/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
   { to: '/admin/clientes-sap', label: 'Clientes do SAP p/ cadastrar', icon: UserPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
@@ -202,6 +204,9 @@ export const ADMIN_LINKS = [
   // que é só um registro direto) — vendedor abre a solicitação, financeiro
   // responde. Cross-empresa também. Pedido do João, 2026-10-01.
   { to: '/admin/solicitacao-credito', label: 'Consulta/Solicitação de Crédito', icon: HandCoins, feature: 'solicitacao_credito' },
+  // Cadastro de cliente feito no CRM → SAP: a Izabelly confere e aprova
+  // (ativa no SAP). Cross-empresa. 2026-11-12.
+  { to: '/admin/aprovacao-cadastros', label: 'Aprovação de cadastros', icon: UserCheck, feature: 'aprovacao_cadastro_cliente' },
 ]
 
 // Mesma ideia do ADMIN_LINKS acima — `feature` é a chave em permissoesAdmin,
@@ -220,6 +225,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/boletos-carteira', label: 'Boletos da minha carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos', 'odin-compressores'], feature: 'boletos_carteira' },
   { to: '/vendedor/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/vendedor/cotacoes', label: 'Cotações', icon: ShoppingCart, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
+  { to: '/vendedor/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
   {

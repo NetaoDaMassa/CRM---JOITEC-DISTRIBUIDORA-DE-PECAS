@@ -195,6 +195,9 @@ export const FEATURES_ADMIN = [
   // lá controla quem PODE PEDIR (vendedor) — nunca colide, Sidebar já separa
   // por role antes de checar a feature. Pedido do João, 2026-10-01.
   'solicitacao_credito',
+  // Aprovação de cadastros de cliente feitos no CRM → SAP (Izabelly do
+  // financeiro, 2026-11-12). Cross-empresa.
+  'aprovacao_cadastro_cliente',
   // Chat Grupo Odin — não é item de ADMIN_LINKS (saiu do menu, virou popup
   // + botão flutuante), então não existe row correspondente no Sidebar;
   // entra aqui na mão, igual 'painel_financeiro'. Controlado via

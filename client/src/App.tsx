@@ -68,6 +68,8 @@ import ControleSuframa from './pages/admin/ControleSuframa'
 import Expedicao from './pages/admin/Expedicao'
 import ExpedicaoDesempenho from './pages/admin/ExpedicaoDesempenho'
 import ExpedicaoEquipe from './pages/admin/ExpedicaoEquipe'
+import CadastroClientesSap from './pages/CadastroClientesSap'
+import AprovacaoCadastros from './pages/admin/AprovacaoCadastros'
 import LojaRastreamento from './pages/admin/LojaRastreamento'
 import LigacoesPabx from './pages/admin/LigacoesPabx'
 import GrupoOdin from './pages/admin/GrupoOdin'
@@ -302,6 +304,8 @@ export default function App() {
           <Route path="admin/boletos-carteira" element={<AdminGuard><BoletosCarteira /></AdminGuard>} />
           <Route path="admin/conferencia-sap" element={<AdminGuard><ConferenciaSap /></AdminGuard>} />
           <Route path="admin/cotacoes" element={<AdminGuard><FeatureGuard feature="cotacoes"><Cotacoes /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/cadastro-clientes" element={<AdminGuard><FeatureGuard feature="cotacoes"><CadastroClientesSap /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/aprovacao-cadastros" element={<AdminGuard><FeatureGuard feature="aprovacao_cadastro_cliente"><AprovacaoCadastros /></FeatureGuard></AdminGuard>} />
           <Route path="admin/clientes-sap" element={<AdminGuard><ClientesSap /></AdminGuard>} />
           <Route path="admin/prospeccao" element={<AdminGuard><FeatureGuard feature="prospeccao"><Prospeccao /></FeatureGuard></AdminGuard>} />
           <Route path="admin/aprovacoes" element={<AdminGuard><FeatureGuard feature="aprovacoes"><AdminAprovacoes /></FeatureGuard></AdminGuard>} />
@@ -397,6 +401,7 @@ export default function App() {
           <Route path="vendedor/boletos-carteira" element={<BoletosCarteira />} />
           <Route path="vendedor/conferencia-sap" element={<ConferenciaSap />} />
           <Route path="vendedor/cotacoes" element={<FeatureGuard feature="cotacoes"><Cotacoes /></FeatureGuard>} />
+          <Route path="vendedor/cadastro-clientes" element={<FeatureGuard feature="cotacoes"><CadastroClientesSap /></FeatureGuard>} />
           <Route path="vendedor/prospeccao" element={<Prospeccao />} />
           <Route path="vendedor/prospeccao-odin" element={<ProspeccaoOdin />} />
           <Route path="vendedor/demonstracoes" element={<Demonstracoes />} />

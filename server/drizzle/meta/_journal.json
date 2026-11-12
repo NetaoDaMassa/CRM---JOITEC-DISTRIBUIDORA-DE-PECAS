@@ -1100,6 +1100,13 @@
       "when": 1794480000000,
       "tag": "0156_leads_repasse_comercial",
       "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "6",
+      "when": 1794510000000,
+      "tag": "0157_cadastros_clientes_sap",
+      "breakpoints": true
     }
   ]
 }

@@ -111,6 +111,7 @@ export const CATALOGO: ItemCatalogo[] = [
   { id: 'negociacoes', area: 'Financeiro', nome: 'Negociações e cobrança', niveis: { 2: ['negociacoes'] } },
   { id: 'liberacao_credito', area: 'Financeiro', nome: 'Liberação de crédito', niveis: { 2: ['liberacao_credito'] } },
   { id: 'solicitacao_credito', area: 'Financeiro', nome: 'Consulta/solicitação de crédito', niveis: { 2: ['solicitacao_credito'] } },
+  { id: 'aprovacao_cadastro_cliente', area: 'Financeiro', nome: 'Aprovação de cadastros de cliente (SAP)', niveis: { 2: ['aprovacao_cadastro_cliente'] } },
   { id: 'controle_suframa', area: 'Financeiro', nome: 'Controle SUFRAMA', niveis: { 2: ['controle_suframa'] } },
   { id: 'requisicao_posto', area: 'Financeiro', nome: 'Requisição posto', niveis: { 2: ['requisicao_posto'] } },
   { id: 'painel_financeiro', area: 'Financeiro', nome: 'Painel Financeiro', niveis: { 1: ['painel_financeiro'] } },
