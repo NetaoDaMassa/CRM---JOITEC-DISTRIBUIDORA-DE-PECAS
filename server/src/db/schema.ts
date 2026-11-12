@@ -4525,6 +4525,10 @@ export const expedicaoColaboradores = sqliteTable('expedicao_colaboradores', {
   // Taxa de erro máxima (erros ÷ pedidos) pra ser elegível à bonificação —
   // igual a aba "Orientações" da planilha (Elias 5%, o resto 1%).
   limiteErro: real('limite_erro').notNull().default(0.01),
+  // Limite em QUANTIDADE de erros no período (mês), por pessoa — quando
+  // preenchido, vale no lugar da % (Odin Tubos, João 2026-11-12: separador
+  // 15 erros nas conexões, conferente 10 no tubo PPR).
+  limiteErrosQtd: integer('limite_erros_qtd'),
   ativo: integer('ativo', { mode: 'boolean' }).notNull().default(true),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })

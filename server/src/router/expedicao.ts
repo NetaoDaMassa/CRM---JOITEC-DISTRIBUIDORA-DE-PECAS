@@ -395,6 +395,7 @@ export const expedicaoRouter = router({
         nome: z.string().trim().min(1),
         cargo: z.enum(['separador', 'conferente', 'embalador', 'conferente_embalador', 'expedicao', 'geral']),
         limiteErro: z.number().min(0).max(1),
+        limiteErrosQtd: z.number().int().min(0).nullable().optional(),
         ativo: z.boolean(),
       })
     )
@@ -1327,7 +1328,9 @@ export const expedicaoRouter = router({
           minutosPorPedido: qtd ? Math.round(minutos / qtd) : null,
           taxaErro: taxa,
           limiteErro: c.limiteErro,
-          status: qtd === 0 ? 'sem_producao' : taxa <= c.limiteErro ? 'elegivel' : 'nao_elegivel',
+          limiteErrosQtd: c.limiteErrosQtd,
+          // Limite em quantidade (por pessoa, no período) vale no lugar da %.
+          status: qtd === 0 ? 'sem_producao' : (c.limiteErrosQtd != null ? nErros <= c.limiteErrosQtd : taxa <= c.limiteErro) ? 'elegivel' : 'nao_elegivel',
         }
       })
 

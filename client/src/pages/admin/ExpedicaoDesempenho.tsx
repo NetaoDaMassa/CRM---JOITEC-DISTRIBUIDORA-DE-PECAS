@@ -142,8 +142,10 @@ export default function ExpedicaoDesempenho() {
                   <td className="py-2 pr-3 text-right font-mono">{num(l.pedidos)}</td>
                   <td className="py-2 pr-3 text-right font-mono">{num(l.pecas)}</td>
                   <td className="py-2 pr-3 text-right font-mono">{num(l.erros)}</td>
-                  <td className={`py-2 pr-3 text-right font-mono ${l.pedidos && l.taxaErro > l.limiteErro ? 'text-red-300' : ''}`}>{l.pedidos ? pct(l.taxaErro) : '—'}</td>
-                  <td className="py-2 pr-3 text-right font-mono text-dark-400">{pct(l.limiteErro)}</td>
+                  <td className={`py-2 pr-3 text-right font-mono ${l.pedidos && l.limiteErrosQtd == null && l.taxaErro > l.limiteErro ? 'text-red-300' : ''}`}>{l.pedidos ? pct(l.taxaErro) : '—'}</td>
+                  <td className={`py-2 pr-3 text-right font-mono ${l.limiteErrosQtd != null && l.erros > l.limiteErrosQtd ? 'text-red-300' : 'text-dark-400'}`}>
+                    {l.limiteErrosQtd != null ? `${num(l.erros)} de ${num(l.limiteErrosQtd)} erros` : pct(l.limiteErro)}
+                  </td>
                   <td className="py-2 pr-3 text-right font-mono">{['embalador', 'conferente_embalador', 'geral'].includes(l.cargo) ? num(l.volumes) : '—'}</td>
                   <td className="py-2 pr-3 text-right font-mono">{['embalador', 'conferente_embalador', 'geral'].includes(l.cargo) ? num(l.cabecotes) : '—'}</td>
                   <td className="py-2 pr-3 text-right font-mono">{['embalador', 'conferente_embalador', 'geral'].includes(l.cargo) ? num(l.paletes) : '—'}</td>
@@ -154,7 +156,7 @@ export default function ExpedicaoDesempenho() {
           </table>
         )}
         <p className="text-xs text-dark-500 mt-3">
-          Erro achado na conferência conta para o separador; na embalagem, para o conferente; na expedição — inclusive depois da coleta (volume que ficou, transporte errado, não despachou) — para o embalador. Elegível = erros ÷ pedidos até o limite da pessoa.
+          Erro achado na conferência conta para o separador; na embalagem, para o conferente; na expedição — inclusive depois da coleta (volume que ficou, transporte errado, não despachou) — para o embalador. Elegível = erros ÷ pedidos até o limite % da pessoa — ou, para quem tem limite em quantidade (ex.: Odin Tubos), até N erros da própria pessoa no período (use "Este mês").
         </p>
       </div>
 

@@ -34,7 +34,7 @@ export default function ExpedicaoEquipe() {
           </div>
           <div>
             <h1 className="text-xl font-bold text-dark-100">Equipe do estoque</h1>
-            <p className="text-sm text-dark-400">Quem separa, confere e embala nesta empresa, e o limite de erro de cada um</p>
+            <p className="text-sm text-dark-400">Quem separa, confere e embala nesta empresa, e o limite de erro de cada um (% dos pedidos ou quantidade máxima de erros da própria pessoa no mês)</p>
           </div>
         </div>
         <Button onClick={() => setNovo(true)}>
@@ -57,6 +57,9 @@ function Linha({ colaborador: c, onPronto }: { colaborador?: Colaborador; onPron
   const [nome, setNome] = useState(c?.nome ?? '')
   const [cargo, setCargo] = useState<Colaborador['cargo']>(c?.cargo ?? 'separador')
   const [limite, setLimite] = useState(String(Math.round((c?.limiteErro ?? 0.01) * 1000) / 10))
+  // Limite em quantidade de erros no mês (vazio = usa a %). Odin Tubos, 2026-11-12.
+  const [limiteQtd, setLimiteQtd] = useState(c?.limiteErrosQtd != null ? String(c.limiteErrosQtd) : '')
+  const qtdNum = limiteQtd.trim() === '' ? null : Math.max(0, Math.floor(Number(limiteQtd) || 0))
   const [ativo, setAtivo] = useState(c?.ativo ?? true)
   const salvar = trpc.expedicao.salvarColaborador.useMutation({
     onSuccess() {
@@ -66,12 +69,13 @@ function Linha({ colaborador: c, onPronto }: { colaborador?: Colaborador; onPron
     },
     onError: (e) => toast.error(e.message),
   })
-  const mudou = !c || nome !== c.nome || cargo !== c.cargo || Number(limite) / 100 !== c.limiteErro || ativo !== c.ativo
+  const mudou = !c || nome !== c.nome || cargo !== c.cargo || Number(limite) / 100 !== c.limiteErro || qtdNum !== (c.limiteErrosQtd ?? null) || ativo !== c.ativo
   return (
-    <div className={`grid grid-cols-2 sm:grid-cols-[1.5fr_1fr_110px_auto_auto] gap-2 items-end p-3 ${ativo ? '' : 'opacity-60'}`}>
+    <div className={`grid grid-cols-2 sm:grid-cols-[1.5fr_1fr_100px_130px_auto_auto] gap-2 items-end p-3 ${ativo ? '' : 'opacity-60'}`}>
       <Input label="Nome" value={nome} onChange={(e) => setNome(e.target.value)} />
       <Select label="Cargo" value={cargo} onChange={(e) => setCargo(e.target.value as Colaborador['cargo'])} options={CARGOS} />
-      <Input label="Limite de erro (%)" type="number" step="0.5" min={0} value={limite} onChange={(e) => setLimite(e.target.value)} />
+      <Input label="Limite de erro (%)" type="number" step="0.5" min={0} value={limite} disabled={qtdNum != null} onChange={(e) => setLimite(e.target.value)} />
+      <Input label="Ou: máx. erros/mês" type="number" min={0} placeholder="—" value={limiteQtd} onChange={(e) => setLimiteQtd(e.target.value)} />
       <label className="flex items-center gap-2 text-sm text-dark-300 pb-2">
         <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo
       </label>
@@ -79,7 +83,7 @@ function Linha({ colaborador: c, onPronto }: { colaborador?: Colaborador; onPron
         size="sm"
         disabled={!mudou || !nome.trim()}
         loading={salvar.isPending}
-        onClick={() => salvar.mutate({ id: c?.id, nome, cargo, limiteErro: (Number(limite) || 0) / 100, ativo })}
+        onClick={() => salvar.mutate({ id: c?.id, nome, cargo, limiteErro: (Number(limite) || 0) / 100, limiteErrosQtd: qtdNum, ativo })}
       >
         Salvar
       </Button>
