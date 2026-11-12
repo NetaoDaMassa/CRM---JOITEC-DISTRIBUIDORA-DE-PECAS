@@ -383,7 +383,9 @@ export async function situacaoNoSap(sap: SapSessao, cardCodes: string[]): Promis
 }
 
 // Segmentos (Industries) e territórios do SAP — cache de 6h; se o SAP não
-// responder, a lista fica vazia e o campo some da tela.
+// responder, a lista fica vazia e o campo some da tela. Em 2026-11-12 o SAP
+// só tinha o '-Nenhum-' (código -1/-2), que fica de fora: os campos somem até
+// alguém cadastrar segmentos/territórios no SAP.
 let cacheListas: { em: number; segmentos: { v: number; l: string }[]; territorios: { v: number; l: string }[] } | null = null
 export async function listasCadastroSap(): Promise<{ segmentos: { v: number; l: string }[]; territorios: { v: number; l: string }[] }> {
   if (cacheListas && Date.now() - cacheListas.em < 6 * 3600_000) return cacheListas
@@ -393,8 +395,8 @@ export async function listasCadastroSap(): Promise<{ segmentos: { v: number; l: 
       const seg = await sap.getTodos<{ IndustryCode: number; IndustryName: string }>('/Industries?$select=IndustryCode,IndustryName').catch(() => [])
       const ter = await sap.getTodos<{ TerritoryID: number; Description: string; Inactive?: string }>('/Territories?$select=TerritoryID,Description,Inactive').catch(() => [])
       return {
-        segmentos: seg.map((x) => ({ v: x.IndustryCode, l: x.IndustryName })).sort((a, b) => a.l.localeCompare(b.l, 'pt-BR')),
-        territorios: ter.filter((x) => x.Inactive !== 'tYES').map((x) => ({ v: x.TerritoryID, l: x.Description })).sort((a, b) => a.l.localeCompare(b.l, 'pt-BR')),
+        segmentos: seg.filter((x) => x.IndustryCode > 0).map((x) => ({ v: x.IndustryCode, l: x.IndustryName })).sort((a, b) => a.l.localeCompare(b.l, 'pt-BR')),
+        territorios: ter.filter((x) => x.Inactive !== 'tYES' && x.TerritoryID > 0).map((x) => ({ v: x.TerritoryID, l: x.Description })).sort((a, b) => a.l.localeCompare(b.l, 'pt-BR')),
       }
     })
     cacheListas = { em: Date.now(), ...r }
