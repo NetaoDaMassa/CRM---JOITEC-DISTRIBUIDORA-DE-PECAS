@@ -4705,6 +4705,25 @@ export const expedicaoErros = sqliteTable(
   })
 )
 
+// Fotos gerais do pedido tiradas no fim da conferência (João 2026-11-12,
+// Odin Tubos: "depois que termina de conferir tudo ele tem que tirar
+// algumas fotos geral do pedido"). Mínimo por empresa em config
+// `expedicao_fotos_min_<empresaId>` (sem config: Odin Tubos 1, resto 0).
+export const expedicaoFotos = sqliteTable(
+  'expedicao_fotos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    expedicaoId: integer('expedicao_id').notNull().references(() => expedicaoPedidos.id, { onDelete: 'cascade' }),
+    url: text('url').notNull(),
+    colaboradorId: integer('colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    enviadoPorId: integer('enviado_por_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    expedicaoIdx: index('idx_expedicao_fotos_expedicao').on(t.expedicaoId),
+  })
+)
+
 // Histórico das pausas (expedicaoPedidos só guarda a pausa atual): tipo pro
 // relatório de vendedores — falta de item / troca de item / outro.
 export const expedicaoPausas = sqliteTable(

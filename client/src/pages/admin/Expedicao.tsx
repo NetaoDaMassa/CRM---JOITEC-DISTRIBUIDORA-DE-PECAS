@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
-import { PackageCheck, RefreshCw, Printer, Undo2, Trash2 } from 'lucide-react'
+import { PackageCheck, RefreshCw, Printer, Undo2, Trash2, Camera, X } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { trpc } from '../../lib/trpc'
@@ -692,6 +692,15 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
               <div className="flex flex-wrap items-end gap-3">
                 <p className="text-sm text-cyan-300 w-full">{quemAgora(p)}</p>
                 {conferindo && data && <ConferenciaItens pedidoId={p.id} pedidoSap={p.pedidosSap} itens={data.itens} conferidos={itensConferidos} />}
+                {conferindo && data && (
+                  <FotosPedido
+                    pedidoId={p.id}
+                    fotos={data.fotosPedido}
+                    minimo={data.minimoFotos}
+                    liberado={itensConferidos >= data.itens.length}
+                    podeApagar
+                  />
+                )}
                 {etapaPessoa === 'embalagem' && (
                   <>
                     <FreteSap p={p} volumesDigitados={volumes} />
@@ -707,7 +716,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                 <Button
                   size="lg"
                   loading={terminar.isPending}
-                  disabled={conferindo && itensConferidos < (data?.itens.length ?? 0)}
+                  disabled={conferindo && (itensConferidos < (data?.itens.length ?? 0) || (data?.fotosPedido.length ?? 0) < (data?.minimoFotos ?? 0))}
                   onClick={() =>
                     terminar.mutate({
                       id: p.id,
@@ -722,6 +731,12 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                 </Button>
               </div>
             )}
+          </div>
+        )}
+
+        {!conferindo && data && data.fotosPedido.length > 0 && (
+          <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4">
+            <FotosPedido pedidoId={p.id} fotos={data.fotosPedido} minimo={0} liberado={false} podeApagar={!!podeDescartar} somenteVer />
           </div>
         )}
 
@@ -1230,6 +1245,89 @@ function DescartadosModal({ onClose }: { onClose: () => void }) {
 // quantidade do pedido, digita o que contou e o item só fica conferido
 // quando bate. Não bateu = recontar; se é erro da separação, anota no
 // "Erros encontrados" e corrige.
+// Fotos gerais do pedido no fim da conferência (João 2026-11-12, Odin Tubos).
+// No celular o botão abre a câmera; no computador, escolhe o arquivo.
+type FotoPedidoExp = { id: number; url: string; createdAt: string; colaborador: string | null }
+function FotosPedido({ pedidoId, fotos, minimo, liberado, podeApagar, somenteVer }: { pedidoId: number; fotos: FotoPedidoExp[]; minimo: number; liberado: boolean; podeApagar: boolean; somenteVer?: boolean }) {
+  const utils = trpc.useUtils()
+  const [enviando, setEnviando] = useState(false)
+  const [aberta, setAberta] = useState<string | null>(null)
+  const apagar = trpc.expedicao.removerFotoPedido.useMutation({
+    onSuccess: () => utils.expedicao.detalhe.invalidate({ id: pedidoId }),
+    onError: (e) => toast.error(e.message),
+  })
+  const enviar = async (lista: FileList) => {
+    const arquivos = Array.from(lista).slice(0, 10)
+    if (!arquivos.length) return
+    setEnviando(true)
+    try {
+      const form = new FormData()
+      arquivos.forEach((f) => form.append('fotos', f))
+      const empresa = localStorage.getItem('empresa_ativa_id')
+      const r = await fetch(`/upload/expedicao-foto/${pedidoId}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}`, ...(empresa ? { 'x-empresa-id': empresa } : {}) },
+        body: form,
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `erro ${r.status}`)
+      toast.success(arquivos.length > 1 ? `${arquivos.length} fotos enviadas` : 'Foto enviada')
+      utils.expedicao.detalhe.invalidate({ id: pedidoId })
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+  const falta = Math.max(0, minimo - fotos.length)
+  return (
+    <div className={`w-full space-y-2 ${somenteVer ? '' : `rounded-lg border p-3 ${liberado && falta > 0 ? 'border-amber-500/70 bg-amber-900/15' : 'border-dark-600 bg-dark-900/40'}`}`}>
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-sm font-semibold text-dark-100">
+          📷 Fotos gerais do pedido{' '}
+          {!somenteVer && (minimo > 0 ? <span className="text-xs font-normal text-dark-400">(obrigatório — mínimo {minimo})</span> : <span className="text-xs font-normal text-dark-400">(opcional)</span>)}
+        </p>
+        {!somenteVer && (
+          <label className={`ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-semibold ${liberado ? 'cursor-pointer bg-gold-600 text-dark-950 border border-gold-500 hover:bg-gold-500' : 'cursor-not-allowed bg-dark-700 text-dark-400'}`}>
+            <Camera size={16} /> {enviando ? 'Enviando…' : fotos.length ? 'Tirar mais fotos' : 'Tirar fotos'}
+            <input type="file" accept="image/*" capture="environment" multiple className="hidden" disabled={!liberado || enviando} onChange={(e) => { if (e.target.files) enviar(e.target.files); e.target.value = '' }} />
+          </label>
+        )}
+      </div>
+      {!somenteVer && !liberado && <p className="text-xs text-dark-400">Termine de conferir todos os itens para liberar as fotos.</p>}
+      {!somenteVer && liberado && falta > 0 && <p className="text-xs text-amber-300">Falta{falta > 1 ? 'm' : ''} {falta} foto{falta > 1 ? 's' : ''} para poder terminar a conferência.</p>}
+      {fotos.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {fotos.map((f) => (
+            <div key={f.id} className="relative">
+              <button type="button" onClick={() => setAberta(f.url)} title={`${f.colaborador ?? ''} ${hora(f.createdAt)}`.trim()}>
+                <img src={f.url} alt="Foto do pedido" className="h-24 w-24 rounded-lg border border-dark-600 object-cover" />
+              </button>
+              {podeApagar && (
+                <button
+                  type="button"
+                  title="Apagar foto"
+                  className="absolute -right-1.5 -top-1.5 rounded-full bg-red-600 p-0.5 text-white hover:bg-red-500"
+                  onClick={() => window.confirm('Apagar esta foto?') && apagar.mutate({ id: pedidoId, fotoId: f.id })}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {aberta && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4" onClick={() => setAberta(null)}>
+          <img src={aberta} alt="Foto do pedido" className="max-h-full max-w-full object-contain" />
+          <button type="button" className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white hover:bg-white/20" onClick={() => setAberta(null)}>
+            <X size={22} />
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId: number; pedidoSap: string; itens: ItemDetalhe[]; conferidos: number }) {
   const [qtdEtiquetas, setQtdEtiquetas] = useState('1')
   const utils = trpc.useUtils()

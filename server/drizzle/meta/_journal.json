@@ -1107,6 +1107,13 @@
       "when": 1794510000000,
       "tag": "0157_cadastros_clientes_sap",
       "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "6",
+      "when": 1794520000000,
+      "tag": "0158_expedicao_fotos",
+      "breakpoints": true
     }
   ]
 }

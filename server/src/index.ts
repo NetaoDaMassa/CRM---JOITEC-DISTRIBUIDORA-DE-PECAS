@@ -14,7 +14,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
-import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
+import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, expedicaoFotos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
 import { temFeature } from './router/_base.js'
 import { podeTrocarFotoProduto } from './router/fotosProdutos.js'
 import { semearFotosCatalogo } from './lib/fotosProdutos.js'
@@ -481,6 +481,35 @@ app.post('/upload/foto-produto/:itemCodigo', uploadFotoProduto.single('file'), a
     .values({ itemCodigo, url, origem: 'upload', atualizadoPorId: user.id })
     .onConflictDoUpdate({ target: itemFotos.itemCodigo, set: { url, origem: 'upload', atualizadoPorId: user.id, atualizadoEm: sql`(datetime('now'))` } })
   res.json({ url })
+})
+
+// Fotos gerais do pedido no fim da conferência da Expedição (João
+// 2026-11-12). Até 10 imagens por envio, 15 MB cada (foto de celular).
+// Quem pode: superAdmin ou admin com Controle do Estoque, pedido da empresa ativa.
+const uploadFotoExpedicao = multer({
+  storage: multer.diskStorage({
+    destination: UPLOADS_DIR,
+    filename: (_req, file, cb) => cb(null, `expedicao-${Date.now()}-${Math.random().toString(36).slice(2)}${path.extname(file.originalname).toLowerCase() || '.jpg'}`),
+  }),
+  limits: { fileSize: 15 * 1024 * 1024, files: 10 },
+  fileFilter: (_req, file, cb) => cb(null, /^image\//.test(file.mimetype)),
+})
+app.post('/upload/expedicao-foto/:id', uploadFotoExpedicao.array('fotos', 10), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!user.superAdmin && !(user.role === 'admin' && (await temFeature(user.id, 'controle_estoque')))) return res.status(403).json({ error: 'Sem permissão' })
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  const pedido = await db.query.expedicaoPedidos.findFirst({
+    where: and(eq(expedicaoPedidos.id, Number(req.params.id)), eq(expedicaoPedidos.empresaId, empresaId ?? -1)),
+    columns: { id: true, etapa: true, conferenciaColaboradorId: true },
+  })
+  if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado' })
+  const arquivos = (req.files as Express.Multer.File[] | undefined) ?? []
+  if (!arquivos.length) return res.status(400).json({ error: 'Envie pelo menos uma foto (imagem de até 15 MB)' })
+  await db.insert(expedicaoFotos).values(
+    arquivos.map((f) => ({ expedicaoId: pedido.id, url: `/uploads/${f.filename}`, colaboradorId: pedido.conferenciaColaboradorId, enviadoPorId: user.id }))
+  )
+  res.json({ enviadas: arquivos.length })
 })
 
 // Conteúdo de um arquivo de Marketing "somente visualização" — diferente do

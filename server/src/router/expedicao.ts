@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, ne, not
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
@@ -235,6 +235,16 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
   })
 }
 
+// Quantas fotos gerais do pedido a conferência exige antes de terminar.
+// Config `expedicao_fotos_min_<empresaId>`; sem config: Odin Tubos 1 (pedido
+// do João, 2026-11-12), as outras empresas 0 (podem tirar, não é obrigatório).
+export async function minimoFotosConferencia(empresaId: number): Promise<number> {
+  const v = await getConfigTexto(`expedicao_fotos_min_${empresaId}`)
+  if (v != null && v.trim() !== '') return Math.max(0, Math.floor(Number(v) || 0))
+  const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
+  return e?.slug === 'odin-tubos' ? 1 : 0
+}
+
 export const expedicaoRouter = router({
   // Card aberto / ficha do cliente — o vendedor só vê cliente da carteira dele.
   jornadaCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
@@ -384,6 +394,7 @@ export const expedicaoRouter = router({
       return { total: Number(total), porPagina: POR_PAGINA_COLETADOS, lista: await comCalculos(ctx.empresaId, pedidos) }
     }),
 
+  // Fotos gerais do pedido no fim da conferência — ver expedicaoFotos no schema.
   detalhe: featureProcedure(FEATURE)
     .input(z.object({ id: z.number() }))
     .query(async ({ ctx, input }) => {
@@ -392,8 +403,29 @@ export const expedicaoRouter = router({
         db.select().from(expedicaoItens).where(eq(expedicaoItens.expedicaoId, p.id)).orderBy(asc(expedicaoItens.localizacao), asc(expedicaoItens.itemCodigo)),
         db.select().from(expedicaoErros).where(eq(expedicaoErros.expedicaoId, p.id)).orderBy(asc(expedicaoErros.id)),
       ])
-      const [comKits, fotos] = await Promise.all([kitsDosItens(itens), fotosDosItens(itens.map((i) => i.itemCodigo))])
-      return { itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null })), erros }
+      const [comKits, fotos, fotosPedido, minimoFotos] = await Promise.all([
+        kitsDosItens(itens),
+        fotosDosItens(itens.map((i) => i.itemCodigo)),
+        db
+          .select({ id: expedicaoFotos.id, url: expedicaoFotos.url, createdAt: expedicaoFotos.createdAt, colaborador: expedicaoColaboradores.nome })
+          .from(expedicaoFotos)
+          .leftJoin(expedicaoColaboradores, eq(expedicaoColaboradores.id, expedicaoFotos.colaboradorId))
+          .where(eq(expedicaoFotos.expedicaoId, p.id))
+          .orderBy(asc(expedicaoFotos.id)),
+        minimoFotosConferencia(ctx.empresaId),
+      ])
+      return { itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null })), erros, fotosPedido, minimoFotos }
+    }),
+
+  // Apaga uma foto do pedido (tirou errado). O estoque só enquanto confere;
+  // depois disso, só quem descarta (admin).
+  removerFotoPedido: featureProcedure(FEATURE)
+    .input(z.object({ id: z.number(), fotoId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const p = await acharPedido(ctx.empresaId, input.id)
+      if (p.etapa !== 'conferencia' && !ctx.user.superAdmin && !(await temFeature(ctx.user.id, FEATURE_DESCARTAR)))
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Depois da conferência só um administrador apaga foto.' })
+      await db.delete(expedicaoFotos).where(and(eq(expedicaoFotos.id, input.fotoId), eq(expedicaoFotos.expedicaoId, p.id)))
     }),
 
   // Kits do SAP (estruturas) e como o estoque separa cada um. Ver lib/sapKits.ts.
@@ -455,6 +487,11 @@ export const expedicaoRouter = router({
           .from(expedicaoItens)
           .where(and(eq(expedicaoItens.expedicaoId, p.id), isNull(expedicaoItens.conferidoEm)))
         if (Number(falta.n) > 0) throw new TRPCError({ code: 'BAD_REQUEST', message: `Faltam ${falta.n} item(ns) para conferir.` })
+        const minimo = await minimoFotosConferencia(ctx.empresaId)
+        if (minimo > 0) {
+          const [f] = await db.select({ n: sql<number>`count(*)` }).from(expedicaoFotos).where(eq(expedicaoFotos.expedicaoId, p.id))
+          if (Number(f.n) < minimo) throw new TRPCError({ code: 'BAD_REQUEST', message: `Tire as fotos gerais do pedido antes de terminar (mínimo ${minimo}, tem ${f.n}).` })
+        }
       }
       // Embalagem → etapa NF: o pedido fica lá até agendarem a coleta —
       // "aguardando NF" ou, com a nota emitida, "liberado próxima etapa"
