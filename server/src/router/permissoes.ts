@@ -11,6 +11,8 @@ import { gravarChavesComoExcecoes } from '../lib/acessos.js'
 export const FEATURES_ADMIN = [
   // Cotações no CRM (troca do Portal One, 2026-11-10) — mesma chave em FEATURES_VENDEDOR.
   'cotacoes',
+  // Cadastro de cliente no CRM → SAP (2026-11-12) — mesma chave em FEATURES_VENDEDOR.
+  'cadastro_cliente_sap',
   'dashboard',
   'kanban',
   // Board de Demandas (estilo Trello) — mesma chave em FEATURES_VENDEDOR,
@@ -221,6 +223,7 @@ export const FEATURES_ADMIN = [
 // da própria lista.
 export const FEATURES_VENDEDOR = [
   'cotacoes',
+  'cadastro_cliente_sap',
   'meu_painel',
   'fila_hoje',
   'pos_venda',

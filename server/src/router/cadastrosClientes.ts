@@ -44,10 +44,13 @@ import {
 } from '../lib/sapCadastroCliente.js'
 
 export const FEATURE_APROVAR = 'aprovacao_cadastro_cliente'
+// Quem cadastra. Chave própria (não 'cotacoes') pra liberar aos poucos —
+// João, 2026-11-12: "deixa só pra mim" (superAdmin vê sempre).
+export const FEATURE_CADASTRO = 'cadastro_cliente_sap'
 const SLUGS = ['joitec', 'odin-tubos', 'joitec-automacao']
 
 const cadastroProcedure = protectedProcedure.use(async ({ ctx, next }) => {
-  if (!ctx.user.superAdmin && !(await temFeature(ctx.user.id, 'cotacoes'))) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cadastro de clientes não liberado pra você' })
+  if (!ctx.user.superAdmin && !(await temFeature(ctx.user.id, FEATURE_CADASTRO))) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cadastro de clientes não liberado pra você' })
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
   const filial = empresa ? filialDaEmpresa(empresa.slug) : null
   if (!empresa || !filial || !SLUGS.includes(empresa.slug)) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cadastro no SAP só para Joitec, Odin Automação e Odin Tubos' })

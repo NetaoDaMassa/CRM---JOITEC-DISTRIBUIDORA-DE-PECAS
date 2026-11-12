@@ -86,7 +86,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   // Cotações no CRM (troca do Portal One) — em teste, liberado por pessoa em Permissões.
   { to: '/admin/cotacoes', label: 'Cotações', icon: ShoppingCart, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
-  { to: '/admin/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
+  { to: '/admin/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cadastro_cliente_sap' },
   { to: '/admin/clientes-sap', label: 'Clientes do SAP p/ cadastrar', icon: UserPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/admin/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/admin/aprovacoes', label: 'Aprovações', icon: CheckSquare, feature: 'aprovacoes' },
@@ -225,7 +225,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/boletos-carteira', label: 'Boletos da minha carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos', 'odin-compressores'], feature: 'boletos_carteira' },
   { to: '/vendedor/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
   { to: '/vendedor/cotacoes', label: 'Cotações', icon: ShoppingCart, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
-  { to: '/vendedor/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
+  { to: '/vendedor/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cadastro_cliente_sap' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
   {

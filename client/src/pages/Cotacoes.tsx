@@ -5,6 +5,7 @@ import type { inferRouterOutputs } from '@trpc/server'
 import type { AppRouter } from '@server/router/index'
 import { Link, useLocation } from 'react-router-dom'
 import { trpc } from '../lib/trpc'
+import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { formatarMoeda } from '../lib/moeda'
@@ -1895,6 +1896,9 @@ function ModalDadosPedido({
 function FichaCliente({ clienteId }: { clienteId: number }) {
   const { data: f } = trpc.cotacoesCrm.fichaCliente.useQuery({ clienteId }, { staleTime: 5 * 60_000 })
   const location = useLocation()
+  const { user } = useAuth()
+  const { data: minhas } = trpc.permissoes.minhasPermissoes.useQuery(undefined, { enabled: !!user && !user.superAdmin })
+  const podeCadastrar = !!user?.superAdmin || !!minhas?.includes('cadastro_cliente_sap')
   if (!f) return <div className="h-24 rounded-xl bg-dark-900/40 animate-pulse" />
   const linha = (rotulo: string, valor: React.ReactNode) =>
     valor ? (
@@ -1910,9 +1914,11 @@ function FichaCliente({ clienteId }: { clienteId: number }) {
       {!f.ehSap && (
         <p className="text-[11px] rounded-lg border border-amber-700/50 bg-amber-900/20 px-2 py-1.5 text-amber-200">
           ⚠ Cadastro só do CRM (sem código do SAP) — para ir ao SAP o cliente precisa estar cadastrado lá.{' '}
+          {podeCadastrar && (
           <Link to={`${location.pathname.startsWith('/admin') ? '/admin' : '/vendedor'}/cadastro-clientes?cliente=${clienteId}`} className="underline font-semibold text-amber-100">
             Cadastrar no SAP
           </Link>
+          )}
         </p>
       )}
       {f.bloqueado && <p className="text-[11px] rounded-lg border border-red-700/50 bg-red-900/20 px-2 py-1.5 text-red-200">⚠ Cliente bloqueado/inativo no SAP</p>}
