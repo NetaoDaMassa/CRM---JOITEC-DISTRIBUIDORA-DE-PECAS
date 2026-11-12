@@ -536,6 +536,15 @@ export const cadastrosClientesRouter = router({
     return { ok: true }
   }),
 
+  // "Já ativei no SAP": confere na hora, sem esperar a rodada de 10 min.
+  conferirNoSap: aprovadorProcedure.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    const l = await acharLinha(input.id)
+    if (l.status !== 'aguardando' || !l.cardCode) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Esse cadastro não está esperando aprovação' })
+    if (!sapConfigurado()) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'SAP não configurado' })
+    const n = await verificarCadastrosAprovadosNoSap([l.id])
+    return { aprovado: n > 0, cardCode: l.cardCode }
+  }),
+
   // Quantos esperando (selo no menu do financeiro).
   pendentes: aprovadorProcedure.query(async () => {
     const ls = await db.select({ id: cadastrosClientesSap.id }).from(cadastrosClientesSap).where(eq(cadastrosClientesSap.status, 'aguardando'))
@@ -553,9 +562,14 @@ export async function cadastroPendente(clienteId: number): Promise<{ status: str
 }
 
 // Rodada (10 min): a Izabelly ativou direto no SAP → marca aprovado e avisa.
-export async function verificarCadastrosAprovadosNoSap(): Promise<number> {
+// A aprovação de verdade é no SAP (João, 2026-11-12): a Izabelly ativa lá e
+// o CRM só percebe. No CRM ela apenas devolve (ou confere na hora).
+export async function verificarCadastrosAprovadosNoSap(ids?: number[]): Promise<number> {
   if (!sapConfigurado()) return 0
-  const ls = await db.select().from(cadastrosClientesSap).where(eq(cadastrosClientesSap.status, 'aguardando'))
+  const ls = await db
+    .select()
+    .from(cadastrosClientesSap)
+    .where(and(eq(cadastrosClientesSap.status, 'aguardando'), ids?.length ? inArray(cadastrosClientesSap.id, ids) : undefined))
   const comCodigo = ls.filter((l) => l.cardCode)
   if (!comCodigo.length) return 0
   const ativos = await comSessaoSap((sap) => situacaoNoSap(sap, comCodigo.map((l) => l.cardCode!)))

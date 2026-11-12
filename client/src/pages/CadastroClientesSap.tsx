@@ -403,7 +403,7 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
       )}
       {status === 'aguardando' && (
         <div className="rounded-xl border border-amber-800/50 bg-amber-900/20 p-3 text-sm text-amber-200 flex gap-2">
-          <Clock size={16} className="shrink-0 mt-0.5" /> Cliente criado no SAP (inativo). Esperando o financeiro conferir e aprovar — você recebe um aviso. Até lá não dá pra enviar cotação/pedido dele ao SAP.
+          <Clock size={16} className="shrink-0 mt-0.5" /> Cliente criado no SAP (inativo). Esperando o financeiro conferir e ativar no SAP — você recebe um aviso assim que ficar ativo. Até lá não dá pra enviar cotação/pedido dele ao SAP.
         </div>
       )}
       {status === 'aprovado' && (

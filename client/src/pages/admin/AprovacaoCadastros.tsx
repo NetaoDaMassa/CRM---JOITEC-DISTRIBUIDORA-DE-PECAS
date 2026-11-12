@@ -118,11 +118,14 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
       })
     }
   }, [data, aj])
-  const aprovar = trpc.cadastrosClientes.aprovar.useMutation({
-    onSuccess: () => {
-      toast.success('Aprovado! Cliente ativo no SAP e o vendedor foi avisado.')
-      utils.cadastrosClientes.invalidate()
-      onFechar()
+  // A aprovação de verdade é no SAP (João, 2026-11-12): aqui só confere.
+  const conferir = trpc.cadastrosClientes.conferirNoSap.useMutation({
+    onSuccess: (r) => {
+      if (r.aprovado) {
+        toast.success(`${r.cardCode} está Ativo no SAP — marcado como aprovado e o vendedor foi avisado.`, { duration: 6000 })
+        utils.cadastrosClientes.invalidate()
+        onFechar()
+      } else toast.error(`${r.cardCode} ainda está Inativo no SAP. Ative lá (Ativo + boletos em Execução do pagamento) e confira de novo.`, { duration: 8000 })
     },
     onError: (e) => toast.error(e.message, { duration: 8000 }),
   })
@@ -184,20 +187,20 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
         </div>
 
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
-          <h2 className="text-sm font-semibold text-dark-200">Fiscal e comercial {aguardando && <span className="text-dark-500 font-normal">— corrija aqui se precisar, vai junto na aprovação</span>}</h2>
-          <Select label="Grupo tributário" value={aj.grupoTributario} disabled={!aguardando} onChange={(e) => trocarGrupo(e.target.value)} options={op.gruposTributarios.map((g) => ({ value: g.v, label: g.l }))} />
-          <Select label="Indicador da IE" value={aj.indicadorIE} disabled={!aguardando} onChange={(e) => setAj({ ...aj, indicadorIE: e.target.value })} options={op.indicadoresIE.map((g) => ({ value: g.v, label: g.l }))} />
-          <Select label="Indicador de op. consumidor" value={aj.indicadorConsumidor} disabled={!aguardando} onChange={(e) => setAj({ ...aj, indicadorConsumidor: e.target.value })} options={op.indicadoresConsumidor.map((g) => ({ value: g.v, label: g.l }))} />
-          <Select label="Grupo do cliente" value={aj.grupoCliente} disabled={!aguardando} onChange={(e) => setAj({ ...aj, grupoCliente: Number(e.target.value) })} options={op.gruposCliente.map((g) => ({ value: g.v, label: g.l }))} />
-          <Select label="Condição de pagamento" value={aj.prazoCodigo} disabled={!aguardando} onChange={(e) => setAj({ ...aj, prazoCodigo: Number(e.target.value) })} options={op.prazos.map((g) => ({ value: g.v, label: g.l }))} />
-          <Select label="Lista de preço" value={aj.listaPreco} disabled={!aguardando} onChange={(e) => setAj({ ...aj, listaPreco: Number(e.target.value) })} options={op.listas.map((g) => ({ value: g.v, label: g.l }))} />
+          <h2 className="text-sm font-semibold text-dark-200">Fiscal e comercial <span className="text-dark-500 font-normal">— como o vendedor mandou ao SAP</span></h2>
+          <Select label="Grupo tributário" value={aj.grupoTributario} disabled onChange={(e) => trocarGrupo(e.target.value)} options={op.gruposTributarios.map((g) => ({ value: g.v, label: g.l }))} />
+          <Select label="Indicador da IE" value={aj.indicadorIE} disabled onChange={(e) => setAj({ ...aj, indicadorIE: e.target.value })} options={op.indicadoresIE.map((g) => ({ value: g.v, label: g.l }))} />
+          <Select label="Indicador de op. consumidor" value={aj.indicadorConsumidor} disabled onChange={(e) => setAj({ ...aj, indicadorConsumidor: e.target.value })} options={op.indicadoresConsumidor.map((g) => ({ value: g.v, label: g.l }))} />
+          <Select label="Grupo do cliente" value={aj.grupoCliente} disabled onChange={(e) => setAj({ ...aj, grupoCliente: Number(e.target.value) })} options={op.gruposCliente.map((g) => ({ value: g.v, label: g.l }))} />
+          <Select label="Condição de pagamento" value={aj.prazoCodigo} disabled onChange={(e) => setAj({ ...aj, prazoCodigo: Number(e.target.value) })} options={op.prazos.map((g) => ({ value: g.v, label: g.l }))} />
+          <Select label="Lista de preço" value={aj.listaPreco} disabled onChange={(e) => setAj({ ...aj, listaPreco: Number(e.target.value) })} options={op.listas.map((g) => ({ value: g.v, label: g.l }))} />
           <Input
             label="Limite de crédito (R$)"
             type="number"
             min={0}
             step="0.01"
             value={aj.limiteCredito || ''}
-            disabled={!aguardando}
+            disabled
             onChange={(e) => setAj({ ...aj, limiteCredito: Math.max(0, Number(e.target.value) || 0) })}
           />
           <div>
@@ -208,7 +211,7 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
                   <input
                     type="checkbox"
                     className="accent-gold-500"
-                    disabled={!aguardando}
+                    disabled
                     checked={aj.filiais.includes(f.v)}
                     onChange={(e) => setAj({ ...aj, filiais: e.target.checked ? [...aj.filiais, f.v] : aj.filiais.filter((x) => x !== f.v) })}
                   />
@@ -217,7 +220,9 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
               ))}
             </div>
           </div>
-          <p className="text-xs text-dark-500">Ao aprovar: o cliente fica Ativo no SAP com as filiais marcadas, e todas as formas de pagamento (boletos) são marcadas. Vendedor e outros campos: ajuste direto no SAP se precisar.</p>
+          <p className="text-xs text-dark-500">
+            A aprovação é no SAP: abra o {data.cardCode} no SAP, corrija o que precisar, marque os boletos e deixe Ativo. O CRM percebe sozinho (de 10 em 10 min) e avisa o vendedor — ou clique em "Já ativei no SAP" pra conferir na hora. Se tiver erro do vendedor, use "Devolver para corrigir".
+          </p>
         </div>
       </div>
 
@@ -237,14 +242,8 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
             </>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <Button
-                loading={aprovar.isPending}
-                onClick={() => {
-                  if (!aj.filiais.length) return toast.error('Marque ao menos uma filial')
-                  aprovar.mutate({ id, ajustes: aj })
-                }}
-              >
-                <CheckCircle2 size={15} /> Aprovar cadastro
+              <Button loading={conferir.isPending} onClick={() => conferir.mutate({ id })}>
+                <CheckCircle2 size={15} /> Já ativei no SAP — conferir
               </Button>
               <Button variant="danger" onClick={() => setDevolvendo(true)}>
                 <Undo2 size={15} /> Devolver para corrigir

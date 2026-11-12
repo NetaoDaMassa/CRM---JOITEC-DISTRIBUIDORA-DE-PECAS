@@ -326,6 +326,9 @@ export async function corrigirClienteSap(cardCode: string, d: DadosCadastro, ven
     delete (corpo as { ContactEmployees?: unknown }).ContactEmployees
     delete (corpo as { ContactPerson?: unknown }).ContactPerson
     delete (corpo as { BPPaymentMethods?: unknown }).BPPaymentMethods
+    // Filial já atribuída no SAP: mandar de novo dá "entry already exists"
+    // (ODBC -2035, visto em 2026-11-12 no C012571).
+    delete (corpo as { BPBranchAssignment?: unknown }).BPBranchAssignment
     await sap.escrever('PATCH', `/BusinessPartners('${esc(cardCode)}')`, { ...corpo, Valid: 'tNO', Frozen: 'tYES' })
   })
 }
