@@ -1881,6 +1881,10 @@ export const reportsRouter = router({
         eq(sapImportacoes.ativo, true),
         between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
         isNull(clientes.deletedAt),
+        // Linha de nota sem código de item não é produto (nota de serviço
+        // lançada em conta, ex.: "Banco Itaú … Conta Intermediária" — João,
+        // 2026-11-12).
+        sql`nullif(trim(${sapItensHistorico.codigoItem}), '') is not null`,
       ]
       const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
       if (filtroVend) filtros.push(filtroVend)
