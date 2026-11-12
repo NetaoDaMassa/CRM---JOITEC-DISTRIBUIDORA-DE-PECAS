@@ -219,7 +219,15 @@ export async function sincronizarVendasSap(
     const chaves = new Set([codigo, semZerosEsquerda(codigo), ...(antigosDoSap.get(codigo) ?? [])])
     const achados = new Map<number, Cli>()
     for (const k of chaves) for (const c of m.cod.get(k) ?? []) achados.set(c.id, c)
-    for (const c of m.nome.get(norm(nome)) ?? []) achados.set(c.id, c)
+    // Mesmo nome só junta se o outro cadastro não for OUTRO cliente do SAP:
+    // a Confiança Pneumática tem C001306 (Santarém-PA) e C001307 (Várzea
+    // Grande-MT) com a mesma razão social, e o pedido 9282 do MT caiu no card
+    // do PA (2026-11-12).
+    for (const c of m.nome.get(norm(nome)) ?? []) {
+      const cod = limparCodigo(c.codigo)
+      if (/^C\d{4,}$/i.test(cod) && cod !== codigo && !(antigosDoSap.get(codigo)?.has(cod))) continue
+      achados.set(c.id, c)
+    }
     return [...achados.values()]
   }
 
