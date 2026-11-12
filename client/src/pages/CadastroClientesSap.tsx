@@ -309,16 +309,17 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
   }
   const onEnviar = async () => {
     if (falta.length) return toast.error(`Falta: ${falta.slice(0, 4).join(', ')}${falta.length > 4 ? '…' : ''}`)
+    let novo: number | null = null
     try {
-      const novo = await gravar()
+      novo = await gravar()
       const r = await enviar.mutateAsync({ id: novo })
       toast.success(`Enviado! Cliente ${r.cardCode} criado no SAP — esperando o financeiro aprovar.`, { duration: 6000 })
-      utils.cadastrosClientes.invalidate()
-      if (id == null) onCriado(novo)
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao enviar', { duration: 8000 })
-      utils.cadastrosClientes.invalidate()
     }
+    utils.cadastrosClientes.invalidate()
+    // Rascunho novo já foi gravado: passa a editar ele (senão reenviar criaria outro).
+    if (id == null && novo != null) onCriado(novo)
   }
   const onExcluir = async () => {
     if (!id || !confirm('Apagar este rascunho?')) return
