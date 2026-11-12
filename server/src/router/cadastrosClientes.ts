@@ -21,11 +21,15 @@ import { regiaoPorUf } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { formasPagamentoDaFilial } from '../lib/sapCotacoesEscrita.js'
-import { vendedoresLigados } from '../lib/sapClientes.js'
+import { vendedoresLigados, vendedoresSap } from '../lib/sapClientes.js'
 import { comSessaoSap, sapConfigurado } from '../lib/sapServiceLayer.js'
 import {
+  FILIAIS_SAP,
   GRUPOS_CLIENTE,
   GRUPOS_TRIBUTARIOS,
+  USOS_PRINCIPAIS,
+  contatosDe,
+  listasCadastroSap,
   INDICADORES,
   INDICADORES_CONSUMIDOR,
   INDICADORES_IE,
@@ -92,6 +96,17 @@ const dadosSchema = z.object({
   contatoNome: z.string().default(''),
   contatoTelefone: z.string().default(''),
   contatoEmail: z.string().default(''),
+  contatos: z
+    .array(z.object({ nome: z.string().default(''), cargo: z.string().default(''), telefone: z.string().default(''), celular: z.string().default(''), email: z.string().default('') }))
+    .max(20)
+    .default([]),
+  respComercial: z.number().int().nullable().default(null),
+  usoPrincipal: z.number().int().default(10),
+  limiteCredito: z.number().min(0).max(100_000_000).default(0),
+  segmento: z.number().int().nullable().default(null),
+  territorio: z.number().int().nullable().default(null),
+  formasPagamento: z.array(z.string()).nullable().default(null),
+  filiais: z.array(z.number().int()).default([]),
   cobranca: endereco,
   entregaIgual: z.boolean().default(true),
   entrega: endereco,
@@ -171,7 +186,7 @@ function camposCliente(d: DadosCadastro) {
     cep: so(e.cep) || null,
     telefoneWhatsapp: fone || null,
     email: d.email.trim() || null,
-    nomeContato: d.contatoNome.trim() || null,
+    nomeContato: contatosDe(d)[0]?.nome.trim() || null,
     statusFiscal: statusFiscalDe(d),
   }
 }
@@ -255,12 +270,27 @@ async function listasSap() {
   }
 }
 
-const OPCOES = { gruposTributarios: GRUPOS_TRIBUTARIOS, indicadoresIE: INDICADORES_IE, indicadoresConsumidor: INDICADORES_CONSUMIDOR, regioesSuframa: REGIOES_SUFRAMA, gruposCliente: GRUPOS_CLIENTE, indicadores: INDICADORES }
+const OPCOES = {
+  gruposTributarios: GRUPOS_TRIBUTARIOS,
+  indicadoresIE: INDICADORES_IE,
+  indicadoresConsumidor: INDICADORES_CONSUMIDOR,
+  regioesSuframa: REGIOES_SUFRAMA,
+  gruposCliente: GRUPOS_CLIENTE,
+  indicadores: INDICADORES,
+  filiais: FILIAIS_SAP,
+  usosPrincipais: USOS_PRINCIPAIS,
+}
+
+// Listas que vêm do SAP: segmentos, territórios e vendedores (resp. comercial).
+async function opcoesSap() {
+  const [l, vend] = await Promise.all([sapConfigurado() ? listasCadastroSap() : { segmentos: [], territorios: [] }, sapConfigurado() ? vendedoresSap().catch(() => []) : []])
+  return { ...l, vendedores: vend.filter((v) => v.ativo).map((v) => ({ v: v.codigo, l: v.nome })).sort((a, b) => a.l.localeCompare(b.l, 'pt-BR')) }
+}
 
 export const cadastrosClientesRouter = router({
   contexto: cadastroProcedure.query(async ({ ctx }) => {
-    const [l, formas, vendSap] = await Promise.all([listasSap(), formasPagamentoDaFilial(ctx.filial).catch(() => []), vendedorSapDe(ctx.user.id)])
-    return { ...OPCOES, ...l, formas, vendedorTemSap: vendSap != null, veTudo: ctx.veTudo }
+    const [l, formas, vendSap, sap] = await Promise.all([listasSap(), formasPagamentoDaFilial(ctx.filial).catch(() => []), vendedorSapDe(ctx.user.id), opcoesSap()])
+    return { ...OPCOES, ...l, ...sap, formas, vendedorTemSap: vendSap != null, vendedorSap: vendSap, filialPadrao: ctx.filial, veTudo: ctx.veTudo }
   }),
 
   // CNPJ: dados da Receita + já existe no CRM/SAP?
@@ -341,6 +371,7 @@ export const cadastrosClientesRouter = router({
     podeMexer(l, ctx)
     if (l.status === 'aguardando' || l.status === 'aprovado') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Já foi enviado' })
     const d = lerDados(l)
+    if (!d.filiais?.length) d.filiais = [ctx.filial]
     const falta = faltando(d)
     if (falta.length) throw new TRPCError({ code: 'BAD_REQUEST', message: `Falta preencher: ${falta.join(', ')}` })
     if (d.pessoa === 'juridica' && !cnpjValido(d.cnpj)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CNPJ inválido' })
@@ -383,6 +414,7 @@ export const cadastrosClientesRouter = router({
       .update(cadastrosClientesSap)
       .set({
         status: 'aguardando',
+        dados: JSON.stringify(d),
         cardCode,
         clienteId,
         erroSap: null,
@@ -413,7 +445,17 @@ export const cadastrosClientesRouter = router({
   detalheAprovacao: aprovadorProcedure.input(z.object({ id: z.number().int() })).query(async ({ input }) => {
     const l = await acharLinha(input.id)
     const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, l.empresaId), columns: { nome: true } })
-    return { ...resumo(l, await nomesUsuarios([l.vendedorId])), empresa: emp?.nome ?? null, dados: lerDados(l), historico: lerHistorico(l), opcoes: { ...OPCOES, ...(await listasSap()) } }
+    const empSlug = await db.query.empresas.findFirst({ where: eq(empresas.id, l.empresaId), columns: { slug: true } })
+    const filialPadrao = filialDaEmpresa(empSlug?.slug ?? '')
+    const formas = await formasPagamentoDaFilial(filialPadrao ?? 3).catch(() => [])
+    return {
+      ...resumo(l, await nomesUsuarios([l.vendedorId])),
+      empresa: emp?.nome ?? null,
+      filialPadrao,
+      dados: lerDados(l),
+      historico: lerHistorico(l),
+      opcoes: { ...OPCOES, ...(await listasSap()), ...(await opcoesSap()), formas },
+    }
   }),
 
   aprovar: aprovadorProcedure
@@ -427,6 +469,8 @@ export const cadastrosClientesRouter = router({
           grupoCliente: z.number().int().optional(),
           prazoCodigo: z.number().int().optional(),
           listaPreco: z.number().int().optional(),
+          limiteCredito: z.number().min(0).max(100_000_000).optional(),
+          filiais: z.array(z.number().int()).optional(),
         }),
       })
     )
@@ -442,6 +486,8 @@ export const cadastrosClientesRouter = router({
       if (a.grupoCliente && a.grupoCliente !== d.grupoCliente) mudou.push('grupo do cliente')
       if (a.prazoCodigo != null && a.prazoCodigo !== d.prazoCodigo) mudou.push('condição de pagamento')
       if (a.listaPreco && a.listaPreco !== d.listaPreco) mudou.push('lista de preço')
+      if (a.limiteCredito != null && a.limiteCredito !== (d.limiteCredito ?? 0)) mudou.push('limite de crédito')
+      if (a.filiais && [...a.filiais].sort().join() !== [...(d.filiais ?? [])].sort().join()) mudou.push('filiais')
       try {
         await aprovarClienteSap(l.cardCode, a)
       } catch (e) {
@@ -455,6 +501,8 @@ export const cadastrosClientesRouter = router({
         ...(a.grupoCliente ? { grupoCliente: a.grupoCliente } : {}),
         ...(a.prazoCodigo != null ? { prazoCodigo: a.prazoCodigo } : {}),
         ...(a.listaPreco ? { listaPreco: a.listaPreco } : {}),
+        ...(a.limiteCredito != null ? { limiteCredito: a.limiteCredito } : {}),
+        ...(a.filiais?.length ? { filiais: a.filiais } : {}),
       }
       await db
         .update(cadastrosClientesSap)

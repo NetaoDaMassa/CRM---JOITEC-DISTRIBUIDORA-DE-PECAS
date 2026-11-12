@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { UserRoundPlus, Search, ArrowLeft, Send, Save, Trash2, AlertTriangle, CheckCircle2, Clock, Undo2 } from 'lucide-react'
+import { UserRoundPlus, Search, ArrowLeft, Send, Save, Trash2, AlertTriangle, CheckCircle2, Clock, Undo2, Plus, X } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { Input, Textarea } from '../components/ui/Input'
 import Select from '../components/ui/Select'
@@ -11,6 +11,8 @@ import Button from '../components/ui/Button'
 // 2026-11-11, "praticamente igual o Inserir Lead do Portal One"). O vendedor
 // preenche, Envia (o CRM cria o cliente inativo no SAP) e a Izabelly aprova.
 
+export type Contato = { nome: string; cargo: string; telefone: string; celular: string; email: string }
+export const CONTATO_VAZIO: Contato = { nome: '', cargo: '', telefone: '', celular: '', email: '' }
 export type Endereco = { cep: string; tipoLogradouro: string; rua: string; numero: string; complemento: string; bairro: string; cidade: string; uf: string }
 export type Dados = {
   pessoa: 'juridica' | 'fisica'
@@ -38,6 +40,14 @@ export type Dados = {
   contatoNome: string
   contatoTelefone: string
   contatoEmail: string
+  contatos: Contato[]
+  respComercial: number | null
+  usoPrincipal: number
+  limiteCredito: number
+  segmento: number | null
+  territorio: number | null
+  formasPagamento: string[] | null
+  filiais: number[]
   cobranca: Endereco
   entregaIgual: boolean
   entrega: Endereco
@@ -72,6 +82,14 @@ const VAZIO: Dados = {
   contatoNome: '',
   contatoTelefone: '',
   contatoEmail: '',
+  contatos: [],
+  respComercial: null,
+  usoPrincipal: 10,
+  limiteCredito: 0,
+  segmento: null,
+  territorio: null,
+  formasPagamento: null,
+  filiais: [],
   cobranca: ENDERECO_VAZIO,
   entregaIgual: true,
   entrega: ENDERECO_VAZIO,
@@ -105,7 +123,15 @@ function faltando(d: Dados): string[] {
   }
   end(d.cobranca, 'cobrança')
   if (!d.entregaIgual) end(d.entrega, 'entrega')
+  if (!d.filiais.length) f.push('Filial (aba Geral)')
+  if (d.formasPagamento && !d.formasPagamento.length) f.push('Forma de pagamento (aba Execução do pagamento)')
   return f
+}
+
+// Cadastros antigos tinham um contato só (contatoNome/…).
+export function contatosDe(d: Pick<Dados, 'contatos' | 'contatoNome' | 'contatoTelefone' | 'contatoEmail'>): Contato[] {
+  if (d.contatos?.length) return d.contatos
+  return d.contatoNome?.trim() ? [{ ...CONTATO_VAZIO, nome: d.contatoNome, telefone: d.contatoTelefone, email: d.contatoEmail }] : []
 }
 
 // Grupo tributário → indicadores (o que a Izabelly corrigia na mão no SAP).
@@ -207,6 +233,7 @@ const ABAS = [
   { v: 'contato', l: 'Contato' },
   { v: 'enderecos', l: 'Endereços' },
   { v: 'pagamento', l: 'Condições de pagamento' },
+  { v: 'execucao', l: 'Execução do pagamento' },
 ] as const
 
 function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clienteId: number | null; onFechar: () => void; onCriado: (id: number) => void }) {
@@ -223,7 +250,8 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
   useEffect(() => {
     if (carregado) return
     if (id != null && existente.data) {
-      setD({ ...VAZIO, ...(existente.data.dados as Dados) })
+      const x = { ...VAZIO, ...(existente.data.dados as Dados) }
+      setD({ ...x, contatos: contatosDe(x) })
       setCarregado(true)
     } else if (id == null && clienteId != null && doCliente.data) {
       if (doCliente.data.cadastroAberto) {
@@ -238,6 +266,17 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
 
   const status = existente.data?.status ?? 'rascunho'
   const travado = status === 'aguardando' || status === 'aprovado'
+
+  // Padrões: resp. comercial = o próprio vendedor; filial = a da empresa.
+  useEffect(() => {
+    if (!carregado || !ctx.data || travado) return
+    const op = ctx.data
+    setD((x) => ({
+      ...x,
+      respComercial: x.respComercial ?? op.vendedorSap ?? null,
+      filiais: x.filiais.length ? x.filiais : op.filialPadrao ? [op.filialPadrao] : [],
+    }))
+  }, [carregado, ctx.data, travado])
   const falta = useMemo(() => faltando(d), [d])
   const set = <K extends keyof Dados>(k: K, v: Dados[K]) => setD((x) => ({ ...x, [k]: v }))
   const setEnd = (qual: 'cobranca' | 'entrega', k: keyof Endereco, v: string) => setD((x) => ({ ...x, [qual]: { ...x[qual], [k]: v } }))
@@ -417,6 +456,16 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
           <Input label="Nome fantasia" value={d.fantasia} disabled={travado} onChange={(e) => set('fantasia', e.target.value)} />
           <Select label="Grupo do cliente" value={d.grupoCliente} disabled={travado} onChange={(e) => set('grupoCliente', Number(e.target.value))} options={op.gruposCliente.map((g) => ({ value: g.v, label: g.l }))} />
           <Input label="Última consulta Serasa" type="date" value={d.ultimaConsultaSerasa} disabled={travado} onChange={(e) => set('ultimaConsultaSerasa', e.target.value)} />
+          {op.vendedores.length > 0 && (
+            <Select
+              label="Resp. comercial (vendedor no SAP)"
+              value={d.respComercial ?? ''}
+              disabled={travado}
+              placeholder="— sem vendedor —"
+              onChange={(e) => set('respComercial', e.target.value ? Number(e.target.value) : null)}
+              options={op.vendedores.map((v) => ({ value: v.v, label: v.l }))}
+            />
+          )}
         </div>
         {aviso.map((a, i) => (
           <p key={i} className={`text-sm rounded-lg px-3 py-2 ${a.tipo === 'erro' ? 'bg-red-900/25 text-red-200' : 'bg-dark-900 text-dark-200'}`}>
@@ -493,16 +542,77 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
               <Input label="E-mail *" type="email" value={d.email} disabled={travado} onChange={(e) => set('email', e.target.value)} />
               <Input label="Site" value={d.site} disabled={travado} onChange={(e) => set('site', e.target.value)} />
               <Select label="Indicador (como chegou)" value={d.indicador} disabled={travado} onChange={(e) => set('indicador', e.target.value)} options={op.indicadores.map((g) => ({ value: g.v, label: g.l }))} />
+              <Select label="Uso principal" value={d.usoPrincipal} disabled={travado} onChange={(e) => set('usoPrincipal', Number(e.target.value))} options={op.usosPrincipais.map((g) => ({ value: g.v, label: g.l }))} />
+              {op.segmentos.length > 0 && (
+                <Select label="Segmento" value={d.segmento ?? ''} disabled={travado} placeholder="— nenhum —" onChange={(e) => set('segmento', e.target.value ? Number(e.target.value) : null)} options={op.segmentos.map((g) => ({ value: g.v, label: g.l }))} />
+              )}
+              {op.territorios.length > 0 && (
+                <Select label="Território" value={d.territorio ?? ''} disabled={travado} placeholder="— nenhum —" onChange={(e) => set('territorio', e.target.value ? Number(e.target.value) : null)} options={op.territorios.map((g) => ({ value: g.v, label: g.l }))} />
+              )}
+              <Input
+                label="Limite de crédito (R$) — sugestão, o financeiro confirma"
+                type="number"
+                min={0}
+                step="0.01"
+                value={d.limiteCredito || ''}
+                disabled={travado}
+                onChange={(e) => set('limiteCredito', Math.max(0, Number(e.target.value) || 0))}
+              />
               <div className="md:col-span-2">
                 <Textarea label="Observações" rows={2} value={d.observacoes} disabled={travado} onChange={(e) => set('observacoes', e.target.value)} />
+              </div>
+              <div className="md:col-span-2">
+                <p className="text-sm text-dark-300 mb-1.5">Atribuição de filial * (em quais empresas o cliente pode comprar)</p>
+                <div className="flex flex-wrap gap-2">
+                  {op.filiais.map((f) => {
+                    const marcado = d.filiais.includes(f.v)
+                    return (
+                      <label key={f.v} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-1.5 border ${marcado ? 'border-gold-600 text-gold-300 bg-gold-900/10' : 'border-dark-600 text-dark-300'}`}>
+                        <input
+                          type="checkbox"
+                          className="accent-gold-500"
+                          disabled={travado}
+                          checked={marcado}
+                          onChange={(e) => set('filiais', e.target.checked ? [...d.filiais, f.v] : d.filiais.filter((x) => x !== f.v))}
+                        />
+                        {f.l}
+                      </label>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           )}
           {aba === 'contato' && (
-            <div className="grid md:grid-cols-3 gap-3">
-              <Input label="Nome do contato" value={d.contatoNome} disabled={travado} onChange={(e) => set('contatoNome', e.target.value)} placeholder="Ex.: COMPRAS, João" />
-              <Input label="Telefone do contato" value={d.contatoTelefone} disabled={travado} onChange={(e) => set('contatoTelefone', e.target.value)} />
-              <Input label="E-mail do contato" value={d.contatoEmail} disabled={travado} onChange={(e) => set('contatoEmail', e.target.value)} />
+            <div className="space-y-3">
+              {d.contatos.length === 0 && <p className="text-sm text-dark-400">Nenhum contato. O primeiro da lista vira o contato principal no SAP.</p>}
+              {d.contatos.map((c, i) => {
+                const setC = (k: keyof Contato, v: string) => set('contatos', d.contatos.map((x, j) => (j === i ? { ...x, [k]: v } : x)))
+                return (
+                  <div key={i} className="rounded-xl border border-dark-700 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-dark-400">{i === 0 ? 'Contato principal' : `Contato ${i + 1}`}</span>
+                      {!travado && (
+                        <button type="button" onClick={() => set('contatos', d.contatos.filter((_, j) => j !== i))} className="text-dark-400 hover:text-red-300" aria-label="Tirar contato">
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-3">
+                      <Input label="Nome" value={c.nome} disabled={travado} onChange={(e) => setC('nome', e.target.value)} placeholder="Ex.: COMPRAS, João" />
+                      <Input label="Cargo / setor" value={c.cargo} disabled={travado} onChange={(e) => setC('cargo', e.target.value)} />
+                      <Input label="E-mail" value={c.email} disabled={travado} onChange={(e) => setC('email', e.target.value)} />
+                      <Input label="Telefone" value={c.telefone} disabled={travado} onChange={(e) => setC('telefone', e.target.value)} />
+                      <Input label="Celular" value={c.celular} disabled={travado} onChange={(e) => setC('celular', e.target.value)} />
+                    </div>
+                  </div>
+                )
+              })}
+              {!travado && (
+                <Button variant="outline" onClick={() => set('contatos', [...d.contatos, { ...CONTATO_VAZIO }])}>
+                  <Plus size={15} /> Novo contato
+                </Button>
+              )}
             </div>
           )}
           {aba === 'enderecos' && (
@@ -545,9 +655,34 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
             <div className="grid md:grid-cols-2 gap-3">
               <Select label="Condição de pagamento *" value={d.prazoCodigo} disabled={travado} onChange={(e) => set('prazoCodigo', Number(e.target.value))} options={op.prazos.map((p) => ({ value: p.v, label: p.l }))} />
               <Select label="Lista de preço *" value={d.listaPreco} disabled={travado} onChange={(e) => set('listaPreco', Number(e.target.value))} options={op.listas.map((p) => ({ value: p.v, label: p.l }))} />
-              <div className="md:col-span-2 text-xs text-dark-400">
-                Formas de pagamento que vão no cadastro: {op.formas.map((f) => f.nome).join(' · ') || '—'}. Na aprovação o financeiro libera todas. Limite de crédito é o financeiro que define.
-              </div>
+            </div>
+          )}
+          {aba === 'execucao' && (
+            <div className="space-y-2">
+              <p className="text-sm text-dark-300">Formas de pagamento do cliente *</p>
+              {op.formas.length === 0 ? (
+                <p className="text-sm text-dark-400">Não consegui ler as formas do SAP agora — vão as padrão da empresa.</p>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-2">
+                  {op.formas.map((f) => {
+                    const atuais = d.formasPagamento ?? op.formas.map((x) => x.codigo)
+                    const marcado = atuais.includes(f.codigo)
+                    return (
+                      <label key={f.codigo} className={`flex items-center gap-2 text-sm rounded-lg px-3 py-2 border ${marcado ? 'border-gold-600 text-gold-200 bg-gold-900/10' : 'border-dark-600 text-dark-300'}`}>
+                        <input
+                          type="checkbox"
+                          className="accent-gold-500"
+                          disabled={travado}
+                          checked={marcado}
+                          onChange={(e) => set('formasPagamento', e.target.checked ? [...atuais, f.codigo] : atuais.filter((x) => x !== f.codigo))}
+                        />
+                        {f.nome}
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+              <p className="text-xs text-dark-500">Na aprovação o financeiro marca as demais (todos os boletos), como já faz no SAP.</p>
             </div>
           )}
         </div>

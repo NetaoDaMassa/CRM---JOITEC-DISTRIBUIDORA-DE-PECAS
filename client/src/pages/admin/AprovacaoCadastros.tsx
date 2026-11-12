@@ -4,8 +4,8 @@ import { UserCheck, CheckCircle2, Undo2, ArrowLeft } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Select from '../../components/ui/Select'
 import Button from '../../components/ui/Button'
-import { Textarea } from '../../components/ui/Input'
-import { STATUS, dataHora, indicadoresDoGrupo, type Dados } from '../CadastroClientesSap'
+import { Input, Textarea } from '../../components/ui/Input'
+import { STATUS, contatosDe, dataHora, indicadoresDoGrupo, type Dados } from '../CadastroClientesSap'
 
 // Aprovação de cadastros de cliente feitos no CRM (Izabelly do financeiro,
 // 2026-11-12). Igual ela faz hoje no SAP: confere os dados, corrige o fiscal
@@ -100,13 +100,22 @@ function Linha({ l, v }: { l: string; v: string | null | undefined }) {
 function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
   const utils = trpc.useUtils()
   const { data, isLoading } = trpc.cadastrosClientes.detalheAprovacao.useQuery({ id })
-  const [aj, setAj] = useState<{ grupoTributario: string; indicadorIE: string; indicadorConsumidor: string; grupoCliente: number; prazoCodigo: number; listaPreco: number } | null>(null)
+  const [aj, setAj] = useState<{ grupoTributario: string; indicadorIE: string; indicadorConsumidor: string; grupoCliente: number; prazoCodigo: number; listaPreco: number; limiteCredito: number; filiais: number[] } | null>(null)
   const [motivo, setMotivo] = useState('')
   const [devolvendo, setDevolvendo] = useState(false)
   useEffect(() => {
     if (data && !aj) {
       const d = data.dados as Dados
-      setAj({ grupoTributario: d.grupoTributario, indicadorIE: d.indicadorIE, indicadorConsumidor: d.indicadorConsumidor, grupoCliente: d.grupoCliente, prazoCodigo: d.prazoCodigo, listaPreco: d.listaPreco })
+      setAj({
+        grupoTributario: d.grupoTributario,
+        indicadorIE: d.indicadorIE,
+        indicadorConsumidor: d.indicadorConsumidor,
+        grupoCliente: d.grupoCliente,
+        prazoCodigo: d.prazoCodigo,
+        listaPreco: d.listaPreco,
+        limiteCredito: d.limiteCredito ?? 0,
+        filiais: d.filiais?.length ? d.filiais : data.filialPadrao ? [data.filialPadrao] : [],
+      })
     }
   }, [data, aj])
   const aprovar = trpc.cadastrosClientes.aprovar.useMutation({
@@ -159,7 +168,14 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
           <Linha l="Celular" v={fone(d.dddCelular, d.celular)} />
           <Linha l="E-mail" v={d.email} />
           <Linha l="Site" v={d.site} />
-          <Linha l="Contato" v={[d.contatoNome, d.contatoTelefone, d.contatoEmail].filter(Boolean).join(' · ')} />
+          {contatosDe(d).map((c, i) => (
+            <Linha key={i} l={i === 0 ? 'Contato principal' : `Contato ${i + 1}`} v={[c.nome, c.cargo, c.telefone, c.celular, c.email].filter(Boolean).join(' · ')} />
+          ))}
+          <Linha l="Resp. comercial" v={d.respComercial != null ? nomeDe(op.vendedores, d.respComercial) : ''} />
+          <Linha l="Uso principal" v={nomeDe(op.usosPrincipais, d.usoPrincipal ?? 10)} />
+          <Linha l="Segmento" v={d.segmento != null ? nomeDe(op.segmentos, d.segmento) : ''} />
+          <Linha l="Território" v={d.territorio != null ? nomeDe(op.territorios, d.territorio) : ''} />
+          <Linha l="Formas de pagamento" v={(d.formasPagamento ?? op.formas.map((f) => f.codigo)).map((c) => op.formas.find((f) => f.codigo === c)?.nome ?? c).join(' · ')} />
           <Linha l="SUFRAMA" v={[d.suframa, d.regiaoSuframa !== '0' ? nomeDe(op.regioesSuframa, d.regiaoSuframa) : ''].filter(Boolean).join(' · ')} />
           <Linha l="Última consulta Serasa" v={d.ultimaConsultaSerasa ? d.ultimaConsultaSerasa.split('-').reverse().join('/') : ''} />
           <Linha l="Endereço de cobrança" v={endTxt(d.cobranca)} />
@@ -175,7 +191,33 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
           <Select label="Grupo do cliente" value={aj.grupoCliente} disabled={!aguardando} onChange={(e) => setAj({ ...aj, grupoCliente: Number(e.target.value) })} options={op.gruposCliente.map((g) => ({ value: g.v, label: g.l }))} />
           <Select label="Condição de pagamento" value={aj.prazoCodigo} disabled={!aguardando} onChange={(e) => setAj({ ...aj, prazoCodigo: Number(e.target.value) })} options={op.prazos.map((g) => ({ value: g.v, label: g.l }))} />
           <Select label="Lista de preço" value={aj.listaPreco} disabled={!aguardando} onChange={(e) => setAj({ ...aj, listaPreco: Number(e.target.value) })} options={op.listas.map((g) => ({ value: g.v, label: g.l }))} />
-          <p className="text-xs text-dark-500">Ao aprovar: o cliente fica Ativo no SAP e todas as formas de pagamento (boletos) são marcadas. Limite de crédito, vendedor e outros campos: ajuste direto no SAP se precisar.</p>
+          <Input
+            label="Limite de crédito (R$)"
+            type="number"
+            min={0}
+            step="0.01"
+            value={aj.limiteCredito || ''}
+            disabled={!aguardando}
+            onChange={(e) => setAj({ ...aj, limiteCredito: Math.max(0, Number(e.target.value) || 0) })}
+          />
+          <div>
+            <p className="text-sm text-dark-300 mb-1.5">Atribuição de filial</p>
+            <div className="flex flex-wrap gap-2">
+              {op.filiais.map((f) => (
+                <label key={f.v} className="flex items-center gap-2 text-sm text-dark-200 rounded-lg px-3 py-1.5 border border-dark-600">
+                  <input
+                    type="checkbox"
+                    className="accent-gold-500"
+                    disabled={!aguardando}
+                    checked={aj.filiais.includes(f.v)}
+                    onChange={(e) => setAj({ ...aj, filiais: e.target.checked ? [...aj.filiais, f.v] : aj.filiais.filter((x) => x !== f.v) })}
+                  />
+                  {f.l}
+                </label>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-dark-500">Ao aprovar: o cliente fica Ativo no SAP com as filiais marcadas, e todas as formas de pagamento (boletos) são marcadas. Vendedor e outros campos: ajuste direto no SAP se precisar.</p>
         </div>
       </div>
 
@@ -195,7 +237,13 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
             </>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <Button loading={aprovar.isPending} onClick={() => aprovar.mutate({ id, ajustes: aj })}>
+              <Button
+                loading={aprovar.isPending}
+                onClick={() => {
+                  if (!aj.filiais.length) return toast.error('Marque ao menos uma filial')
+                  aprovar.mutate({ id, ajustes: aj })
+                }}
+              >
                 <CheckCircle2 size={15} /> Aprovar cadastro
               </Button>
               <Button variant="danger" onClick={() => setDevolvendo(true)}>
