@@ -4520,7 +4520,8 @@ export const expedicaoColaboradores = sqliteTable('expedicao_colaboradores', {
   nome: text('nome').notNull(),
   // 'geral' = faz tudo (separa, confere e embala) — ex.: o cadastro "Estoque
   // Odin Automação", onde uma pessoa só cuida do pedido inteiro.
-  cargo: text('cargo', { enum: ['separador', 'conferente', 'embalador', 'expedicao', 'geral'] }).notNull(),
+  // 'conferente_embalador' = confere E embala (Odin Tubos: Lucas e Leonardo, João 2026-11-12).
+  cargo: text('cargo', { enum: ['separador', 'conferente', 'embalador', 'conferente_embalador', 'expedicao', 'geral'] }).notNull(),
   // Taxa de erro máxima (erros ÷ pedidos) pra ser elegível à bonificação —
   // igual a aba "Orientações" da planilha (Elias 5%, o resto 1%).
   limiteErro: real('limite_erro').notNull().default(0.01),

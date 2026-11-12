@@ -13,7 +13,7 @@ import { ehErroDeEmbalagem, labelTipoErro, TIPOS_ERRO } from '../../lib/expedica
 function hojeBr(): string {
   return new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10)
 }
-const CARGO: Record<string, string> = { separador: 'Separador', conferente: 'Conferente', embalador: 'Embalador', expedicao: 'Expedição', geral: 'Faz tudo' }
+const CARGO: Record<string, string> = { separador: 'Separador', conferente: 'Conferente', embalador: 'Embalador', conferente_embalador: 'Confere e embala', expedicao: 'Expedição', geral: 'Faz tudo' }
 const pct = (v: number) => `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
 const num = (n: number) => n.toLocaleString('pt-BR')
 
@@ -144,9 +144,9 @@ export default function ExpedicaoDesempenho() {
                   <td className="py-2 pr-3 text-right font-mono">{num(l.erros)}</td>
                   <td className={`py-2 pr-3 text-right font-mono ${l.pedidos && l.taxaErro > l.limiteErro ? 'text-red-300' : ''}`}>{l.pedidos ? pct(l.taxaErro) : '—'}</td>
                   <td className="py-2 pr-3 text-right font-mono text-dark-400">{pct(l.limiteErro)}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{l.cargo === 'embalador' || l.cargo === 'geral' ? num(l.volumes) : '—'}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{l.cargo === 'embalador' || l.cargo === 'geral' ? num(l.cabecotes) : '—'}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{l.cargo === 'embalador' || l.cargo === 'geral' ? num(l.paletes) : '—'}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{['embalador', 'conferente_embalador', 'geral'].includes(l.cargo) ? num(l.volumes) : '—'}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{['embalador', 'conferente_embalador', 'geral'].includes(l.cargo) ? num(l.cabecotes) : '—'}</td>
+                  <td className="py-2 pr-3 text-right font-mono">{['embalador', 'conferente_embalador', 'geral'].includes(l.cargo) ? num(l.paletes) : '—'}</td>
                   <td className="py-2 text-right font-mono text-dark-300">{l.minutosPorPedido != null ? `${l.minutosPorPedido} min` : '—'}</td>
                 </tr>
               ))}

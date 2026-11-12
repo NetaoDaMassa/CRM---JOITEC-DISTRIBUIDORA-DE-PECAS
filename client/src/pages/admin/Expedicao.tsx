@@ -565,7 +565,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const etapaPessoa = (['separacao', 'conferencia', 'embalagem'] as const).find((e) => e === p.etapa) ?? null
   const iniciada = etapaPessoa ? !!p[`${etapaPessoa}Inicio`] : false
   // Um pedido por vez por pessoa: quem está com outro pedido aberto não aparece pra escolher.
-  const doCargo = etapaPessoa ? colaboradores.filter((c) => c.ativo && (c.cargo === CARGO[etapaPessoa] || c.cargo === 'geral')) : []
+  const doCargo = etapaPessoa ? colaboradores.filter((c) => c.ativo && (c.cargo === CARGO[etapaPessoa] || c.cargo === 'geral' || (c.cargo === 'conferente_embalador' && etapaPessoa !== 'separacao'))) : []
   const daEtapa = doCargo.filter((c) => !c.ocupadoCom)
   const ocupados = doCargo.filter((c) => c.ocupadoCom)
   const conferindo = p.etapa === 'conferencia' && iniciada

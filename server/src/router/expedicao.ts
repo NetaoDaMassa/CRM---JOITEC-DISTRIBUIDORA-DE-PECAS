@@ -294,7 +294,7 @@ export const expedicaoRouter = router({
       z.object({
         id: z.number().optional(),
         nome: z.string().trim().min(1),
-        cargo: z.enum(['separador', 'conferente', 'embalador', 'expedicao', 'geral']),
+        cargo: z.enum(['separador', 'conferente', 'embalador', 'conferente_embalador', 'expedicao', 'geral']),
         limiteErro: z.number().min(0).max(1),
         ativo: z.boolean(),
       })

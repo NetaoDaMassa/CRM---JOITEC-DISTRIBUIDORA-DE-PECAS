@@ -17,6 +17,7 @@ const CARGOS = [
   { value: 'separador', label: 'Separador' },
   { value: 'conferente', label: 'Conferente' },
   { value: 'embalador', label: 'Embalador' },
+  { value: 'conferente_embalador', label: 'Confere e embala' },
   { value: 'expedicao', label: 'Expedição' },
   { value: 'geral', label: 'Faz tudo (separa, confere e embala)' },
 ]
