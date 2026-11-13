@@ -3,8 +3,9 @@ import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoAgendamentos, expedicaoErros, expedicaoItens, expedicaoPausas, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
 import { getConfigTexto } from './configuracoes.js'
-import { comSessaoSap, dataSap } from './sapServiceLayer.js'
+import { comSessaoSap, dataSap, type SapSessao } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
+import { slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
 import { aprenderLocalizacoes } from './sapLocalizacoes.js'
 import { atualizarKits, dadosDaLinha } from './sapKits.js'
 import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
@@ -20,10 +21,13 @@ import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
 //     emissão. A NF sai enquanto embalam, então não muda a etapa — só
 //     aparece no card (expedição sem NF = "aguardando NF").
 // Empresa: filial 3 = Joitec (ou Odin Automação, pelo vendedor da nota),
-// filial 4 = Odin Tubos. Odin Compressores (filial 1) tem o próprio
+// filial 4 = Odin Tubos. Pedido de vendedor da Odin Tubos tirado pela filial
+// Joitec (faltou peça na Odin Tubos) vai pro quadro da Odin Tubos: é a equipe
+// de lá que gera o picking e despacha junto com o resto do cliente (João,
+// 2026-11-13 — pedido caiu na Joitec e foi separado/conferido/embalado lá).
+// Mesma regra da venda (slugDoPedidoSap, config `sap_vendedores_odin_tubos`). Odin Compressores (filial 1) tem o próprio
 // controle (Ordens) e fica de fora.
 
-const SLUG_POR_FILIAL: Record<number, string> = { 3: 'joitec', 4: 'odin-tubos' }
 // Rodada normal olha os pickings dos últimos dias (lista nova é sempre de
 // hoje; a margem pega quem ficou pra trás). `expedicao_sap_desde` força uma
 // data inicial (carga de teste).
@@ -62,10 +66,51 @@ export interface SyncExpedicaoResultado {
   atrasados: number
   localizacoes: number
   descartadosSap: number
+  // Card da fila que estava no quadro da empresa errada (antes da regra do
+  // vendedor da Odin Tubos) e foi pro certo — só os que ninguém começou.
+  trocadosDeEmpresa: number
   retomados: number
 }
 
 // "2026-10-20" + "09:17:00" (horário de Brasília) → UTC no formato do SQLite.
+// Card que ninguém começou a separar e está no quadro de outra empresa (ex.:
+// entrou na Joitec antes da regra do vendedor da Odin Tubos): vai pro quadro
+// certo. Já começado fica onde está — as pessoas que mexeram são da equipe
+// daquele quadro.
+async function corrigirEmpresaDosIntocados(
+  sap: SapSessao,
+  empresaPorSlug: Map<string, number>,
+  automacao: Set<number>,
+  odinTubos: Set<number>
+): Promise<number> {
+  const intocados = await db
+    .select({ id: expedicaoPedidos.id, empresaId: expedicaoPedidos.empresaId, orderEntriesSap: expedicaoPedidos.orderEntriesSap })
+    .from(expedicaoPedidos)
+    .where(and(eq(expedicaoPedidos.etapa, 'separacao'), isNull(expedicaoPedidos.separacaoInicio), eq(expedicaoPedidos.historico, false)))
+  if (!intocados.length) return 0
+  const entries = [...new Set(intocados.map((c) => Number(c.orderEntriesSap.split(',')[0])).filter((n) => Number.isFinite(n)))]
+  const cab = new Map<number, { SalesPersonCode: number; BPL_IDAssignedToInvoice: number }>()
+  for (let i = 0; i < entries.length; i += 20) {
+    const filtro = entries.slice(i, i + 20).map((e) => `DocEntry eq ${e}`).join(' or ')
+    const lote = await sap.getTodos<{ DocEntry: number; SalesPersonCode: number; BPL_IDAssignedToInvoice: number }>(
+      `/Orders?$filter=${filtro}&$select=DocEntry,SalesPersonCode,BPL_IDAssignedToInvoice`,
+      50
+    )
+    for (const o of lote) cab.set(o.DocEntry, o)
+  }
+  let trocados = 0
+  for (const c of intocados) {
+    const o = cab.get(Number(c.orderEntriesSap.split(',')[0]))
+    if (!o) continue
+    const slug = slugDoPedidoSap(o.BPL_IDAssignedToInvoice, o.SalesPersonCode, automacao, odinTubos)
+    const certa = slug ? empresaPorSlug.get(slug) : undefined
+    if (!certa || certa === c.empresaId) continue
+    await db.update(expedicaoPedidos).set({ empresaId: certa, updatedAt: agoraSqlite() }).where(eq(expedicaoPedidos.id, c.id))
+    trocados++
+  }
+  return trocados
+}
+
 function brParaUtc(data: string, hora: string | null): string {
   const d = new Date(`${data}T${(hora ?? '08:00:00').slice(0, 8)}-03:00`)
   return d.toISOString().replace('T', ' ').slice(0, 19)
@@ -100,6 +145,7 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
   const lista = await db.query.empresas.findMany({ where: inArray(empresas.slug, ['joitec', 'odin-tubos', 'joitec-automacao']) })
   const empresaPorSlug = new Map(lista.map((e) => [e.slug, e.id]))
   const automacao = await vendedoresAutomacaoSap()
+  const odinTubos = await vendedoresOdinTubosSap()
 
   // Card descartado não conta: se o picking dele ainda está no SAP, vira um
   // card novo (é o "descartar e recriar" do admin).
@@ -124,7 +170,7 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
     for (const o of e.orderEntriesSap.split(',').map(Number)) porPedido.set(o, [...(porPedido.get(o) ?? []), e])
   }
 
-  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0, retomados: 0 }
+  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0, retomados: 0, trocadosDeEmpresa: 0 }
 
   await comSessaoSap(async (sap) => {
     const listas = await sap.getTodos<PickListSap>(
@@ -185,6 +231,8 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
       ].filter(Boolean)
       alterados.push({ id: e.id, resumo: `Picking ${l.Absoluteentry} alterado no SAP: ${partes.join(' · ')}` })
     }
+    resultado.trocadosDeEmpresa = await corrigirEmpresaDosIntocados(sap, empresaPorSlug, automacao, odinTubos)
+
     for (const a of alterados) {
       const e = ativos.find((x) => x.id === a.id)!
       if (e.alteracaoSap === a.resumo) continue
@@ -224,8 +272,7 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
       const doPedido = [...new Set(linhas.map((x) => x.OrderEntry))].map((e) => pedidos.get(e)).filter((p): p is PedidoSap => !!p)
       const principal = doPedido[0]
       if (!principal) continue
-      const filialSlug = SLUG_POR_FILIAL[principal.BPL_IDAssignedToInvoice]
-      const slug = filialSlug === 'joitec' && automacao.has(principal.SalesPersonCode) ? 'joitec-automacao' : filialSlug
+      const slug = slugDoPedidoSap(principal.BPL_IDAssignedToInvoice, principal.SalesPersonCode, automacao, odinTubos)
       const empresaId = slug ? empresaPorSlug.get(slug) : undefined
       if (!empresaId) {
         resultado.foraDoEscopo++
@@ -462,8 +509,8 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
       ...existentes.flatMap((x) => x.orderEntriesSap.split(',').map(Number)),
     ])
     const slugDe = (d: DocCab) => {
-      const f = d.BPL_IDAssignedToInvoice === 1 ? 'odin-compressores' : SLUG_POR_FILIAL[d.BPL_IDAssignedToInvoice] ?? null
-      return f === 'joitec' && automacao.has(d.SalesPersonCode) ? 'joitec-automacao' : f
+      if (d.BPL_IDAssignedToInvoice === 1) return 'odin-compressores'
+      return slugDoPedidoSap(d.BPL_IDAssignedToInvoice, d.SalesPersonCode, automacao, odinTubos) ?? null
     }
     const linha = (d: DocCab, tipo: 'aprovacao' | 'pedido') => ({
       codigoCliente: d.CardCode,

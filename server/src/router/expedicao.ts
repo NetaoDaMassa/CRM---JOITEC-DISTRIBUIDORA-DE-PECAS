@@ -8,6 +8,8 @@ import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
+import { slugDoPedidoSap, vendedoresOdinTubosSap } from '../lib/sapVendasAuto.js'
+import { vendedoresAutomacaoSap } from '../lib/sapSyncItens.js'
 import { kitsDosItens, type ComponenteKit } from '../lib/sapKits.js'
 import { fotosDosItens } from '../lib/fotosProdutos.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
@@ -254,12 +256,32 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
     const daEmpresa = doCodigo.filter((c) => c.empresaId === empresaId)
     return (daEmpresa.length ? daEmpresa : doCodigo).some((c) => c.statusFiscal === 'isento')
   }
+  // Pedido da Odin Tubos tirado pela filial Joitec (sai do estoque 2-REV,
+  // nota da Joitec) — selo no card pra equipe saber de onde vem a peça.
+  const daJoitec = ids.length
+    ? new Set(
+        (
+          await db
+            .selectDistinct({ id: expedicaoItens.expedicaoId })
+            .from(expedicaoItens)
+            .where(and(inArray(expedicaoItens.expedicaoId, ids), like(expedicaoItens.deposito, '2-%')))
+        ).map((x) => x.id)
+      )
+    : new Set<number>()
+  const tubos = await db.query.empresas.findFirst({ where: eq(empresas.slug, 'odin-tubos'), columns: { id: true } })
+  // Outros pedidos do mesmo cliente ainda na fila desta empresa: despachar junto.
+  const naFila = pedidos.filter((p) => p.etapa !== 'coletado' && p.clienteCodigo)
   const agora = Date.now()
   return pedidos.map((p) => {
     const limite = prazoLimite(p.inicioPrazo)
     return {
       ...p,
       clienteIsento: clienteIsento(p.clienteCodigo),
+      notaPelaJoitec: p.empresaId === tubos?.id && daJoitec.has(p.id),
+      mesmoClienteNaFila:
+        p.etapa === 'coletado' || !p.clienteCodigo
+          ? []
+          : naFila.filter((o) => o.id !== p.id && o.clienteCodigo === p.clienteCodigo).map((o) => ({ id: o.id, pedidosSap: o.pedidosSap, etapa: o.etapa })),
       separador: p.separacaoColaboradorId ? pessoas.get(p.separacaoColaboradorId) ?? null : null,
       conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
@@ -795,7 +817,12 @@ export const expedicaoRouter = router({
       gerandoPicking.add(chave)
       let r
       try {
-        r = await gerarPickingSap(filial, Number(input.numero), ctx.user.name)
+        if (empresa!.slug === 'odin-tubos') {
+          const [automacao, odinTubos] = await Promise.all([vendedoresAutomacaoSap(), vendedoresOdinTubosSap()])
+          r = await gerarPickingSap([4, 3], Number(input.numero), ctx.user.name, (o) => slugDoPedidoSap(o.BPL_IDAssignedToInvoice, o.SalesPersonCode, automacao, odinTubos) === 'odin-tubos')
+        } else {
+          r = await gerarPickingSap([filial], Number(input.numero), ctx.user.name)
+        }
       } catch (e) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
       } finally {

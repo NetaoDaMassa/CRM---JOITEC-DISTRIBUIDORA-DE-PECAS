@@ -18,12 +18,30 @@ import { expedicaoItens, sapItemLocalizacao } from '../db/schema.js'
 import { hojeBrString } from './dataBr.js'
 import { comSessaoSap } from './sapServiceLayer.js'
 
-export async function gerarPickingSap(filial: number, numeroPedido: number, quem: string): Promise<{ pickList: number; linhas: number }> {
+// `filiais` em ordem de preferência; `aceitar` filtra o pedido achado (Odin
+// Tubos procura também na filial Joitec, mas só pedido de vendedor da Odin
+// Tubos — a nota continua saindo pela Joitec).
+export async function gerarPickingSap(
+  filiais: number[],
+  numeroPedido: number,
+  quem: string,
+  aceitar: (p: { BPL_IDAssignedToInvoice: number; SalesPersonCode: number }) => boolean = () => true
+): Promise<{ pickList: number; linhas: number }> {
   return comSessaoSap(async (sap) => {
     const { value } = await sap.get<{
-      value: { DocEntry: number; DocumentStatus: string; Cancelled: string; Comments: string | null; DocumentLines: { LineNum: number; RemainingOpenQuantity: number; LineStatus: string }[] }[]
-    }>(`/Orders?$filter=DocNum eq ${numeroPedido} and BPL_IDAssignedToInvoice eq ${filial}&$select=DocEntry,DocumentStatus,Cancelled,Comments,DocumentLines`)
-    const pedido = value[0]
+      value: {
+        DocEntry: number
+        DocumentStatus: string
+        Cancelled: string
+        Comments: string | null
+        BPL_IDAssignedToInvoice: number
+        SalesPersonCode: number
+        DocumentLines: { LineNum: number; RemainingOpenQuantity: number; LineStatus: string }[]
+      }[]
+    }>(
+      `/Orders?$filter=DocNum eq ${numeroPedido} and (${filiais.map((f) => `BPL_IDAssignedToInvoice eq ${f}`).join(' or ')})&$select=DocEntry,DocumentStatus,Cancelled,Comments,BPL_IDAssignedToInvoice,SalesPersonCode,DocumentLines`
+    )
+    const pedido = filiais.flatMap((f) => value.filter((v) => v.BPL_IDAssignedToInvoice === f && aceitar(v)))[0]
     if (!pedido) throw new Error(`Pedido ${numeroPedido} não encontrado no SAP`)
     if (pedido.Cancelled === 'tYES' || pedido.DocumentStatus !== 'bost_Open') throw new Error(`O pedido ${numeroPedido} não está aberto no SAP`)
     const abertas = pedido.DocumentLines.filter((l) => l.LineStatus !== 'bost_Close' && l.RemainingOpenQuantity > 0)

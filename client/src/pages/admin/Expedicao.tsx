@@ -349,6 +349,16 @@ export default function Expedicao() {
                       </div>
                       <p className="text-xs text-dark-300 leading-tight mt-0.5 line-clamp-2">{p.clienteNome}</p>
                       {p.clienteIsento && <SeloIsento className="mt-1" />}
+                      {p.notaPelaJoitec && (
+                        <p className="text-[11px] font-semibold text-violet-100 bg-violet-900/40 border border-violet-600/60 rounded px-1.5 py-0.5 mt-1">
+                          🔁 PEDIDO PELA JOITEC — peça do estoque Joitec (2-REV), nota sai pela Joitec
+                        </p>
+                      )}
+                      {p.mesmoClienteNaFila.length > 0 && (
+                        <p className="text-[11px] font-semibold text-teal-100 bg-teal-900/40 border border-teal-600/60 rounded px-1.5 py-0.5 mt-1">
+                          🔗 Mandar junto: pedido {p.mesmoClienteNaFila.map((o) => o.pedidosSap).join(', ')} do mesmo cliente na fila
+                        </p>
+                      )}
                       {p.orderEntriesSap.split(',').some((e) => (naoLidasPorPedido.get(Number(e)) ?? 0) > 0) && (
                         <p className="text-[11px] font-semibold text-gold-300 mt-1">💬 Mensagem nova do vendedor</p>
                       )}
@@ -620,6 +630,18 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
     <Modal open onClose={onClose} title={`Pedido ${p.pedidosSap} — ${p.clienteNome ?? ''}`} size="xl">
       <div className="space-y-5">
         {p.clienteIsento && <SeloIsento />}
+        {p.notaPelaJoitec && (
+          <p className="text-sm text-violet-100 bg-violet-900/30 border border-violet-600/60 rounded-lg px-3 py-2">
+            🔁 <b>Pedido de vendedor da Odin Tubos tirado pela filial Joitec</b> (faltou peça na Odin Tubos): a peça sai do estoque da Joitec (2-REV) e a nota
+            fiscal sai pela Joitec. A separação, conferência, embalagem e coleta são da Odin Tubos.
+          </p>
+        )}
+        {p.mesmoClienteNaFila.length > 0 && (
+          <p className="text-sm text-teal-100 bg-teal-900/30 border border-teal-600/60 rounded-lg px-3 py-2">
+            🔗 <b>Mesmo cliente tem outro pedido na fila:</b>{' '}
+            {p.mesmoClienteNaFila.map((o) => `pedido ${o.pedidosSap} (${COLUNAS.find((c) => c.etapa === o.etapa)?.titulo ?? o.etapa})`).join(' · ')} — veja se sai tudo junto.
+          </p>
+        )}
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-dark-300">
           <span>Picking <b className="text-dark-100">{p.pickListSap}</b> ({STATUS_SAP[p.statusPickingSap ?? ''] ?? p.statusPickingSap})</span>
           {p.conferenciaFim && p.statusPickingSap === 'ps_Released' && <ConferenciaSapBotao id={p.id} />}
