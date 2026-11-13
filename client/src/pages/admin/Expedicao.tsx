@@ -120,6 +120,7 @@ export default function Expedicao() {
   const [coletadoAberto, setColetadoAberto] = useState<Pedido | null>(null)
   const [verDescartados, setVerDescartados] = useState(false)
   const [verKits, setVerKits] = useState(false)
+  const [leitor, setLeitor] = useState(false)
   const [busca, setBusca] = useState('')
   // Seleção de vários pedidos (admin) pra finalizar/mover/cancelar de uma vez.
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
@@ -201,6 +202,9 @@ export default function Expedicao() {
               {selecionando ? 'Sair da seleção' : '☑ Selecionar vários'}
             </Button>
           )}
+          <Button variant="primary" onClick={() => setLeitor(true)}>
+            📟 Leitor — liberar coleta
+          </Button>
           <Button variant="ghost" onClick={() => setVerKits(true)}>
             🧩 Kits
           </Button>
@@ -224,6 +228,7 @@ export default function Expedicao() {
           'Na embalagem, informe volumes, cabeçotes e paletes. A NF aparece sozinha quando sai no SAP.',
           'Com a NF emitida, agende a coleta (transportadora, dia e hora). Sem NF não dá para agendar.',
           'Se a transportadora não vier, abra o pedido e use "Reagendar". Todas as tentativas ficam registradas, e o vendedor também vê.',
+          'Na hora da coleta, abra "📟 Leitor — liberar coleta" e bipe a etiqueta de cada volume (ou o código de barras da NF). Bipou todos os volumes, a coleta é liberada sozinha.',
           'Quando a transportadora levar, toque em "Coletado". O prazo de 48h conta do picking até aqui, só em dia útil: sábado, domingo e feriado não contam.',
           'Pedido coletado fica no quadro só no dia. Depois, consulte na aba "Coletados".',
         ]}
@@ -414,6 +419,9 @@ export default function Expedicao() {
                             📦 SAP: {[p.volumesSap != null ? `${p.volumesSap} vol.` : null, p.transportadoraSap].filter(Boolean).join(' · ')}
                           </span>
                         )}
+                        {p.tubosFaltando > 0 && ['nf', 'agendamento', 'coleta'].includes(p.etapa) && (
+                          <span className="text-[11px] font-bold rounded bg-sky-900/50 text-sky-100 border border-sky-500/60 px-1.5 py-0.5">📏 CONFERIR {p.tubosFaltando} TUBO(S)</span>
+                        )}
                         {p.erros > 0 && <span className="text-[10px] font-semibold rounded bg-red-900/30 text-red-300 px-1.5 py-0.5">{p.erros} erro(s)</span>}
                         {p.volumes != null && p.etapa !== 'embalagem' && (
                           <span className="text-[10px] rounded bg-dark-700 text-dark-300 px-1.5 py-0.5">{p.packs != null ? textoVolumes(p) : `${p.volumes} vol.`}</span>
@@ -442,6 +450,7 @@ export default function Expedicao() {
       )}
       {verDescartados && <DescartadosModal onClose={() => setVerDescartados(false)} />}
       {verKits && <KitsModal podeAlterar={!!podeDescartar} onClose={() => setVerKits(false)} />}
+      {leitor && <LeitorColetaModal onClose={() => (setLeitor(false), utils.expedicao.fila.invalidate())} />}
     </div>
   )
 }
@@ -569,7 +578,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const [sacos, setSacos] = useState(p.sacos != null ? String(p.sacos) : '')
   const [caixas, setCaixas] = useState(p.caixas != null ? String(p.caixas) : '')
   const [paletes, setPaletes] = useState('')
-  const [transportadora, setTransportadora] = useState(p.transportadora ?? p.transportadoraSap ?? '')
+  const [transportadora, setTransportadora] = useState(p.transportadoraSap ?? p.transportadora ?? '')
   const [coletaAgendada, setColetaAgendada] = useState(p.coletaAgendada ?? '')
   const [erroItem, setErroItem] = useState('')
   const [erroTipo, setErroTipo] = useState<TipoErro>(['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa) ? 'volume_ficou' : 'faltou')
@@ -584,7 +593,13 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const daEtapa = doCargo.filter((c) => !c.ocupadoCom)
   const ocupados = doCargo.filter((c) => c.ocupadoCom)
   const conferindo = p.etapa === 'conferencia' && iniciada
-  const itensConferidos = data?.itens.filter((i) => i.conferidoEm).length ?? 0
+  // Odin Tubos: tubo é conferido na etapa da NF, não na conferência (João 2026-11-13).
+  const itensConf = data?.itens.filter((i) => !i.tubo) ?? []
+  const tubos = data?.itens.filter((i) => i.tubo) ?? []
+  const itensConferidos = itensConf.filter((i) => i.conferidoEm).length
+  const tubosConferidos = tubos.filter((i) => i.conferidoEm).length
+  const tubosFaltam = tubos.length - tubosConferidos
+  const etapaTubos = ['nf', 'agendamento', 'coleta'].includes(p.etapa)
   // Erro achado no agendamento/coleta conta como "expedição" (vai pro embalador).
   // Inclui o pedido já coletado: "volume ficou para trás" / "não foi pelo
   // Correios" normalmente só aparece depois que saiu (João, 2026-11-10).
@@ -601,7 +616,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const fotosNf = data?.fotosPedido.filter((f) => f.tipo === 'nf') ?? []
   const regraFotos = data?.minimoFotos ?? { conferencia: 0, nf: 0 }
   const tituloFotoConf = regraFotos.nf > 0 ? 'Foto da bancada (conferência)' : 'Fotos gerais do pedido'
-  const [transpEmbalagem, setTranspEmbalagem] = useState(p.transportadora ?? p.transportadoraSap ?? '')
+  const [transpEmbalagem, setTranspEmbalagem] = useState(p.transportadoraSap ?? p.transportadora ?? '')
   const [etiquetasItens, setEtiquetasItens] = useState(false)
   const imprimirVolumes = (qtd: number, transportadora: string | null) => {
     if (!qtd) return toast.error('Informe quantos volumes')
@@ -725,7 +740,12 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             ) : (
               <div className="flex flex-wrap items-end gap-3">
                 <p className="text-sm text-cyan-300 w-full">{quemAgora(p)}</p>
-                {conferindo && data && <ConferenciaItens pedidoId={p.id} pedidoSap={p.pedidosSap} itens={data.itens} conferidos={itensConferidos} />}
+                {conferindo && data && <ConferenciaItens pedidoId={p.id} pedidoSap={p.pedidosSap} itens={itensConf} conferidos={itensConferidos} />}
+                {conferindo && tubos.length > 0 && (
+                  <p className="w-full text-xs text-sky-200 bg-sky-900/20 border border-sky-700/40 rounded-lg px-3 py-2">
+                    📏 {tubos.length} tubo(s) deste pedido não entram aqui: são conferidos <b>na etapa da NF</b>, antes de liberar a coleta.
+                  </p>
+                )}
                 {conferindo && data && (
                   <FotosPedido
                     pedidoId={p.id}
@@ -733,7 +753,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                     titulo={tituloFotoConf}
                     fotos={fotosConf}
                     minimo={regraFotos.conferencia}
-                    liberado={itensConferidos >= data.itens.length}
+                    liberado={itensConferidos >= itensConf.length}
                     podeApagar
                     travadoTexto="Termine de conferir todos os itens para liberar a foto."
                     faltaTexto="para poder terminar a conferência"
@@ -756,7 +776,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                         <div className="w-24"><Input label="Paletes" type="number" min={0} value={paletes} onChange={(e) => setPaletes(e.target.value)} /></div>
                       </>
                     )}
-                    <div className="min-w-[180px] flex-1"><Input label="Transportadora" value={transpEmbalagem} onChange={(e) => setTranspEmbalagem(e.target.value)} /></div>
+                    <div className="min-w-[180px] flex-1"><CampoTransportadora fixa={p.transportadoraSap} value={transpEmbalagem} onChange={setTranspEmbalagem} /></div>
                     <Button variant="secondary" disabled={!volumesEmbalagem} onClick={() => imprimirVolumes(volumesEmbalagem, transpEmbalagem || null)}>
                       🏷️ Etiquetas de volume ({volumesEmbalagem})
                     </Button>
@@ -765,7 +785,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                 <Button
                   size="lg"
                   loading={terminar.isPending}
-                  disabled={conferindo && (itensConferidos < (data?.itens.length ?? 0) || fotosConf.length < regraFotos.conferencia)}
+                  disabled={conferindo && (itensConferidos < itensConf.length || fotosConf.length < regraFotos.conferencia)}
                   onClick={() =>
                     terminar.mutate({
                       id: p.id,
@@ -817,6 +837,23 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
           </div>
         )}
 
+        {etapaTubos && tubos.length > 0 && (
+          <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4 space-y-2">
+            {tubosFaltam > 0 ? (
+              <ConferenciaItens
+                pedidoId={p.id}
+                pedidoSap={p.pedidosSap}
+                itens={tubos}
+                conferidos={tubosConferidos}
+                titulo="📏 Conferência dos tubos (etapa da NF)"
+                prontoTexto="✓ Tubos conferidos — liberado para a coleta."
+              />
+            ) : (
+              <p className="text-sm text-green-300">✓ {tubos.length} tubo(s) conferido(s) na etapa da NF.</p>
+            )}
+          </div>
+        )}
+
         {(p.etapa === 'agendamento' || p.etapa === 'coleta' || (p.etapa === 'nf' && p.nfNumero)) && (
           <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4 space-y-3">
             {!p.nfNumero ? (
@@ -830,7 +867,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                   {p.etapa === 'coleta' && <> · coleta agendada para <b className="text-dark-100">{agendaBr(p.coletaAgendada)}</b></>}
                 </p>
                 <div className="grid sm:grid-cols-3 gap-2 items-end">
-                  <Input label="Transportadora" value={transportadora} onChange={(e) => setTransportadora(e.target.value)} />
+                  <CampoTransportadora fixa={p.transportadoraSap} value={transportadora} onChange={setTransportadora} />
                   <Input label="Dia e hora da coleta" type="datetime-local" value={coletaAgendada} onChange={(e) => setColetaAgendada(e.target.value)} />
                   <Button
                     variant={p.etapa === 'coleta' ? 'secondary' : 'primary'}
@@ -846,10 +883,11 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
             {p.agendamentos.length > 0 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.etapa === 'coleta' && (
               <div className="space-y-1">
-                <Button size="lg" loading={coletar.isPending} disabled={fotosNf.length < regraFotos.nf} onClick={() => coletar.mutate({ id: p.id })}>
+                <Button size="lg" loading={coletar.isPending} disabled={fotosNf.length < regraFotos.nf || tubosFaltam > 0} onClick={() => coletar.mutate({ id: p.id })}>
                   🚚 Coletado agora
                 </Button>
                 {fotosNf.length < regraFotos.nf && <p className="text-xs text-amber-300">Tire a foto do pedido completo com a NF (acima) para marcar como coletado.</p>}
+                {tubosFaltam > 0 && <p className="text-xs text-amber-300">Confira os {tubosFaltam} tubo(s) (acima) para marcar como coletado.</p>}
               </div>
             )}
           </div>
@@ -1437,7 +1475,21 @@ function FotosPedido({
   )
 }
 
-function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId: number; pedidoSap: string; itens: ItemDetalhe[]; conferidos: number }) {
+function ConferenciaItens({
+  pedidoId,
+  pedidoSap,
+  itens,
+  conferidos,
+  titulo = 'Conferência item por item',
+  prontoTexto = '✓ Todos os itens conferidos — pode terminar a conferência.',
+}: {
+  pedidoId: number
+  pedidoSap: string
+  itens: ItemDetalhe[]
+  conferidos: number
+  titulo?: string
+  prontoTexto?: string
+}) {
   const [qtdEtiquetas, setQtdEtiquetas] = useState('1')
   const utils = trpc.useUtils()
   const faltam = itens.filter((i) => !i.conferidoEm)
@@ -1457,6 +1509,7 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
         setAviso('✗ Não confere com o pedido. Conte de novo. Se faltou, sobrou ou veio trocado, anote o erro abaixo e corrija antes de conferir.')
       }
       utils.expedicao.detalhe.invalidate({ id: pedidoId })
+      utils.expedicao.fila.invalidate()
     },
     onError: (e) => toast.error(e.message),
   })
@@ -1465,7 +1518,7 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
   return (
     <div className="w-full rounded-lg border border-blue-700/40 bg-blue-900/10 p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-blue-200">Conferência item por item</p>
+        <p className="text-sm font-semibold text-blue-200">{titulo}</p>
         <p className="text-xs text-dark-300">
           {conferidos} de {itens.length} conferidos
         </p>
@@ -1474,7 +1527,7 @@ function ConferenciaItens({ pedidoId, pedidoSap, itens, conferidos }: { pedidoId
         <div className="h-full bg-green-500" style={{ width: `${itens.length ? (conferidos / itens.length) * 100 : 0}%` }} />
       </div>
       {faltam.length === 0 ? (
-        <p className="text-sm text-green-300">✓ Todos os itens conferidos — pode terminar a conferência.</p>
+        <p className="text-sm text-green-300">{prontoTexto}</p>
       ) : escolhido ? (
         <form
           className="flex flex-wrap items-end gap-2"
@@ -1880,5 +1933,162 @@ function FreteSap({ p, volumesDigitados }: { p: { volumesSap: number | null; esp
         <span className="text-dark-400">O pedido no SAP não tem volumes nem transportadora lançados — preencha abaixo.</span>
       )}
     </div>
+  )
+}
+
+// Transportadora = a do pedido no SAP (João, 2026-11-13: "tem que vir padrão
+// do pedido"). Só dá pra digitar quando o pedido não tem; pra trocar, muda no
+// SAP — o card acompanha na próxima sincronização.
+function CampoTransportadora({ fixa, value, onChange }: { fixa: string | null; value: string; onChange: (v: string) => void }) {
+  if (fixa)
+    return (
+      <div className="space-y-1">
+        <p className="text-sm font-medium text-dark-300">Transportadora (do pedido no SAP)</p>
+        <p className="rounded-lg border border-dark-700 bg-dark-800 px-3 py-2 text-sm font-semibold text-dark-100">🚚 {fixa}</p>
+      </div>
+    )
+  return <Input label="Transportadora" value={value} onChange={(e) => onChange(e.target.value)} />
+}
+
+// Leitor de código de barras na coleta (João, 2026-11-13). O leitor USB
+// "digita" o código e aperta Enter. Etiqueta de volume (V<pedido>-<n>) conta
+// o volume; DANFE ou nº do pedido/NF só acha o pedido. Bipou todos os
+// volumes e não falta nada (NF, foto, tubos) → coleta liberada sozinha.
+type LidoColeta = inferRouterOutputs<AppRouter>['expedicao']['leitorColeta'] & { lidos: number[]; liberado: boolean }
+function bip(ok: boolean) {
+  try {
+    const ctx = new AudioContext()
+    const o = ctx.createOscillator()
+    o.frequency.value = ok ? 1200 : 220
+    o.connect(ctx.destination)
+    o.start()
+    o.stop(ctx.currentTime + (ok ? 0.08 : 0.35))
+  } catch {
+    /* sem som: segue */
+  }
+}
+function LeitorColetaModal({ onClose }: { onClose: () => void }) {
+  const [codigo, setCodigo] = useState('')
+  const [pedidos, setPedidos] = useState<LidoColeta[]>([])
+  const [ultimo, setUltimo] = useState<{ ok: boolean; texto: string } | null>(null)
+  const campo = useRef<HTMLInputElement>(null)
+  const ler = trpc.expedicao.leitorColeta.useMutation()
+  const coletar = trpc.expedicao.coletar.useMutation()
+  const focar = () => setTimeout(() => campo.current?.focus(), 0)
+  const atualizar = (id: number, f: (p: LidoColeta) => LidoColeta) => setPedidos((ps) => ps.map((p) => (p.id === id ? f(p) : p)))
+  const liberar = async (p: LidoColeta) => {
+    try {
+      await coletar.mutateAsync({ id: p.id, pelaLeitura: true })
+      atualizar(p.id, (x) => ({ ...x, liberado: true }))
+      setUltimo({ ok: true, texto: `🚚 Pedido ${p.pedidosSap} liberado — coletado` })
+      bip(true)
+    } catch (e) {
+      setUltimo({ ok: false, texto: (e as Error).message })
+      bip(false)
+    }
+    focar()
+  }
+  const enviar = async () => {
+    const c = codigo.trim()
+    setCodigo('')
+    if (!c) return
+    try {
+      const r = await ler.mutateAsync({ codigo: c })
+      if (r.etapa === 'coletado') {
+        setUltimo({ ok: false, texto: `Pedido ${r.pedidosSap} já foi coletado` })
+        bip(false)
+        return focar()
+      }
+      const antes = pedidos.find((p) => p.id === r.id)
+      const lidos = [...new Set([...(antes?.lidos ?? []), ...(r.volumeLido ? [r.volumeLido] : [])])].sort((a, b) => a - b)
+      const novo: LidoColeta = { ...r, lidos, liberado: antes?.liberado ?? false }
+      const repetido = !!r.volumeLido && !!antes?.lidos.includes(r.volumeLido)
+      setPedidos((ps) => [novo, ...ps.filter((p) => p.id !== r.id)])
+      setUltimo({
+        ok: !repetido,
+        texto: repetido
+          ? `Volume ${r.volumeLido} do pedido ${r.pedidosSap} já tinha sido bipado`
+          : r.volumeLido
+            ? `Pedido ${r.pedidosSap} — volume ${r.volumeLido}${r.volumes ? ` de ${r.volumes}` : ''}`
+            : `Pedido ${r.pedidosSap} encontrado${r.volumes ? ` — bipe os ${r.volumes} volume(s)` : ''}`,
+      })
+      bip(!repetido)
+      const completo = !!r.volumes && lidos.length >= r.volumes
+      if (completo && !r.pendencias.length && !novo.liberado) await liberar(novo)
+    } catch (e) {
+      setUltimo({ ok: false, texto: (e as Error).message })
+      bip(false)
+    }
+    focar()
+  }
+  return (
+    <Modal open onClose={onClose} title="📟 Leitor — liberar coleta" size="lg">
+      <div className="space-y-4" onClick={() => campo.current?.focus()}>
+        <p className="text-sm text-dark-300">
+          Bipe a <b>etiqueta de cada volume</b>. Quando todos os volumes do pedido forem bipados (e a NF, a foto e os tubos estiverem ok), a coleta é liberada sozinha.
+          Etiqueta antiga ou sem etiqueta: bipe o código de barras da NF (ou digite o nº do pedido) e libere no botão.
+        </p>
+        <form onSubmit={(e) => (e.preventDefault(), enviar())}>
+          <input
+            ref={campo}
+            autoFocus
+            value={codigo}
+            onChange={(e) => setCodigo(e.target.value)}
+            placeholder="Bipe aqui…"
+            className="w-full rounded-xl border-2 border-gold-600 bg-dark-900 px-4 py-3 text-lg font-mono text-dark-50 focus:outline-none"
+          />
+        </form>
+        {ultimo && (
+          <p className={`text-base font-semibold rounded-lg px-3 py-2 ${ultimo.ok ? 'text-green-200 bg-green-900/30 border border-green-700/50' : 'text-red-200 bg-red-900/30 border border-red-700/50'}`}>
+            {ultimo.ok ? '✓ ' : '✗ '}
+            {ultimo.texto}
+          </p>
+        )}
+        <div className="space-y-2">
+          {pedidos.map((p) => {
+            const total = p.volumes ?? 0
+            const faltamVol = total ? total - p.lidos.length : 0
+            const pode = !p.liberado && !p.pendencias.length && faltamVol <= 0
+            return (
+              <div key={p.id} className={`rounded-xl border p-3 space-y-2 ${p.liberado ? 'border-green-600/60 bg-green-900/15' : 'border-dark-600 bg-dark-900/50'}`}>
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="text-sm font-semibold text-dark-100">
+                    Pedido {p.pedidosSap} <span className="font-normal text-dark-300">— {p.clienteNome}</span>
+                  </p>
+                  <p className="text-xs text-dark-400">
+                    {p.nfNumero ? `NF ${p.nfNumero}` : 'sem NF'} · {p.transportadora ?? 'sem transportadora'}
+                  </p>
+                </div>
+                {total > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1">
+                    {Array.from({ length: total }, (_, i) => i + 1).map((n) => (
+                      <span
+                        key={n}
+                        className={`min-w-[2rem] text-center text-xs font-bold rounded px-1.5 py-1 ${p.lidos.includes(n) ? 'bg-green-600 text-white' : 'bg-dark-700 text-dark-400'}`}
+                      >
+                        {n}
+                      </span>
+                    ))}
+                    <span className="text-xs text-dark-300 ml-1">{p.lidos.length} de {total} volume(s) bipado(s)</span>
+                  </div>
+                ) : (
+                  <p className="text-xs text-amber-300">Volumes não anotados na embalagem — confira na mão antes de liberar.</p>
+                )}
+                {p.pendencias.map((x) => (
+                  <p key={x} className="text-xs text-red-300">⛔ {x}</p>
+                ))}
+                {p.liberado ? (
+                  <p className="text-sm font-bold text-green-300">🚚 Coletado</p>
+                ) : (
+                  <Button size="sm" disabled={!pode} loading={coletar.isPending} onClick={() => liberar(p)}>
+                    🚚 Liberar coleta{faltamVol > 0 ? ` (faltam ${faltamVol} volume(s))` : ''}
+                  </Button>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </Modal>
   )
 }

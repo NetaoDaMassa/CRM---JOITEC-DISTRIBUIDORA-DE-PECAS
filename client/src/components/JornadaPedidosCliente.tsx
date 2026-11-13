@@ -64,7 +64,7 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
               })}
             </ol>
             {p.podeAgendar && p.expedicaoId && (
-              <AgendarColeta expedicaoId={p.expedicaoId} pedido={p.pedido} jaAgendada={p.etapa === 'coleta'} transportadora={p.transportadora ?? ''} coletaAgendada={p.coletaAgendada ?? ''} volumes={textoVolumes(p)} />
+              <AgendarColeta expedicaoId={p.expedicaoId} pedido={p.pedido} jaAgendada={p.etapa === 'coleta'} transportadora={p.transportadora ?? ''} transportadoraFixa={!!p.transportadoraFixa} coletaAgendada={p.coletaAgendada ?? ''} volumes={textoVolumes(p)} />
             )}
             {p.agendamentos && p.agendamentos.length > 1 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.entrySap ? (
@@ -79,7 +79,7 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
 
 // Odin Tubos: o vendedor agenda (ou reagenda) a coleta pelo card, depois que
 // a NF sai (João 2026-11-12). Cada mudança fica no histórico de tentativas.
-function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, coletaAgendada: c0, volumes }: { expedicaoId: number; pedido: string; jaAgendada: boolean; transportadora: string; coletaAgendada: string; volumes: string | null }) {
+function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, transportadoraFixa, coletaAgendada: c0, volumes }: { expedicaoId: number; pedido: string; jaAgendada: boolean; transportadora: string; transportadoraFixa: boolean; coletaAgendada: string; volumes: string | null }) {
   const utils = trpc.useUtils()
   const [aberto, setAberto] = useState(!jaAgendada)
   const [transportadora, setTransportadora] = useState(t0)
@@ -105,8 +105,12 @@ function AgendarColeta({ expedicaoId, pedido, jaAgendada, transportadora: t0, co
       <p className="text-sm text-dark-100">📦 {volumes ?? 'Volumes ainda não informados pelo estoque'}</p>
       <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] items-end">
         <label className="text-xs text-dark-300 space-y-1">
-          <span>Transportadora</span>
-          <input value={transportadora} onChange={(e) => setTransportadora(e.target.value)} className="w-full rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-sm text-dark-100" />
+          <span>Transportadora{transportadoraFixa ? ' (do pedido no SAP)' : ''}</span>
+          {transportadoraFixa ? (
+            <p className="w-full rounded-lg border border-dark-700 bg-dark-800 px-2 py-1.5 text-sm font-semibold text-dark-100">🚚 {transportadora}</p>
+          ) : (
+            <input value={transportadora} onChange={(e) => setTransportadora(e.target.value)} className="w-full rounded-lg border border-dark-600 bg-dark-900 px-2 py-1.5 text-sm text-dark-100" />
+          )}
         </label>
         <label className="text-xs text-dark-300 space-y-1">
           <span>Dia e hora que pediram</span>

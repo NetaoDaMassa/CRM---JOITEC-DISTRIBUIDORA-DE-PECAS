@@ -62,6 +62,11 @@ export function htmlEtiquetaItem(e: EtiquetaItem, t: TamanhoEtiqueta): string {
   </div>`
 }
 
+// Código de barras do volume: "V<pedido>-<nº do volume>" — o leitor da coleta
+// conta volume por volume (João, 2026-11-13). Antes era o nº da NF (igual em
+// todos os volumes); etiqueta antiga ainda é aceita pelo leitor (acha o pedido).
+export const codigoEtiquetaVolume = (pedidosSap: string, volume: number) => `V${pedidosSap.split(',')[0].trim()}-${volume}`
+
 export function htmlEtiquetaVolume(e: EtiquetaVolume, t: TamanhoEtiqueta): string {
   const k = t.h / 100 // escala pela altura (base 100 mm)
   const f = (mm: number) => `${Math.max(2.2, mm * k).toFixed(1)}mm`
@@ -75,7 +80,7 @@ export function htmlEtiquetaVolume(e: EtiquetaVolume, t: TamanhoEtiqueta): strin
       <div><div class="rot" style="font-size:${f(3)}">NF</div><b style="font-size:${f(6)}">${esc(e.nf || '________')}</b></div>
       <div><div class="rot" style="font-size:${f(3)}">PEDIDO</div><b style="font-size:${f(5)}">${esc(e.pedido)}</b></div>
     </div>
-    <svg class="bc" data-v="${esc(e.nf || e.pedido)}" data-h="${Math.round(t.h * 0.16)}"></svg>
+    <svg class="bc" data-v="${esc(codigoEtiquetaVolume(e.pedido, e.numero))}" data-h="${Math.round(t.h * 0.16)}"></svg>
   </div>`
 }
 

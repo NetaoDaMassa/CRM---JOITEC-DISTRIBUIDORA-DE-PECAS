@@ -16,6 +16,7 @@ import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
 import { agendamentosPorCard, type AgendamentoColeta } from '../lib/expedicaoAgendamentos.js'
+import { ETAPAS_CONFERE_TUBO, SQL_EH_TUBO, ehTubo, lerCodigoColeta, tuboNaNf } from '../lib/expedicaoTubos.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
 // empresa vê só a própria fila e a própria equipe (estoques separados). Os 3
@@ -97,7 +98,7 @@ type PassoJornada = {
   pedido: string; empresaSlug: string | null; etapa: string; texto: string; detalhe: string | null; data: string | null; atrasado: boolean; entrySap?: number; agendamentos?: AgendamentoColeta[]
   // Odin Tubos: quem agenda a coleta é o próprio vendedor, pelo card do
   // Kanban (João 2026-11-12). Só com a NF emitida.
-  expedicaoId?: number; podeAgendar?: boolean; transportadora?: string | null; coletaAgendada?: string | null
+  expedicaoId?: number; podeAgendar?: boolean; transportadora?: string | null; transportadoraFixa?: boolean; coletaAgendada?: string | null
   volumes?: number | null; packs?: number | null; sacos?: number | null; caixas?: number | null
 }
 
@@ -183,7 +184,8 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
       agendamentos: tentativas,
       expedicaoId: p.id,
       podeAgendar: empresasVendedorAgenda.has(p.empresaId) && !!p.nfNumero && ['nf', 'agendamento', 'coleta'].includes(p.etapa),
-      transportadora: p.transportadora ?? p.transportadoraSap ?? null,
+      transportadora: p.transportadoraSap ?? p.transportadora ?? null,
+      transportadoraFixa: !!p.transportadoraSap,
       coletaAgendada: p.coletaAgendada,
       volumes: p.volumes,
       packs: p.packs,
@@ -269,6 +271,19 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
       )
     : new Set<number>()
   const tubos = await db.query.empresas.findFirst({ where: eq(empresas.slug, 'odin-tubos'), columns: { id: true } })
+  // Odin Tubos: tubos ainda não conferidos (são conferidos na etapa da NF).
+  const tubosFaltando =
+    ids.length && (await tuboNaNf(empresaId))
+      ? new Map(
+          (
+            await db
+              .select({ id: expedicaoItens.expedicaoId, n: sql<number>`count(*)` })
+              .from(expedicaoItens)
+              .where(and(inArray(expedicaoItens.expedicaoId, ids), isNull(expedicaoItens.conferidoEm), sql.raw(SQL_EH_TUBO)))
+              .groupBy(expedicaoItens.expedicaoId)
+          ).map((x) => [x.id, Number(x.n)])
+        )
+      : new Map<number, number>()
   // Outros pedidos do mesmo cliente ainda na fila desta empresa: despachar junto.
   const naFila = pedidos.filter((p) => p.etapa !== 'coletado' && p.clienteCodigo)
   const agora = Date.now()
@@ -286,6 +301,7 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
       conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
       erros: errosPor.get(p.id) ?? 0,
+      tubosFaltando: tubosFaltando.get(p.id) ?? 0,
       agendamentos: agendamentos.get(p.id) ?? [],
       prazoLimite: new Date(limite).toISOString(),
       horasRestantes: Math.round(horasUteisEntre(p.coletadoEm ? ms(p.coletadoEm) : agora, limite) * 10) / 10,
@@ -314,6 +330,23 @@ async function contarFotos(expedicaoId: number, tipo: 'conferencia' | 'nf'): Pro
 }
 
 
+// O que ainda segura a coleta: NF, foto do pedido completo com a NF e (Odin
+// Tubos) os tubos que são conferidos na etapa da NF.
+async function pendenciasColeta(empresaId: number, p: typeof expedicaoPedidos.$inferSelect): Promise<string[]> {
+  const faltas: string[] = []
+  if (!p.nfNumero) faltas.push('A NF ainda não saiu no SAP')
+  const minimoNf = (await regraFotosPedido(empresaId)).nf
+  if (minimoNf > 0 && (await contarFotos(p.id, 'nf')) < minimoNf) faltas.push('Falta a foto do pedido completo com a NF')
+  if (await tuboNaNf(empresaId)) {
+    const [t] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(expedicaoItens)
+      .where(and(eq(expedicaoItens.expedicaoId, p.id), isNull(expedicaoItens.conferidoEm), sql.raw(SQL_EH_TUBO)))
+    if (Number(t.n) > 0) faltas.push(`Faltam conferir ${t.n} tubo(s) (etapa da NF)`)
+  }
+  return faltas
+}
+
 // Agendar (ou reagendar) a coleta — pelo estoque (agendar) ou, na Odin
 // Tubos, pelo vendedor (agendarPeloVendedor). Só com a NF emitida.
 async function gravarAgendamento(
@@ -323,6 +356,8 @@ async function gravarAgendamento(
 ) {
   if (!['nf', 'agendamento', 'coleta'].includes(p.etapa)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra agendar depois da embalagem.' })
   if (!p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'A NF ainda não saiu no SAP — a coleta só é agendada depois da NF.' })
+  // Transportadora do pedido no SAP manda (João 2026-11-13); digitada só quando o pedido não tem.
+  input = { ...input, transportadora: p.transportadoraSap || input.transportadora }
   return db.transaction(async (tx) => {
 
         await tx
@@ -526,7 +561,14 @@ export const expedicaoRouter = router({
           .orderBy(asc(expedicaoFotos.id)),
         regraFotosPedido(ctx.empresaId),
       ])
-      return { itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null })), erros, fotosPedido, minimoFotos }
+      const tubosNaNf = await tuboNaNf(ctx.empresaId)
+      return {
+        itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null, tubo: tubosNaNf && ehTubo(i.descricao) })),
+        erros,
+        fotosPedido,
+        minimoFotos,
+        tubosNaNf,
+      }
     }),
 
   // Apaga uma foto do pedido (tirou errado). O estoque só enquanto confere;
@@ -604,10 +646,12 @@ export const expedicaoRouter = router({
       if (p.etapa !== input.etapa || !p[c.inicio]) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Essa etapa ainda não foi iniciada.' })
       if (input.etapa === 'embalagem' && !input.volumes && !input.paletes) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe os volumes (ou paletes) embalados.' })
       if (input.etapa === 'conferencia') {
+        // Odin Tubos: tubo fica pra etapa da NF (ver lib/expedicaoTubos.ts).
+        const semTubo = await tuboNaNf(ctx.empresaId)
         const [falta] = await db
           .select({ n: sql<number>`count(*)` })
           .from(expedicaoItens)
-          .where(and(eq(expedicaoItens.expedicaoId, p.id), isNull(expedicaoItens.conferidoEm)))
+          .where(and(eq(expedicaoItens.expedicaoId, p.id), isNull(expedicaoItens.conferidoEm), ...(semTubo ? [sql.raw(`not (${SQL_EH_TUBO})`)] : [])))
         if (Number(falta.n) > 0) throw new TRPCError({ code: 'BAD_REQUEST', message: `Faltam ${falta.n} item(ns) para conferir.` })
         const minimo = (await regraFotosPedido(ctx.empresaId)).conferencia
         const tem = minimo > 0 ? await contarFotos(p.id, 'conferencia') : 0
@@ -628,7 +672,7 @@ export const expedicaoRouter = router({
                 cabecotes: input.cabecotes ?? 0,
                 paletes: input.paletes ?? 0,
                 ...(porTipo ? { packs: input.packs ?? 0, sacos: input.sacos ?? 0, caixas: input.caixas ?? 0 } : {}),
-                transportadora: input.transportadora?.trim() || p.transportadora,
+                transportadora: p.transportadoraSap || input.transportadora?.trim() || p.transportadora,
               }
             : {}),
           updatedAt: agoraSqlite(),
@@ -675,10 +719,15 @@ export const expedicaoRouter = router({
     .input(z.object({ id: z.number(), itemId: z.number(), quantidade: z.number().min(0) }))
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      if (p.etapa !== 'conferencia' || !p.conferenciaInicio || p.conferenciaFim)
-        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Inicie a conferência antes de conferir os itens.' })
       const item = await db.query.expedicaoItens.findFirst({ where: and(eq(expedicaoItens.id, input.itemId), eq(expedicaoItens.expedicaoId, p.id)) })
       if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item não encontrado' })
+      // Conferido é conferido uma vez só (João 2026-11-13: "conferir de novo não pode acontecer").
+      if (item.conferidoEm) return { confere: true }
+      if ((await tuboNaNf(ctx.empresaId)) && ehTubo(item.descricao)) {
+        if (!(ETAPAS_CONFERE_TUBO as readonly string[]).includes(p.etapa))
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tubo é conferido na etapa da NF — na conferência, conte só as conexões.' })
+      } else if (p.etapa !== 'conferencia' || !p.conferenciaInicio || p.conferenciaFim)
+        throw new TRPCError({ code: 'BAD_REQUEST', message: 'Inicie a conferência antes de conferir os itens.' })
       // Kit sai do estoque por KIT: conta kits montados (5 PC4 = 5, não 20).
       const esperado = item.ehKit && item.qtdVenda != null ? item.qtdVenda : item.quantidade
       const confere = Math.abs(esperado - input.quantidade) < 0.0001
@@ -769,18 +818,63 @@ export const expedicaoRouter = router({
       return gravarAgendamento(p, input, ctx.user.id)
     }),
 
+  // pelaLeitura: liberado pelo leitor de código de barras na hora que a
+  // transportadora chega — vale também sem a coleta agendada (NF emitida).
   coletar: featureProcedure(FEATURE)
-    .input(z.object({ id: z.number(), colaboradorId: z.number().optional() }))
+    .input(z.object({ id: z.number(), colaboradorId: z.number().optional(), pelaLeitura: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      if (p.etapa !== 'coleta' || !p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra marcar coleta com a NF emitida e a coleta agendada.' })
-      const minimoNf = (await regraFotosPedido(ctx.empresaId)).nf
-      const temNf = minimoNf > 0 ? await contarFotos(p.id, 'nf') : 0
-      if (temNf < minimoNf) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tire a foto do pedido completo com a NF antes de marcar como coletado.' })
+      const pendencias = await pendenciasColeta(ctx.empresaId, p)
+      const etapaOk = p.etapa === 'coleta' || (input.pelaLeitura && ['nf', 'agendamento'].includes(p.etapa))
+      if (!etapaOk) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra marcar coleta com a NF emitida e a coleta agendada.' })
+      if (pendencias.length) throw new TRPCError({ code: 'BAD_REQUEST', message: pendencias.join(' · ') })
       await db
         .update(expedicaoPedidos)
-        .set({ etapa: 'coletado', coletadoEm: agoraSqlite(), coletadoColaboradorId: input.colaboradorId ?? null, updatedAt: agoraSqlite() })
+        .set({
+          etapa: 'coletado',
+          coletadoEm: agoraSqlite(),
+          coletadoColaboradorId: input.colaboradorId ?? null,
+          transportadora: p.transportadora ?? p.transportadoraSap,
+          updatedAt: agoraSqlite(),
+        })
         .where(eq(expedicaoPedidos.id, p.id))
+    }),
+
+  // Leitor de código de barras (João, 2026-11-13): bipa a etiqueta de volume
+  // (V<pedido>-<n>), o código da DANFE ou digita pedido/NF → acha o pedido
+  // pronto pra sair. A tela junta os volumes bipados e libera a coleta.
+  leitorColeta: featureProcedure(FEATURE)
+    .input(z.object({ codigo: z.string().trim().min(1).max(80) }))
+    .mutation(async ({ ctx, input }) => {
+      const l = lerCodigoColeta(input.codigo)
+      if (!l) throw new TRPCError({ code: 'BAD_REQUEST', message: `Código não reconhecido: ${input.codigo}` })
+      const candidatos = await db
+        .select()
+        .from(expedicaoPedidos)
+        .where(and(eq(expedicaoPedidos.empresaId, ctx.empresaId), notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado'])))
+        .orderBy(desc(expedicaoPedidos.id))
+      const doPedido = (n: string) => candidatos.filter((c) => c.pedidosSap.split(',').map((x) => x.trim()).includes(n))
+      const achados =
+        l.tipo === 'volume' ? doPedido(l.pedido) : l.tipo === 'nf' ? candidatos.filter((c) => c.nfNumero === l.nf) : [...doPedido(l.numero), ...candidatos.filter((c) => c.nfNumero === l.numero)]
+      // Prefere o card ainda na fila; senão o mais recente (pra avisar "já coletado").
+      const p = achados.find((c) => c.etapa !== 'coletado') ?? achados[0]
+      if (!p) throw new TRPCError({ code: 'NOT_FOUND', message: l.tipo === 'nf' ? `NF ${l.nf} não está no quadro` : `Pedido ${l.tipo === 'volume' ? l.pedido : l.numero} não está no quadro` })
+      if (l.tipo === 'volume' && p.volumes != null && (l.volume < 1 || l.volume > p.volumes))
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `Pedido ${p.pedidosSap} tem ${p.volumes} volume(s) — etiqueta ${l.volume} não é dele (reimprima as etiquetas)` })
+      const pendencias = p.etapa === 'coletado' ? [] : await pendenciasColeta(ctx.empresaId, p)
+      if (!['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa)) pendencias.unshift(`Ainda está na ${p.etapa === 'separacao' ? 'separação' : p.etapa === 'conferencia' ? 'conferência' : 'embalagem'}`)
+      return {
+        id: p.id,
+        pedidosSap: p.pedidosSap,
+        clienteNome: p.clienteNome,
+        etapa: p.etapa,
+        nfNumero: p.nfNumero,
+        volumes: p.volumes,
+        volumeLido: l.tipo === 'volume' ? l.volume : null,
+        transportadora: p.transportadora ?? p.transportadoraSap,
+        coletadoEm: p.coletadoEm,
+        pendencias,
+      }
     }),
 
   sincronizarAgora: featureProcedure(FEATURE).mutation(() => sincronizarExpedicaoSap()),

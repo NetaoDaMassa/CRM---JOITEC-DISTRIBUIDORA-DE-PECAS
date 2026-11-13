@@ -485,7 +485,13 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
           novo.transportadoraSapCodigo === p.transportadoraSapCodigo
         )
           continue
-        await db.update(expedicaoPedidos).set(novo).where(eq(expedicaoPedidos.id, p.id))
+        // A transportadora é a do pedido (João, 2026-11-13: "tem que vir padrão
+        // do pedido"): mudou no SAP, muda no card também.
+        const trocouTransp = !!novo.transportadoraSap && novo.transportadoraSap !== p.transportadoraSap
+        await db
+          .update(expedicaoPedidos)
+          .set({ ...novo, ...(trocouTransp ? { transportadora: novo.transportadoraSap } : {}) })
+          .where(eq(expedicaoPedidos.id, p.id))
         resultado.freteSap++
       }
     }
