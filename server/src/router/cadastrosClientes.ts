@@ -15,6 +15,7 @@ import { db } from '../db/client.js'
 import { cadastrosClientesSap, carteiraHistorico, clientes, empresas, funilMensal, notifications, permissoesAdmin, sapListasPreco, sapPrazosPagamento, users } from '../db/schema.js'
 import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
+import { buscarInscricaoEstadual } from '../lib/inscricaoEstadual.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { regiaoPorUf } from '../lib/regiao.js'
@@ -307,11 +308,12 @@ export const cadastrosClientesRouter = router({
     })
     const vendedorCrm = noCrm?.vendedorAtualId ? (await nomesUsuarios([noCrm.vendedorAtualId])).get(noCrm.vendedorAtualId) ?? null : null
     const dadosParaSap = { pessoa: input.pessoa, cnpj: input.pessoa === 'juridica' ? doc : '', cpf: input.pessoa === 'fisica' ? doc : '' } as DadosCadastro
-    const [receita, noSap] = await Promise.all([
+    const [receita, noSap, ieBase] = await Promise.all([
       input.pessoa === 'juridica' ? buscarCnpj(doc).catch(() => null) : null,
       sapConfigurado() ? procurarNoSap(dadosParaSap).catch(() => null) : null,
+      input.pessoa === 'juridica' ? buscarInscricaoEstadual(doc).catch(() => null) : null,
     ])
-    return { receita, noSap, noCrm: noCrm ? { ...noCrm, vendedor: vendedorCrm, ehSap: /^C\d{4,}$/i.test(noCrm.codigo) } : null }
+    return { receita, inscricaoEstadual: ieBase?.sugerida ?? null, inscricoesEstaduais: ieBase?.todas ?? null, noSap, noCrm: noCrm ? { ...noCrm, vendedor: vendedorCrm, ehSap: /^C\d{4,}$/i.test(noCrm.codigo) } : null }
   }),
 
   meus: cadastroProcedure.query(async ({ ctx }) => {

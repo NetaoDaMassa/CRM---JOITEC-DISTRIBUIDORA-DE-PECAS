@@ -302,6 +302,7 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
           const ind = grupo && !x.grupoTributario ? indicadoresDoGrupo(grupo, x.ieIsento) : null
           return {
             ...x,
+            ...(r.inscricaoEstadual && !x.ie.trim() && !x.ieIsento ? { ie: r.inscricaoEstadual } : {}),
             nome: x.nome || rec.razaoSocial,
             fantasia: x.fantasia || rec.nomeFantasia || '',
             email: x.email || (rec.email ?? '').toLowerCase(),
@@ -322,7 +323,13 @@ function Editor({ id, clienteId, onFechar, onCriado }: { id: number | null; clie
             },
           }
         })
-        av.push({ tipo: 'info', texto: `Dados da Receita preenchidos${rec.simples != null ? ` · ${rec.simples ? 'optante' : 'não optante'} pelo Simples` : ''}. Confira e complete a inscrição estadual.` })
+        av.push({ tipo: 'info', texto: `Dados da Receita preenchidos${rec.simples != null ? ` · ${rec.simples ? 'optante' : 'não optante'} pelo Simples` : ''}. ${
+            r.inscricaoEstadual
+              ? `Inscrição estadual encontrada: ${r.inscricaoEstadual} — confira.`
+              : r.inscricoesEstaduais?.length
+                ? `Inscrição estadual só aparece baixada/inativa (${r.inscricoesEstaduais.map((i) => `${i.ie}/${i.uf}`).join(', ')}) — confira com o cliente ou marque Isento.`
+                : 'Inscrição estadual não encontrada — complete ou marque Isento.'
+          }` })
       } else if (d.pessoa === 'juridica') av.push({ tipo: 'info', texto: 'Não consegui ler a Receita agora — preencha na mão.' })
       setAviso(av)
     },

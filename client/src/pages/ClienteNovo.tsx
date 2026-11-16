@@ -75,7 +75,14 @@ export default function ClienteNovo() {
       if (dados.bairro) setBairro(dados.bairro)
       if (dados.cep) setCep(dados.cep)
       if (dados.email && !email) setEmail(dados.email)
-      toast.success('Dados preenchidos a partir da Receita Federal.')
+      if (dados.inscricaoEstadual && !inscricaoEstadual.trim()) setInscricaoEstadual(dados.inscricaoEstadual)
+      toast.success(
+        dados.inscricaoEstadual
+          ? 'Dados preenchidos a partir da Receita Federal, com a inscrição estadual.'
+          : dados.inscricoesEstaduais.length
+            ? 'Dados preenchidos. A inscrição estadual encontrada está baixada/inativa — confira com o cliente.'
+            : 'Dados preenchidos a partir da Receita Federal. Inscrição estadual não encontrada — preencha se tiver.'
+      )
     } catch (err: any) {
       toast.error(err.message ?? 'Falha na consulta.')
     } finally {

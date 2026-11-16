@@ -7,6 +7,7 @@ import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { buscarCnpj } from '../lib/brasilApi.js'
+import { buscarInscricaoEstadual } from '../lib/inscricaoEstadual.js'
 import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
@@ -236,9 +237,11 @@ export const clientesRouter = router({
 
   cnpjLookup: protectedProcedure.input(z.object({ cnpj: z.string() })).query(async ({ input }) => {
     if (!cnpjValido(input.cnpj)) throw new Error('CNPJ inválido')
-    const dados = await buscarCnpj(input.cnpj)
+    const [dados, ie] = await Promise.all([buscarCnpj(input.cnpj), buscarInscricaoEstadual(input.cnpj).catch(() => null)])
     if (!dados) return null
     return {
+      inscricaoEstadual: ie?.sugerida ?? null,
+      inscricoesEstaduais: ie?.todas ?? [],
       razaoSocial: dados.razaoSocial,
       cidade: dados.municipio,
       estado: dados.uf,
