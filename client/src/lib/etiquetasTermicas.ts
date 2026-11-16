@@ -3,7 +3,9 @@
 // tamanho da etiqueta (em mm), preto e branco, código de barras CODE128
 // (JsBarcode). Cada computador lembra o tamanho escolhido (localStorage).
 
+// 80 × 40 mm = etiqueta padrão do estoque (João, 2026-11-16).
 export const TAMANHOS_ETIQUETA = [
+  { id: '80x40', w: 80, h: 40, label: '80 × 40 mm (padrão)' },
   { id: '100x50', w: 100, h: 50, label: '100 × 50 mm' },
   { id: '100x75', w: 100, h: 75, label: '100 × 75 mm' },
   { id: '100x100', w: 100, h: 100, label: '100 × 100 mm' },
@@ -13,7 +15,7 @@ export const TAMANHOS_ETIQUETA = [
 ] as const
 export type TamanhoEtiqueta = (typeof TAMANHOS_ETIQUETA)[number]
 
-const PADRAO: Record<'item' | 'volume', string> = { item: '100x50', volume: '100x100' }
+const PADRAO: Record<'item' | 'volume', string> = { item: '80x40', volume: '80x40' }
 
 export function lerTamanho(tipo: 'item' | 'volume'): TamanhoEtiqueta {
   let id = PADRAO[tipo]
@@ -68,6 +70,7 @@ export function htmlEtiquetaItem(e: EtiquetaItem, t: TamanhoEtiqueta): string {
 export const codigoEtiquetaVolume = (pedidosSap: string, volume: number) => `V${pedidosSap.split(',')[0].trim()}-${volume}`
 
 export function htmlEtiquetaVolume(e: EtiquetaVolume, t: TamanhoEtiqueta): string {
+  if (t.h <= 50) return htmlEtiquetaVolumeCompacta(e, t)
   const k = t.h / 100 // escala pela altura (base 100 mm)
   const f = (mm: number) => `${Math.max(2.2, mm * k).toFixed(1)}mm`
   return `<div class="et vol">
@@ -81,6 +84,25 @@ export function htmlEtiquetaVolume(e: EtiquetaVolume, t: TamanhoEtiqueta): strin
       <div><div class="rot" style="font-size:${f(3)}">PEDIDO</div><b style="font-size:${f(5)}">${esc(e.pedido)}</b></div>
     </div>
     <svg class="bc" data-v="${esc(codigoEtiquetaVolume(e.pedido, e.numero))}" data-h="${Math.round(t.h * 0.16)}"></svg>
+  </div>`
+}
+
+// Etiqueta baixa (80 × 40, 60 × 40, 50 × 30…): uma linha por informação,
+// cliente e endereço cortados em 1 linha, código de barras embaixo.
+function htmlEtiquetaVolumeCompacta(e: EtiquetaVolume, t: TamanhoEtiqueta): string {
+  const k = t.h / 40 // base 40 mm
+  const f = (mm: number) => `${Math.max(1.8, mm * k).toFixed(2)}mm`
+  const umaLinha = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis'
+  return `<div class="et vol" style="padding:1.5mm 2mm;gap:0.5mm">
+    <div class="topo" style="padding-bottom:0.4mm"><span style="font-size:${f(2.4)};${umaLinha};max-width:60%">${esc(e.remetente)}</span><b style="font-size:${f(4.6)}">VOL ${e.numero}/${e.total}</b></div>
+    <div style="font-size:${f(3.3)};font-weight:700;line-height:1.1;${umaLinha}">${esc(e.cliente)}</div>
+    ${e.endereco ? `<div style="font-size:${f(2.3)};line-height:1.1;${umaLinha}">${esc(e.endereco)}</div>` : ''}
+    <div style="display:flex;gap:2.5mm;font-size:${f(2.6)};line-height:1.15;white-space:nowrap;overflow:hidden">
+      <span>NF <b style="font-size:${f(3.4)}">${esc(e.nf || '______')}</b></span>
+      <span>PED <b style="font-size:${f(3.4)}">${esc(e.pedido)}</b></span>
+      <span style="overflow:hidden;text-overflow:ellipsis">${esc(e.transportadora || '')}</span>
+    </div>
+    <svg class="bc" data-v="${esc(codigoEtiquetaVolume(e.pedido, e.numero))}" data-h="${Math.round(t.h * 0.2)}"></svg>
   </div>`
 }
 

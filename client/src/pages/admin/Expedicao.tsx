@@ -623,9 +623,22 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const tituloFotoConf = regraFotos.nf > 0 ? 'Foto da bancada (conferência)' : 'Fotos gerais do pedido'
   const [transpEmbalagem, setTranspEmbalagem] = useState(p.transportadoraSap ?? p.transportadora ?? '')
   const [etiquetasItens, setEtiquetasItens] = useState(false)
+  // Tamanho da etiqueta de volume (João, 2026-11-16: "não conseguimos escolher
+  // o tamanho"; padrão do estoque 80 × 40). Cada computador lembra o seu.
+  const [tamVolume, setTamVolume] = useState<string>(() => lerTamanho('volume').id)
+  const escolherTamVolume = (
+    <div className="w-44">
+      <Select
+        label="Tamanho da etiqueta"
+        value={tamVolume}
+        onChange={(e) => (setTamVolume(e.target.value), salvarTamanho('volume', e.target.value))}
+        options={TAMANHOS_ETIQUETA.map((t) => ({ value: t.id, label: t.label }))}
+      />
+    </div>
+  )
   const imprimirVolumes = (qtd: number, transportadora: string | null) => {
     if (!qtd) return toast.error('Informe quantos volumes')
-    const t = lerTamanho('volume')
+    const t = TAMANHOS_ETIQUETA.find((x) => x.id === tamVolume) ?? lerTamanho('volume')
     const html = Array.from({ length: qtd }, (_, i) =>
       htmlEtiquetaVolume(
         { numero: i + 1, total: qtd, cliente: p.clienteNome ?? '', endereco: p.enderecoEntrega, transportadora, nf: p.nfNumero, pedido: p.pedidosSap, remetente },
@@ -782,6 +795,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                       </>
                     )}
                     <div className="min-w-[180px] flex-1"><CampoTransportadora fixa={p.transportadoraSap} value={transpEmbalagem} onChange={setTranspEmbalagem} /></div>
+                    {escolherTamVolume}
                     <Button variant="secondary" disabled={!volumesEmbalagem} onClick={() => imprimirVolumes(volumesEmbalagem, transpEmbalagem || null)}>
                       🏷️ Etiquetas de volume ({volumesEmbalagem})
                     </Button>
@@ -918,7 +932,8 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
           </div>
         )}
         {p.volumes != null && ['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa) && (
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            {escolherTamVolume}
             <Button variant="secondary" onClick={() => imprimirVolumes(p.volumes ?? 0, p.transportadora)}>
               🏷️ Imprimir etiquetas de volume ({p.volumes})
             </Button>
