@@ -20,11 +20,13 @@ import { TRPCError } from '@trpc/server'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import {
+  cadastrosClientesSap,
   clientes,
   cotacoesCrm,
   cotacoesCrmHistorico,
   cotacoesCrmItens,
   empresas,
+  logAuditoria,
   notifications,
   permissoesAdmin,
   sapCatalogoItens,
@@ -49,6 +51,10 @@ import { fotosDosItens } from '../lib/fotosProdutos.js'
 import { DESPESAS_SAP, UTILIZACOES_VENDA, enviarCotacaoSap, impostosDoDocumentoSap, simularImpostosSap, type ImpostosSap, faltasDeEstoqueSap, fecharCotacaoSap, formasPagamentoDaFilial, gerarPedidoSap, subirAnexosSap, type CotacaoParaSap } from '../lib/sapCotacoesEscrita.js'
 import { limiteAgora, limiteDaFoto } from '../lib/sapLimiteCredito.js'
 import { cadastroPendente } from './cadastrosClientes.js'
+import { cnpjValido } from '../lib/cnpj.js'
+import { cpfValido } from '../lib/cpf.js'
+import { regiaoPorUf } from '../lib/regiao.js'
+import { noPiloto } from '../lib/pilotoFinanceiro.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
 
 const FEATURE = 'cotacoes'
@@ -83,6 +89,20 @@ const cotacoesProcedure = protectedProcedure.use(async ({ ctx, next }) => {
 type Ctx = { empresaId: number; user: { id: number; name: string }; veTudo: boolean }
 
 const arred = (n: number, casas = 2) => Math.round(n * 10 ** casas) / 10 ** casas
+
+// Cliente sem cadastro (Izabelly/João, 2026-11-13): o vendedor põe só nome,
+// CNPJ, uso, cidade e UF pra gerar a cotação. Fica no CRM com código
+// PROV-<documento>, fora da carteira de verdade (emProspeccao, igual ao
+// balcão: não vira card todo mês nem conta na cobertura). Cotação vale 30
+// dias e não vai ao SAP até o cadastro real (que troca o código pelo C0…).
+export const PREFIXO_SEM_CADASTRO = 'PROV-'
+export const ehSemCadastro = (codigo: string | null | undefined) => (codigo ?? '').startsWith(PREFIXO_SEM_CADASTRO)
+const VALIDADE_SEM_CADASTRO_DIAS = 30
+function maisDias(dia: string, n: number): string {
+  const d = new Date(`${dia}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + n)
+  return d.toISOString().slice(0, 10)
+}
 
 function ultimoDiaDoMes(dia: string): string {
   const [a, m] = dia.split('-').map(Number)
@@ -127,6 +147,8 @@ async function paraSap(c: typeof cotacoesCrm.$inferSelect, filial: number): Prom
     db.query.users.findFirst({ where: eq(users.id, c.vendedorId), columns: { name: true } }),
   ])
   if (!cliente?.codigo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Cliente sem código do SAP' })
+  if (ehSemCadastro(cliente.codigo))
+    throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Cotação de cliente SEM CADASTRO: para ir ao SAP / virar pedido, faça antes o cadastro real do cliente (link "Cadastrar no SAP" no quadro do cliente).' })
   // Cadastro feito no CRM ainda não aprovado pelo financeiro: no SAP o
   // cliente está inativo e o SAP recusaria (cadastrosClientes.ts).
   const pendente = await cadastroPendente(c.clienteId)
@@ -398,6 +420,50 @@ export const cotacoesCrmRouter = router({
 
   // Clientes pra cotar: vendedor só a própria carteira, admin/gerente a
   // empresa toda. Junta a lista de preço e o prazo padrão do cliente no SAP.
+  // + Nova cotação → Cliente SEM cadastro.
+  clienteSemCadastro: cotacoesProcedure
+    .input(
+      z.object({
+        nome: z.string().trim().min(3).max(200),
+        documento: z.string().trim(),
+        uso: z.enum(['revenda', 'consumo']),
+        cidade: z.string().trim().min(2).max(120),
+        uf: z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!ctx.user.superAdmin && !(await noPiloto(ctx.user.id))) throw new TRPCError({ code: 'FORBIDDEN', message: 'Cotação sem cadastro ainda está em teste e não foi liberada para você.' })
+      const doc = input.documento.replace(/\D/g, '')
+      const pj = doc.length === 14
+      if (pj ? !cnpjValido(doc) : doc.length !== 11 || !cpfValido(doc)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CNPJ/CPF inválido' })
+      const existe = await db.query.clientes.findFirst({
+        where: and(eq(clientes.empresaId, ctx.empresaId), pj ? eq(clientes.cnpj, doc) : eq(clientes.cpf, doc), isNull(clientes.deletedAt)),
+        columns: { id: true, codigo: true, razaoSocial: true, cidade: true, estado: true, vendedorAtualId: true },
+      })
+      if (existe) {
+        if (!ctx.veTudo && existe.vendedorAtualId && existe.vendedorAtualId !== ctx.user.id) {
+          const dono = await db.query.users.findFirst({ where: eq(users.id, existe.vendedorAtualId), columns: { name: true } })
+          throw new TRPCError({ code: 'CONFLICT', message: `Esse cliente já existe no CRM (${existe.razaoSocial}, ${existe.codigo}) na carteira de ${dono?.name ?? 'outro vendedor'}.` })
+        }
+        return { id: existe.id, codigo: existe.codigo, nome: existe.razaoSocial, cidade: existe.cidade, estado: existe.estado, jaExistia: true }
+      }
+      const r = await db.insert(clientes).values({
+        empresaId: ctx.empresaId,
+        razaoSocial: input.nome.toUpperCase(),
+        codigo: `${PREFIXO_SEM_CADASTRO}${doc}`,
+        ...(pj ? { cnpj: doc } : { cpf: doc }),
+        cidade: input.cidade,
+        estado: input.uf,
+        regiao: regiaoPorUf(input.uf) ?? 'sul',
+        classificacaoComercial: input.uso === 'revenda' ? 'revenda' : 'consumidor_final',
+        observacoes: `Cliente sem cadastro — só para cotação (uso: ${input.uso === 'revenda' ? 'revenda' : 'consumo'}). Fazer o cadastro real antes do pedido.`,
+        cadastradoPor: ctx.user.id,
+        vendedorAtualId: ctx.user.id,
+        emProspeccao: true,
+      })
+      return { id: Number(r.lastInsertRowid), codigo: `${PREFIXO_SEM_CADASTRO}${doc}`, nome: input.nome.toUpperCase(), cidade: input.cidade, estado: input.uf, jaExistia: false }
+    }),
+
   clientes: cotacoesProcedure.input(z.object({ busca: z.string().trim().min(2) })).query(async ({ ctx, input }) => {
     const termo = `%${input.busca}%`
     return db
@@ -467,35 +533,81 @@ export const cotacoesCrmRouter = router({
     return [...porCard.values()]
   }),
 
-  listar: cotacoesProcedure.query(async ({ ctx }) => {
-    const hoje = hojeBrString()
-    const linhas = await db
-      .select({
-        id: cotacoesCrm.id,
-        status: cotacoesCrm.status,
-        total: cotacoesCrm.total,
-        maiorDescontoPct: cotacoesCrm.maiorDescontoPct,
-        validaAte: cotacoesCrm.validaAte,
-        createdAt: cotacoesCrm.createdAt,
-        encerradaEm: cotacoesCrm.encerradaEm,
-        enviadaClienteEm: cotacoesCrm.enviadaClienteEm,
-        updatedAt: cotacoesCrm.updatedAt,
-        sapDocNum: cotacoesCrm.sapDocNum,
-        sapPedidoNum: cotacoesCrm.sapPedidoNum,
-        vendedorId: cotacoesCrm.vendedorId,
-        clienteNome: clientes.razaoSocial,
-        clienteCodigo: clientes.codigo,
-        vendedorNome: users.name,
-        itens: sql<number>`(select count(*) from ${cotacoesCrmItens} where ${cotacoesCrmItens.cotacaoId} = ${cotacoesCrm.id})`,
+  // Lista (e base dos Relatórios — João, 2026-11-16: "deixar prontos
+  // relatórios e filtros, por vendedor e etc"). Sem período: as 500 mais
+  // recentes; com período (data de criação, horário BR): todas do período.
+  // Vendedor vê só as dele; admin/gerente a empresa toda (igual antes).
+  listar: cotacoesProcedure
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }).optional())
+    .query(async ({ ctx, input }) => {
+      const hoje = hojeBrString()
+      const diaBr = sql<string>`date(${cotacoesCrm.createdAt}, '-3 hours')`
+      const comPeriodo = !!(input?.de || input?.ate)
+      // Cliente que nasceu "sem cadastro" (PROV-…): ainda é PROV, ou tem a
+      // observação gravada na criação, ou a auditoria da troca de código.
+      const nasceuSemCadastro = sql<number>`(
+        ${clientes.codigo} like ${PREFIXO_SEM_CADASTRO + '%'}
+        or ${clientes.observacoes} like 'Cliente sem cadastro — só para cotação%'
+        or exists (select 1 from ${logAuditoria} where ${logAuditoria.tabela} = 'clientes' and ${logAuditoria.registroId} = ${clientes.id} and ${logAuditoria.campo} = 'codigo' and ${logAuditoria.valorAnterior} like ${PREFIXO_SEM_CADASTRO + '%'})
+      )`
+      const linhas = await db
+        .select({
+          id: cotacoesCrm.id,
+          status: cotacoesCrm.status,
+          total: cotacoesCrm.total,
+          maiorDescontoPct: cotacoesCrm.maiorDescontoPct,
+          validaAte: cotacoesCrm.validaAte,
+          createdAt: cotacoesCrm.createdAt,
+          encerradaEm: cotacoesCrm.encerradaEm,
+          enviadaClienteEm: cotacoesCrm.enviadaClienteEm,
+          updatedAt: cotacoesCrm.updatedAt,
+          sapDocNum: cotacoesCrm.sapDocNum,
+          sapPedidoNum: cotacoesCrm.sapPedidoNum,
+          motivoPerda: cotacoesCrm.motivoPerda,
+          vendedorId: cotacoesCrm.vendedorId,
+          clienteId: cotacoesCrm.clienteId,
+          clienteNome: clientes.razaoSocial,
+          clienteCodigo: clientes.codigo,
+          clienteDoc: sql<string | null>`coalesce(${clientes.cnpj}, ${clientes.cpf})`,
+          vendedorNome: users.name,
+          diaBr,
+          nasceuSemCadastro,
+          cadastroStatus: sql<string | null>`(select ${cadastrosClientesSap.status} from ${cadastrosClientesSap} where ${cadastrosClientesSap.clienteId} = ${clientes.id} order by ${cadastrosClientesSap.id} desc limit 1)`,
+          itens: sql<number>`(select count(*) from ${cotacoesCrmItens} where ${cotacoesCrmItens.cotacaoId} = ${cotacoesCrm.id})`,
+        })
+        .from(cotacoesCrm)
+        .innerJoin(clientes, eq(clientes.id, cotacoesCrm.clienteId))
+        .innerJoin(users, eq(users.id, cotacoesCrm.vendedorId))
+        .where(
+          and(
+            eq(cotacoesCrm.empresaId, ctx.empresaId),
+            isNull(cotacoesCrm.deletedAt),
+            ctx.veTudo ? undefined : eq(cotacoesCrm.vendedorId, ctx.user.id),
+            input?.de ? sql`${diaBr} >= ${input.de}` : undefined,
+            input?.ate ? sql`${diaBr} <= ${input.ate}` : undefined
+          )
+        )
+        .orderBy(desc(cotacoesCrm.updatedAt))
+        .limit(comPeriodo ? 5000 : 500)
+      const limiteSemCadastro = maisDias(hoje, -VALIDADE_SEM_CADASTRO_DIAS)
+      return linhas.map(({ nasceuSemCadastro, cadastroStatus, ...l }) => {
+        const vencida = l.status === 'enviada' && !!l.validaAte && l.validaAte < hoje
+        const aindaProv = ehSemCadastro(l.clienteCodigo)
+        // com = cliente da carteira; pendente = ainda PROV-; aguardando = cadastro
+        // real enviado, financeiro ainda não aprovou; convertido = cadastro feito.
+        const cadastro: 'com' | 'pendente' | 'aguardando' | 'convertido' = aindaProv
+          ? 'pendente'
+          : !nasceuSemCadastro
+            ? 'com'
+            : cadastroStatus && cadastroStatus !== 'aprovado'
+              ? 'aguardando'
+              : 'convertido'
+        const aberta = ['rascunho', 'aguardando_aprovacao', 'aprovada', 'enviada'].includes(l.status)
+        // Sem cadastro passou dos 30 dias (validade enviada vencida, ou criada há mais de 30 dias e ainda sem cadastro real).
+        const vencidaSemCadastro = aindaProv && aberta && (vencida || l.diaBr < limiteSemCadastro)
+        return { ...l, vencida, cadastro, vencidaSemCadastro }
       })
-      .from(cotacoesCrm)
-      .innerJoin(clientes, eq(clientes.id, cotacoesCrm.clienteId))
-      .innerJoin(users, eq(users.id, cotacoesCrm.vendedorId))
-      .where(and(eq(cotacoesCrm.empresaId, ctx.empresaId), isNull(cotacoesCrm.deletedAt), ctx.veTudo ? undefined : eq(cotacoesCrm.vendedorId, ctx.user.id)))
-      .orderBy(desc(cotacoesCrm.updatedAt))
-      .limit(500)
-    return linhas.map((l) => ({ ...l, vencida: l.status === 'enviada' && !!l.validaAte && l.validaAte < hoje }))
-  }),
+    }),
 
   obter: cotacoesProcedure.input(z.object({ id: z.number().int() })).query(async ({ ctx, input }) => {
     const c = await acharCotacao(ctx, input.id)
@@ -763,7 +875,8 @@ export const cotacoesCrmRouter = router({
     exigirDono(ctx, c)
     exigirStatus(c, ['aprovada', 'enviada'], 'marcar como enviada')
     const hoje = hojeBrString()
-    const validaAte = ultimoDiaDoMes(hoje)
+    const cli = await db.query.clientes.findFirst({ where: eq(clientes.id, c.clienteId), columns: { codigo: true } })
+    const validaAte = ehSemCadastro(cli?.codigo) ? maisDias(hoje, VALIDADE_SEM_CADASTRO_DIAS) : ultimoDiaDoMes(hoje)
     await db.update(cotacoesCrm).set({ status: 'enviada', enviadaClienteEm: agoraSqlite(), validaAte, updatedAt: agoraSqlite() }).where(eq(cotacoesCrm.id, c.id))
     await registrar(c.id, ctx.user.id, c.status === 'enviada' ? 'Reenviou ao cliente' : 'Enviou ao cliente', `Válida até ${validaAte.split('-').reverse().join('/')}`)
     return { validaAte }

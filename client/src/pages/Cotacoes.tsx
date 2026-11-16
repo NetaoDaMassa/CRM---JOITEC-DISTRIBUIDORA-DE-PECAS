@@ -12,6 +12,9 @@ import { formatarMoeda } from '../lib/moeda'
 import { timeAgo } from '../lib/utils'
 import { parseValorBr } from '../lib/valorBr'
 import { FotoProduto } from '../components/FotoProduto'
+import { usePersistedState } from '../lib/usePersistedState'
+import { paraCsv, baixarCsv } from '../lib/csv'
+import { RelatoriosCotacoes, type FiltroRelatorio } from '../components/cotacoes/RelatoriosCotacoes'
 
 // Cotações no CRM — troca do Portal One (pedido do João, 2026-11-10).
 // Etapa 1: catálogo, preço e prazo copiados do SAP, cotação salva no CRM.
@@ -67,10 +70,36 @@ const FILTROS: { chave: string; rotulo: string; teste: (c: { status: Status; ven
   { chave: 'todas', rotulo: 'Todas', teste: () => true },
 ]
 
+type SituacaoCadastro = 'com' | 'pendente' | 'aguardando' | 'convertido'
+const ROTULO_CADASTRO: Record<SituacaoCadastro, string> = {
+  com: 'Com cadastro',
+  pendente: 'Sem cadastro',
+  aguardando: 'Cadastro aguardando financeiro',
+  convertido: 'Era sem cadastro · cadastro feito',
+}
+const FILTROS_CADASTRO: { chave: string; rotulo: string; teste: (c: { cadastro: SituacaoCadastro; vencidaSemCadastro: boolean }) => boolean }[] = [
+  { chave: 'todos', rotulo: 'Todos', teste: () => true },
+  { chave: 'com', rotulo: 'Com cadastro', teste: (c) => c.cadastro === 'com' },
+  { chave: 'sem', rotulo: 'Sem cadastro (provisório) — todos', teste: (c) => c.cadastro !== 'com' },
+  { chave: 'pendente', rotulo: 'Sem cadastro — ainda pendente', teste: (c) => c.cadastro === 'pendente' && !c.vencidaSemCadastro },
+  { chave: 'vencida_sem', rotulo: 'Sem cadastro — passou 30 dias', teste: (c) => c.vencidaSemCadastro },
+  { chave: 'aguardando', rotulo: 'Cadastro aguardando financeiro', teste: (c) => c.cadastro === 'aguardando' },
+  { chave: 'convertido', rotulo: 'Era sem cadastro — cadastro feito', teste: (c) => c.cadastro === 'convertido' },
+]
+
 function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) {
   const { data: ctx } = trpc.cotacoesCrm.contexto.useQuery()
-  const { data: lista, isLoading, error } = trpc.cotacoesCrm.listar.useQuery()
-  const [filtro, setFiltro] = useState('abertas')
+  // Filtros (João, 2026-11-16): vendedor, período, com/sem cadastro, busca —
+  // valem pra lista e pros Relatórios; ficam guardados ao voltar de uma cotação.
+  const [aba, setAba] = usePersistedState<'lista' | 'relatorios'>('cotacoes.aba', 'lista')
+  const [filtro, setFiltro] = usePersistedState('cotacoes.filtro', 'abertas')
+  const [vendedorId, setVendedorId] = usePersistedState<number | 0>('cotacoes.vendedor', 0)
+  const [de, setDe] = usePersistedState('cotacoes.de', '')
+  const [ate, setAte] = usePersistedState('cotacoes.ate', '')
+  const [cadastro, setCadastro] = usePersistedState('cotacoes.cadastro', 'todos')
+  const [busca, setBusca] = usePersistedState('cotacoes.busca', '')
+  const periodo = de || ate ? { de: de || undefined, ate: ate || undefined } : undefined
+  const { data: lista, isLoading, error } = trpc.cotacoesCrm.listar.useQuery(periodo)
   const [configurando, setConfigurando] = useState(false)
   const utils = trpc.useUtils()
   const atualizar = trpc.cotacoesCrm.atualizarCatalogo.useMutation({
@@ -80,9 +109,88 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
     },
     onError: (e) => toast.error(e.message),
   })
-  const linhas = (lista ?? []) as (NonNullable<typeof lista>[number] & { status: Status })[]
-  const visiveis = linhas.filter(FILTROS.find((f) => f.chave === filtro)!.teste)
-  const aguardandoMim = ctx?.podeAprovar ? linhas.filter((c) => c.status === 'aguardando_aprovacao').length : 0
+  const todas = (lista ?? []) as (NonNullable<typeof lista>[number] & { status: Status })[]
+  const vendedores = useMemo(() => {
+    const m = new Map<number, string>()
+    for (const c of todas) m.set(c.vendedorId, c.vendedorNome)
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]))
+  }, [todas])
+  const termo = normalizar(busca.trim())
+  const termoDig = busca.replace(/\D/g, '')
+  const linhas = todas.filter((c) => {
+    if (vendedorId && c.vendedorId !== vendedorId) return false
+    const f = FILTROS_CADASTRO.find((x) => x.chave === cadastro)
+    if (f && !f.teste(c)) return false
+    if (termo) {
+      const texto = normalizar(`nº ${c.id} ${c.clienteNome} ${c.clienteCodigo} ${c.vendedorNome} ${c.sapDocNum ?? ''} ${c.sapPedidoNum ?? ''}`)
+      if (!texto.includes(termo) && !(termoDig.length >= 3 && (c.clienteDoc ?? '').includes(termoDig))) return false
+    }
+    return true
+  })
+  const visiveis = linhas.filter((FILTROS.find((f) => f.chave === filtro) ?? FILTROS[0]).teste)
+  const temFiltro = !!(vendedorId || de || ate || cadastro !== 'todos' || busca)
+  const limpar = () => {
+    setVendedorId(0)
+    setDe('')
+    setAte('')
+    setCadastro('todos')
+    setBusca('')
+  }
+  // Clique numa linha dos Relatórios → filtra a lista com aquilo.
+  const filtrarDoRelatorio = (f: FiltroRelatorio) => {
+    if (f.vendedorId) setVendedorId(f.vendedorId)
+    if (f.cadastro) setCadastro(f.cadastro)
+    if (f.mes) {
+      const [a, m] = f.mes.split('-').map(Number)
+      setDe(`${f.mes}-01`)
+      setAte(`${f.mes}-${String(new Date(Date.UTC(a, m, 0)).getUTCDate()).padStart(2, '0')}`)
+    }
+    setFiltro(f.status ?? 'todas')
+    setAba('lista')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+  const exportarLista = () =>
+    baixarCsv(
+      'cotacoes.csv',
+      paraCsv(
+        [
+          { chave: 'id', rotulo: 'Nº' },
+          { chave: 'criada', rotulo: 'Criada em' },
+          { chave: 'cliente', rotulo: 'Cliente' },
+          { chave: 'codigo', rotulo: 'Código' },
+          { chave: 'doc', rotulo: 'CNPJ/CPF' },
+          { chave: 'cadastro', rotulo: 'Cadastro' },
+          { chave: 'vendedor', rotulo: 'Vendedor' },
+          { chave: 'situacao', rotulo: 'Situação' },
+          { chave: 'itens', rotulo: 'Itens' },
+          { chave: 'desconto', rotulo: 'Maior desconto %' },
+          { chave: 'total', rotulo: 'Total (R$)' },
+          { chave: 'validaAte', rotulo: 'Vale até' },
+          { chave: 'sap', rotulo: 'Cotação SAP' },
+          { chave: 'pedido', rotulo: 'Pedido SAP' },
+          { chave: 'motivo', rotulo: 'Motivo da perda' },
+        ],
+        visiveis.map((c) => ({
+          id: c.id,
+          criada: dataBr(c.diaBr),
+          cliente: c.clienteNome,
+          codigo: c.clienteCodigo,
+          doc: c.clienteDoc ?? '',
+          cadastro: ROTULO_CADASTRO[c.cadastro] + (c.vencidaSemCadastro ? ' (vencida)' : ''),
+          vendedor: c.vendedorNome,
+          situacao: c.vencida ? 'Vencida' : STATUS[c.status].rotulo,
+          itens: c.itens,
+          desconto: String(c.maiorDescontoPct).replace('.', ','),
+          total: c.total.toFixed(2).replace('.', ','),
+          validaAte: dataBr(c.validaAte),
+          sap: c.sapDocNum ?? '',
+          pedido: c.sapPedidoNum ?? '',
+          motivo: c.motivoPerda ?? '',
+        }))
+      )
+    )
+  const sel = 'rounded-lg bg-dark-900 border border-dark-600 px-2.5 py-1.5 text-sm text-dark-100 outline-none focus:border-gold-600'
+  const aguardandoMim = ctx?.podeAprovar ? todas.filter((c) => c.status === 'aguardando_aprovacao').length : 0
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -112,16 +220,81 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
         </div>
       </div>
 
+      <div className="flex gap-1 rounded-xl bg-dark-900 p-1 border border-dark-700 w-fit">
+        {(['lista', 'relatorios'] as const).map((a) => (
+          <button key={a} type="button" onClick={() => setAba(a)} className={`rounded-lg px-4 py-1.5 text-sm font-semibold ${aba === a ? 'bg-gold-600/20 text-gold-200 border border-gold-700/60' : 'text-dark-400 hover:text-dark-200 border border-transparent'}`}>
+            {a === 'lista' ? 'Cotações' : 'Relatórios'}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2 rounded-2xl border border-dark-600 bg-dark-800 px-3 py-2.5">
+        <label className="flex-1 min-w-[200px]">
+          <span className="block text-[11px] text-dark-400 mb-0.5">Busca</span>
+          <span className="relative block">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-dark-500" />
+            <input className={`${sel} w-full pl-8`} placeholder="Cliente, código, CNPJ, nº, pedido SAP…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          </span>
+        </label>
+        {ctx?.veTudo && (
+          <label>
+            <span className="block text-[11px] text-dark-400 mb-0.5">Vendedor</span>
+            <select className={sel} value={vendedorId} onChange={(e) => setVendedorId(Number(e.target.value))}>
+              <option value={0}>Todos</option>
+              {vendedores.map(([id, nome]) => (
+                <option key={id} value={id}>
+                  {nome}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        <label>
+          <span className="block text-[11px] text-dark-400 mb-0.5">Cadastro do cliente</span>
+          <select className={sel} value={cadastro} onChange={(e) => setCadastro(e.target.value)}>
+            {FILTROS_CADASTRO.map((f) => (
+              <option key={f.chave} value={f.chave}>
+                {f.rotulo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span className="block text-[11px] text-dark-400 mb-0.5">Criada de</span>
+          <input type="date" className={sel} value={de} onChange={(e) => setDe(e.target.value)} />
+        </label>
+        <label>
+          <span className="block text-[11px] text-dark-400 mb-0.5">até</span>
+          <input type="date" className={sel} value={ate} onChange={(e) => setAte(e.target.value)} />
+        </label>
+        {temFiltro && (
+          <Button variant="ghost" size="sm" onClick={limpar}>
+            Limpar filtros
+          </Button>
+        )}
+      </div>
+      {!periodo && todas.length >= 500 && <p className="text-[11px] text-dark-500 -mt-3">Mostrando as 500 cotações mais recentes — escolha um período para ver todas.</p>}
+
+      {aba === 'relatorios' ? (
+        error ? (
+          <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
+        ) : isLoading || !ctx ? (
+          <div className="h-40 rounded-2xl bg-dark-800 animate-pulse" />
+        ) : (
+          <RelatoriosCotacoes linhas={linhas} hoje={ctx.hoje} veTudo={ctx.veTudo} onFiltrar={filtrarDoRelatorio} />
+        )
+      ) : (
+      <>
       <ResumoCotacoes linhas={linhas} />
 
       {aguardandoMim > 0 && (
-        <button type="button" onClick={() => setFiltro('aprovacao')} className="w-full text-left rounded-2xl border border-amber-700/50 bg-amber-900/20 px-4 py-3 text-sm text-amber-200 hover:bg-amber-900/30">
+        <button type="button" onClick={() => { limpar(); setFiltro('aprovacao'); setAba('lista') }} className="w-full text-left rounded-2xl border border-amber-700/50 bg-amber-900/20 px-4 py-3 text-sm text-amber-200 hover:bg-amber-900/30">
           <Clock className="inline h-4 w-4 mr-1.5 -mt-0.5" />
           {aguardandoMim === 1 ? '1 cotação está esperando sua aprovação de desconto.' : `${aguardandoMim} cotações estão esperando sua aprovação de desconto.`} Clique para ver.
         </button>
       )}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {FILTROS.map((f) => {
           const n = linhas.filter(f.teste).length
           return (
@@ -135,13 +308,18 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
             </button>
           )
         })}
+        {visiveis.length > 0 && (
+          <button type="button" onClick={exportarLista} className="ml-auto inline-flex items-center gap-1 rounded-lg border border-dark-600 px-2.5 py-1 text-xs font-semibold text-dark-200 hover:bg-dark-700">
+            Excel (CSV) da lista
+          </button>
+        )}
       </div>
 
       {error ? (
         <p className="text-sm text-red-300 bg-dark-800 border border-dark-600 rounded-2xl p-5">{error.message}</p>
       ) : isLoading ? (
         <div className="h-40 rounded-2xl bg-dark-800 animate-pulse" />
-      ) : !linhas.length ? (
+      ) : !todas.length && !periodo ? (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-10 text-center space-y-3">
           <ShoppingCart className="h-10 w-10 mx-auto text-dark-500" />
           <p className="text-dark-200">Nenhuma cotação ainda.</p>
@@ -159,7 +337,12 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
                   {c.clienteNome}
                 </p>
                 <p className="text-xs text-dark-400">
-                  {c.clienteCodigo} · {c.itens} {c.itens === 1 ? 'item' : 'itens'}
+                  {c.cadastro !== 'com' && (
+                    <span className={`mr-1.5 text-[10px] font-bold rounded px-1.5 py-0.5 ${c.vencidaSemCadastro ? 'bg-orange-900/40 text-orange-200' : c.cadastro === 'convertido' ? 'bg-green-900/40 text-green-200' : 'bg-amber-900/40 text-amber-200'}`}>
+                      {c.vencidaSemCadastro ? 'SEM CADASTRO · passou 30 dias' : ROTULO_CADASTRO[c.cadastro].toUpperCase()}
+                    </span>
+                  )}
+                  {c.cadastro === 'pendente' ? 'sem código do SAP' : c.clienteCodigo} · {c.itens} {c.itens === 1 ? 'item' : 'itens'}
                   {c.maiorDescontoPct > 0 && ` · desc. até ${fmtQtd(c.maiorDescontoPct)}%`}
                   {c.status === 'enviada' && c.validaAte && ` · vale até ${dataBr(c.validaAte)}`}
                   {ctx?.veTudo && ` · ${c.vendedorNome}`}
@@ -176,6 +359,8 @@ function ListaCotacoes({ onAbrir }: { onAbrir: (id: number | 'nova') => void }) 
             </button>
           ))}
         </div>
+      )}
+      </>
       )}
       {configurando && ctx && <ModalRegras ctx={ctx} onFechar={() => setConfigurando(false)} />}
     </div>
@@ -649,8 +834,11 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                 <div className="min-w-0">
                   <p className="text-xs text-dark-400">Cliente</p>
                   <p className="font-semibold text-dark-50 break-words">{cliente.nome}</p>
+                  {cliente.codigo.startsWith('PROV-') && (
+                    <span className="inline-block mb-0.5 text-[10px] font-bold rounded bg-amber-900/40 text-amber-200 px-1.5 py-0.5">SEM CADASTRO · cotação vale 30 dias</span>
+                  )}
                   <p className="text-xs text-dark-400">
-                    {cliente.codigo}
+                    {cliente.codigo.startsWith('PROV-') ? 'sem código do SAP' : cliente.codigo}
                     {cliente.cidade && ` · ${cliente.cidade}${cliente.estado ? `/${cliente.estado}` : ''}`}
                   </p>
                 </div>
@@ -661,7 +849,7 @@ function EditorCotacao({ id, onVoltar, onSalva }: { id: number | null; onVoltar:
                 )}
               </div>
             ) : (
-              <BuscaCliente onEscolher={escolherCliente} />
+              <EscolherCliente onEscolher={escolherCliente} />
             )}
             {cliente && <FichaCliente clienteId={cliente.id} />}
           </div>
@@ -1549,6 +1737,60 @@ function Catalogo({ catalogo, carregando, naCotacao, onAdicionar }: { catalogo?:
               <Plus className="h-4 w-4 mr-1" /> Adicionar à cotação
             </Button>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// + Nova cotação: cliente COM cadastro (busca na carteira) ou SEM cadastro
+// (só nome, CNPJ, uso, cidade e UF — vale 30 dias e depois exige o cadastro
+// real pra virar pedido). Izabelly/João, 2026-11-13.
+function EscolherCliente({ onEscolher }: { onEscolher: (c: ClienteBusca) => void }) {
+  const [modo, setModo] = useState<'com' | 'sem'>('com')
+  const [f, setF] = useState({ nome: '', documento: '', uso: '' as '' | 'revenda' | 'consumo', cidade: '', uf: '' })
+  // Piloto do financeiro (2026-11-16): "sem cadastro" só pra quem está no piloto.
+  const { data: piloto } = trpc.pilotoFinanceiro.eu.useQuery(undefined, { staleTime: 60_000 })
+  const criar = trpc.cotacoesCrm.clienteSemCadastro.useMutation({
+    onSuccess: (c) => {
+      if (c.jaExistia) toast('Esse CNPJ/CPF já estava no CRM — usei o cadastro existente', { icon: 'ℹ️' })
+      onEscolher({ id: c.id, codigo: c.codigo, nome: c.nome, cidade: c.cidade, estado: c.estado, nomeContato: null, codigoAntigo: null, nomeFantasia: null, listaPreco: null, prazoCodigo: null, bloqueado: null } as ClienteBusca)
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  const inp = 'w-full rounded-lg bg-dark-900 border border-dark-600 px-3 py-2 text-sm text-dark-100 outline-none focus:border-gold-600'
+  const ok = f.nome.trim().length >= 3 && [11, 14].includes(f.documento.replace(/\D/g, '').length) && f.uso && f.cidade.trim().length >= 2 && /^[A-Za-z]{2}$/.test(f.uf.trim())
+  if (!piloto?.noPiloto) return <BuscaCliente onEscolher={onEscolher} />
+  return (
+    <div className="space-y-2">
+      <div className="flex gap-1 rounded-xl bg-dark-900 p-1 border border-dark-700">
+        {(['com', 'sem'] as const).map((m) => (
+          <button key={m} type="button" onClick={() => setModo(m)} className={`flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold ${modo === m ? 'bg-gold-600/20 text-gold-200 border border-gold-700/60' : 'text-dark-400 hover:text-dark-200'}`}>
+            {m === 'com' ? 'Cliente com cadastro' : 'Cliente sem cadastro'}
+          </button>
+        ))}
+      </div>
+      {modo === 'com' ? (
+        <BuscaCliente onEscolher={onEscolher} />
+      ) : (
+        <div className="space-y-2">
+          <p className="text-[11px] rounded-lg border border-amber-700/50 bg-amber-900/20 px-2 py-1.5 text-amber-200">
+            Só para gerar a cotação — vale 30 dias. Para virar pedido, o cliente precisa do cadastro real (que vai para o financeiro aprovar).
+          </p>
+          <input className={inp} placeholder="Nome / razão social *" value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} />
+          <input className={inp} placeholder="CNPJ ou CPF *" value={f.documento} onChange={(e) => setF({ ...f, documento: e.target.value })} />
+          <select className={inp} value={f.uso} onChange={(e) => setF({ ...f, uso: e.target.value as 'revenda' | 'consumo' })}>
+            <option value="">Uso do cliente *</option>
+            <option value="revenda">Revenda</option>
+            <option value="consumo">Consumo (uso próprio)</option>
+          </select>
+          <div className="flex gap-2">
+            <input className={inp} placeholder="Cidade *" value={f.cidade} onChange={(e) => setF({ ...f, cidade: e.target.value })} />
+            <input className={`${inp} w-20 uppercase`} placeholder="UF *" maxLength={2} value={f.uf} onChange={(e) => setF({ ...f, uf: e.target.value })} />
+          </div>
+          <Button disabled={!ok || criar.isPending} loading={criar.isPending} onClick={() => f.uso && criar.mutate({ nome: f.nome, documento: f.documento, uso: f.uso, cidade: f.cidade, uf: f.uf })}>
+            Usar este cliente
+          </Button>
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real, unique, index, primaryKey, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text, integer, real, unique, uniqueIndex, index, primaryKey, type AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
 import { relations, sql } from 'drizzle-orm'
 
 // Multi-empresa (adicionado quando a Odin Tubos e Conexões entrou no mesmo
@@ -3852,6 +3852,10 @@ export const liberacoesCredito = sqliteTable(
     urlArquivo: text('url_arquivo'),
     nomeArquivo: text('nome_arquivo'),
     tipoArquivo: text('tipo_arquivo'),
+    // Registros de liberação (2026-11-13): sempre com um celular; editável.
+    celular: text('celular'),
+    editadoEm: text('editado_em'),
+    editadoPor: integer('editado_por').references(() => users.id),
     criadoPor: integer('criado_por').notNull().references(() => users.id, { onDelete: 'cascade' }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -3907,6 +3911,11 @@ export const solicitacoesCredito = sqliteTable(
     quemLiberou: text('quem_liberou'),
     motivoResposta: text('motivo_resposta'),
     serasaObservacao: text('serasa_observacao'),
+    // Resposta do financeiro (2026-11-13): primeiro se está limpo no Serasa
+    // e a data da consulta; no pedido de limite, o valor do pedido de venda.
+    serasaLimpo: integer('serasa_limpo', { mode: 'boolean' }),
+    serasaConsultaEm: text('serasa_consulta_em'),
+    valorPedido: real('valor_pedido'),
     // Pedido vindo da Cotação do CRM (cliente sem limite no SAP, venda a
     // prazo — João, 2026-11-11): liberado com valor ≥ pedido libera a
     // cotação pra gerar o pedido. Vale só aquele pedido.
@@ -4650,6 +4659,11 @@ export const expedicaoPedidos = sqliteTable(
     // "Finalizar (já expedido)": fechado na mão sem passar pelas etapas —
     // fica fora do desempenho e do % no prazo (vai como histórico).
     finalizadoManual: integer('finalizado_manual', { mode: 'boolean' }).notNull().default(false),
+    // Faturista (Dani, financeiro 2026-11-13): pedido de cliente ISENTO —
+    // null/'aguardando' = aguardando pagamento, 'pago' = pago.
+    pagamentoStatus: text('pagamento_status', { enum: ['aguardando', 'pago'] }),
+    pagamentoAlteradoEm: text('pagamento_alterado_em'),
+    pagamentoAlteradoPor: integer('pagamento_alterado_por'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
   },
@@ -5368,5 +5382,161 @@ export const cadastrosClientesSap = sqliteTable(
   (t) => ({
     statusIdx: index('idx_cadastros_sap_status').on(t.status),
     clienteIdx: index('idx_cadastros_sap_cliente').on(t.clienteId),
+  })
+)
+
+// Adiantamento PIX (financeiro, 2026-11-13): venda à vista / entrada + boleto
+// precisa do comprovante do PIX anexado pelo vendedor — sem ele a expedição
+// não agenda nem fecha a coleta. O financeiro confere (À conferir → Conferido).
+// Uma linha por venda, criada quando o vendedor anexa.
+export const adiantamentosPix = sqliteTable(
+  'adiantamentos_pix',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    vendaId: integer('venda_id').notNull().references(() => vendas.id, { onDelete: 'cascade' }),
+    comprovantePath: text('comprovante_path'),
+    comprovanteNome: text('comprovante_nome'),
+    anexadoEm: text('anexado_em'),
+    anexadoPor: integer('anexado_por').references(() => users.id, { onDelete: 'set null' }),
+    conferidoEm: text('conferido_em'),
+    conferidoPor: integer('conferido_por').references(() => users.id, { onDelete: 'set null' }),
+    observacao: text('observacao'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    vendaUq: uniqueIndex('uq_adiantamentos_pix_venda').on(t.vendaId),
+  })
+)
+
+// Solicitação de link de pagamento (financeiro, 2026-11-13): o vendedor pede,
+// o financeiro cria o link (beluíno) e cola aqui; o vendedor copia/manda.
+export const linksPagamento = sqliteTable(
+  'links_pagamento',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    clienteNome: text('cliente_nome').notNull(),
+    documento: text('documento'),
+    vendedorId: integer('vendedor_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    valor: real('valor').notNull(),
+    parcelas: integer('parcelas').notNull().default(1),
+    numeroPedido: text('numero_pedido'),
+    descricao: text('descricao'),
+    emailCliente: text('email_cliente'),
+    telefoneCliente: text('telefone_cliente'),
+    observacaoVendedor: text('observacao_vendedor'),
+    // Campos do formulário do beluíno (João, 2026-11-16): telefone fixo,
+    // endereço de entrega (JSON {cep,numero,endereco,cidade,estado,complemento}
+    // ou null = não informar), itens (JSON [{produto,preco,qtd}]), formas de
+    // pagamento (cartão c/ parcelas + bandeira, PIX).
+    telefoneFixo: text('telefone_fixo'),
+    enderecoEntrega: text('endereco_entrega'),
+    itens: text('itens'),
+    cartao: integer('cartao', { mode: 'boolean' }).notNull().default(true),
+    bandeira: text('bandeira'),
+    pix: integer('pix', { mode: 'boolean' }).notNull().default(false),
+    status: text('status', { enum: ['solicitado', 'criado', 'pago', 'cancelado'] }).notNull().default('solicitado'),
+    link: text('link'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    criadoEm: text('criado_em'),
+    observacaoFinanceiro: text('observacao_financeiro'),
+    pagoEm: text('pago_em'),
+    canceladoEm: text('cancelado_em'),
+    motivoCancelamento: text('motivo_cancelamento'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    statusIdx: index('idx_links_pagamento_status').on(t.status),
+  })
+)
+
+// Arquivos para contabilidade (Suy, contas a pagar, 2026-11-13): parecido com
+// Arquivos/Mídia, mas só o financeiro vê e o arquivo fica numa pasta que não
+// abre por link direto (rota /contabilidade-arquivo/:id checa a permissão).
+export const contabilidadePastas = sqliteTable('contabilidade_pastas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  nome: text('nome').notNull(),
+  pastaPaiId: integer('pasta_pai_id').references((): AnySQLiteColumn => contabilidadePastas.id, { onDelete: 'cascade' }),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const contabilidadeArquivos = sqliteTable(
+  'contabilidade_arquivos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+    pastaId: integer('pasta_id').references(() => contabilidadePastas.id, { onDelete: 'cascade' }),
+    nomeOriginal: text('nome_original').notNull(),
+    nomeArmazenado: text('nome_armazenado').notNull(),
+    tipoArquivo: text('tipo_arquivo'),
+    tamanhoBytes: integer('tamanho_bytes'),
+    enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Exclusão vai pra lixeira (só quem gerencia restaura/vê).
+    excluidoEm: text('excluido_em'),
+    excluidoPor: integer('excluido_por').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => ({
+    pastaIdx: index('idx_contabilidade_arquivos_pasta').on(t.empresaId, t.pastaId),
+  })
+)
+
+// Cobrança automática (financeiro, 2026-11-13): títulos vencidos das contas a
+// receber do SAP (sap_titulos_abertos) entram sozinhos 1 dia útil depois do
+// vencimento. Régua: dias úteis 1–5 cobrar (WhatsApp/ligação/e-mail, cada
+// clique registra), 6º dia útil sem pagar → cartório (+ aviso ao cliente),
+// 10 dias pra voltar e conferir, 60 dias do vencimento sem pagar → RC. Sumiu
+// do SAP = pago. `chave` = empresa|cliente|tipo|documento|parcela.
+export const cobrancaTitulos = sqliteTable(
+  'cobranca_titulos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    chave: text('chave').notNull(),
+    empresaSlug: text('empresa_slug'),
+    codigoCliente: text('codigo_cliente').notNull(),
+    nomeCliente: text('nome_cliente'),
+    tipo: text('tipo').notNull(),
+    documento: text('documento').notNull(),
+    parcela: text('parcela'),
+    emissao: text('emissao'),
+    vencimento: text('vencimento').notNull(),
+    valor: real('valor').notNull(),
+    vendedorSap: text('vendedor_sap'),
+    status: text('status', { enum: ['cobrar', 'cartorio', 'rc', 'pago'] }).notNull().default('cobrar'),
+    cartorioEm: text('cartorio_em'),
+    cartorioAvisoEm: text('cartorio_aviso_em'),
+    retornoEm: text('retorno_em'),
+    retornoVerificadoEm: text('retorno_verificado_em'),
+    retornoResultado: text('retorno_resultado'),
+    rcEm: text('rc_em'),
+    pagoEm: text('pago_em'),
+    pagoAuto: integer('pago_auto', { mode: 'boolean' }).notNull().default(false),
+    observacao: text('observacao'),
+    atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    chaveUq: uniqueIndex('uq_cobranca_titulos_chave').on(t.chave),
+    statusIdx: index('idx_cobranca_titulos_status').on(t.status, t.codigoCliente),
+  })
+)
+
+export const cobrancaContatos = sqliteTable(
+  'cobranca_contatos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tituloId: integer('titulo_id').notNull().references(() => cobrancaTitulos.id, { onDelete: 'cascade' }),
+    canal: text('canal', { enum: ['whatsapp', 'ligacao', 'email', 'outro'] }).notNull(),
+    tipo: text('tipo', { enum: ['cobranca', 'aviso_cartorio', 'retorno'] }).notNull().default('cobranca'),
+    diaRegua: integer('dia_regua'),
+    observacao: text('observacao'),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    tituloIdx: index('idx_cobranca_contatos_titulo').on(t.tituloId),
   })
 )

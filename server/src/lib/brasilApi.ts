@@ -77,3 +77,27 @@ export async function buscarCnpj(cnpj: string): Promise<CnpjLookupResult | null>
     simples: typeof data.opcao_pelo_simples === 'boolean' ? data.opcao_pelo_simples : null,
   }
 }
+
+// CEP → endereço (Izabelly, 2026-11-13: "puxar o CEP automático"). BrasilAPI
+// e, se falhar, ViaCEP — ambas gratuitas e sem chave.
+export interface CepResult { cep: string; rua: string; bairro: string; cidade: string; uf: string }
+export async function buscarCep(cep: string): Promise<CepResult | null> {
+  const d = (cep ?? '').replace(/\D/g, '')
+  if (d.length !== 8) return null
+  const ua = { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
+  try {
+    const r = await fetch(`https://brasilapi.com.br/api/cep/v1/${d}`, { headers: ua, signal: AbortSignal.timeout(6000) })
+    if (r.ok) {
+      const j = (await r.json()) as { street?: string; neighborhood?: string; city?: string; state?: string }
+      if (j.city) return { cep: d, rua: j.street ?? '', bairro: j.neighborhood ?? '', cidade: j.city, uf: j.state ?? '' }
+    }
+  } catch {}
+  try {
+    const r = await fetch(`https://viacep.com.br/ws/${d}/json/`, { headers: ua, signal: AbortSignal.timeout(6000) })
+    if (r.ok) {
+      const j = (await r.json()) as { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string }
+      if (!j.erro && j.localidade) return { cep: d, rua: j.logradouro ?? '', bairro: j.bairro ?? '', cidade: j.localidade, uf: j.uf ?? '' }
+    }
+  } catch {}
+  return null
+}

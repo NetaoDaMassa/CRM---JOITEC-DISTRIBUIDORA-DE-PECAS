@@ -119,6 +119,13 @@ export interface DadosCadastro {
   territorio?: number | null
   formasPagamento?: string[] | null
   filiais?: number[]
+  // Regras do financeiro (Izabelly, 2026-11-13): e-mail do financeiro do
+  // cliente obrigatório, telefone/contato do financeiro e anexos.
+  emailFinanceiro?: string
+  contatoFinanceiro?: string
+  dddFinanceiro?: string
+  telefoneFinanceiro?: string
+  anexos?: { nome: string; arquivo: string; tipo: string | null }[]
   cobranca: EnderecoCadastro
   entregaIgual: boolean
   entrega: EnderecoCadastro
@@ -142,8 +149,24 @@ function formatarCep(c: string) {
   return d.length === 8 ? `${d.slice(0, 5)}-${d.slice(5)}` : c
 }
 
+// Cliente isento (Izabelly, 2026-11-13): Indicador da IE = Não contribuinte
+// (travado), op. consumidor = Consumidor final, uso principal = Venda
+// consumo, grupo do cliente ISENTO e lista de preço "cliente isento".
+export const USO_CONSUMO = 21
+export const GRUPO_CLIENTE_ISENTO = 118
+export function listaIsentoDe(listas: { v: number; l: string }[]): number | null {
+  return listas.find((x) => /isent/i.test(x.l))?.v ?? null
+}
+export function aplicarRegrasIsento(d: DadosCadastro, listaIsento: number | null): DadosCadastro {
+  if (d.pessoa !== 'juridica' || !d.ieIsento) return d
+  return { ...d, indicadorIE: '9', indicadorConsumidor: '1', usoPrincipal: USO_CONSUMO, grupoCliente: GRUPO_CLIENTE_ISENTO, ...(listaIsento ? { listaPreco: listaIsento } : {}) }
+}
+
 // O que falta pra mandar ao SAP (vazio = pode enviar).
-export function faltando(d: DadosCadastro): string[] {
+// `regrasNovas` = piloto do financeiro (2026-11-16): celular e e-mail do
+// financeiro obrigatórios só pra quem está no piloto; os outros seguem a
+// regra antiga (telefone OU celular).
+export function faltando(d: DadosCadastro, regrasNovas = true): string[] {
   const f: string[] = []
   if (t(d.nome).length < 3) f.push('Nome / razão social')
   if (d.pessoa === 'juridica') {
@@ -153,8 +176,11 @@ export function faltando(d: DadosCadastro): string[] {
   if (!d.grupoTributario) f.push('Grupo tributário')
   if (!d.indicadorIE) f.push('Indicador da IE')
   if (!d.indicadorConsumidor) f.push('Indicador de op. consumidor')
-  if (!so(d.telefone) && !so(d.celular)) f.push('Telefone ou celular')
+  if (regrasNovas) {
+    if (so(d.dddCelular).length !== 2 || so(d.celular).length < 8) f.push('Celular (com DDD)')
+  } else if (!so(d.telefone) && !so(d.celular)) f.push('Telefone ou celular')
   if (!/^\S+@\S+\.\S+$/.test(t(d.email))) f.push('E-mail')
+  if (regrasNovas && !/^\S+@\S+\.\S+$/.test(t(d.emailFinanceiro))) f.push('E-mail do financeiro')
   const end = (e: EnderecoCadastro, nome: string) => {
     if (so(e.cep).length !== 8) f.push(`CEP (${nome})`)
     if (!t(e.rua)) f.push(`Rua (${nome})`)
@@ -222,7 +248,10 @@ async function enderecoSap(sap: SapSessao, e: EnderecoCadastro, nome: 'COBRANCA'
 // Corpo do BusinessPartner (criação ou correção — o status fica de fora).
 async function corpoSap(sap: SapSessao, d: DadosCadastro, vendedorSap: number | null, formasPadrao: string[]) {
   const formas = d.formasPagamento?.length ? d.formasPagamento : formasPadrao
-  const contatos = contatosDe(d)
+  const contatos = [...contatosDe(d)]
+  // Financeiro do cliente vira um contato próprio no SAP.
+  if (t(d.emailFinanceiro) || so(d.telefoneFinanceiro ?? ''))
+    contatos.push({ nome: t(d.contatoFinanceiro) ? `FINANCEIRO - ${t(d.contatoFinanceiro)}` : 'FINANCEIRO', cargo: 'Financeiro', telefone: `${so(d.dddFinanceiro ?? '')}${so(d.telefoneFinanceiro ?? '')}`, celular: '', email: t(d.emailFinanceiro) })
   const filiais = [...new Set(d.filiais ?? [])]
   const cnpj = d.pessoa === 'juridica' ? formatarCnpj(d.cnpj) : null
   const cpf = d.pessoa === 'fisica' ? formatarCpf(d.cpf) : null
@@ -241,17 +270,14 @@ async function corpoSap(sap: SapSessao, d: DadosCadastro, vendedorSap: number | 
     Phone2: so(d.telefone) ? so(d.ddd) : so(d.dddCelular),
     Cellular: so(d.celular) ? `${so(d.dddCelular)}${so(d.celular)}` : null,
     EmailAddress: t(d.email),
-    Website: t(d.site) || null,
     Notes: obs || null,
     PayTermsGrpCode: d.prazoCodigo,
     PriceListNum: d.listaPreco,
     SalesPersonCode: d.respComercial ?? vendedorSap ?? -1,
     MainUsage: d.usoPrincipal || 10,
-    ...(d.limiteCredito && d.limiteCredito > 0 ? { CreditLimit: d.limiteCredito } : {}),
     ...(d.segmento ? { Industry: d.segmento } : {}),
     ...(d.territorio ? { Territory: d.territorio } : {}),
     ...(filiais.length ? { BPBranchAssignment: filiais.map((f) => ({ BPLID: f, DisabledForBP: 'tNO' })) } : {}),
-    ...(d.indicador ? { Indicator: d.indicador } : {}),
     BilltoDefault: 'COBRANCA',
     ShipToDefault: 'ENTREGA',
     BPAddresses: [await enderecoSap(sap, d.cobranca, 'COBRANCA'), await enderecoSap(sap, entrega, 'ENTREGA')],

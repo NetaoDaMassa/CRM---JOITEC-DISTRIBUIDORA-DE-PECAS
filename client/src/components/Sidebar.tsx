@@ -5,7 +5,7 @@ import {
   LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck, MousePointerClick,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
-  ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock,
+  ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -56,6 +56,9 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // próprios clientes, então fica liberado pra todos (Joitec e Odin Tubos).
 // 'conferencia_sap' (2026-10-30): idem — o vendedor só vê as próprias vendas.
 export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira', 'conferencia_sap', 'chat'])
+// Piloto do financeiro (2026-11-16): o item com essa chave aparece só pra
+// quem está no piloto (Piloto do financeiro, superAdmin edita).
+const FEATURES_DO_PILOTO = new Set(['pedir_link_pagamento'])
 
 // Guia do Financeiro (pedido do João, 2026-10-20) — só aparece/abre pra quem
 // tem pelo menos UMA das telas do Financeiro liberada.
@@ -64,6 +67,11 @@ export const FEATURES_GUIA_FINANCEIRO = [
   'boletos',
   'negociacoes',
   'liberacao_credito',
+  'adiantamento_pix',
+  'link_pagamento',
+  'faturamento_isentos',
+  'arquivos_contabilidade',
+  'cobranca_sap',
   'solicitacao_credito',
   'aprovacao_cadastro_cliente',
   'requisicao_posto',
@@ -98,7 +106,10 @@ export const ADMIN_LINKS = [
   { to: '/admin/mensagens', label: 'Mensagens', icon: MessageSquareText, feature: 'mensagens' },
   { to: '/admin/caixa', label: 'Caixa', icon: Banknote, feature: 'caixa' },
   { to: '/admin/boletos', label: 'Boletos', icon: FileSpreadsheet, feature: 'boletos' },
-  { to: '/admin/negociacoes', label: 'Negociações', icon: Handshake, feature: 'negociacoes' },
+  // Negociações (régua/cartório/RC à mão) saiu do menu — trocada pela
+  // Cobrança automática do SAP (João, 2026-11-16). A rota continua no ar e a
+  // Cobrança tem o link "Tela antiga" pra voltar se precisar.
+  // { to: '/admin/negociacoes', label: 'Negociações', icon: Handshake, feature: 'negociacoes' },
   // Relatório geral de gastos do cartão corporativo — era superAdmin-only
   // (pedido do João, 2026-09-15), virou delegável em 2026-09-22. Só faz
   // sentido pra Odin Compressores (é quem usa cartão corporativo hoje).
@@ -199,7 +210,13 @@ export const ADMIN_LINKS = [
   // (hoje a Rubia) registra quando um cliente de qualquer empresa do grupo
   // foi liberado pra comprar mesmo com pendência/limite estourado. Pedido
   // do João, 2026-09-24.
-  { to: '/admin/liberacao-credito', label: 'Liberação de Crédito', icon: Unlock, feature: 'liberacao_credito' },
+  { to: '/admin/liberacao-credito', label: 'Registros de liberação', icon: Unlock, feature: 'liberacao_credito' },
+  { to: '/admin/adiantamento-pix', label: 'Adiantamento PIX', icon: QrCode, feature: 'adiantamento_pix' },
+  { to: '/admin/links-pagamento', label: 'Links de pagamento', icon: Link2, feature: 'link_pagamento' },
+  { to: '/admin/pedir-link-pagamento', label: 'Pedir link de pagamento', icon: Link2, feature: 'pedir_link_pagamento' },
+  { to: '/admin/faturamento-isentos', label: 'Faturamento isentos', icon: BadgePercent, feature: 'faturamento_isentos' },
+  { to: '/admin/arquivos-contabilidade', label: 'Arquivos p/ contabilidade', icon: FolderLock, feature: 'arquivos_contabilidade' },
+  { to: '/admin/cobranca', label: 'Cobrança', icon: BellRing, feature: 'cobranca_sap' },
   // Fluxo completo pedido→resposta (diferente da Liberação de Crédito acima,
   // que é só um registro direto) — vendedor abre a solicitação, financeiro
   // responde. Cross-empresa também. Pedido do João, 2026-10-01.
@@ -261,6 +278,7 @@ export const VENDOR_LINKS = [
   // Odin Compressores (diferente do Cartão de Crédito acima). Mesma chave
   // de ADMIN_LINKS (ver comentário lá). Pedido do João, 2026-10-01.
   { to: '/vendedor/solicitacao-credito', label: 'Consulta/Solicitação de Crédito', icon: HandCoins, feature: 'solicitacao_credito' },
+  { to: '/vendedor/link-pagamento', label: 'Link de pagamento', icon: Link2, feature: 'pedir_link_pagamento' },
   // Setor de Compras — mesmas telas/chaves do ADMIN_LINKS (vendedor pode
   // pedir compra; se liberado, até ser comprador/aprovador).
   { to: '/vendedor/compras-solicitar', label: 'Solicitar compra', icon: ShoppingBag, feature: 'compras_solicitar' },
@@ -473,6 +491,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   // "piscar" vazia pro João enquanto minhasPermissoes ainda carrega.
   // Vendedor também usa essa query agora, só pra saber se ainda tem alguma
   // aba de relatório liberada (ver filtro de VENDOR_LINKS abaixo).
+  const { data: piloto } = trpc.pilotoFinanceiro.eu.useQuery(undefined, { enabled: !!user, staleTime: 60_000 })
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
   })
@@ -487,7 +506,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       (!l.somenteEmpresa || l.somenteEmpresa === empresaAtiva?.slug) &&
       (!somenteEmpresas || somenteEmpresas.includes(empresaAtiva?.slug ?? '')) &&
       (!l.ocultoEmpresa || l.ocultoEmpresa !== empresaAtiva?.slug) &&
-      (user?.superAdmin || FEATURES_SEMPRE_LIBERADAS.has(l.feature) || !!minhasFeatures?.includes(l.feature)) &&
+      (FEATURES_DO_PILOTO.has(l.feature)
+        ? !!(user?.superAdmin || piloto?.noPiloto)
+        : user?.superAdmin || FEATURES_SEMPRE_LIBERADAS.has(l.feature) || !!minhasFeatures?.includes(l.feature)) &&
       // "Meu Painel" sai do menu de quem tem Kanban — o Painel do dia do
       // Kanban substitui ele (ver InicioVendedor em App.tsx).
       !(user?.role === 'vendor' && l.to === '/vendedor' && minhasFeatures?.includes('kanban')) &&
@@ -525,6 +546,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     // { to: '/admin/marketing-geral', label: 'Marketing — Geral', icon: BarChart3, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
+    { to: '/admin/piloto-financeiro', label: 'Piloto do financeiro', icon: FlaskConical, visivel: !!user?.superAdmin },
     // Histórico SAP fora do menu (João 2026-10-20: importação é feita por
     // script, não por tela) — rota /admin/historico-sap continua no App.tsx
     // só como saída de emergência pra desligar um lote.

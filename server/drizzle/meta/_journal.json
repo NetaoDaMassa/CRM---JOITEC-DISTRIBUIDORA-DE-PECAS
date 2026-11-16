@@ -1142,6 +1142,41 @@
       "when": 1794540200000,
       "tag": "0162_garantias_frete",
       "breakpoints": true
+    },
+    {
+      "idx": 163,
+      "version": "6",
+      "when": 1794600000000,
+      "tag": "0163_financeiro_credito",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "6",
+      "when": 1794700000000,
+      "tag": "0164_adiantamento_pix",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "6",
+      "when": 1794800000000,
+      "tag": "0165_financeiro_link_isentos_contabilidade",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "6",
+      "when": 1794900000000,
+      "tag": "0166_cobranca_sap",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "6",
+      "when": 1795000000000,
+      "tag": "0167_link_pagamento_beluino",
+      "breakpoints": true
     }
   ]
 }

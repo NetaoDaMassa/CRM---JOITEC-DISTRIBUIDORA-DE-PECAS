@@ -1,0 +1,398 @@
+import { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
+import { Mail, MessageCircle, Phone, RefreshCw } from 'lucide-react'
+import { trpc } from '../../lib/trpc'
+import Button from '../../components/ui/Button'
+import { Input, Textarea } from '../../components/ui/Input'
+import { formatDateTime } from '../../lib/utils'
+import { formatarMoeda } from '../../lib/moeda'
+import type { inferRouterOutputs } from '@trpc/server'
+import type { AppRouter } from '@server/router/index'
+
+// Cobrança (financeiro, 2026-11-13): contas a receber do SAP → régua de dias
+// úteis 1–5 → cartório no 6º → 10 dias pra conferir → RC aos 60 dias.
+
+type Grupo = inferRouterOutputs<AppRouter>['cobrancaSap']['listar'][number]
+type Aba = 'cobrar' | 'cartorio' | 'rc' | 'pago' | 'mensagens'
+
+const EMPRESA_LABEL: Record<string, string> = { joitec: 'Joitec', 'odin-tubos': 'Odin Tubos', 'joitec-automacao': 'Odin Automação' }
+const CANAL_LABEL: Record<string, string> = { whatsapp: 'WhatsApp', ligacao: 'Ligação', email: 'E-mail', outro: 'Registro' }
+const TIPO_LABEL: Record<string, string> = { cobranca: 'Cobrança', aviso_cartorio: 'Aviso de cartório', retorno: 'Retorno do cartório' }
+
+const dataBr = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
+
+function montarMensagem(modelo: string, g: Grupo) {
+  const titulos = g.titulos
+    .map((t) => `• ${t.tipo === 'nota' ? 'NF' : 'Título'} ${t.documento}${t.parcela ? `/${t.parcela}` : ''} — venc. ${dataBr(t.vencimento)} — ${formatarMoeda(t.valor)}`)
+    .join('\n')
+  return modelo.replaceAll('{cliente}', g.contato?.nomeContato || g.nomeCliente || '').replaceAll('{titulos}', titulos).replaceAll('{total}', formatarMoeda(g.total))
+}
+
+function telefoneWa(tel: string | null | undefined) {
+  const d = (tel ?? '').replace(/\D/g, '')
+  if (d.length < 10) return null
+  return d.length <= 11 ? `55${d}` : d
+}
+
+function Bolinhas({ dias, atual }: { dias: number[]; atual: number }) {
+  return (
+    <span className="inline-flex items-center gap-1" title="Dias úteis depois do vencimento (verde = cobrado nesse dia)">
+      {[1, 2, 3, 4, 5].map((d) => (
+        <span
+          key={d}
+          className={`inline-flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold border ${
+            dias.includes(d) ? 'bg-green-600 border-green-500 text-white' : d === atual ? 'border-amber-400 text-amber-300' : d < atual ? 'border-red-700/70 text-red-400' : 'border-dark-600 text-dark-500'
+          }`}
+        >
+          {d}
+        </span>
+      ))}
+      <span className={`ml-1 text-[10px] font-semibold ${atual >= 6 ? 'text-red-400' : 'text-dark-400'}`}>6 = cartório</span>
+    </span>
+  )
+}
+
+function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca: string; cartorio: string } | undefined }) {
+  const utils = trpc.useUtils()
+  const recarregar = () => (utils.cobrancaSap.listar.invalidate(), utils.cobrancaSap.resumo.invalidate())
+  const erro = (e: { message: string }) => toast.error(e.message)
+  const registrar = trpc.cobrancaSap.registrarContato.useMutation({ onSuccess: () => (toast.success('Cobrança registrada'), recarregar()), onError: erro })
+  const pago = trpc.cobrancaSap.marcarPago.useMutation({ onSuccess: () => (toast.success('Marcado como pago'), recarregar()), onError: erro })
+  const mover = trpc.cobrancaSap.mover.useMutation({ onSuccess: () => (toast.success('Movido'), recarregar()), onError: erro })
+  const retorno = trpc.cobrancaSap.verificarRetorno.useMutation({ onSuccess: () => (toast.success('Registrado'), recarregar()), onError: erro })
+  const { data: ramal } = trpc.pabx.meuRamal.useQuery(undefined, { staleTime: 5 * 60_000 })
+  const discar = trpc.pabx.discar.useMutation({ onError: erro })
+  const [historico, setHistorico] = useState(false)
+  const [obs, setObs] = useState('')
+
+  const ids = g.titulos.map((t) => t.id)
+  const tipoContato = aba === 'cartorio' ? ('aviso_cartorio' as const) : ('cobranca' as const)
+  const modelo = aba === 'cartorio' ? msgs?.cartorio : msgs?.cobranca
+  const texto = modelo ? montarMensagem(modelo, g) : ''
+  const wa = telefoneWa(g.contato?.telefone)
+  const reg = (canal: 'whatsapp' | 'ligacao' | 'email' | 'outro') => registrar.mutate({ tituloIds: ids, canal, tipo: tipoContato, observacao: obs || undefined })
+
+  const whatsapp = () => {
+    if (!wa) return toast.error('Cliente sem celular no cadastro do CRM')
+    window.open(`https://wa.me/${wa}?text=${encodeURIComponent(texto)}`, '_blank')
+    reg('whatsapp')
+  }
+  const ligar = () => {
+    const tel = g.contato?.telefone
+    if (!tel) return toast.error('Cliente sem telefone no cadastro do CRM')
+    if (ramal?.click2call) discar.mutate({ numero: tel }, { onSuccess: () => toast.success('Ligando pelo PABX — atenda o seu ramal') })
+    else window.location.href = `tel:${tel.replace(/\D/g, '')}`
+    reg('ligacao')
+  }
+  const email = () => {
+    if (!g.contato?.email) return toast.error('Cliente sem e-mail no cadastro do CRM')
+    const assunto = aba === 'cartorio' ? 'Aviso: título encaminhado ao cartório' : 'Títulos em aberto'
+    window.location.href = `mailto:${g.contato.email}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`
+    reg('email')
+  }
+
+  const avisado = g.titulos.every((t) => t.cartorioAvisoEm)
+  const borda = g.retornoVencido ? 'border-red-600/70' : aba === 'cobrar' && g.cobradoHoje ? 'border-green-800/60' : 'border-dark-600'
+  return (
+    <div className={`rounded-xl border bg-dark-800 p-3 space-y-2 ${borda}`}>
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-dark-100">
+            {g.nomeCliente} <span className="text-xs font-normal text-dark-500">{g.codigoCliente}</span>
+          </p>
+          <p className="text-xs text-dark-400">
+            {EMPRESA_LABEL[g.empresaSlug ?? ''] ?? g.empresaSlug}
+            {g.contato?.vendedor && ` · 👤 ${g.contato.vendedor}`}
+            {g.contato?.telefone && ` · 📱 ${g.contato.telefone}`}
+            {g.contato?.email && ` · ✉ ${g.contato.email}`}
+            {!g.contato && ' · sem cadastro no CRM (sem telefone/e-mail)'}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-bold text-red-300">{formatarMoeda(g.total)}</p>
+          {aba === 'cobrar' && g.cobradoHoje && <p className="text-[11px] text-green-400">✓ cobrado hoje</p>}
+          {aba === 'cartorio' && <p className={`text-[11px] ${avisado ? 'text-green-400' : 'text-amber-300'}`}>{avisado ? '✓ cliente avisado' : '⚠ falta avisar o cliente'}</p>}
+          {g.retornoVencido && <p className="text-[11px] font-bold text-red-300">⏰ voltar e conferir</p>}
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead className="text-dark-500">
+            <tr className="text-left">
+              <th className="py-1 pr-2 font-medium">Documento</th>
+              <th className="py-1 pr-2 font-medium">Vencimento</th>
+              <th className="py-1 pr-2 font-medium text-right">Valor</th>
+              <th className="py-1 font-medium">{aba === 'cobrar' ? 'Régua' : aba === 'cartorio' ? 'Cartório' : aba === 'rc' ? 'RC' : 'Pago'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {g.titulos.map((t) => (
+              <tr key={t.id} className="border-t border-dark-700">
+                <td className="py-1 pr-2 text-dark-200">
+                  {t.tipo === 'nota' ? 'NF' : 'Título'} {t.documento}
+                  {t.parcela ? `/${t.parcela}` : ''}
+                </td>
+                <td className="py-1 pr-2 text-dark-300">
+                  {dataBr(t.vencimento)} <span className="text-dark-500">({t.diasVencido}d)</span>
+                </td>
+                <td className="py-1 pr-2 text-right text-dark-100">{formatarMoeda(t.valor)}</td>
+                <td className="py-1">
+                  {aba === 'cobrar' && (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <Bolinhas dias={t.diasCobrados} atual={t.diaUtil} />
+                      {t.cartorioPrevisto && <span className="text-[10px] text-dark-500">cartório em {dataBr(t.cartorioPrevisto)}</span>}
+                    </span>
+                  )}
+                  {aba === 'cartorio' && (
+                    <span className="text-dark-300">
+                      enviado {dataBr(t.cartorioEm)} · conferir em <b className={t.retornoVencido ? 'text-red-300' : ''}>{dataBr(t.retornoEm)}</b>
+                      {t.retornoResultado && <span className="text-dark-500"> · última conferência: {t.retornoResultado}</span>}
+                    </span>
+                  )}
+                  {aba === 'rc' && <span className="text-dark-300">enviado à RC em {dataBr(t.rcEm)}</span>}
+                  {aba === 'pago' && (
+                    <span className="text-green-400">
+                      {dataBr(t.pagoEm)} {t.pagoAuto ? '(baixa no SAP)' : '(marcado no CRM)'}
+                    </span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {(aba === 'cobrar' || aba === 'cartorio') && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-dark-400">{aba === 'cartorio' ? 'Avisar que foi a cartório:' : 'Cobrar:'}</span>
+            <Button size="sm" variant="secondary" onClick={whatsapp} disabled={registrar.isPending}>
+              <MessageCircle size={13} className="mr-1 text-green-400" /> WhatsApp
+            </Button>
+            {aba === 'cobrar' && (
+              <Button size="sm" variant="secondary" onClick={ligar} disabled={registrar.isPending}>
+                <Phone size={13} className="mr-1 text-sky-400" /> Ligar{ramal?.click2call ? ' (PABX)' : ''}
+              </Button>
+            )}
+            <Button size="sm" variant="secondary" onClick={email} disabled={registrar.isPending}>
+              <Mail size={13} className="mr-1 text-amber-300" /> E-mail
+            </Button>
+            <input
+              className="min-w-[180px] flex-1 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-100"
+              placeholder="Observação (o que o cliente disse) — opcional"
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {aba === 'cartorio' && (
+              <>
+                <Button size="sm" onClick={() => retorno.mutate({ tituloIds: ids, resultado: 'pago', observacao: obs || undefined })}>
+                  Conferi: pago
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => retorno.mutate({ tituloIds: ids, resultado: 'nao_pago', observacao: obs || undefined })}>
+                  Conferi: ainda não pago (+ prazo)
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => mover.mutate({ tituloIds: ids, para: 'rc' })}>
+                  Mandar para RC
+                </Button>
+              </>
+            )}
+            {aba === 'cobrar' && (
+              <>
+                <Button size="sm" onClick={() => pago.mutate({ tituloIds: ids, observacao: obs || undefined })}>
+                  ✓ Cliente pagou
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => mover.mutate({ tituloIds: ids, para: 'cartorio' })}>
+                  Mandar ao cartório agora
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+      {aba === 'rc' && (
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => pago.mutate({ tituloIds: ids })}>
+            ✓ Pago
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => mover.mutate({ tituloIds: ids, para: 'cartorio' })}>
+            Voltar para cartório
+          </Button>
+        </div>
+      )}
+      {aba === 'pago' && (
+        <button className="text-xs text-dark-500 hover:text-dark-200" onClick={() => mover.mutate({ tituloIds: ids, para: 'cobrar' })}>
+          voltar para cobrança
+        </button>
+      )}
+
+      {g.titulos.some((t) => t.contatos.length) && (
+        <div>
+          <button className="text-[11px] text-gold-400 hover:underline" onClick={() => setHistorico(!historico)}>
+            {historico ? '▾ esconder histórico' : `▸ histórico (${new Set(g.titulos.flatMap((t) => t.contatos.map((c) => c.createdAt + c.canal + c.tipo))).size})`}
+          </button>
+          {historico && (
+            <ul className="mt-1 space-y-0.5 text-[11px] text-dark-400">
+              {[...new Map(g.titulos.flatMap((t) => t.contatos).map((c) => [c.createdAt + c.canal + c.tipo, c])).values()]
+                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+                .map((c) => (
+                  <li key={c.id}>
+                    {formatDateTime(c.createdAt)} · {TIPO_LABEL[c.tipo]} por {CANAL_LABEL[c.canal]}
+                    {c.diaRegua ? ` (dia ${c.diaRegua})` : ''} · {c.quem ?? '—'}
+                    {c.observacao ? ` — ${c.observacao}` : ''}
+                  </li>
+                ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Mensagens() {
+  const utils = trpc.useUtils()
+  const { data } = trpc.cobrancaSap.mensagens.useQuery()
+  const { data: resumo } = trpc.cobrancaSap.resumo.useQuery()
+  const [cobranca, setCobranca] = useState('')
+  const [cartorio, setCartorio] = useState('')
+  const [diasRetorno, setDiasRetorno] = useState('10')
+  const [diasRc, setDiasRc] = useState('60')
+  useEffect(() => {
+    if (data) (setCobranca(data.cobranca), setCartorio(data.cartorio))
+  }, [data])
+  useEffect(() => {
+    if (resumo) (setDiasRetorno(String(resumo.diasRetorno)), setDiasRc(String(resumo.diasRc)))
+  }, [resumo])
+  const salvar = trpc.cobrancaSap.salvarMensagens.useMutation({ onSuccess: () => (toast.success('Salvo'), utils.cobrancaSap.invalidate()), onError: (e) => toast.error(e.message) })
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-dark-400">
+        Use <code className="text-gold-400">{'{cliente}'}</code>, <code className="text-gold-400">{'{titulos}'}</code> (lista com documento, vencimento e valor) e{' '}
+        <code className="text-gold-400">{'{total}'}</code> — são trocados pelos dados do cliente na hora de mandar.
+      </p>
+      <Textarea label="Mensagem de cobrança (dias 1 a 5)" rows={8} value={cobranca} onChange={(e) => setCobranca(e.target.value)} />
+      <Textarea label="Mensagem de aviso de cartório" rows={7} value={cartorio} onChange={(e) => setCartorio(e.target.value)} />
+      <div className="grid gap-3 sm:grid-cols-2 max-w-md">
+        <Input label="Dias para voltar e conferir o cartório" type="number" value={diasRetorno} onChange={(e) => setDiasRetorno(e.target.value)} />
+        <Input label="Dias do vencimento até mandar à RC" type="number" value={diasRc} onChange={(e) => setDiasRc(e.target.value)} />
+      </div>
+      <div className="flex gap-2">
+        <Button onClick={() => salvar.mutate({ cobranca, cartorio, diasRetorno: Number(diasRetorno) || 10, diasRc: Number(diasRc) || 60 })} loading={salvar.isPending}>
+          Salvar
+        </Button>
+        {data && (
+          <Button variant="ghost" onClick={() => (setCobranca(data.padrao.cobranca), setCartorio(data.padrao.cartorio))}>
+            Voltar ao texto padrão
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function CobrancaSap() {
+  const [aba, setAba] = useState<Aba>('cobrar')
+  const [empresa, setEmpresa] = useState('')
+  const [busca, setBusca] = useState('')
+  const utils = trpc.useUtils()
+  const { data: resumo } = trpc.cobrancaSap.resumo.useQuery()
+  const { data: msgs } = trpc.cobrancaSap.mensagens.useQuery()
+  const { data, isLoading } = trpc.cobrancaSap.listar.useQuery({ aba: aba === 'mensagens' ? 'cobrar' : aba, empresa: empresa || undefined }, { enabled: aba !== 'mensagens' })
+  const atualizar = trpc.cobrancaSap.atualizarAgora.useMutation({
+    onSuccess: (r) => (toast.success(`${r.novos} novo(s), ${r.pagos} pago(s), ${r.cartorio} p/ cartório, ${r.rc} p/ RC`), utils.cobrancaSap.invalidate()),
+    onError: (e) => toast.error(e.message),
+  })
+  const q = busca.trim().toLowerCase()
+  const lista = (data ?? []).filter((g) => !q || [g.nomeCliente, g.codigoCliente, g.contato?.vendedor, ...g.titulos.map((t) => t.documento)].some((x) => (x ?? '').toLowerCase().includes(q)))
+  const rotulo: Record<Aba, string> = {
+    cobrar: `A cobrar${resumo ? ` (${resumo.cobrar.qtd})` : ''}`,
+    cartorio: `Cartório${resumo ? ` (${resumo.cartorio.qtd})` : ''}`,
+    rc: `Enviados à RC${resumo ? ` (${resumo.rc.qtd})` : ''}`,
+    pago: 'Pagos',
+    mensagens: 'Mensagens e prazos',
+  }
+
+  return (
+    <div className="p-6 space-y-4 max-w-5xl">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-xl text-dark-50">Cobrança</h1>
+          <p className="text-sm text-dark-400 mt-1 max-w-3xl">
+            Contas a receber do SAP (Joitec, Odin Tubos e Odin Automação). O título entra 1 dia útil depois do vencimento (sem sábado, domingo e feriado). Cobre nos dias 1 a 5: cada clique em
+            WhatsApp, Ligar ou E-mail fica registrado. No 6º dia útil sem pagamento, vai sozinho para o cartório (avise o cliente). Depois de {resumo?.diasRetorno ?? 10} dias, volte e confira. Com{' '}
+            {resumo?.diasRc ?? 60} dias do vencimento sem pagar, vai para a RC. Quando sai a baixa no SAP, vira pago sozinho.
+          </p>
+          {resumo?.fotoSapEm && <p className="text-[11px] text-dark-500 mt-1">Contas a receber do SAP atualizadas em {formatDateTime(resumo.fotoSapEm)}</p>}
+          <a href="/admin/negociacoes" className="mt-1 inline-block text-[11px] text-dark-500 underline hover:text-dark-300" title="A tela antiga, preenchida à mão, continua guardada">
+            Abrir a tela antiga (Negociações)
+          </a>
+        </div>
+        <div className="flex items-center gap-2">
+          <select value={empresa} onChange={(e) => setEmpresa(e.target.value)} className="rounded-lg border border-dark-600 bg-dark-800 px-3 py-2 text-sm text-dark-100" aria-label="Empresa">
+            <option value="">Todas as empresas</option>
+            {Object.entries(EMPRESA_LABEL).map(([k, v]) => (
+              <option key={k} value={k}>
+                {v}
+              </option>
+            ))}
+          </select>
+          <Button size="sm" variant="secondary" onClick={() => atualizar.mutate()} loading={atualizar.isPending}>
+            <RefreshCw size={13} className="mr-1" /> Atualizar
+          </Button>
+        </div>
+      </div>
+
+      {resumo && (
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-xl border border-amber-700/40 bg-amber-900/10 p-3">
+            <p className="text-xs text-dark-400">A cobrar</p>
+            <p className="text-lg font-bold text-amber-200">{formatarMoeda(resumo.cobrar.valor)}</p>
+            <p className="text-[11px] text-dark-500">{resumo.cobrar.qtd} título(s)</p>
+          </div>
+          <div className="rounded-xl border border-red-700/40 bg-red-900/10 p-3">
+            <p className="text-xs text-dark-400">No cartório</p>
+            <p className="text-lg font-bold text-red-300">{formatarMoeda(resumo.cartorio.valor)}</p>
+            <p className="text-[11px] text-dark-500">
+              {resumo.cartorio.qtd} título(s){resumo.cartorio.retornoVencido ? ` · ${resumo.cartorio.retornoVencido} para conferir` : ''}
+            </p>
+          </div>
+          <div className="rounded-xl border border-violet-700/40 bg-violet-900/10 p-3">
+            <p className="text-xs text-dark-400">Enviados à RC</p>
+            <p className="text-lg font-bold text-violet-200">{formatarMoeda(resumo.rc.valor)}</p>
+            <p className="text-[11px] text-dark-500">{resumo.rc.qtd} título(s)</p>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap gap-1 border-b border-dark-700">
+        {(['cobrar', 'cartorio', 'rc', 'pago', 'mensagens'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setAba(t)}
+            className={`px-3 py-2 text-sm border-b-2 transition-colors ${aba === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
+          >
+            {rotulo[t]}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'mensagens' ? (
+        <Mensagens />
+      ) : (
+        <>
+          <Input placeholder="Buscar cliente, código, NF, vendedor…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+          {isLoading && <p className="text-sm text-dark-400">Carregando…</p>}
+          {!isLoading && lista.length === 0 && <p className="text-sm text-dark-400">Nada aqui.</p>}
+          <div className="space-y-2">
+            {lista.map((g) => (
+              <CartaoCliente key={g.chave} g={g} aba={aba} msgs={msgs} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

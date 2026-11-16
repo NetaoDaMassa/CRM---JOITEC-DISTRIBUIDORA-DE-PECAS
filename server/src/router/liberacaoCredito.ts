@@ -1,8 +1,10 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, isNull, like, lte, or, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm'
 import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
+import { agoraSqlite } from '../lib/dataBr.js'
 import { liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
+import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 
 // Liberação de Crédito — cross-empresa por design, mesmo padrão de
 // requisicaoPosto/grupo_odin: quem tem a permissão 'liberacao_credito'
@@ -18,6 +20,9 @@ import { liberacoesCredito, clientes, empresas, users } from '../db/schema.js'
 // chamar essas rotas direto e ver dado financeiro sigiloso das outras 4
 // empresas. superAdmin continua passando sempre (featureProcedure já
 // bypassa).
+// Quem pode liberar (financeiro, 2026-11-13).
+export const QUEM_LIBERA = ['Jessica (financeiro)', 'Rubia (financeiro)', 'Guilherme (diretor)'] as const
+
 export const liberacaoCreditoRouter = router({
   // Busca cliente cross-empresa pra "anexar" na liberação — mínimo 2
   // caracteres, procura em razão social/código/CNPJ. Mostra a empresa e o
@@ -62,11 +67,17 @@ export const liberacaoCreditoRouter = router({
           dataAte: z.string().optional(),
           mesReferencia: z.string().optional(),
           quemLiberou: z.string().optional(),
+          vendedorId: z.number().optional(),
+          empresaId: z.number().optional(),
+          clienteId: z.number().optional(),
         })
         .optional()
     )
     .query(async ({ input }) => {
       const filtros = []
+      if (input?.vendedorId) filtros.push(eq(liberacoesCredito.vendedorId, input.vendedorId))
+      if (input?.empresaId) filtros.push(eq(liberacoesCredito.empresaId, input.empresaId))
+      if (input?.clienteId) filtros.push(eq(liberacoesCredito.clienteId, input.clienteId))
       if (input?.dataDe) filtros.push(gte(liberacoesCredito.createdAt, input.dataDe))
       if (input?.dataAte) filtros.push(lte(liberacoesCredito.createdAt, `${input.dataAte} 23:59:59`))
       if (input?.mesReferencia) filtros.push(like(liberacoesCredito.createdAt, `${input.mesReferencia}%`))
@@ -90,6 +101,8 @@ export const liberacaoCreditoRouter = router({
           motivo: liberacoesCredito.motivo,
           status: liberacoesCredito.status,
           valorLiberado: liberacoesCredito.valorLiberado,
+          celular: liberacoesCredito.celular,
+          editadoEm: liberacoesCredito.editadoEm,
           origemSolicitacaoId: liberacoesCredito.origemSolicitacaoId,
           urlArquivo: liberacoesCredito.urlArquivo,
           nomeArquivo: liberacoesCredito.nomeArquivo,
@@ -124,15 +137,17 @@ export const liberacaoCreditoRouter = router({
       .selectDistinct({ quemLiberou: liberacoesCredito.quemLiberou })
       .from(liberacoesCredito)
       .orderBy(liberacoesCredito.quemLiberou)
-    return linhas.map((l) => l.quemLiberou)
+    return [...new Set([...QUEM_LIBERA, ...linhas.map((l) => l.quemLiberou)])]
   }),
 
   criar: featureProcedure('liberacao_credito')
     .input(
       z.object({
         clienteId: z.number(),
-        quemLiberou: z.string().trim().min(1),
+        quemLiberou: z.enum(QUEM_LIBERA),
         motivo: z.string().trim().min(1),
+        valorLiberado: z.number().positive('Informe o valor liberado a mais'),
+        celular: z.string().trim().max(30).optional(),
         urlArquivo: z.string().optional(),
         nomeArquivo: z.string().optional(),
         tipoArquivo: z.string().optional(),
@@ -148,6 +163,8 @@ export const liberacaoCreditoRouter = router({
         vendedorId: cliente.vendedorAtualId,
         quemLiberou: input.quemLiberou.trim(),
         motivo: input.motivo.trim(),
+        valorLiberado: input.valorLiberado,
+        celular: input.celular?.trim() || null,
         urlArquivo: input.urlArquivo,
         nomeArquivo: input.nomeArquivo,
         tipoArquivo: input.tipoArquivo,
@@ -156,72 +173,137 @@ export const liberacaoCreditoRouter = router({
       return { success: true }
     }),
 
+  // Edição do registro (2026-11-13: "liberar edição também").
+  editar: featureProcedure('liberacao_credito')
+    .input(
+      z.object({
+        id: z.number(),
+        quemLiberou: z.enum(QUEM_LIBERA),
+        motivo: z.string().trim().min(1),
+        valorLiberado: z.number().positive('Informe o valor liberado a mais'),
+        celular: z.string().trim().max(30).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      await db
+        .update(liberacoesCredito)
+        .set({ quemLiberou: input.quemLiberou, motivo: input.motivo, valorLiberado: input.valorLiberado, celular: input.celular?.trim() || null, editadoEm: agoraSqlite(), editadoPor: ctx.user.id })
+        .where(eq(liberacoesCredito.id, input.id))
+      return { success: true }
+    }),
+
   excluir: featureProcedure('liberacao_credito').input(z.object({ id: z.number() })).mutation(async ({ input }) => {
     await db.delete(liberacoesCredito).where(eq(liberacoesCredito.id, input.id))
     return { success: true }
   }),
 
-  // Quebras do relatório — por cliente/vendedor/quem-liberou/dia — dentro do
-  // período pedido (sem período, considera tudo).
+  // Vendedores/empresas que já aparecem em algum registro — filtros.
+  filtrosOpcoes: featureProcedure('liberacao_credito').query(async () => {
+    const [vendedores, empresasLista] = await Promise.all([
+      db
+        .selectDistinct({ id: users.id, name: users.name })
+        .from(liberacoesCredito)
+        .innerJoin(users, eq(users.id, liberacoesCredito.vendedorId))
+        .orderBy(users.name),
+      db
+        .selectDistinct({ id: empresas.id, nome: empresas.nome })
+        .from(liberacoesCredito)
+        .innerJoin(empresas, eq(empresas.id, liberacoesCredito.empresaId))
+        .orderBy(empresas.nome),
+    ])
+    return { vendedores, empresas: empresasLista }
+  }),
+
+  // Ranking de "quem está liberando fora do esquema" (João, 2026-11-16).
+  // Só conta registros 'liberado' — os 'negado' são cópias antigas de
+  // respostas da Consulta (antes de 2026-11-13), não liberação a mais.
   relatorio: featureProcedure('liberacao_credito')
-    .input(z.object({ dataDe: z.string().optional(), dataAte: z.string().optional() }).optional())
+    .input(
+      z
+        .object({
+          dataDe: z.string().optional(),
+          dataAte: z.string().optional(),
+          quemLiberou: z.string().optional(),
+          vendedorId: z.number().optional(),
+          empresaId: z.number().optional(),
+        })
+        .optional()
+    )
     .query(async ({ input }) => {
-      const filtros = []
+      const filtros = [eq(liberacoesCredito.status, 'liberado')]
       if (input?.dataDe) filtros.push(gte(liberacoesCredito.createdAt, input.dataDe))
       if (input?.dataAte) filtros.push(lte(liberacoesCredito.createdAt, `${input.dataAte} 23:59:59`))
-      const filtroPeriodo = filtros.length ? and(...filtros) : undefined
+      if (input?.quemLiberou) filtros.push(eq(liberacoesCredito.quemLiberou, input.quemLiberou))
+      if (input?.vendedorId) filtros.push(eq(liberacoesCredito.vendedorId, input.vendedorId))
+      if (input?.empresaId) filtros.push(eq(liberacoesCredito.empresaId, input.empresaId))
 
-      const [totalGeral] = await db
-        .select({ qtd: sql<number>`count(*)` })
-        .from(liberacoesCredito)
-        .where(filtroPeriodo)
-
-      const porCliente = await db
+      const linhas = await db
         .select({
           clienteId: liberacoesCredito.clienteId,
           clienteNome: clientes.razaoSocial,
+          clienteCodigo: clientes.codigo,
+          empresaId: liberacoesCredito.empresaId,
           empresaNome: empresas.nome,
-          qtd: sql<number>`count(*)`,
+          vendedorId: liberacoesCredito.vendedorId,
+          vendedorNome: users.name,
+          quemLiberou: liberacoesCredito.quemLiberou,
+          valor: liberacoesCredito.valorLiberado,
+          createdAt: liberacoesCredito.createdAt,
         })
         .from(liberacoesCredito)
         .innerJoin(clientes, eq(clientes.id, liberacoesCredito.clienteId))
         .innerJoin(empresas, eq(empresas.id, liberacoesCredito.empresaId))
-        .where(filtroPeriodo)
-        .groupBy(liberacoesCredito.clienteId, clientes.razaoSocial, empresas.nome)
-        .orderBy(desc(sql`count(*)`))
-
-      const porVendedor = await db
-        .select({
-          vendedorId: liberacoesCredito.vendedorId,
-          vendedorNome: users.name,
-          qtd: sql<number>`count(*)`,
-        })
-        .from(liberacoesCredito)
         .leftJoin(users, eq(users.id, liberacoesCredito.vendedorId))
-        .where(filtroPeriodo)
-        .groupBy(liberacoesCredito.vendedorId, users.name)
-        .orderBy(desc(sql`count(*)`))
+        .where(and(...filtros))
 
-      const porQuemLiberou = await db
-        .select({ quemLiberou: liberacoesCredito.quemLiberou, qtd: sql<number>`count(*)` })
-        .from(liberacoesCredito)
-        .where(filtroPeriodo)
-        .groupBy(liberacoesCredito.quemLiberou)
-        .orderBy(desc(sql`count(*)`))
-
-      const porDia = await db
-        .select({ dia: sql<string>`substr(${liberacoesCredito.createdAt}, 1, 10)`, qtd: sql<number>`count(*)` })
-        .from(liberacoesCredito)
-        .where(filtroPeriodo)
-        .groupBy(sql`substr(${liberacoesCredito.createdAt}, 1, 10)`)
-        .orderBy(desc(sql`substr(${liberacoesCredito.createdAt}, 1, 10)`))
+      type Grupo = { qtd: number; soma: number; maior: number; ultimo: string }
+      const novo = (): Grupo => ({ qtd: 0, soma: 0, maior: 0, ultimo: '' })
+      const somar = (g: Grupo, l: (typeof linhas)[number]) => {
+        g.qtd++
+        g.soma += l.valor ?? 0
+        g.maior = Math.max(g.maior, l.valor ?? 0)
+        if (l.createdAt > g.ultimo) g.ultimo = l.createdAt
+      }
+      const total = novo()
+      const porQuem = new Map<string, Grupo & { quemLiberou: string }>()
+      const porVendedor = new Map<number, Grupo & { vendedorId: number | null; vendedorNome: string }>()
+      const porCliente = new Map<number, Grupo & { clienteId: number; clienteNome: string; clienteCodigo: string; empresaNome: string }>()
+      const porMes = new Map<string, Grupo & { mes: string }>()
+      const porEmpresa = new Map<number, Grupo & { empresaId: number; empresaNome: string }>()
+      for (const l of linhas) {
+        somar(total, l)
+        const q = porQuem.get(l.quemLiberou) ?? { ...novo(), quemLiberou: l.quemLiberou }
+        somar(q, l)
+        porQuem.set(l.quemLiberou, q)
+        const vk = l.vendedorId ?? 0
+        const v = porVendedor.get(vk) ?? { ...novo(), vendedorId: l.vendedorId, vendedorNome: l.vendedorNome ?? 'Sem vendedor' }
+        somar(v, l)
+        porVendedor.set(vk, v)
+        const c = porCliente.get(l.clienteId) ?? { ...novo(), clienteId: l.clienteId, clienteNome: l.clienteNome, clienteCodigo: l.clienteCodigo, empresaNome: l.empresaNome }
+        somar(c, l)
+        porCliente.set(l.clienteId, c)
+        const mes = toLocalDateKey(toUtcISO(l.createdAt)).slice(0, 7)
+        const m = porMes.get(mes) ?? { ...novo(), mes }
+        somar(m, l)
+        porMes.set(mes, m)
+        const e = porEmpresa.get(l.empresaId) ?? { ...novo(), empresaId: l.empresaId, empresaNome: l.empresaNome }
+        somar(e, l)
+        porEmpresa.set(l.empresaId, e)
+      }
+      const comMedia = <T extends Grupo>(g: T) => ({
+        ...g,
+        media: g.qtd ? Math.round((g.soma / g.qtd) * 100) / 100 : 0,
+        pctDoTotal: total.soma ? Math.round((g.soma / total.soma) * 1000) / 10 : total.qtd ? Math.round((g.qtd / total.qtd) * 1000) / 10 : 0,
+      })
+      const porSoma = (a: Grupo, b: Grupo) => b.soma - a.soma || b.qtd - a.qtd
 
       return {
-        quantidadeGeral: totalGeral?.qtd ?? 0,
-        porCliente,
-        porVendedor: porVendedor.map((v) => ({ ...v, vendedorNome: v.vendedorNome ?? 'Sem vendedor' })),
-        porQuemLiberou,
-        porDia,
+        totais: { ...comMedia(total), clientes: porCliente.size, quemLiberouDistintos: porQuem.size },
+        porQuemLiberou: [...porQuem.values()].map(comMedia).sort(porSoma),
+        porVendedor: [...porVendedor.values()].map(comMedia).sort(porSoma),
+        porCliente: [...porCliente.values()].map(comMedia).sort(porSoma),
+        porMes: [...porMes.values()].map(comMedia).sort((a, b) => b.mes.localeCompare(a.mes)),
+        porEmpresa: [...porEmpresa.values()].map(comMedia).sort(porSoma),
       }
     }),
 })

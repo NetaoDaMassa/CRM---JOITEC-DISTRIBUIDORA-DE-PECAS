@@ -1,16 +1,51 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, isNull, like, lte, or } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { solicitacoesCredito, solicitacaoCreditoAnexos, solicitacaoCreditoRespostas, liberacoesCredito, clientes, empresas, users, cotacoesCrmHistorico, notifications } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { buildHistoricoCliente } from './clientes.js'
+import { QUEM_LIBERA } from './liberacaoCredito.js'
+import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 
 const anexoInput = z.object({
   urlArquivo: z.string(),
   nomeArquivo: z.string(),
   tipoArquivo: z.string().optional(),
 })
+
+// Filtros da fila e dos relatórios (os mesmos nas duas abas).
+const filtrosInput = z
+  .object({
+    status: z.enum(['pendente', 'liberado', 'negado']).optional(),
+    tipo: z.enum(['consulta', 'limite']).optional(),
+    dataDe: z.string().optional(),
+    dataAte: z.string().optional(),
+    vendedorId: z.number().optional(),
+    empresaId: z.number().optional(),
+    // Quem decidiu (texto, igual QUEM_LIBERA) — última resposta da linha.
+    quemLiberou: z.string().optional(),
+    serasaLimpo: z.enum(['sim', 'nao']).optional(),
+    q: z.string().optional(),
+  })
+  .optional()
+
+function montarFiltros(input: z.infer<typeof filtrosInput>) {
+  const filtros = []
+  if (input?.status) filtros.push(eq(solicitacoesCredito.status, input.status))
+  if (input?.tipo) filtros.push(eq(solicitacoesCredito.tipo, input.tipo))
+  if (input?.dataDe) filtros.push(gte(solicitacoesCredito.createdAt, input.dataDe))
+  if (input?.dataAte) filtros.push(lte(solicitacoesCredito.createdAt, `${input.dataAte} 23:59:59`))
+  if (input?.vendedorId) filtros.push(eq(solicitacoesCredito.vendedorSolicitanteId, input.vendedorId))
+  if (input?.empresaId) filtros.push(eq(solicitacoesCredito.empresaId, input.empresaId))
+  if (input?.quemLiberou) filtros.push(eq(solicitacoesCredito.quemLiberou, input.quemLiberou))
+  if (input?.serasaLimpo) filtros.push(eq(solicitacoesCredito.serasaLimpo, input.serasaLimpo === 'sim'))
+  if (input?.q) {
+    const termo = `%${input.q.trim()}%`
+    filtros.push(or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo))!)
+  }
+  return filtros
+}
 
 // Fluxo completo de solicitação de crédito: o vendedor abre o pedido (com
 // tudo que tem sobre o cliente, inclusive anexos — print, áudio, vídeo) e
@@ -33,15 +68,18 @@ export const solicitacaoCreditoRouter = router({
         // schema zod porque depende do valor de outro campo.
         tipoConsulta: z.enum(['geral', 'limpo']).optional(),
         valorSolicitado: z.number().positive().optional(),
+        // Pedido de limite (2026-11-13): valor de limite desejado + valor do
+        // pedido de venda.
+        valorPedido: z.number().positive().optional(),
         informacoesFiscais: z.string().trim().optional(),
         observacoes: z.string().trim().optional(),
         anexos: z.array(anexoInput).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      if (input.tipo === 'consulta' && !input.tipoConsulta) {
-        throw new Error('Escolha se é consulta geral ou só verificar se está limpo.')
-      }
+      // "Só verificar se está limpo" saiu (financeiro, 2026-11-13): toda
+      // consulta já responde primeiro se está limpo.
+      if (input.tipo === 'consulta') input.tipoConsulta = 'geral'
 
       const cliente = await db.query.clientes.findFirst({
         where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
@@ -75,6 +113,7 @@ export const solicitacaoCreditoRouter = router({
         tipo: input.tipo,
         tipoConsulta: input.tipo === 'consulta' ? input.tipoConsulta : undefined,
         valorSolicitado: input.valorSolicitado,
+        valorPedido: input.tipo === 'limite' ? input.valorPedido : undefined,
         informacoesFiscais: input.informacoesFiscais,
         observacoes: input.observacoes,
       })
@@ -115,6 +154,9 @@ export const solicitacaoCreditoRouter = router({
         quemLiberou: solicitacoesCredito.quemLiberou,
         motivoResposta: solicitacoesCredito.motivoResposta,
         serasaObservacao: solicitacoesCredito.serasaObservacao,
+        serasaLimpo: solicitacoesCredito.serasaLimpo,
+        serasaConsultaEm: solicitacoesCredito.serasaConsultaEm,
+        valorPedido: solicitacoesCredito.valorPedido,
         decididoPor: solicitacoesCredito.decididoPor,
         decididoEm: solicitacoesCredito.decididoEm,
         createdAt: solicitacoesCredito.createdAt,
@@ -162,35 +204,31 @@ export const solicitacaoCreditoRouter = router({
       .orderBy(users.name)
   }),
 
+  // Empresas que já têm alguma solicitação — filtro "Empresa" (só aparece
+  // na tela quando tem mais de uma).
+  empresasOpcoes: featureProcedure('solicitacao_credito').query(async () => {
+    return db
+      .selectDistinct({ id: empresas.id, nome: empresas.nome })
+      .from(solicitacoesCredito)
+      .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
+      .orderBy(empresas.nome)
+  }),
+
+  // Quem decidiu — os 3 fixos + qualquer nome antigo que já tenha sido usado.
+  quemDecidiuOpcoes: featureProcedure('solicitacao_credito').query(async () => {
+    const linhas = await db
+      .selectDistinct({ quemLiberou: solicitacoesCredito.quemLiberou })
+      .from(solicitacoesCredito)
+      .where(isNotNull(solicitacoesCredito.quemLiberou))
+    return [...new Set([...QUEM_LIBERA, ...linhas.map((l) => l.quemLiberou).filter((n): n is string => !!n)])]
+  }),
+
   // Fila do Financeiro — cross-empresa, sem filtro de ctx.empresaId de
   // propósito (mesmo padrão de liberacaoCredito.listar).
   listar: featureProcedure('solicitacao_credito')
-    .input(
-      z
-        .object({
-          status: z.enum(['pendente', 'liberado', 'negado']).optional(),
-          // Sem isso = traz os dois tipos juntos (não usado hoje — as duas
-          // telas, Consulta/Solicitação de Crédito e a aba "Limites" de
-          // Liberação de Crédito, sempre passam um tipo fixo).
-          tipo: z.enum(['consulta', 'limite']).optional(),
-          dataDe: z.string().optional(),
-          dataAte: z.string().optional(),
-          vendedorId: z.number().optional(),
-          q: z.string().optional(),
-        })
-        .optional()
-    )
+    .input(filtrosInput)
     .query(async ({ input }) => {
-      const filtros = []
-      if (input?.status) filtros.push(eq(solicitacoesCredito.status, input.status))
-      if (input?.tipo) filtros.push(eq(solicitacoesCredito.tipo, input.tipo))
-      if (input?.dataDe) filtros.push(gte(solicitacoesCredito.createdAt, input.dataDe))
-      if (input?.dataAte) filtros.push(lte(solicitacoesCredito.createdAt, `${input.dataAte} 23:59:59`))
-      if (input?.vendedorId) filtros.push(eq(solicitacoesCredito.vendedorSolicitanteId, input.vendedorId))
-      if (input?.q) {
-        const termo = `%${input.q.trim()}%`
-        filtros.push(or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo))!)
-      }
+      const filtros = montarFiltros(input)
 
       const linhas = await db
         .select({
@@ -206,6 +244,10 @@ export const solicitacaoCreditoRouter = router({
           tipoConsulta: solicitacoesCredito.tipoConsulta,
           status: solicitacoesCredito.status,
           valorSolicitado: solicitacoesCredito.valorSolicitado,
+          valorPedido: solicitacoesCredito.valorPedido,
+          valorLiberado: solicitacoesCredito.valorLiberado,
+          quemLiberou: solicitacoesCredito.quemLiberou,
+          serasaLimpo: solicitacoesCredito.serasaLimpo,
           cotacaoId: solicitacoesCredito.cotacaoId,
           createdAt: solicitacoesCredito.createdAt,
         })
@@ -218,6 +260,157 @@ export const solicitacaoCreditoRouter = router({
         .limit(500)
 
       return linhas
+    }),
+
+  // Relatórios (João, 2026-11-16: "deixar prontos relatórios, e filtros
+  // ali, por vendedor e etc"). Mesmos filtros da lista. Calcula tudo em
+  // memória — o volume é pequeno (dezenas/centenas por mês).
+  relatorio: featureProcedure('solicitacao_credito')
+    .input(filtrosInput)
+    .query(async ({ input }) => {
+      const filtros = montarFiltros(input)
+      const linhas = await db
+        .select({
+          id: solicitacoesCredito.id,
+          clienteId: solicitacoesCredito.clienteId,
+          clienteNome: clientes.razaoSocial,
+          clienteCodigo: clientes.codigo,
+          empresaId: solicitacoesCredito.empresaId,
+          empresaNome: empresas.nome,
+          vendedorId: solicitacoesCredito.vendedorSolicitanteId,
+          vendedorNome: users.name,
+          tipo: solicitacoesCredito.tipo,
+          status: solicitacoesCredito.status,
+          valorSolicitado: solicitacoesCredito.valorSolicitado,
+          valorLiberado: solicitacoesCredito.valorLiberado,
+          serasaLimpo: solicitacoesCredito.serasaLimpo,
+          createdAt: solicitacoesCredito.createdAt,
+        })
+        .from(solicitacoesCredito)
+        .innerJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
+        .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
+        .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
+        .where(filtros.length ? and(...filtros) : undefined)
+
+      // Todas as análises (inclusive réplicas) das solicitações filtradas —
+      // "por quem decidiu" conta cada resposta dada, não só a última.
+      const ids = linhas.map((l) => l.id)
+      const respostas: { solicitacaoId: number; status: 'liberado' | 'negado'; quemLiberou: string; decididoEm: string }[] = []
+      for (let i = 0; i < ids.length; i += 500) {
+        const parte = ids.slice(i, i + 500)
+        respostas.push(
+          ...(await db
+            .select({
+              solicitacaoId: solicitacaoCreditoRespostas.solicitacaoId,
+              status: solicitacaoCreditoRespostas.status,
+              quemLiberou: solicitacaoCreditoRespostas.quemLiberou,
+              decididoEm: solicitacaoCreditoRespostas.decididoEm,
+            })
+            .from(solicitacaoCreditoRespostas)
+            .where(inArray(solicitacaoCreditoRespostas.solicitacaoId, parte)))
+        )
+      }
+      respostas.sort((a, b) => a.decididoEm.localeCompare(b.decididoEm))
+
+      // Tempo de resposta = da abertura do pedido até a 1ª análise, em
+      // horário de trabalho (mesma regra dos leads: seg-sex, 8-12/13-17:48).
+      const criadoEmPorId = new Map(linhas.map((l) => [l.id, l.createdAt]))
+      const primeiraRespostaVista = new Set<number>()
+      type Decisor = { quemLiberou: string; respostas: number; liberou: number; negou: number; somaMinutos: number; qtdTempo: number }
+      const porDecisorMap = new Map<string, Decisor>()
+      let somaMinutosGeral = 0
+      let qtdTempoGeral = 0
+      for (const r of respostas) {
+        if (input?.quemLiberou && r.quemLiberou !== input.quemLiberou) continue
+        const d = porDecisorMap.get(r.quemLiberou) ?? { quemLiberou: r.quemLiberou, respostas: 0, liberou: 0, negou: 0, somaMinutos: 0, qtdTempo: 0 }
+        d.respostas++
+        if (r.status === 'liberado') d.liberou++
+        else d.negou++
+        if (!primeiraRespostaVista.has(r.solicitacaoId)) {
+          primeiraRespostaVista.add(r.solicitacaoId)
+          const criadoEm = criadoEmPorId.get(r.solicitacaoId)
+          if (criadoEm) {
+            const min = businessHoursElapsedMs(toUtcISO(criadoEm), toUtcISO(r.decididoEm)) / 60000
+            d.somaMinutos += min
+            d.qtdTempo++
+            somaMinutosGeral += min
+            qtdTempoGeral++
+          }
+        }
+        porDecisorMap.set(r.quemLiberou, d)
+      }
+
+      type Grupo = { pedidos: number; consultas: number; limites: number; pendentes: number; liberados: number; negados: number; valorSolicitado: number; valorLiberado: number }
+      const novoGrupo = (): Grupo => ({ pedidos: 0, consultas: 0, limites: 0, pendentes: 0, liberados: 0, negados: 0, valorSolicitado: 0, valorLiberado: 0 })
+      const somar = (g: Grupo, l: (typeof linhas)[number]) => {
+        g.pedidos++
+        if (l.tipo === 'limite') g.limites++
+        else g.consultas++
+        if (l.status === 'pendente') g.pendentes++
+        else if (l.status === 'liberado') g.liberados++
+        else g.negados++
+        g.valorSolicitado += l.valorSolicitado ?? 0
+        if (l.status === 'liberado') g.valorLiberado += l.valorLiberado ?? 0
+      }
+      const pct = (g: Grupo) => (g.liberados + g.negados ? Math.round((g.liberados / (g.liberados + g.negados)) * 1000) / 10 : null)
+
+      const totais = novoGrupo()
+      let serasaLimpos = 0
+      let serasaNaoLimpos = 0
+      const porVendedorMap = new Map<number, Grupo & { vendedorId: number; vendedorNome: string }>()
+      const porMesMap = new Map<string, Grupo & { mes: string }>()
+      const porEmpresaMap = new Map<number, Grupo & { empresaId: number; empresaNome: string }>()
+      const porClienteMap = new Map<number, Grupo & { clienteId: number; clienteNome: string; clienteCodigo: string; empresaNome: string; ultimoPedido: string }>()
+      for (const l of linhas) {
+        somar(totais, l)
+        if (l.serasaLimpo === true) serasaLimpos++
+        if (l.serasaLimpo === false) serasaNaoLimpos++
+
+        const v = porVendedorMap.get(l.vendedorId) ?? { ...novoGrupo(), vendedorId: l.vendedorId, vendedorNome: l.vendedorNome }
+        somar(v, l)
+        porVendedorMap.set(l.vendedorId, v)
+
+        const mes = toLocalDateKey(toUtcISO(l.createdAt)).slice(0, 7)
+        const m = porMesMap.get(mes) ?? { ...novoGrupo(), mes }
+        somar(m, l)
+        porMesMap.set(mes, m)
+
+        const e = porEmpresaMap.get(l.empresaId) ?? { ...novoGrupo(), empresaId: l.empresaId, empresaNome: l.empresaNome }
+        somar(e, l)
+        porEmpresaMap.set(l.empresaId, e)
+
+        const c = porClienteMap.get(l.clienteId) ?? { ...novoGrupo(), clienteId: l.clienteId, clienteNome: l.clienteNome, clienteCodigo: l.clienteCodigo, empresaNome: l.empresaNome, ultimoPedido: l.createdAt }
+        somar(c, l)
+        if (l.createdAt > c.ultimoPedido) c.ultimoPedido = l.createdAt
+        porClienteMap.set(l.clienteId, c)
+      }
+
+      const comPct = <T extends Grupo>(g: T) => ({ ...g, pctLiberado: pct(g) })
+      return {
+        totais: {
+          ...comPct(totais),
+          serasaLimpos,
+          serasaNaoLimpos,
+          tempoMedioMinutos: qtdTempoGeral ? Math.round(somaMinutosGeral / qtdTempoGeral) : null,
+        },
+        porVendedor: [...porVendedorMap.values()].map(comPct).sort((a, b) => b.pedidos - a.pedidos || a.vendedorNome.localeCompare(b.vendedorNome)),
+        porDecisor: [...porDecisorMap.values()]
+          .map((d) => ({
+            quemLiberou: d.quemLiberou,
+            respostas: d.respostas,
+            liberou: d.liberou,
+            negou: d.negou,
+            pctLiberado: d.respostas ? Math.round((d.liberou / d.respostas) * 1000) / 10 : null,
+            tempoMedioMinutos: d.qtdTempo ? Math.round(d.somaMinutos / d.qtdTempo) : null,
+          }))
+          .sort((a, b) => b.respostas - a.respostas),
+        porMes: [...porMesMap.values()].map(comPct).sort((a, b) => b.mes.localeCompare(a.mes)),
+        porEmpresa: [...porEmpresaMap.values()].map(comPct).sort((a, b) => b.pedidos - a.pedidos),
+        porCliente: [...porClienteMap.values()]
+          .map(comPct)
+          .sort((a, b) => b.pedidos - a.pedidos || b.ultimoPedido.localeCompare(a.ultimoPedido))
+          .slice(0, 50),
+      }
     }),
 
   detalhe: featureProcedure('solicitacao_credito').input(z.object({ id: z.number() })).query(async ({ input }) => {
@@ -273,6 +466,9 @@ export const solicitacaoCreditoRouter = router({
         quemLiberou: z.string().trim().min(1, 'Informe quem decidiu'),
         motivoResposta: z.string().trim().min(1, 'Informe o motivo'),
         serasaObservacao: z.string().trim().optional(),
+        // Primeiro: está limpo ou não? E quando foi a consulta (2026-11-13).
+        serasaLimpo: z.boolean(),
+        serasaConsultaEm: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Informe a data da consulta do Serasa'),
         anexos: z.array(anexoInput).optional(),
       })
     )
@@ -298,6 +494,8 @@ export const solicitacaoCreditoRouter = router({
       }
       if (input.decisao === 'liberado') updates.valorLiberado = input.valorLiberado
       if (input.serasaObservacao) updates.serasaObservacao = input.serasaObservacao
+      updates.serasaLimpo = input.serasaLimpo
+      updates.serasaConsultaEm = input.serasaConsultaEm
 
       await db.update(solicitacoesCredito).set(updates).where(eq(solicitacoesCredito.id, input.id))
 
@@ -310,7 +508,7 @@ export const solicitacaoCreditoRouter = router({
         valorLiberado: input.decisao === 'liberado' ? input.valorLiberado : undefined,
         quemLiberou: input.quemLiberou.trim(),
         motivoResposta: input.motivoResposta.trim(),
-        serasaObservacao: input.serasaObservacao,
+        serasaObservacao: [input.serasaLimpo ? 'Serasa: LIMPO' : 'Serasa: NÃO está limpo', `consulta de ${input.serasaConsultaEm.split('-').reverse().join('/')}`, input.serasaObservacao].filter(Boolean).join(' · '),
         decididoPor: ctx.user.id,
         decididoEm,
       })
@@ -332,7 +530,11 @@ export const solicitacaoCreditoRouter = router({
       // — registro único de "o que já foi decidido" pra esse cliente, cross-
       // empresa. Mudou em 2026-10-05: 'limite' não entra mais aqui — fica só
       // na própria fila (aba "Limites"), pra não misturar as duas listas.
-      if (solicitacao.tipo === 'consulta') {
+      // 2026-11-13 (financeiro): consulta/limite e liberação são coisas
+      // diferentes — a consulta só registra os dados e dá o limite; os
+      // Registros de liberação são lançados pelo próprio financeiro. Não
+      // copia mais a resposta da consulta pra lá.
+      if (false as boolean) {
         const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) })
         await db.insert(liberacoesCredito).values({
           clienteId: solicitacao.clienteId,

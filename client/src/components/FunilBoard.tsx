@@ -174,6 +174,15 @@ function nomeComPedido(card: Card): string {
   return numeroPedido ? `${card.razaoSocial} - ${numeroPedido}` : card.razaoSocial
 }
 
+// Adiantamento PIX (financeiro, 2026-11-13): 2 = venda à vista/entrada sem
+// comprovante, 1 = à vista/entrada com comprovante, 0 = não é PIX. No
+// Fechado os PIX vão pra cima, os sem comprovante primeiro.
+function pesoPix(card: Card): number {
+  if (card.vendas.some((v) => v.pix?.status === 'aguardando')) return 2
+  if (card.vendas.some((v) => v.pix)) return 1
+  return 0
+}
+
 // parseValorBr/formatarValorInput moraram aqui até 2026-09-11 — extraídos
 // pra lib/valorBr.ts pra serem reaproveitados em Boletos/Caixa/Cobrança/
 // Negociações/Cliente, que reinventavam sua própria conversão (quebrada).
@@ -737,6 +746,7 @@ export default function FunilBoard({
           if (ehBalcao && ordenacao === 'padrao') colCards.sort((a, b) => dataVendaCard(b).localeCompare(dataVendaCard(a)))
           // Abordagem: quem acabou de sair de Novo fica em cima (João, 2026-11-09).
           if (etapa.value === 'abordagem' && ordenacao === 'padrao') colCards.sort((a, b) => b.dataEntradaEtapa.localeCompare(a.dataEntradaEtapa))
+          if (etapa.value === 'fechado') colCards.sort((a, b) => pesoPix(b) - pesoPix(a))
           const resumoDia = new Map<string, { qtd: number; total: number }>()
           if (ehBalcao) {
             for (const c of colCards) {
@@ -824,6 +834,27 @@ export default function FunilBoard({
                           </Badge>
                         )}
                       </div>
+                      {(() => {
+                        const semComprovante = card.vendas.filter((v) => v.pix?.status === 'aguardando')
+                        if (semComprovante.length)
+                          return (
+                            <p
+                              className="text-xs font-bold rounded-lg px-2 py-1 mb-2 border text-amber-100 bg-amber-900/40 border-amber-500/80 animate-pulse"
+                              title="Venda à vista / entrada + boleto: anexe o comprovante do PIX no card. Sem ele NÃO SAI NOTA e a expedição NÃO TERMINA."
+                            >
+                              ⏳ AGUARDANDO COMPROVANTE DO PIX
+                              {semComprovante[0].numeroPedido ? ` · pedido ${semComprovante[0].numeroPedido}` : ''}
+                            </p>
+                          )
+                        const comPix = card.vendas.filter((v) => v.pix)
+                        if (!comPix.length) return null
+                        const todosConferidos = comPix.every((v) => v.pix?.status === 'conferido')
+                        return (
+                          <p className={`text-[11px] font-medium rounded-lg px-2 py-1 mb-2 border ${todosConferidos ? 'text-green-300 bg-green-900/20 border-green-700/40' : 'text-sky-200 bg-sky-900/20 border-sky-700/40'}`}>
+                            {todosConferidos ? '✓ PIX conferido pelo financeiro' : '📎 Comprovante do PIX enviado · financeiro conferindo'}
+                          </p>
+                        )
+                      })()}
                       {devendo.has(card.clienteId) && (
                         <p
                           className="text-xs font-semibold text-red-300 bg-red-900/20 border border-red-700/40 rounded-lg px-2 py-1 mb-2"
@@ -867,7 +898,8 @@ export default function FunilBoard({
                       })()}
                       {(() => {
                         const cq = cotacaoDoCard.get(`${card.clienteId}:${card.mesReferencia}`)
-                        if (!cq) return null
+                        // Em Fechado aparece só o nº do pedido (financeiro, 2026-11-13).
+                        if (!cq || card.etapa === 'fechado') return null
                         return (
                           <p
                             className="text-xs text-sky-200 bg-sky-900/20 border border-sky-700/40 rounded-lg px-2 py-1 mb-2"
@@ -880,7 +912,7 @@ export default function FunilBoard({
                       })()}
                       {(() => {
                         const cc = cotacaoCrmDoCard.get(`${card.clienteId}:${card.mesReferencia.slice(0, 7)}`)
-                        if (!cc) return null
+                        if (!cc || card.etapa === 'fechado') return null
                         return (
                           <p className="text-xs text-emerald-200 bg-emerald-900/20 border border-emerald-700/40 rounded-lg px-2 py-1 mb-2" title="Cotação feita no CRM — abra o card para ver">
                             🧾 Cotação nº {cc.ultima.id} · {formatarMoeda(cc.ultima.total)} · {STATUS_COTACAO_CRM[cc.ultima.status] ?? cc.ultima.status}
@@ -1112,6 +1144,62 @@ const TIPO_COMPROVANTE_OPTIONS = [
 // Aparece "fora do card" (na frente do Kanban, sem abrir o modal) — pedido
 // direto do João. Mostra o status de faturamento da venda mais recente do
 // card, só na etapa Faturamento.
+// Adiantamento PIX: o vendedor anexa o comprovante do PIX da venda à vista /
+// entrada + boleto. Sem ele a NF e a expedição ficam travadas; o financeiro
+// confere na tela Adiantamento PIX.
+function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onMudou: () => void }) {
+  const pix = venda.pix!
+  const [enviando, setEnviando] = useState(false)
+  const anexar = trpc.adiantamentoPix.anexar.useMutation({ onSuccess: () => (toast.success('Comprovante anexado — o financeiro vai conferir'), onMudou()), onError: (e) => toast.error(e.message) })
+  const remover = trpc.adiantamentoPix.removerComprovante.useMutation({ onSuccess: () => onMudou(), onError: (e) => toast.error(e.message) })
+  const enviar = async (f: File | undefined) => {
+    if (!f) return
+    setEnviando(true)
+    try {
+      const form = new FormData()
+      form.append('file', f)
+      const r = await fetch('/upload/lead-attachment', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
+      if (!r.ok) throw new Error('Falha ao enviar o arquivo')
+      const j = (await r.json()) as { path: string; originalName?: string }
+      await anexar.mutateAsync({ vendaId: venda.id, path: j.path, nome: j.originalName || f.name })
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      setEnviando(false)
+    }
+  }
+  const tipo = pix.tipo === 'entrada_boleto' ? 'entrada + boleto' : 'à vista'
+  const url = pix.comprovantePath ? (pix.comprovantePath.startsWith('/') ? pix.comprovantePath : `/uploads/${pix.comprovantePath}`) : null
+  if (pix.status === 'aguardando')
+    return (
+      <div className="rounded-lg border border-amber-500/70 bg-amber-900/30 px-2.5 py-2 space-y-1.5">
+        <p className="text-xs font-bold text-amber-100">⏳ AGUARDANDO COMPROVANTE DO PIX</p>
+        <p className="text-[11px] text-amber-200/90">
+          Venda {tipo}{pix.tipo === 'entrada_boleto' ? ' (comprovante da entrada)' : ''}. Sem o comprovante (e a conferência do financeiro) <b>NÃO SAI NOTA</b> e a expedição <b>NÃO TERMINA</b>.
+        </p>
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-dark-900 hover:bg-amber-400">
+          {enviando ? 'Enviando…' : '📎 Anexar comprovante do PIX'}
+          <input type="file" accept="image/*,application/pdf" className="hidden" disabled={enviando} onChange={(e) => (enviar(e.target.files?.[0]), (e.target.value = ''))} />
+        </label>
+      </div>
+    )
+  return (
+    <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${pix.status === 'conferido' ? 'border-green-700/40 bg-green-900/15 text-green-300' : 'border-sky-700/40 bg-sky-900/15 text-sky-200'}`}>
+      <span>{pix.status === 'conferido' ? '✓ PIX conferido pelo financeiro' : '📎 Comprovante enviado · financeiro conferindo'}</span>
+      {url && (
+        <a href={url} target="_blank" rel="noreferrer" className="underline">
+          ver
+        </a>
+      )}
+      {pix.status === 'anexado' && (
+        <button type="button" className="text-dark-400 hover:text-red-400" onClick={() => remover.mutate({ vendaId: venda.id })}>
+          trocar
+        </button>
+      )}
+    </div>
+  )
+}
+
 function BadgeFaturamento({ venda }: { venda: { tipoComprovante: string | null; faturado: boolean } }) {
   if (venda.faturado) {
     return (
@@ -2028,6 +2116,7 @@ function CardModal({
                         <NotaSapBotoes endereco={`/venda-nota/${v.id}`} compacto />
                       </div>
                     )}
+                    {v.pix && <ComprovantePix venda={v} onMudou={invalidarTudo} />}
                     {card.etapa === 'faturamento' && <ControleFaturamento venda={v} />}
                   </div>
                 )

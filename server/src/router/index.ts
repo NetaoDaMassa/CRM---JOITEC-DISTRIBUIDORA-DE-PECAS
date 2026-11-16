@@ -29,6 +29,12 @@ import { solicitacaoCreditoRouter } from './solicitacaoCredito.js'
 import { chatRouter } from './chat.js'
 import { cartaoRouter } from './cartao.js'
 import { suframaRouter } from './suframa.js'
+import { adiantamentoPixRouter } from './adiantamentoPix.js'
+import { pilotoFinanceiroRouter } from './pilotoFinanceiro.js'
+import { linksPagamentoRouter } from './linksPagamento.js'
+import { faturamentoIsentosRouter } from './faturamentoIsentos.js'
+import { arquivosContabilidadeRouter } from './arquivosContabilidade.js'
+import { cobrancaSapRouter } from './cobrancaSap.js'
 import { instagramRouter } from './instagram.js'
 import { financeiroRouter } from './financeiro.js'
 import { vinculosRouter } from './vinculos.js'
@@ -119,6 +125,12 @@ export const appRouter = router({
   design: designRouter,
   requisicaoPosto: requisicaoPostoRouter,
   suframa: suframaRouter,
+  adiantamentoPix: adiantamentoPixRouter,
+  pilotoFinanceiro: pilotoFinanceiroRouter,
+  linksPagamento: linksPagamentoRouter,
+  faturamentoIsentos: faturamentoIsentosRouter,
+  arquivosContabilidade: arquivosContabilidadeRouter,
+  cobrancaSap: cobrancaSapRouter,
   liberacaoCredito: liberacaoCreditoRouter,
   solicitacaoCredito: solicitacaoCreditoRouter,
   chat: chatRouter,

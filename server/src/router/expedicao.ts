@@ -17,6 +17,8 @@ import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
 import { agendamentosPorCard, type AgendamentoColeta } from '../lib/expedicaoAgendamentos.js'
 import { ETAPAS_CONFERE_TUBO, SQL_EH_TUBO, ehTubo, lerCodigoColeta, tuboNaNf, pedidoSoTubos, SQL_PEDIDO_SO_TUBOS } from '../lib/expedicaoTubos.js'
+import { MSG_TRAVA_PIX, entriesDoCard, pedidosAguardandoPix } from '../lib/adiantamentoPix.js'
+import { noPiloto } from '../lib/pilotoFinanceiro.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
 // empresa vê só a própria fila e a própria equipe (estoques separados). Os 3
@@ -293,6 +295,9 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
   const errosPor = new Map(erros.map((e) => [e.id, Number(e.n)]))
   const pessoas = new Map((await db.query.expedicaoColaboradores.findMany({ where: eq(expedicaoColaboradores.empresaId, empresaId) })).map((c) => [c.id, c.nome]))
   const agendamentos = await agendamentosPorCard(ids)
+  // Adiantamento PIX: venda à vista/entrada sem comprovante trava a NF e o
+  // fim da expedição (financeiro, 2026-11-13).
+  const semPix = await pedidosAguardandoPix(pedidos.filter((p) => p.etapa !== 'coletado').flatMap((p) => entriesDoCard(p.orderEntriesSap)))
   // Selo "CLIENTE ISENTO" no card (João, 2026-11-06): vem do Status fiscal do
   // cadastro do cliente, achado pelo código do SAP. Vale o cadastro da empresa
   // do pedido; sem status lá, o de outra empresa com o mesmo código (é o mesmo
@@ -351,6 +356,13 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
     return {
       ...p,
       clienteIsento: clienteIsento(p.clienteCodigo),
+      // 'aguardando' = falta o comprovante; 'anexado' = falta o financeiro conferir.
+      aguardandoPix: (p.etapa === 'coletado'
+        ? null
+        : (() => {
+            const st = entriesDoCard(p.orderEntriesSap).map((e) => semPix.get(e)?.status).filter(Boolean)
+            return st.includes('aguardando') ? 'aguardando' : st.length ? 'anexado' : null
+          })()) as 'aguardando' | 'anexado' | null,
       notaPelaJoitec: p.empresaId === tubos?.id && daJoitec.has(p.id),
       mesmoClienteNaFila:
         p.etapa === 'coletado' || !p.clienteCodigo
@@ -410,11 +422,48 @@ async function pendenciasColeta(empresaId: number, p: typeof expedicaoPedidos.$i
 
 // Agendar (ou reagendar) a coleta — pelo estoque (agendar) ou, na Odin
 // Tubos, pelo vendedor (agendarPeloVendedor). Só com a NF emitida.
+async function travaPix(p: typeof expedicaoPedidos.$inferSelect) {
+  const semPix = await pedidosAguardandoPix(entriesDoCard(p.orderEntriesSap))
+  if (semPix.size) throw new TRPCError({ code: 'BAD_REQUEST', message: MSG_TRAVA_PIX })
+}
+
+// Cliente ISENTO (Joitec, Odin Tubos, Odin Automação): sem o "Pago" da
+// faturista em Faturamento isentos a coleta não agenda nem fecha (João,
+// 2026-11-16 — antes só avisava). Mesma regra do selo CLIENTE ISENTO.
+const EMPRESAS_TRAVA_ISENTO = ['joitec', 'odin-tubos', 'joitec-automacao']
+async function travaIsento(p: typeof expedicaoPedidos.$inferSelect) {
+  if (p.pagamentoStatus === 'pago' || !p.clienteCodigo) return
+  const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, p.empresaId), columns: { slug: true } })
+  if (!emp || !EMPRESAS_TRAVA_ISENTO.includes(emp.slug)) return
+  // Piloto do financeiro: só trava pedido de vendedor que está no piloto
+  // (vendedor da venda ligada ao pedido; sem venda, o dono do cliente).
+  const entries = entriesDoCard(p.orderEntriesSap)
+  const vendaDoPedido = entries.length
+    ? await db.query.vendas.findFirst({ where: and(inArray(vendas.pedidoSapEntry, entries), isNull(vendas.deletedAt)), columns: { vendedorId: true } })
+    : null
+  const donoCliente = vendaDoPedido
+    ? null
+    : await db.query.clientes.findFirst({
+        where: and(eq(clientes.empresaId, p.empresaId), isNull(clientes.deletedAt), or(eq(clientes.codigo, p.clienteCodigo), eq(clientes.codigoAntigo, p.clienteCodigo))),
+        columns: { vendedorAtualId: true },
+      })
+  if (!(await noPiloto(vendaDoPedido?.vendedorId ?? donoCliente?.vendedorAtualId))) return
+  const cads = await db
+    .select({ empresaId: clientes.empresaId, statusFiscal: clientes.statusFiscal })
+    .from(clientes)
+    .where(and(isNull(clientes.deletedAt), isNotNull(clientes.statusFiscal), or(eq(clientes.codigo, p.clienteCodigo), eq(clientes.codigoAntigo, p.clienteCodigo))))
+  const daEmpresa = cads.filter((c) => c.empresaId === p.empresaId)
+  if ((daEmpresa.length ? daEmpresa : cads).some((c) => c.statusFiscal === 'isento'))
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'CLIENTE ISENTO AGUARDANDO PAGAMENTO — a coleta só agenda/fecha depois que o financeiro marcar "Pago" em Faturamento isentos.' })
+}
+
 async function gravarAgendamento(
   p: typeof expedicaoPedidos.$inferSelect,
   input: { transportadora: string; coletaAgendada: string; observacao?: string },
   userId: number
 ) {
+  await travaPix(p)
+  await travaIsento(p)
   if (!['nf', 'agendamento', 'coleta'].includes(p.etapa)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra agendar depois da embalagem.' })
   if (!p.nfNumero) throw new TRPCError({ code: 'BAD_REQUEST', message: 'A NF ainda não saiu no SAP — a coleta só é agendada depois da NF.' })
   // Transportadora do pedido no SAP manda (João 2026-11-13); digitada só quando o pedido não tem.
@@ -981,6 +1030,8 @@ export const expedicaoRouter = router({
       const pendencias = await pendenciasColeta(ctx.empresaId, p)
       const etapaOk = p.etapa === 'coleta' || (input.pelaLeitura && ['nf', 'agendamento'].includes(p.etapa))
       if (!etapaOk) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Só dá pra marcar coleta com a NF emitida e a coleta agendada.' })
+      await travaPix(p)
+      await travaIsento(p)
       if (pendencias.length) throw new TRPCError({ code: 'BAD_REQUEST', message: pendencias.join(' · ') })
       await db
         .update(expedicaoPedidos)

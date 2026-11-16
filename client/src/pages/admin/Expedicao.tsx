@@ -401,6 +401,12 @@ export default function Expedicao() {
                       </div>
                       <p className="text-xs text-dark-300 leading-tight mt-0.5 line-clamp-2">{p.clienteNome}</p>
                       {p.clienteIsento && <SeloIsento className="mt-1" />}
+                      {p.aguardandoPix && <SeloPix status={p.aguardandoPix} className="mt-1" />}
+                      {p.clienteIsento && (
+                        <span className={`ml-1 inline-block text-[11px] font-bold rounded px-1.5 py-0.5 mt-1 border ${p.pagamentoStatus === 'pago' ? 'text-green-300 bg-green-900/20 border-green-700/50' : 'text-amber-200 bg-amber-900/30 border-amber-600/60'}`}>
+                          {p.pagamentoStatus === 'pago' ? '✓ PAGO' : '💰 AGUARDANDO PAGAMENTO'}
+                        </span>
+                      )}
                       {p.notaPelaJoitec && (
                         <p className="text-[11px] font-semibold text-violet-100 bg-violet-900/40 border border-violet-600/60 rounded px-1.5 py-0.5 mt-1">
                           🔁 PEDIDO PELA JOITEC — peça do estoque Joitec (2-REV), nota sai pela Joitec
@@ -615,6 +621,17 @@ function ConferenciaSapBotao({ id }: { id: number }) {
   )
 }
 
+function SeloPix({ status, className = '' }: { status: 'aguardando' | 'anexado'; className?: string }) {
+  return (
+    <span
+      className={`inline-block text-[11px] font-bold tracking-wide rounded bg-amber-900/40 text-amber-100 border border-amber-500/70 px-1.5 py-0.5 animate-pulse ${className}`}
+      title="Venda à vista / entrada + boleto — não emite NF nem termina a expedição até o financeiro conferir o PIX"
+    >
+      {status === 'aguardando' ? '⏳ AGUARDANDO COMPROVANTE DO PIX' : '⏳ PIX AGUARDANDO CONFERÊNCIA DO FINANCEIRO'}
+    </span>
+  )
+}
+
 function SeloIsento({ className = '' }: { className?: string }) {
   return (
     <span className={`inline-block text-[11px] font-bold tracking-wide rounded bg-violet-900/40 text-violet-200 border border-violet-600/60 px-1.5 py-0.5 ${className}`}>
@@ -757,6 +774,16 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
     <Modal open onClose={onClose} title={`Pedido ${p.pedidosSap} — ${p.clienteNome ?? ''}`} size="xl">
       <div className="space-y-5">
         {p.clienteIsento && <SeloIsento />}
+        {p.clienteIsento && p.pagamentoStatus !== 'pago' && (
+          <p className="text-sm font-semibold text-amber-100 bg-amber-900/30 border border-amber-500/70 rounded-lg px-3 py-2">
+            💰 CLIENTE ISENTO AGUARDANDO PAGAMENTO — a coleta não agenda nem fecha até o financeiro marcar "Pago" em Faturamento isentos.
+          </p>
+        )}
+        {p.aguardandoPix && (
+          <p className="text-sm font-semibold text-amber-100 bg-amber-900/30 border border-amber-500/70 rounded-lg px-3 py-2">
+            {p.aguardandoPix === 'aguardando' ? '⏳ AGUARDANDO COMPROVANTE DO PIX' : '⏳ PIX AGUARDANDO CONFERÊNCIA DO FINANCEIRO'} — venda à vista / entrada + boleto. Não emita a NF: a coleta não agenda nem fecha até o vendedor anexar o comprovante e o financeiro conferir.
+          </p>
+        )}
         {p.notaPelaJoitec && (
           <p className="text-sm text-violet-100 bg-violet-900/30 border border-violet-600/60 rounded-lg px-3 py-2">
             🔁 <b>Pedido de vendedor da Odin Tubos tirado pela filial Joitec</b> (faltou peça na Odin Tubos): a peça sai do estoque da Joitec (2-REV) e a nota

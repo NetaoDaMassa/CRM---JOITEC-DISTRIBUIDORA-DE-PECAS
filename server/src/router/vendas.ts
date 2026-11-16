@@ -1,3 +1,4 @@
+import { avisarVendedorPix } from '../lib/adiantamentoPix.js'
 import { z } from 'zod'
 import { and, eq, sql } from 'drizzle-orm'
 import { router, protectedProcedure, temFeature } from './_base.js'
@@ -107,6 +108,7 @@ export const vendasRouter = router({
         origemMarketingTipo: input.origemMarketing ? (input.origemMarketingTipo ?? 'padrao') : null,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
+      void avisarVendedorPix(vendaId)
 
       // Só soma no Caixa quando o pagamento foi em Dinheiro de verdade — Pix
       // e Cartão não passam pelo caixa físico da loja, ficam de fora
@@ -193,6 +195,7 @@ export const vendasRouter = router({
         pdfPedidoPath: input.pdfPedidoPath,
       })
       const vendaId = Number(vendaResult.lastInsertRowid)
+      void avisarVendedorPix(vendaId)
 
       // Odin Compressores (Carteira da Bruna) — mesma regra do fechamento
       // normal (`funil.moverEtapa`): também vira Pedido de verdade.

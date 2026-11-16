@@ -769,6 +769,10 @@ export default function Negociacoes() {
       <div className="mb-6">
         <h1 className="font-heading text-2xl text-dark-50 font-bold">Negociações</h1>
         <p className="text-sm text-dark-400 mt-0.5">Cobrança do dia a dia, clientes no Cartório e enviados à RC.</p>
+        <p className="mt-2 text-sm text-amber-200 bg-amber-900/25 border border-amber-700/50 rounded-lg px-3 py-2">
+          Tela antiga, guardada só para consulta. A cobrança agora é automática em{' '}
+          <a href="/admin/cobranca" className="font-semibold underline">Financeiro → Cobrança</a>.
+        </p>
       </div>
 
       <div className="mb-5">

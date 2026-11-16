@@ -14,7 +14,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
-import { adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, expedicaoFotos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
+import { contabilidadeArquivos, adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, expedicaoFotos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
 import { temFeature } from './router/_base.js'
 import { podeTrocarFotoProduto } from './router/fotosProdutos.js'
 import { semearFotosCatalogo } from './lib/fotosProdutos.js'
@@ -104,6 +104,9 @@ app.get('/tracker.js', cors({ origin: true }), (req, res) => {
 app.use('/api/brevo', brevoRouter)
 
 app.use(cors({ origin: process.env.CLIENT_URL ?? 'http://localhost:5173', credentials: true }))
+// Arquivos para contabilidade: nunca saem pelo link público de /uploads —
+// só pela rota /contabilidade-arquivo/:id, que checa a permissão.
+app.use('/uploads/privado-contabilidade', (_req, res) => res.status(404).end())
 app.use('/uploads', express.static(path.resolve(UPLOADS_DIR)))
 
 // Resolve qual empresa vale pra esta requisição: normalmente é a empresa do
@@ -457,6 +460,39 @@ app.post('/upload/marketing-arquivo', uploadMarketing.single('file'), async (req
   if (user.role !== 'admin') return res.status(403).json({ error: 'Só admin pode subir arquivo' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
+// Arquivos para contabilidade (Suy, financeiro 2026-11-13) — pasta privada.
+const DIR_CONTABILIDADE = path.resolve(UPLOADS_DIR, 'privado-contabilidade')
+fs.mkdirSync(DIR_CONTABILIDADE, { recursive: true })
+const uploadContabilidade = multer({
+  storage: multer.diskStorage({
+    destination: DIR_CONTABILIDADE,
+    filename: (_req, file, cb) => cb(null, `contab-${randomUUID()}${path.extname(file.originalname).toLowerCase()}`),
+  }),
+  limits: { fileSize: 100 * 1024 * 1024 },
+})
+async function podeContabilidade(user: { id: number; superAdmin: boolean; role: string }) {
+  return user.superAdmin || (user.role === 'admin' && (await temFeature(user.id, 'arquivos_contabilidade')))
+}
+app.post('/upload/contabilidade-arquivo', async (req, res, next) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!(await podeContabilidade(user))) return res.status(403).json({ error: 'Sem permissão' })
+  next()
+}, uploadContabilidade.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' })
+  res.json({ nomeArmazenado: req.file.filename, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+app.get('/contabilidade-arquivo/:id', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!(await podeContabilidade(user))) return res.status(403).json({ error: 'Sem permissão' })
+  const a = await db.query.contabilidadeArquivos.findFirst({ where: eq(contabilidadeArquivos.id, Number(req.params.id)) })
+  if (!a) return res.status(404).json({ error: 'Arquivo não encontrado' })
+  res.setHeader('Content-Disposition', `${req.query.baixar ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(a.nomeOriginal)}`)
+  if (a.tipoArquivo) res.setHeader('Content-Type', a.tipoArquivo)
+  res.sendFile(path.resolve(DIR_CONTABILIDADE, a.nomeArmazenado))
 })
 
 // Foto de um produto (módulo Fotos dos produtos, João 2026-11-10): admin

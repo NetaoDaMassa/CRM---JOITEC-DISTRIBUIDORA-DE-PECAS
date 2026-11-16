@@ -8,13 +8,14 @@
 // marca todas as formas de pagamento) ou Devolve com motivo → vendedor é
 // avisado. Se ela ativar direto no SAP, a rodada de 10 min percebe.
 import { z } from 'zod'
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { cadastrosClientesSap, carteiraHistorico, clientes, empresas, funilMensal, notifications, permissoesAdmin, sapListasPreco, sapPrazosPagamento, users } from '../db/schema.js'
+import { noPiloto } from '../lib/pilotoFinanceiro.js'
+import { cadastrosClientesSap, carteiraHistorico, clientes, vendas, empresas, funilMensal, notifications, permissoesAdmin, sapListasPreco, sapPrazosPagamento, users } from '../db/schema.js'
 import { agoraSqlite, mesReferenciaAtual } from '../lib/dataBr.js'
-import { buscarCnpj } from '../lib/brasilApi.js'
+import { buscarCep, buscarCnpj } from '../lib/brasilApi.js'
 import { buscarInscricaoEstadual } from '../lib/inscricaoEstadual.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
@@ -36,6 +37,8 @@ import {
   INDICADORES_IE,
   REGIOES_SUFRAMA,
   aprovarClienteSap,
+  aplicarRegrasIsento,
+  listaIsentoDe,
   corrigirClienteSap,
   criarClienteSap,
   faltando,
@@ -111,6 +114,11 @@ const dadosSchema = z.object({
   territorio: z.number().int().nullable().default(null),
   formasPagamento: z.array(z.string()).nullable().default(null),
   filiais: z.array(z.number().int()).default([]),
+  emailFinanceiro: z.string().default(''),
+  contatoFinanceiro: z.string().default(''),
+  dddFinanceiro: z.string().default(''),
+  telefoneFinanceiro: z.string().default(''),
+  anexos: z.array(z.object({ nome: z.string().max(200), arquivo: z.string().max(300), tipo: z.string().max(120).nullable() })).max(15).default([]),
   cobranca: endereco,
   entregaIgual: z.boolean().default(true),
   entrega: endereco,
@@ -203,7 +211,17 @@ async function clienteNoCrm(l: Linha, d: DadosCadastro, cardCode: string, autorI
   if (!alvo && doc) alvo = await db.query.clientes.findFirst({ where: and(eq(clientes.empresaId, l.empresaId), doc, isNull(clientes.deletedAt)) })
   if (alvo) {
     const codigo = alvo.codigo.startsWith('M') || alvo.codigo.startsWith('P') ? { codigo: cardCode } : alvo.codigo === cardCode ? {} : { codigoAntigo: alvo.codigoAntigo ?? alvo.codigo, codigo: cardCode }
-    await db.update(clientes).set({ ...campos, ...codigo, updatedAt: agoraSqlite() }).where(eq(clientes.id, alvo.id))
+    // Cliente "sem cadastro" da cotação (PROV-…): agora entra na carteira.
+    const eraProvisorio = alvo.codigo.startsWith('PROV-')
+    await db.update(clientes).set({ ...campos, ...codigo, ...(eraProvisorio ? { emProspeccao: false, vendedorAtualId: alvo.vendedorAtualId ?? l.vendedorId } : {}), updatedAt: agoraSqlite() }).where(eq(clientes.id, alvo.id))
+    const dono = alvo.vendedorAtualId ?? l.vendedorId
+    if (eraProvisorio && dono) {
+      const card = await db.query.funilMensal.findFirst({ where: and(eq(funilMensal.clienteId, alvo.id), eq(funilMensal.mesReferencia, mesReferenciaAtual())) })
+      if (!card) {
+        await db.insert(carteiraHistorico).values({ clienteId: alvo.id, vendedorId: dono })
+        await db.insert(funilMensal).values({ clienteId: alvo.id, vendedorId: dono, mesReferencia: mesReferenciaAtual() })
+      }
+    }
     await registrarAuditoria({ tabela: 'clientes', registroId: alvo.id, acao: 'editar', alteradoPor: autorId, campo: 'codigo', valorAnterior: alvo.codigo, valorNovo: `${cardCode} (cadastro enviado ao SAP)` })
     return alvo.id
   }
@@ -297,6 +315,88 @@ export const cadastrosClientesRouter = router({
     return { ...OPCOES, ...l, ...sap, formas, vendedorTemSap: vendSap != null, vendedorSap: vendSap, filialPadrao: ctx.filial, veTudo: ctx.veTudo }
   }),
 
+  // CEP → rua/bairro/cidade/UF.
+  buscarCep: cadastroProcedure.input(z.object({ cep: z.string() })).query(({ input }) => buscarCep(input.cep)),
+
+  // Relatório (Izabelly, 2026-11-13): cadastros por mês e quantos desses
+  // clientes novos já compraram.
+  relatorio: cadastroProcedure.query(async ({ ctx }) => {
+    const desde = new Date()
+    desde.setMonth(desde.getMonth() - 11, 1)
+    const ini = desde.toISOString().slice(0, 7) + '-01'
+    const ls = await db
+      .select({ id: cadastrosClientesSap.id, status: cadastrosClientesSap.status, clienteId: cadastrosClientesSap.clienteId, criado: cadastrosClientesSap.createdAt, enviado: cadastrosClientesSap.enviadoEm, vendedorId: cadastrosClientesSap.vendedorId })
+      .from(cadastrosClientesSap)
+      .where(and(eq(cadastrosClientesSap.empresaId, ctx.empresaId), gte(cadastrosClientesSap.createdAt, ini), ctx.veTudo ? undefined : eq(cadastrosClientesSap.vendedorId, ctx.user.id)))
+    const ids = [...new Set(ls.map((l) => l.clienteId).filter((x): x is number => x != null))]
+    const comVenda = new Map<number, number>()
+    if (ids.length)
+      for (const v of await db
+        .select({ clienteId: vendas.clienteId, total: sql<number>`sum(${vendas.valorFechado})` })
+        .from(vendas)
+        .where(inArray(vendas.clienteId, ids))
+        .groupBy(vendas.clienteId))
+        comVenda.set(v.clienteId, Number(v.total) || 0)
+    const meses = new Map<string, { mes: string; cadastros: number; aprovados: number; comVenda: number; valorVendido: number }>()
+    for (const l of ls) {
+      if (l.status === 'rascunho') continue
+      const mes = (l.enviado ?? l.criado).slice(0, 7)
+      const m = meses.get(mes) ?? { mes, cadastros: 0, aprovados: 0, comVenda: 0, valorVendido: 0 }
+      m.cadastros++
+      if (l.status === 'aprovado') m.aprovados++
+      if (l.clienteId && comVenda.has(l.clienteId)) {
+        m.comVenda++
+        m.valorVendido += comVenda.get(l.clienteId)!
+      }
+      meses.set(mes, m)
+    }
+    return [...meses.values()].sort((a, b) => b.mes.localeCompare(a.mes))
+  }),
+
+  // Base dos filtros e relatórios da tela (João, 2026-11-16: "deixar prontos
+  // relatórios e filtros, por vendedor e etc"). Uma linha por cadastro com o
+  // que já existe gravado: isento, datas, devoluções (do histórico — o motivo
+  // na linha é só o último) e venda do cliente DEPOIS do 1º envio. A tela
+  // filtra/agrupa em cima disso. Mesma regra de visão da lista (vendedor só
+  // vê os dele; admin vê a empresa toda).
+  analise: cadastroProcedure.query(async ({ ctx }) => {
+    const ls = await db
+      .select()
+      .from(cadastrosClientesSap)
+      .where(and(eq(cadastrosClientesSap.empresaId, ctx.empresaId), ctx.veTudo ? undefined : eq(cadastrosClientesSap.vendedorId, ctx.user.id)))
+      .orderBy(desc(cadastrosClientesSap.updatedAt))
+    const nomes = await nomesUsuarios(ls.map((l) => l.vendedorId))
+    const ids = [...new Set(ls.map((l) => l.clienteId).filter((x): x is number => x != null))]
+    const vendasDe = new Map<number, { data: string; valor: number }[]>()
+    if (ids.length)
+      for (const v of await db.select({ clienteId: vendas.clienteId, data: vendas.dataFechamento, valor: vendas.valorFechado }).from(vendas).where(inArray(vendas.clienteId, ids))) {
+        const a = vendasDe.get(v.clienteId) ?? []
+        a.push({ data: v.data, valor: Number(v.valor) || 0 })
+        vendasDe.set(v.clienteId, a)
+      }
+    return ls.map((l) => {
+      const d = lerDados(l)
+      const h = lerHistorico(l)
+      const primeiroEnvio = h.find((x) => x.acao === 'Enviou ao SAP')?.em ?? l.enviadoEm
+      const devolucoes = h.filter((x) => x.acao === 'Devolveu ao vendedor').map((x) => ({ em: x.em, por: x.por, motivo: x.detalhe ?? '' }))
+      if (!devolucoes.length && l.motivoDevolucao) devolucoes.push({ em: l.updatedAt, por: '', motivo: l.motivoDevolucao })
+      const base = primeiroEnvio ?? l.createdAt
+      const depois = l.clienteId ? (vendasDe.get(l.clienteId) ?? []).filter((v) => v.data >= base) : []
+      return {
+        ...resumo(l, nomes),
+        vendedorId: l.vendedorId,
+        pessoa: d.pessoa,
+        ieIsento: !!d.ieIsento,
+        criadoEm: l.createdAt,
+        primeiroEnvioEm: primeiroEnvio,
+        devolucoes,
+        vendasDepois: depois.length,
+        valorDepois: depois.reduce((s, v) => s + v.valor, 0),
+        primeiraVendaEm: depois.length ? depois.map((v) => v.data).sort()[0] : null,
+      }
+    })
+  }),
+
   // CNPJ: dados da Receita + já existe no CRM/SAP?
   consultarDocumento: cadastroProcedure.input(z.object({ pessoa: z.enum(['juridica', 'fisica']), documento: z.string() })).mutation(async ({ ctx, input }) => {
     const doc = so(input.documento)
@@ -375,9 +475,12 @@ export const cadastrosClientesRouter = router({
     const l = await acharLinha(input.id, ctx.empresaId)
     podeMexer(l, ctx)
     if (l.status === 'aguardando' || l.status === 'aprovado') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Já foi enviado' })
-    const d = lerDados(l)
+    // Piloto do financeiro: regras novas (isento automático, celular e e-mail
+    // do financeiro) só pra cadastro de vendedor do piloto.
+    const regrasNovas = await noPiloto(l.vendedorId)
+    const d = regrasNovas ? aplicarRegrasIsento(lerDados(l), listaIsentoDe((await listasSap()).listas)) : lerDados(l)
     if (!d.filiais?.length) d.filiais = FILIAIS_SAP.map((f) => f.v) // padrão: as 3 filiais
-    const falta = faltando(d)
+    const falta = faltando(d, regrasNovas)
     if (falta.length) throw new TRPCError({ code: 'BAD_REQUEST', message: `Falta preencher: ${falta.join(', ')}` })
     if (d.pessoa === 'juridica' && !cnpjValido(d.cnpj)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CNPJ inválido' })
     if (d.pessoa === 'fisica' && !cpfValido(d.cpf)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CPF inválido' })

@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Plus, Paperclip, Trash2, Search, UserPlus } from 'lucide-react'
+import { Plus, Paperclip, Trash2, Search, UserPlus, Pencil } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { usePersistedState } from '../../lib/usePersistedState'
 import Button from '../../components/ui/Button'
@@ -10,7 +10,10 @@ import { Badge } from '../../components/ui/Badge'
 import { formatDateTime } from '../../lib/utils'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
 import CadastroRapidoClienteModal from '../../components/CadastroRapidoClienteModal'
-import SolicitacaoCreditoLimites from './SolicitacaoCredito'
+import { QUEM_LIBERA } from './SolicitacaoCredito'
+import { parseValorBr } from '../../lib/valorBr'
+import Select from '../../components/ui/Select'
+import { CartaoTotal, TabelaRelatorio, type Coluna, moeda, pct, numCsv, mesBr, limitesDoMes, dataBr } from './creditoRelatorioUi'
 
 const STATUS_LABEL: Record<string, string> = { liberado: 'Liberado', negado: 'Negado' }
 const STATUS_COR: Record<string, string> = {
@@ -105,11 +108,31 @@ function SeletorCliente({
   )
 }
 
-function NovaLiberacaoModal({ open, onClose, quemLiberouOpcoes }: { open: boolean; onClose: () => void; quemLiberouOpcoes: string[] }) {
+type RegistroEditavel = { id: number; clienteNome: string; quemLiberou: string; motivo: string; valorLiberado: number | null; celular: string | null }
+
+function NovaLiberacaoModal({ open, onClose, editando }: { open: boolean; onClose: () => void; editando?: RegistroEditavel | null }) {
   const utils = trpc.useUtils()
   const [cliente, setCliente] = useState<ClienteResultado | null>(null)
   const [quemLiberou, setQuemLiberou] = useState('')
   const [motivo, setMotivo] = useState('')
+  const [valor, setValor] = useState('')
+  const [celular, setCelular] = useState('')
+  useEffect(() => {
+    if (!open) return
+    setQuemLiberou(editando?.quemLiberou ?? '')
+    setMotivo(editando?.motivo ?? '')
+    setValor(editando?.valorLiberado != null ? String(editando.valorLiberado).replace('.', ',') : '')
+    setCelular(editando?.celular ?? '')
+  }, [open, editando])
+  const editarMut = trpc.liberacaoCredito.editar.useMutation({
+    onSuccess() {
+      toast.success('Registro atualizado')
+      utils.liberacaoCredito.listar.invalidate()
+      utils.liberacaoCredito.relatorio.invalidate()
+      fechar()
+    },
+    onError: (err) => toast.error(err.message),
+  })
   const [arquivo, setArquivo] = useState<{ urlArquivo: string; nomeArquivo: string; tipoArquivo?: string } | null>(null)
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
 
@@ -130,6 +153,8 @@ function NovaLiberacaoModal({ open, onClose, quemLiberouOpcoes }: { open: boolea
     setCliente(null)
     setQuemLiberou('')
     setMotivo('')
+    setValor('')
+    setCelular('')
     setArquivo(null)
     onClose()
   }
@@ -156,12 +181,19 @@ function NovaLiberacaoModal({ open, onClose, quemLiberouOpcoes }: { open: boolea
   }
 
   function salvar() {
-    if (!cliente) return toast.error('Selecione o cliente.')
-    if (!quemLiberou.trim()) return toast.error('Informe quem liberou.')
+    if (!editando && !cliente) return toast.error('Selecione o cliente.')
+    const quem = QUEM_LIBERA.find((q) => q === quemLiberou)
+    if (!quem) return toast.error('Escolha quem liberou.')
+    const valorNum = parseValorBr(valor)
+    if (!valorNum) return toast.error('Informe o valor liberado a mais.')
     if (!motivo.trim()) return toast.error('Informe o motivo.')
+    if (editando) return editarMut.mutate({ id: editando.id, quemLiberou: quem, motivo: motivo.trim(), valorLiberado: valorNum, celular: celular.trim() })
+    if (!cliente) return
     criarMut.mutate({
       clienteId: cliente.id,
-      quemLiberou: quemLiberou.trim(),
+      quemLiberou: quem,
+      valorLiberado: valorNum,
+      celular: celular.trim(),
       motivo: motivo.trim(),
       urlArquivo: arquivo?.urlArquivo,
       nomeArquivo: arquivo?.nomeArquivo,
@@ -170,31 +202,36 @@ function NovaLiberacaoModal({ open, onClose, quemLiberouOpcoes }: { open: boolea
   }
 
   return (
-    <Modal open={open} onClose={fechar} title="Nova liberação de crédito" size="md">
+    <Modal open={open} onClose={fechar} title={editando ? 'Editar registro de liberação' : 'Novo registro de liberação'} size="md">
       <div className="space-y-4">
-        <div>
-          <label className="text-sm text-dark-200 font-medium mb-1 block">Cliente</label>
-          <SeletorCliente clienteSelecionado={cliente} onSelecionar={setCliente} />
-        </div>
+        {editando ? (
+          <p className="text-sm text-dark-100 font-medium">{editando.clienteNome}</p>
+        ) : (
+          <div>
+            <label className="text-sm text-dark-200 font-medium mb-1 block">Cliente</label>
+            <SeletorCliente clienteSelecionado={cliente} onSelecionar={setCliente} />
+          </div>
+        )}
 
         <div>
-          <Input
-            label="Quem liberou"
-            list="quem-liberou-opcoes"
-            placeholder="Ex: Guilherme, Financeiro..."
-            value={quemLiberou}
-            onChange={(e) => setQuemLiberou(e.target.value)}
-          />
-          <datalist id="quem-liberou-opcoes">
-            {quemLiberouOpcoes.map((n) => (
-              <option key={n} value={n} />
+          <label className="text-sm text-dark-200 font-medium mb-1 block">Quem liberou *</label>
+          <select value={quemLiberou} onChange={(e) => setQuemLiberou(e.target.value)} className="w-full bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-2">
+            <option value="">Escolha…</option>
+            {QUEM_LIBERA.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
             ))}
-          </datalist>
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Valor liberado a mais *" placeholder="R$ 0,00" value={valor} onChange={(e) => setValor(e.target.value)} />
+          <Input label="Celular (opcional)" placeholder="(47) 99999-9999" value={celular} onChange={(e) => setCelular(e.target.value)} />
         </div>
 
         <Textarea label="Motivo" placeholder="Como/por que foi liberado..." rows={3} value={motivo} onChange={(e) => setMotivo(e.target.value)} />
 
-        <div>
+        {!editando && <div>
           <label className="text-sm text-dark-200 font-medium mb-1 block">Anexo (opcional)</label>
           {arquivo ? (
             <div className="flex items-center justify-between rounded-lg border border-dark-600 px-3 py-2 text-sm">
@@ -215,52 +252,76 @@ function NovaLiberacaoModal({ open, onClose, quemLiberouOpcoes }: { open: boolea
               className="text-sm text-dark-300"
             />
           )}
-        </div>
+        </div>}
 
-        <Button className="w-full" loading={criarMut.isPending || enviandoArquivo} onClick={salvar}>
-          Registrar liberação
+        <Button className="w-full" loading={criarMut.isPending || editarMut.isPending || enviandoArquivo} onClick={salvar}>
+          {editando ? 'Salvar alterações' : 'Registrar liberação'}
         </Button>
       </div>
     </Modal>
   )
 }
 
-function FiltroTexto({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: string[] }) {
+type FiltrosLib = { q: string; dataDe: string; dataAte: string; mesReferencia: string; quemLiberou: string; vendedorId: string; empresaId: string }
+const FILTROS_LIB_VAZIOS: FiltrosLib = { q: '', dataDe: '', dataAte: '', mesReferencia: '', quemLiberou: '', vendedorId: '', empresaId: '' }
+
+function BarraFiltrosLib({ f, set, completo }: { f: FiltrosLib; set: (p: Partial<FiltrosLib>) => void; completo: boolean }) {
+  const { data: opcoesQuem } = trpc.liberacaoCredito.quemLiberouOpcoes.useQuery()
+  const { data: opcoes } = trpc.liberacaoCredito.filtrosOpcoes.useQuery()
+  const algum = (Object.keys(FILTROS_LIB_VAZIOS) as (keyof FiltrosLib)[]).some((k) => f[k] !== '')
   return (
-    <div className="w-48">
-      <label className="text-xs text-dark-400 mb-1 block">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-2"
-      >
-        <option value="">Todos</option>
-        {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
-          </option>
-        ))}
-      </select>
+    <div className="flex flex-wrap items-end gap-3 bg-dark-800 border border-dark-600 rounded-2xl p-4">
+      {completo && (
+        <div className="w-64">
+          <Input icon={<Search size={14} />} label="Buscar" placeholder="Cliente ou código..." value={f.q} onChange={(e) => set({ q: e.target.value })} />
+        </div>
+      )}
+      <Input label="De" type="date" value={f.dataDe} onChange={(e) => set({ dataDe: e.target.value })} />
+      <Input label="Até" type="date" value={f.dataAte} onChange={(e) => set({ dataAte: e.target.value })} />
+      {completo && (
+        <div>
+          <label className="text-sm text-dark-200 font-medium mb-1 block">Mês</label>
+          <input
+            type="month"
+            value={f.mesReferencia}
+            onChange={(e) => set({ mesReferencia: e.target.value })}
+            className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-2"
+          />
+        </div>
+      )}
+      <div className="w-48">
+        <Select label="Quem liberou" value={f.quemLiberou} onChange={(e) => set({ quemLiberou: e.target.value })} placeholder="Todos" options={(opcoesQuem ?? []).map((n) => ({ value: n, label: n }))} />
+      </div>
+      <div className="w-48">
+        <Select label="Vendedor" value={f.vendedorId} onChange={(e) => set({ vendedorId: e.target.value })} placeholder="Todos" options={(opcoes?.vendedores ?? []).map((v) => ({ value: v.id, label: v.name }))} />
+      </div>
+      {(opcoes?.empresas.length ?? 0) > 1 && (
+        <div className="w-48">
+          <Select label="Empresa" value={f.empresaId} onChange={(e) => set({ empresaId: e.target.value })} placeholder="Todas" options={(opcoes?.empresas ?? []).map((e) => ({ value: e.id, label: e.nome }))} />
+        </div>
+      )}
+      {algum && (
+        <button type="button" className="text-xs text-dark-400 hover:text-dark-100 underline pb-2.5" onClick={() => set(FILTROS_LIB_VAZIOS)}>
+          Limpar filtros
+        </button>
+      )}
     </div>
   )
 }
 
-function AbaLancamentos() {
+function AbaLancamentos({ f }: { f: FiltrosLib }) {
   const [criarOpen, setCriarOpen] = useState(false)
-  const [q, setQ] = usePersistedState('liberacaoCredito:q', '')
-  const [dataDe, setDataDe] = usePersistedState('liberacaoCredito:dataDe', '')
-  const [dataAte, setDataAte] = usePersistedState('liberacaoCredito:dataAte', '')
-  const [mesReferencia, setMesReferencia] = usePersistedState('liberacaoCredito:mesReferencia', '')
-  const [quemLiberouFiltro, setQuemLiberouFiltro] = usePersistedState('liberacaoCredito:quemLiberouFiltro', '')
+  const [editando, setEditando] = useState<RegistroEditavel | null>(null)
   const utils = trpc.useUtils()
 
-  const { data: opcoes } = trpc.liberacaoCredito.quemLiberouOpcoes.useQuery()
   const { data: linhas, isLoading } = trpc.liberacaoCredito.listar.useQuery({
-    q: q || undefined,
-    dataDe: dataDe || undefined,
-    dataAte: dataAte || undefined,
-    mesReferencia: mesReferencia ? `${mesReferencia}` : undefined,
-    quemLiberou: quemLiberouFiltro || undefined,
+    q: f.q || undefined,
+    dataDe: f.dataDe || undefined,
+    dataAte: f.dataAte || undefined,
+    mesReferencia: f.mesReferencia || undefined,
+    quemLiberou: f.quemLiberou || undefined,
+    vendedorId: f.vendedorId ? Number(f.vendedorId) : undefined,
+    empresaId: f.empresaId ? Number(f.empresaId) : undefined,
   })
 
   const excluirMut = trpc.liberacaoCredito.excluir.useMutation({
@@ -274,31 +335,17 @@ function AbaLancamentos() {
     },
   })
 
+  const soma = (linhas ?? []).filter((l) => l.status === 'liberado').reduce((t, l) => t + (l.valorLiberado ?? 0), 0)
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <p className="text-sm text-dark-400">{linhas?.length ?? 0} liberação(ões)</p>
+        <p className="text-sm text-dark-400">
+          {linhas?.length ?? 0} registro(s) · <span className="text-dark-200">{moeda(soma)}</span> liberado a mais
+        </p>
         <Button size="sm" onClick={() => setCriarOpen(true)}>
           <Plus size={14} /> Nova liberação
         </Button>
-      </div>
-
-      <div className="flex flex-wrap items-end gap-3 bg-dark-800 border border-dark-600 rounded-2xl p-4">
-        <div className="w-64">
-          <Input icon={<Search size={14} />} label="Buscar" placeholder="Cliente ou código..." value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
-        <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
-        <div>
-          <label className="text-xs text-dark-400 mb-1 block">Mês</label>
-          <input
-            type="month"
-            value={mesReferencia}
-            onChange={(e) => setMesReferencia(e.target.value)}
-            className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-2"
-          />
-        </div>
-        <FiltroTexto label="Quem liberou" value={quemLiberouFiltro} onChange={setQuemLiberouFiltro} options={opcoes ?? []} />
       </div>
 
       <div className="bg-dark-800 border border-dark-600 rounded-2xl divide-y divide-dark-700">
@@ -316,6 +363,8 @@ function AbaLancamentos() {
                 {l.status === 'liberado' ? 'Liberado' : 'Negado'} por <span className="text-dark-200">{l.quemLiberou}</span> · vendedor:{' '}
                 {l.vendedorNome ?? 'sem vendedor'} · lançado por {l.criadoPorNome} em {formatDateTime(l.createdAt)}
                 {l.valorLiberado != null && <> · {formatarMoedaBr(l.valorLiberado)}</>}
+                {l.celular && <> · 📱 {l.celular}</>}
+                {l.editadoEm && <> · editado em {formatDateTime(l.editadoEm)}</>}
               </p>
               <p className="text-xs text-dark-300 mt-1.5 bg-dark-900/60 rounded-lg px-2.5 py-1.5">{l.motivo}</p>
               {l.urlArquivo && (
@@ -329,93 +378,141 @@ function AbaLancamentos() {
                 </a>
               )}
             </div>
-            <button
-              onClick={() => confirm('Excluir essa liberação?') && excluirMut.mutate({ id: l.id })}
-              className="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-900/20 shrink-0"
-            >
-              <Trash2 size={14} />
-            </button>
+            <div className="flex shrink-0">
+              <button onClick={() => setEditando(l)} className="p-1.5 rounded-lg text-dark-400 hover:text-gold-300 hover:bg-dark-700" aria-label="Editar">
+                <Pencil size={14} />
+              </button>
+              <button
+                onClick={() => confirm('Excluir essa liberação?') && excluirMut.mutate({ id: l.id })}
+                className="p-1.5 rounded-lg text-dark-400 hover:text-red-400 hover:bg-red-900/20"
+                aria-label="Excluir"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
           </div>
         ))}
       </div>
 
-      <NovaLiberacaoModal open={criarOpen} onClose={() => setCriarOpen(false)} quemLiberouOpcoes={opcoes ?? []} />
+      <NovaLiberacaoModal open={criarOpen || !!editando} editando={editando} onClose={() => (setCriarOpen(false), setEditando(null))} />
     </div>
   )
 }
 
-function AbaRelatorio() {
-  const [dataDe, setDataDe] = useState('')
-  const [dataAte, setDataAte] = useState('')
-  const { data } = trpc.liberacaoCredito.relatorio.useQuery({ dataDe: dataDe || undefined, dataAte: dataAte || undefined })
+// Ranking de "quem está liberando fora do esquema" (João, 2026-11-16).
+// Cartões de total em cima; tabelas por quem liberou, vendedor, cliente,
+// mês e empresa. Clicar numa linha abre os Registros já filtrados.
+function AbaRelatorio({ f, irParaRegistros }: { f: FiltrosLib; irParaRegistros: (p: Partial<FiltrosLib>) => void }) {
+  const { data, isLoading } = trpc.liberacaoCredito.relatorio.useQuery({
+    dataDe: f.dataDe || undefined,
+    dataAte: f.dataAte || undefined,
+    quemLiberou: f.quemLiberou || undefined,
+    vendedorId: f.vendedorId ? Number(f.vendedorId) : undefined,
+    empresaId: f.empresaId ? Number(f.empresaId) : undefined,
+  })
+  if (isLoading || !data) return <p className="text-sm text-dark-400">Carregando...</p>
+  const t = data.totais
+  const lider = data.porQuemLiberou[0]
+  type G = { qtd: number; soma: number; maior: number; media: number; pctDoTotal: number; ultimo: string }
+  const colsValores = <T extends G>(): Coluna<T>[] => [
+    { titulo: 'Liberações', valor: (l) => <span className="font-semibold text-dark-100">{l.qtd}</span>, csv: (l) => l.qtd, alinhar: 'direita' },
+    { titulo: 'Valor liberado a mais', valor: (l) => <span className="font-semibold text-gold-300">{moeda(l.soma)}</span>, csv: (l) => numCsv(l.soma), alinhar: 'direita' },
+    { titulo: '% do total', valor: (l) => pct(l.pctDoTotal), csv: (l) => numCsv(l.pctDoTotal), alinhar: 'direita' },
+    { titulo: 'Maior valor', valor: (l) => moeda(l.maior), csv: (l) => numCsv(l.maior), alinhar: 'direita' },
+    { titulo: 'Média', valor: (l) => moeda(l.media), csv: (l) => numCsv(l.media), alinhar: 'direita' },
+    { titulo: 'Última', valor: (l) => dataBr(l.ultimo), csv: (l) => dataBr(l.ultimo), alinhar: 'direita' },
+  ]
+  const dica = 'clique numa linha para ver os registros'
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3 bg-dark-800 border border-dark-600 rounded-2xl p-4">
-        <Input label="De" type="date" value={dataDe} onChange={(e) => setDataDe(e.target.value)} />
-        <Input label="Até" type="date" value={dataAte} onChange={(e) => setDataAte(e.target.value)} />
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <CartaoTotal titulo="Liberações fora do esquema" valor={t.qtd} detalhe={`${t.clientes} cliente(s)`} />
+        <CartaoTotal titulo="Valor liberado a mais" valor={moeda(t.soma)} cor="text-gold-300" detalhe={`média ${moeda(t.media)} por liberação`} />
+        <CartaoTotal titulo="Maior liberação" valor={moeda(t.maior)} />
+        <CartaoTotal
+          titulo="Quem mais liberou"
+          valor={<span className="text-lg">{lider?.quemLiberou ?? '—'}</span>}
+          detalhe={lider ? `${lider.qtd} liberação(ões) · ${moeda(lider.soma)} (${pct(lider.pctDoTotal)})` : undefined}
+        />
       </div>
 
-      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-        <p className="text-sm text-dark-400">Total no período</p>
-        <p className="text-3xl font-bold text-dark-50">{data?.quantidadeGeral ?? 0}</p>
-      </div>
+      <TabelaRelatorio
+        titulo="Ranking — quem está liberando"
+        subtitulo="ordenado pelo valor liberado a mais"
+        dicaClique={dica}
+        arquivo="liberacoes-por-quem-liberou"
+        linhas={data.porQuemLiberou}
+        chave={(l) => l.quemLiberou}
+        onClicar={(l) => irParaRegistros({ quemLiberou: l.quemLiberou })}
+        colunas={[
+          { titulo: 'Quem liberou', valor: (l) => <span className="text-dark-100 font-medium">{l.quemLiberou}</span>, csv: (l) => l.quemLiberou },
+          ...colsValores<(typeof data.porQuemLiberou)[number]>(),
+        ]}
+      />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-dark-100 mb-2">Por cliente</p>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {data?.porCliente.map((r) => (
-              <div key={r.clienteId} className="flex items-center justify-between text-xs">
-                <span className="text-dark-300 truncate">
-                  {r.clienteNome} <span className="text-dark-500">({r.empresaNome})</span>
-                </span>
-                <span className="text-dark-100 font-medium shrink-0 ml-2">{r.qtd}</span>
-              </div>
-            ))}
-            {!data?.porCliente.length && <p className="text-xs text-dark-500">Nada no período.</p>}
-          </div>
-        </div>
+      <TabelaRelatorio
+        titulo="Por vendedor beneficiado"
+        subtitulo="vendedor do cliente na hora da liberação"
+        dicaClique={dica}
+        arquivo="liberacoes-por-vendedor"
+        linhas={data.porVendedor}
+        chave={(l) => l.vendedorId ?? 0}
+        onClicar={(l) => l.vendedorId && irParaRegistros({ vendedorId: String(l.vendedorId) })}
+        colunas={[
+          { titulo: 'Vendedor', valor: (l) => <span className="text-dark-100">{l.vendedorNome}</span>, csv: (l) => l.vendedorNome },
+          ...colsValores<(typeof data.porVendedor)[number]>(),
+        ]}
+      />
 
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-dark-100 mb-2">Por vendedor</p>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {data?.porVendedor.map((r) => (
-              <div key={r.vendedorId ?? 'sem-vendedor'} className="flex items-center justify-between text-xs">
-                <span className="text-dark-300 truncate">{r.vendedorNome}</span>
-                <span className="text-dark-100 font-medium shrink-0 ml-2">{r.qtd}</span>
-              </div>
-            ))}
-            {!data?.porVendedor.length && <p className="text-xs text-dark-500">Nada no período.</p>}
-          </div>
-        </div>
+      <TabelaRelatorio
+        titulo="Por cliente beneficiado"
+        dicaClique={dica}
+        arquivo="liberacoes-por-cliente"
+        linhas={data.porCliente}
+        chave={(l) => l.clienteId}
+        onClicar={(l) => irParaRegistros({ q: l.clienteCodigo })}
+        colunas={[
+          {
+            titulo: 'Cliente',
+            valor: (l) => (
+              <span className="text-dark-100">
+                {l.clienteNome} <span className="text-dark-500 text-xs">Cód. {l.clienteCodigo} · {l.empresaNome}</span>
+              </span>
+            ),
+            csv: (l) => l.clienteNome,
+          },
+          { titulo: 'Código', valor: (l) => l.clienteCodigo, csv: (l) => l.clienteCodigo },
+          { titulo: 'Empresa', valor: (l) => l.empresaNome, csv: (l) => l.empresaNome },
+          ...colsValores<(typeof data.porCliente)[number]>(),
+        ]}
+      />
 
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-dark-100 mb-2">Por quem liberou</p>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {data?.porQuemLiberou.map((r) => (
-              <div key={r.quemLiberou} className="flex items-center justify-between text-xs">
-                <span className="text-dark-300 truncate">{r.quemLiberou}</span>
-                <span className="text-dark-100 font-medium shrink-0 ml-2">{r.qtd}</span>
-              </div>
-            ))}
-            {!data?.porQuemLiberou.length && <p className="text-xs text-dark-500">Nada no período.</p>}
-          </div>
-        </div>
+      <TabelaRelatorio
+        titulo="Por mês"
+        dicaClique={dica}
+        arquivo="liberacoes-por-mes"
+        linhas={data.porMes}
+        chave={(l) => l.mes}
+        onClicar={(l) => {
+          const { de, ate } = limitesDoMes(l.mes)
+          irParaRegistros({ dataDe: de, dataAte: ate, mesReferencia: '' })
+        }}
+        colunas={[{ titulo: 'Mês', valor: (l) => <span className="text-dark-100">{mesBr(l.mes)}</span>, csv: (l) => mesBr(l.mes) }, ...colsValores<(typeof data.porMes)[number]>()]}
+      />
 
-        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
-          <p className="text-sm font-semibold text-dark-100 mb-2">Por dia</p>
-          <div className="space-y-1.5 max-h-72 overflow-y-auto">
-            {data?.porDia.map((r) => (
-              <div key={r.dia} className="flex items-center justify-between text-xs">
-                <span className="text-dark-300">{r.dia.split('-').reverse().join('/')}</span>
-                <span className="text-dark-100 font-medium shrink-0 ml-2">{r.qtd}</span>
-              </div>
-            ))}
-            {!data?.porDia.length && <p className="text-xs text-dark-500">Nada no período.</p>}
-          </div>
-        </div>
-      </div>
+      {data.porEmpresa.length > 1 && (
+        <TabelaRelatorio
+          titulo="Por empresa"
+          dicaClique={dica}
+          arquivo="liberacoes-por-empresa"
+          linhas={data.porEmpresa}
+          chave={(l) => l.empresaId}
+          onClicar={(l) => irParaRegistros({ empresaId: String(l.empresaId) })}
+          colunas={[{ titulo: 'Empresa', valor: (l) => <span className="text-dark-100">{l.empresaNome}</span>, csv: (l) => l.empresaNome }, ...colsValores<(typeof data.porEmpresa)[number]>()]}
+        />
+      )}
+      <p className="text-[11px] text-dark-500">Conta só os registros de liberação (negativas antigas copiadas da Consulta de Crédito ficam de fora).</p>
     </div>
   )
 }
@@ -427,17 +524,20 @@ function AbaRelatorio() {
 // (tipo='limite' em solicitacoesCredito) não entram mais em Lançamentos,
 // só aparecem aqui (ver solicitacaoCredito.ts, responder).
 export default function LiberacaoCredito() {
-  const [tab, setTab] = useState<'lancamentos' | 'limites' | 'relatorio'>('lancamentos')
+  const [tab, setTab] = usePersistedState<'lancamentos' | 'relatorio'>('liberacaoCredito:aba', 'lancamentos')
+  const [filtros, setFiltros] = usePersistedState<FiltrosLib>('liberacaoCredito:filtros', FILTROS_LIB_VAZIOS)
+  const f = { ...FILTROS_LIB_VAZIOS, ...filtros }
+  const set = (p: Partial<FiltrosLib>) => setFiltros({ ...f, ...p })
 
   return (
-    <div className="p-6 space-y-4 max-w-4xl">
+    <div className="p-6 space-y-4 max-w-6xl">
       <div>
-        <h1 className="font-heading text-xl text-dark-50">Liberação / Limite de Crédito</h1>
-        <p className="text-sm text-dark-400 mt-1">Registro de liberações e limites feitos pelo Financeiro — vale pras empresas do grupo todas juntas.</p>
+        <h1 className="font-heading text-xl text-dark-50">Registros de liberação</h1>
+        <p className="text-sm text-dark-400 mt-1">Limites liberados a mais pelo Financeiro (Jessica, Rubia) ou pela Diretoria (Guilherme) — vale pras empresas do grupo todas juntas. Controle manual de quem está liberando fora do esquema. Consultas e pedidos de limite são respondidos em Consulta/Solicitação de Crédito.</p>
       </div>
 
       <div className="flex gap-1 border-b border-dark-700">
-        {(['lancamentos', 'limites', 'relatorio'] as const).map((t) => (
+        {(['lancamentos', 'relatorio'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -445,14 +545,23 @@ export default function LiberacaoCredito() {
               tab === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'
             }`}
           >
-            {t === 'lancamentos' ? 'Lançamentos' : t === 'limites' ? 'Limites' : 'Relatório'}
+            {t === 'lancamentos' ? 'Registros' : 'Relatório'}
           </button>
         ))}
       </div>
 
-      {tab === 'lancamentos' && <AbaLancamentos />}
-      {tab === 'limites' && <SolicitacaoCreditoLimites tipo="limite" embutido />}
-      {tab === 'relatorio' && <AbaRelatorio />}
+      <BarraFiltrosLib f={f} set={set} completo={tab === 'lancamentos'} />
+
+      {tab === 'lancamentos' && <AbaLancamentos f={f} />}
+      {tab === 'relatorio' && (
+        <AbaRelatorio
+          f={f}
+          irParaRegistros={(p) => {
+            set(p)
+            setTab('lancamentos')
+          }}
+        />
+      )}
     </div>
   )
 }

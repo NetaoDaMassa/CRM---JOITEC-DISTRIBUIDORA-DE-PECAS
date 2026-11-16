@@ -191,6 +191,18 @@ export const FEATURES_ADMIN = [
   // João, 2026-09-24: registro de liberações feitas pelo Financeiro (hoje a
   // Rubia), vale pras 4 empresas numa tela só.
   'liberacao_credito',
+  // Adiantamento PIX (financeiro, 2026-11-13) — cross-empresa (Joitec, Odin
+  // Tubos, Odin Automação): confere o comprovante do PIX das vendas à vista.
+  'adiantamento_pix',
+  // Financeiro 2026-11-13: link de pagamento (quem CRIA o link — o vendedor
+  // pede sem permissão), faturista dos isentos (Dani) e arquivos para
+  // contabilidade (Suy; _gerenciar = renomear/apagar pasta, lixeira).
+  'link_pagamento',
+  'faturamento_isentos',
+  'arquivos_contabilidade',
+  'arquivos_contabilidade_gerenciar',
+  // Cobrança automática (contas a receber SAP → régua → cartório → RC).
+  'cobranca_sap',
   // Consulta/Solicitação de Crédito — fluxo pedido (vendedor) → resposta
   // (financeiro), cross-empresa igual liberacao_credito. Mesma chave existe
   // em FEATURES_VENDEDOR abaixo: aqui controla quem RESPONDE (financeiro),

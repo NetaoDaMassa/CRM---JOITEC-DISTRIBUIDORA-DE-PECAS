@@ -1,3 +1,4 @@
+import { atualizarCobrancas } from './cobrancaSap.js'
 import { eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { users } from '../db/schema.js'
@@ -34,6 +35,8 @@ export async function rodarSincronizacaoSap(): Promise<void> {
     }
     const receber = await sincronizarContasReceberSap()
     console.log(`[sap] contas a receber: ${receber.titulos} títulos, ${receber.conferem}/${receber.clientesComSaldo} clientes batem com o saldo do SAP (${receber.segundos}s)`)
+    const cob = await atualizarCobrancas().catch((e) => (console.error('[cobranca] erro', e), null))
+    if (cob && (cob.novos || cob.pagos || cob.cartorio || cob.rc)) console.log(`[cobranca] ${cob.novos} novo(s), ${cob.pagos} pago(s), ${cob.cartorio} p/ cartório, ${cob.rc} p/ RC`)
   } catch (err) {
     console.error('[sap] erro na sincronização:', err instanceof Error ? err.message : err)
   } finally {

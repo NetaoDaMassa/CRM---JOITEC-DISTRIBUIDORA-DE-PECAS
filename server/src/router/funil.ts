@@ -1,3 +1,5 @@
+import { avisarVendedorPix } from '../lib/adiantamentoPix.js'
+import { pixDasVendas } from '../lib/adiantamentoPix.js'
 import { ehClienteBalcao } from '../lib/consumidorFinalBalcao.js'
 import { z } from 'zod'
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
@@ -100,6 +102,8 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
   })
 
   const funilIds = funis.map((f) => f.id)
+  // Adiantamento PIX: situação do comprovante de cada venda à vista/entrada.
+  const pixPorVenda = await pixDasVendas(funis.flatMap((f) => f.vendas))
   const contatos = funilIds.length
     ? await db.query.registroContato.findMany({
         where: and(inArray(registroContato.funilMensalId, funilIds), isNull(registroContato.deletedAt)),
@@ -330,6 +334,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       // NF do SAP (venda automática) — botões DANFE/XML no card.
       numeroNotaFiscal: v.numeroNotaFiscal,
       pedidoSapEntry: v.pedidoSapEntry,
+      pix: pixPorVenda.get(v.id) ?? null,
     })),
     valorFechadoTotal: f.vendas.reduce((soma, v) => soma + v.valorFechado, 0),
     carregadoMesAnterior: f.carregadoMesAnterior,
@@ -642,6 +647,7 @@ export const funilRouter = router({
           pdfPedidoPath: input.pdfPedidoPath,
         })
         const vendaId = Number(vendaResult.lastInsertRowid)
+        void avisarVendedorPix(vendaId)
 
         // Odin Compressores (Carteira da Bruna) — vira Pedido de verdade no
         // módulo Pedidos, sem sair da Carteira (a única coisa que ela usa).

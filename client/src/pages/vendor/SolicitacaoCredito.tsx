@@ -46,6 +46,7 @@ function FormularioNovaSolicitacao() {
   const [tipoConsulta, setTipoConsulta] = useState<'geral' | 'limpo'>('geral')
   const [cliente, setCliente] = useState<{ id: number; razaoSocial: string } | null>(null)
   const [valorSolicitado, setValorSolicitado] = useState('')
+  const [valorPedido, setValorPedido] = useState('')
   const [informacoesFiscais, setInformacoesFiscais] = useState('')
   const [observacoes, setObservacoes] = useState('')
   const [anexos, setAnexos] = useState<Anexo[]>([])
@@ -81,13 +82,16 @@ function FormularioNovaSolicitacao() {
 
   function enviar() {
     if (!cliente) return toast.error('Escolha o cliente')
-    const valorNumero = valorSolicitado ? parseValorBr(valorSolicitado) : undefined
-    if (valorSolicitado && !valorNumero) return toast.error('Valor solicitado inválido')
+    const valorNumero = tipo === 'limite' && valorSolicitado ? parseValorBr(valorSolicitado) : undefined
+    if (tipo === 'limite' && valorSolicitado && !valorNumero) return toast.error('Valor de limite inválido')
+    const pedidoNumero = tipo === 'limite' && valorPedido ? parseValorBr(valorPedido) : undefined
+    if (tipo === 'limite' && valorPedido && !pedidoNumero) return toast.error('Valor do pedido inválido')
     criarMut.mutate({
       clienteId: cliente.id,
       tipo,
       tipoConsulta: tipo === 'consulta' ? tipoConsulta : undefined,
       valorSolicitado: valorNumero,
+      valorPedido: pedidoNumero,
       informacoesFiscais: informacoesFiscais.trim() || undefined,
       observacoes: observacoes.trim() || undefined,
       anexos: anexos.length ? anexos : undefined,
@@ -111,6 +115,9 @@ function FormularioNovaSolicitacao() {
       </div>
 
       {tipo === 'consulta' && (
+        <p className="text-xs text-dark-400">O financeiro responde primeiro se o cliente está limpo no Serasa (com a data da consulta) e o limite.</p>
+      )}
+      {false && (
         <div>
           <p className="text-xs text-dark-400 mb-1.5">Tipo de consulta</p>
           <div className="flex gap-2">
@@ -126,14 +133,10 @@ function FormularioNovaSolicitacao() {
 
       <ClientePicker label="Cliente (da sua carteira)" clienteId={cliente?.id ?? null} clienteNome={cliente?.razaoSocial ?? null} onSelect={setCliente} />
 
-      {!(tipo === 'consulta' && tipoConsulta === 'limpo') && (
+      {tipo === 'limite' && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Input
-            label={tipo === 'limite' ? 'Valor de limite desejado (opcional)' : 'Valor desejado (opcional)'}
-            value={valorSolicitado}
-            onChange={(e) => setValorSolicitado(e.target.value)}
-            placeholder="R$ 0,00"
-          />
+          <Input label="Valor de limite desejado" value={valorSolicitado} onChange={(e) => setValorSolicitado(e.target.value)} placeholder="R$ 0,00" />
+          <Input label="Valor do pedido de venda" value={valorPedido} onChange={(e) => setValorPedido(e.target.value)} placeholder="R$ 0,00" />
         </div>
       )}
 

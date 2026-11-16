@@ -170,7 +170,8 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
           <Linha l="Telefone" v={fone(d.ddd, d.telefone)} />
           <Linha l="Celular" v={fone(d.dddCelular, d.celular)} />
           <Linha l="E-mail" v={d.email} />
-          <Linha l="Site" v={d.site} />
+          <Linha l="E-mail do financeiro" v={d.emailFinanceiro} />
+          <Linha l="Financeiro (contato)" v={[d.contatoFinanceiro, fone(d.dddFinanceiro ?? '', d.telefoneFinanceiro ?? '')].filter(Boolean).join(' · ')} />
           {contatosDe(d).map((c, i) => (
             <Linha key={i} l={i === 0 ? 'Contato principal' : `Contato ${i + 1}`} v={[c.nome, c.cargo, c.telefone, c.celular, c.email].filter(Boolean).join(' · ')} />
           ))}
@@ -184,6 +185,16 @@ function Detalhe({ id, onFechar }: { id: number; onFechar: () => void }) {
           <Linha l="Endereço de cobrança" v={endTxt(d.cobranca)} />
           <Linha l="Endereço de entrega" v={d.entregaIgual ? 'Mesmo da cobrança' : endTxt(d.entrega)} />
           <Linha l="Observações" v={d.observacoes} />
+          {(d.anexos ?? []).length > 0 && (
+            <div className="text-sm">
+              <span className="text-dark-400">Anexos: </span>
+              {(d.anexos ?? []).map((x) => (
+                <a key={x.arquivo} href={`/uploads/${x.arquivo}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline mr-3">
+                  📎 {x.nome}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">

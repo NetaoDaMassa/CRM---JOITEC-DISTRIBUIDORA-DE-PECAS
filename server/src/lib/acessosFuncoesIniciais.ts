@@ -28,7 +28,7 @@ const COMPRAS = ['compras', 'compras_gestao', 'compras_relatorios', 'compras_sol
 
 export const FUNCOES_INICIAIS: FuncaoInicial[] = [
   // Setores do grupo
-  { chave: 'gerente_financeiro', nome: 'Gerente financeiro', camada: 'grupo', tipoConta: 'admin', descricao: 'Responsável pelo financeiro de todas as empresas.', chaves: [...FINANCEIRO, 'liberacao_credito', 'solicitacao_credito', 'controle_suframa', 'requisicao_posto', 'cartao_credito_relatorio', 'faturamento_geral'] },
+  { chave: 'gerente_financeiro', nome: 'Gerente financeiro', camada: 'grupo', tipoConta: 'admin', descricao: 'Responsável pelo financeiro de todas as empresas.', chaves: [...FINANCEIRO, 'liberacao_credito', 'adiantamento_pix', 'solicitacao_credito', 'controle_suframa', 'requisicao_posto', 'cartao_credito_relatorio', 'faturamento_geral'] },
   { chave: 'financeiro', nome: 'Financeiro', camada: 'grupo', tipoConta: 'admin', descricao: 'Caixa, boletos e cobrança.', chaves: FINANCEIRO },
   { chave: 'gerente_compras', nome: 'Gerente de compras', camada: 'grupo', tipoConta: 'admin', descricao: 'Responsável pelas compras do grupo; aprova as compras.', chaves: [...COMPRAS, 'compras_aprovar'] },
   { chave: 'compras', nome: 'Compras', camada: 'grupo', tipoConta: 'admin', descricao: 'Cuida das compras das empresas do grupo.', chaves: COMPRAS },

@@ -74,6 +74,13 @@ import LojaRastreamento from './pages/admin/LojaRastreamento'
 import LigacoesPabx from './pages/admin/LigacoesPabx'
 import GrupoOdin from './pages/admin/GrupoOdin'
 import LiberacaoCredito from './pages/admin/LiberacaoCredito'
+import AdiantamentoPix from './pages/admin/AdiantamentoPix'
+import LinksPagamento from './pages/admin/LinksPagamento'
+import LinkPagamentoVendor from './pages/vendor/LinkPagamento'
+import FaturamentoIsentos from './pages/admin/FaturamentoIsentos'
+import ArquivosContabilidade from './pages/admin/ArquivosContabilidade'
+import CobrancaSap from './pages/admin/CobrancaSap'
+import PilotoFinanceiro from './pages/admin/PilotoFinanceiro'
 import SolicitacaoCreditoAdmin from './pages/admin/SolicitacaoCredito'
 import SolicitacaoCreditoVendor from './pages/vendor/SolicitacaoCredito'
 import CartaoCredito from './pages/vendor/CartaoCredito'
@@ -338,6 +345,7 @@ export default function App() {
           <Route path="admin/pos-venda" element={<AdminGuard><FeatureGuard feature="pos_venda"><FilaPosVenda /></FeatureGuard></AdminGuard>} />
           <Route path="admin/chat" element={<AdminGuard><FeatureGuard feature="chat"><Chat /></FeatureGuard></AdminGuard>} />
           <Route path="admin/acessos" element={<AdminGuard><SuperAdminGuard><AdminAcessos /></SuperAdminGuard></AdminGuard>} />
+          <Route path="admin/piloto-financeiro" element={<AdminGuard><SuperAdminGuard><PilotoFinanceiro /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/permissoes" element={<AdminGuard><SuperAdminGuard><AdminPermissoes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/funcoes" element={<AdminGuard><SuperAdminGuard><AdminFuncoes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/vagas" element={<AdminGuard><FeatureGuard feature="vagas"><AdminVagas /></FeatureGuard></AdminGuard>} />
@@ -364,6 +372,12 @@ export default function App() {
           <Route path="admin/ligacoes" element={<AdminGuard><FeatureGuard feature="relatorio_ligacoes"><LigacoesPabx /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/adiantamento-pix" element={<AdminGuard><FeatureGuard feature="adiantamento_pix"><AdiantamentoPix /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/links-pagamento" element={<AdminGuard><FeatureGuard feature="link_pagamento"><LinksPagamento /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/pedir-link-pagamento" element={<AdminGuard><LinkPagamentoVendor /></AdminGuard>} />
+          <Route path="admin/faturamento-isentos" element={<AdminGuard><FeatureGuard feature="faturamento_isentos"><FaturamentoIsentos /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/arquivos-contabilidade" element={<AdminGuard><FeatureGuard feature="arquivos_contabilidade"><ArquivosContabilidade /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/cobranca" element={<AdminGuard><FeatureGuard feature="cobranca_sap"><CobrancaSap /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitacao-credito" element={<AdminGuard><FeatureGuard feature="solicitacao_credito"><SolicitacaoCreditoAdmin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cartao-relatorio" element={<AdminGuard><FeatureGuard feature="cartao_credito_relatorio"><CartaoCreditoRelatorio /></FeatureGuard></AdminGuard>} />
           <Route path="admin/guia-financeiro" element={<AdminGuard><FeatureGuard feature={FEATURES_GUIA_FINANCEIRO}><GuiaFinanceiro /></FeatureGuard></AdminGuard>} />
@@ -416,6 +430,7 @@ export default function App() {
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
           <Route path="vendedor/cartao-credito" element={<CartaoCredito />} />
           <Route path="vendedor/solicitacao-credito" element={<SolicitacaoCreditoVendor />} />
+          <Route path="vendedor/link-pagamento" element={<LinkPagamentoVendor />} />
           <Route path="vendedor/compras-solicitar" element={<SolicitarCompra />} />
           <Route path="vendedor/compras-quadro" element={<ComprasQuadro />} />
           <Route path="vendedor/compras-aprovar" element={<AprovarCompras />} />

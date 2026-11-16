@@ -1,3 +1,4 @@
+import { avisarVendedorPix } from './adiantamentoPix.js'
 import { and, desc, eq, gte, inArray, isNull, lte, ne, sql } from 'drizzle-orm'
 import { concluirProspeccaoPorVenda } from './prospeccaoNova.js'
 import { db } from '../db/client.js'
@@ -463,6 +464,7 @@ export async function sincronizarVendasSap(
       criadaPeloSap: true,
     })
     const vendaId = Number(res.lastInsertRowid)
+    void avisarVendedorPix(vendaId)
     await gravarItens(vendaId, cliente.id, p)
     // Odin Compressores: toda venda da carteira da Bruna vira Pedido de peça
     // (lib/vendaParaOrdemPeca.ts), igual ao registro manual. Na carga avulsa
