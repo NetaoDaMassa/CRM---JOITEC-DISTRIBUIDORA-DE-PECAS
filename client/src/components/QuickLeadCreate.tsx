@@ -1,13 +1,60 @@
 import { useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { Paperclip, X } from 'lucide-react'
+import { Paperclip, X, Sparkles, ImagePlus, AlertTriangle } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
-import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS } from '../lib/leadsShared'
+import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS, LEAD_STATUS_LABELS } from '../lib/leadsShared'
+
+// --- "Novo lead por print" (João, 2026-11-16) --------------------------
+// Print do WhatsApp → IA lê (leads.lerPrint) → campos abaixo preenchidos pra
+// conferir. Os prints são reduzidos aqui no navegador antes de subir (print
+// de celular passa fácil de 3 MB; a IA não precisa de mais que ~2000 px).
+type PrintColado = { id: string; url: string; base64: string; mediaType: 'image/jpeg'; arquivo: File }
+
+async function prepararPrint(file: File): Promise<PrintColado> {
+  const urlOriginal = URL.createObjectURL(file)
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image()
+      el.onload = () => resolve(el)
+      el.onerror = () => reject(new Error('Imagem inválida'))
+      el.src = urlOriginal
+    })
+    const LADO_MAX = 2000
+    const escala = Math.min(1, LADO_MAX / Math.max(img.naturalWidth, img.naturalHeight))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(img.naturalWidth * escala)
+    canvas.height = Math.round(img.naturalHeight * escala)
+    const c2d = canvas.getContext('2d')!
+    c2d.fillStyle = '#fff'
+    c2d.fillRect(0, 0, canvas.width, canvas.height)
+    c2d.drawImage(img, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Falha ao converter'))), 'image/jpeg', 0.85))
+    const base64 = await new Promise<string>((resolve) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result).split(',')[1] ?? '')
+      r.readAsDataURL(blob)
+    })
+    const n = Date.now()
+    return {
+      id: `${n}-${Math.random()}`,
+      url: URL.createObjectURL(blob),
+      base64,
+      mediaType: 'image/jpeg',
+      arquivo: new File([blob], `print-whatsapp-${n}.jpg`, { type: 'image/jpeg' }),
+    }
+  } finally {
+    URL.revokeObjectURL(urlOriginal)
+  }
+}
+
+type IguaisLead = { id: number; name: string; status: string; vendedor: string | null }
+type IguaisCliente = { id: number; razaoSocial: string; vendedor: string | null }
 
 // Tira DDD+telefone de qualquer formato colado ("(11) 98888-7777",
 // "11988887777", "+55 11 98888-7777", "+5511993321152"...). Retorna null se
@@ -125,7 +172,19 @@ function segmentoPorResposta(resposta: string): string | null {
   return null
 }
 
-export default function QuickLeadCreate({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated?: (id: number) => void }) {
+export default function QuickLeadCreate({
+  open,
+  onClose,
+  onCreated,
+  modoPrint = false,
+  basePath,
+}: {
+  open: boolean
+  onClose: () => void
+  onCreated?: (id: number) => void
+  modoPrint?: boolean
+  basePath?: string
+}) {
   const { user, empresaAtivaId } = useAuth()
   const utils = trpc.useUtils()
   const { data: vendedores } = trpc.users.vendors.useQuery(undefined, { enabled: user?.role === 'admin' })
@@ -153,6 +212,13 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
   const ultimoCnpjConsultadoRef = useRef<string | null>(null)
   const [arquivos, setArquivos] = useState<File[]>([])
   const [enviandoAnexos, setEnviandoAnexos] = useState(false)
+  const [prints, setPrints] = useState<PrintColado[]>([])
+  const [arrastando, setArrastando] = useState(false)
+  const [usouIA, setUsouIA] = useState(false)
+  const [conversa, setConversa] = useState('')
+  const [avisoTelefone, setAvisoTelefone] = useState<string | null>(null)
+  const [iguais, setIguais] = useState<{ leads: IguaisLead[]; clientes: IguaisCliente[] } | null>(null)
+  const inputPrintRef = useRef<HTMLInputElement>(null)
 
   function reset() {
     setColado('')
@@ -170,6 +236,95 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     setCampaignId('')
     ultimoCnpjConsultadoRef.current = null
     setArquivos([])
+    prints.forEach((p) => URL.revokeObjectURL(p.url))
+    setPrints([])
+    setUsouIA(false)
+    setConversa('')
+    setAvisoTelefone(null)
+    setIguais(null)
+  }
+
+  async function adicionarPrints(files: File[]) {
+    const imagens = files.filter((f) => f.type.startsWith('image/'))
+    if (!imagens.length) return
+    const espaco = 6 - prints.length
+    if (espaco <= 0) return toast.error('No máximo 6 prints por lead')
+    if (imagens.length > espaco) toast.error(`Só cabem mais ${espaco} print(s) — o resto ficou de fora`)
+    try {
+      const prontos = await Promise.all(imagens.slice(0, espaco).map(prepararPrint))
+      setPrints((prev) => [...prev, ...prontos])
+    } catch {
+      toast.error('Não consegui abrir essa imagem')
+    }
+  }
+
+  // Ctrl+V em qualquer lugar da janela: se tiver imagem na área de
+  // transferência vira print; texto continua indo pro campo normalmente.
+  function aoColar(e: React.ClipboardEvent) {
+    const files = Array.from(e.clipboardData.files ?? []).filter((f) => f.type.startsWith('image/'))
+    if (!files.length) return
+    e.preventDefault()
+    adicionarPrints(files)
+  }
+
+  const lerPrintMut = trpc.leads.lerPrint.useMutation({
+    async onSuccess(r) {
+      setUsouIA(true)
+      // Só sobrescreve o que a IA achou — campo que ela não achou fica como
+      // a pessoa deixou (pode já ter digitado algo).
+      if (r.nome) setName(r.nome)
+      if (r.ddd && r.phone) {
+        setDdd(String(r.ddd))
+        setPhone(r.phone)
+      }
+      if (r.email) setEmail(r.email)
+      if (r.empresa) setCompany(r.empresa)
+      if (r.cidade) setCity(r.cidade)
+      if (r.segmento) setSegment(r.segmento)
+      if (r.campaignId) setCampaignId(String(r.campaignId))
+      const obs = [r.produtoInteresse ? `Interesse: ${r.produtoInteresse}` : null, r.resumo].filter(Boolean).join('\n')
+      if (obs) setObservations(obs)
+      setConversa(r.conversa ?? '')
+      setIguais(r.leadsIguais.length || r.clientesIguais.length ? { leads: r.leadsIguais, clientes: r.clientesIguais } : null)
+      setAvisoTelefone(
+        r.phone
+          ? null
+          : r.telefoneLido
+            ? `A IA leu "${r.telefoneLido}", mas não parece um telefone com DDD — confira e digite.`
+            : 'Telefone não apareceu no print (contato salvo no celular mostra só o nome). Digite o número ou mande um print dos dados do contato.'
+      )
+
+      // CNPJ achado na conversa → razão social/cidade pela Receita, igual
+      // ao fluxo do formulário colado.
+      if (r.cnpj && r.cnpj.length === 14 && r.cnpj !== ultimoCnpjConsultadoRef.current) {
+        ultimoCnpjConsultadoRef.current = r.cnpj
+        if (!r.empresa) setCompany(r.cnpj)
+        setBuscandoCnpj(true)
+        try {
+          const dados = await utils.clientes.cnpjLookup.fetch({ cnpj: r.cnpj })
+          if (dados) {
+            setCompany(dados.razaoSocial)
+            if (!r.cidade && dados.cidade) setCity(dados.cidade)
+          }
+        } catch {
+          // Receita fora do ar não trava — fica o que a IA leu.
+        } finally {
+          setBuscandoCnpj(false)
+        }
+      }
+      toast.success('Pronto! Confira os dados antes de criar o lead')
+    },
+    onError(err) {
+      toast.error(err.message)
+    },
+  })
+
+  function lerComIA() {
+    if (!prints.length && !colado.trim()) return toast.error('Cole um print (Ctrl+V), arraste a imagem ou cole o texto da conversa')
+    lerPrintMut.mutate({
+      imagens: prints.map((p) => ({ mediaType: p.mediaType, base64: p.base64 })),
+      texto: colado.trim() || undefined,
+    })
   }
 
   async function aplicarColado(texto: string) {
@@ -284,7 +439,9 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     setEnviandoAnexos(true)
     const token = localStorage.getItem('odin_token')
     try {
-      for (const file of arquivos) {
+      // Os prints da conversa entram como anexo do lead também (prova do
+      // que o cliente pediu, e dá pra conferir depois).
+      for (const file of [...prints.map((p) => p.arquivo), ...arquivos]) {
         try {
           const form = new FormData()
           form.append('file', file)
@@ -304,12 +461,21 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
     }
   }
 
+  const addNoteMut = trpc.leads.addNote.useMutation()
+
   const mut = trpc.leads.create.useMutation({
     async onSuccess(data) {
       toast.success('Lead criado')
       utils.leads.list.invalidate()
       utils.leads.stats.invalidate()
-      if (arquivos.length) await enviarAnexos(data.id)
+      if (conversa.trim()) {
+        try {
+          await addNoteMut.mutateAsync({ leadId: data.id, type: 'nota', content: `Conversa do WhatsApp (lida do print):\n\n${conversa.trim()}` })
+        } catch {
+          toast.error('Lead criado, mas a conversa não foi salva no histórico')
+        }
+      }
+      if (arquivos.length || prints.length) await enviarAnexos(data.id)
       reset()
       onClose()
       onCreated?.(data.id)
@@ -332,6 +498,7 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
       city: city || undefined,
       segment: (segment || undefined) as any,
       observations: observations || undefined,
+      source: usouIA || prints.length ? 'whatsapp_print' : undefined,
       vendorId: user?.role === 'admin' && !paraFilaConsumidorFinal && vendorId ? Number(vendorId) : undefined,
       autoAssign: user?.role === 'admin' ? (!paraFilaConsumidorFinal && !vendorId ? autoAssign : false) : true,
       campaignId: campaignId ? Number(campaignId) : undefined,
@@ -346,13 +513,133 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
         reset()
         onClose()
       }}
-      title="Criar lead"
+      title={modoPrint ? 'Novo lead por print do WhatsApp' : 'Criar lead'}
       size="md"
     >
-      <form onSubmit={submit} className="space-y-4">
+      <form onSubmit={submit} onPaste={aoColar} className="space-y-4">
+        <div
+          className={`rounded-xl border-2 border-dashed p-3 transition-colors ${arrastando ? 'border-gold-400 bg-gold-500/10' : modoPrint ? 'border-gold-500/60 bg-gold-500/5' : 'border-dark-600 bg-dark-800/60'}`}
+          onDragOver={(e) => {
+            e.preventDefault()
+            setArrastando(true)
+          }}
+          onDragLeave={() => setArrastando(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setArrastando(false)
+            adicionarPrints(Array.from(e.dataTransfer.files ?? []))
+          }}
+        >
+          <div className="flex items-start gap-2">
+            <Sparkles size={16} className="text-gold-400 mt-0.5 shrink-0" />
+            <div className="text-xs text-dark-300">
+              <p className="font-medium text-dark-100 text-sm">Lead por print do WhatsApp</p>
+              <p className="mt-0.5">
+                Aperte <b>Ctrl+V</b> pra colar o print, arraste a imagem aqui ou{' '}
+                <button type="button" className="text-gold-400 underline" onClick={() => inputPrintRef.current?.click()}>
+                  escolha o arquivo
+                </button>
+                . Pode mandar vários prints da mesma conversa. Também dá pra colar o texto da conversa no campo abaixo.
+              </p>
+            </div>
+            <input
+              ref={inputPrintRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                if (e.target.files?.length) adicionarPrints(Array.from(e.target.files))
+                e.target.value = ''
+              }}
+            />
+          </div>
+
+          {!!prints.length && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {prints.map((p) => (
+                <div key={p.id} className="relative">
+                  <a href={p.url} target="_blank" rel="noreferrer">
+                    <img src={p.url} alt="print" className="h-20 w-auto rounded-lg border border-dark-600 object-cover" />
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      URL.revokeObjectURL(p.url)
+                      setPrints((prev) => prev.filter((x) => x.id !== p.id))
+                    }}
+                    className="absolute -top-1.5 -right-1.5 bg-dark-900 border border-dark-600 rounded-full p-0.5 text-dark-300 hover:text-red-400"
+                    title="Tirar este print"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+              {prints.length < 6 && (
+                <button
+                  type="button"
+                  onClick={() => inputPrintRef.current?.click()}
+                  className="h-20 w-14 rounded-lg border border-dashed border-dark-500 text-dark-400 hover:text-dark-200 flex items-center justify-center"
+                  title="Adicionar outro print"
+                >
+                  <ImagePlus size={18} />
+                </button>
+              )}
+            </div>
+          )}
+
+          <Button
+            type="button"
+            className="w-full mt-3"
+            onClick={lerComIA}
+            loading={lerPrintMut.isPending}
+            disabled={!prints.length && !colado.trim()}
+          >
+            <Sparkles size={15} />
+            {lerPrintMut.isPending ? 'Lendo a conversa...' : 'Ler com IA e preencher'}
+          </Button>
+        </div>
+
+        {avisoTelefone && (
+          <div className="flex gap-2 text-xs rounded-lg px-3 py-2 bg-amber-500/10 border border-amber-500/40 text-amber-200">
+            <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+            <span>{avisoTelefone}</span>
+          </div>
+        )}
+
+        {iguais && (
+          <div className="text-xs rounded-lg px-3 py-2 bg-red-500/10 border border-red-500/40 text-red-200 space-y-1">
+            <p className="flex items-center gap-1.5 font-medium">
+              <AlertTriangle size={14} /> Esse telefone já existe no CRM — confira antes de criar outro:
+            </p>
+            {iguais.leads.map((l) => (
+              <p key={`l${l.id}`}>
+                • Lead{' '}
+                {basePath ? (
+                  <Link to={`${basePath}/${l.id}`} target="_blank" className="underline">
+                    #{l.id} {l.name}
+                  </Link>
+                ) : (
+                  <b>
+                    #{l.id} {l.name}
+                  </b>
+                )}{' '}
+                — {LEAD_STATUS_LABELS[l.status as keyof typeof LEAD_STATUS_LABELS] ?? l.status}
+                {l.vendedor ? ` · ${l.vendedor}` : ' · sem vendedor'}
+              </p>
+            ))}
+            {iguais.clientes.map((c) => (
+              <p key={`c${c.id}`}>
+                • Cliente da carteira <b>{c.razaoSocial}</b>
+                {c.vendedor ? ` · ${c.vendedor}` : ''}
+              </p>
+            ))}
+          </div>
+        )}
+
         <Textarea
-          label="Cole aqui o contato (opcional)"
-          placeholder="Cole um texto com nome/telefone/email — o formulário abaixo tenta preencher sozinho"
+          label="Cole aqui o contato ou o texto da conversa (opcional)"
+          placeholder="Cole um texto com nome/telefone/email — o formulário abaixo tenta preencher sozinho. Pra conversa do WhatsApp, cole e clique em Ler com IA."
           value={colado}
           onChange={(e) => aplicarColado(e.target.value)}
           rows={3}
@@ -378,6 +665,14 @@ export default function QuickLeadCreate({ open, onClose, onCreated }: { open: bo
           options={LEAD_SEGMENT_VALUES.map((s) => ({ value: s, label: LEAD_SEGMENT_LABELS[s] }))}
         />
         <Textarea label="Observações" value={observations} onChange={(e) => setObservations(e.target.value)} rows={2} />
+        {!!conversa && (
+          <Textarea
+            label="Conversa (vai pro histórico do lead)"
+            value={conversa}
+            onChange={(e) => setConversa(e.target.value)}
+            rows={4}
+          />
+        )}
         {!!campanhas?.length && (
           <Select
             label="Campanha (opcional)"

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { usePersistedState } from '../../lib/usePersistedState'
-import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle, Building2, Copy } from 'lucide-react'
+import { Plus, Search, ArrowRightLeft, Trash2, KanbanSquare, ShieldAlert, AlertTriangle, Building2, Copy, ScanText } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
@@ -62,6 +62,7 @@ export default function Leads() {
   const [soDeEmailMarketing, setSoDeEmailMarketing] = usePersistedState('leadsList:soDeEmailMarketing', false)
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
+  const [createModoPrint, setCreateModoPrint] = useState(false)
   const [transferLead, setTransferLead] = useState<{ id: number; name: string } | null>(null)
   const [deleteLead, setDeleteLead] = useState<{ id: number; name: string } | null>(null)
   const [limpezaOpen, setLimpezaOpen] = useState(false)
@@ -134,7 +135,22 @@ export default function Leads() {
             <KanbanSquare size={16} />
             Kanban
           </Button>
-          <Button onClick={() => setCreateOpen(true)}>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setCreateModoPrint(true)
+              setCreateOpen(true)
+            }}
+          >
+            <ScanText size={16} />
+            Lead por print
+          </Button>
+          <Button
+            onClick={() => {
+              setCreateModoPrint(false)
+              setCreateOpen(true)
+            }}
+          >
             <Plus size={16} />
             Novo lead
           </Button>
@@ -415,7 +431,13 @@ export default function Leads() {
         </div>
       )}
 
-      <QuickLeadCreate open={createOpen} onClose={() => setCreateOpen(false)} onCreated={(id) => navigate(`${basePath}/${id}`)} />
+      <QuickLeadCreate
+        open={createOpen}
+        modoPrint={createModoPrint}
+        basePath={basePath}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(id) => navigate(`${basePath}/${id}`)}
+      />
 
       <TransferModal lead={transferLead} onClose={() => setTransferLead(null)} vendedores={vendedores ?? []} />
 

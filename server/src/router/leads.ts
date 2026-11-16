@@ -31,6 +31,7 @@ import { REGIAO_VALUES } from '../lib/regiao.js'
 import { mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
 import { notificarGestores, sincronizarPropostaDoLead } from '../lib/propostasGates.js'
 import { historicoLojaDoLead } from '../lib/lojaLeadHistorico.js'
+import { lerLeadDoPrint } from '../lib/leadPorPrint.js'
 import {
   STATUS_VALUES,
   SEGMENT_VALUES,
@@ -402,6 +403,94 @@ export const leadsRouter = router({
     }
     return historicoLojaDoLead(lead.empresaId, lead.id)
   }),
+
+  // "Novo lead por print" (João, 2026-11-16): lê print(s) e/ou texto da
+  // conversa de WhatsApp com IA e devolve os campos pra tela de Criar lead
+  // pré-preencher. NÃO grava nada — quem salva continua sendo leads.create,
+  // depois que a pessoa confere. Também procura lead/cliente com o mesmo
+  // telefone na empresa ativa, pra avisar antes de criar repetido.
+  lerPrint: protectedProcedure
+    .input(
+      z.object({
+        imagens: z
+          .array(z.object({ mediaType: z.enum(['image/jpeg', 'image/png', 'image/webp']), base64: z.string().min(100).max(3_500_000) }))
+          .max(6),
+        texto: z.string().max(60_000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (ctx.user.role === 'gestor') throw new Error('Acesso negado')
+      if (!input.imagens.length && !input.texto?.trim()) throw new Error('Mande pelo menos um print ou cole o texto da conversa')
+
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { nome: true } })
+      const campanhasAtivas = await db.query.leadCampaigns.findMany({
+        where: and(eq(leadCampaigns.empresaId, ctx.empresaId), eq(leadCampaigns.isActive, true)),
+        columns: { id: true, name: true },
+      })
+
+      const lido = await lerLeadDoPrint({
+        imagens: input.imagens,
+        texto: input.texto,
+        nomeEmpresa: empresa?.nome ?? 'empresa',
+        campanhas: campanhasAtivas.map((c) => c.name),
+      })
+
+      // Telefone: tira 55 do começo e qualquer coisa que não seja dígito;
+      // só aceita DDD + 8/9 dígitos (formato de todo o resto do sistema).
+      let ddd: number | null = null
+      let phone: string | null = null
+      let digitos = (lido.telefone ?? '').replace(/\D/g, '')
+      if (digitos.length >= 12 && digitos.startsWith('55')) digitos = digitos.slice(2)
+      if (digitos.startsWith('0')) digitos = digitos.slice(1)
+      if ((digitos.length === 10 || digitos.length === 11) && Number(digitos.slice(0, 2)) >= 11) {
+        ddd = Number(digitos.slice(0, 2))
+        phone = digitos.slice(2)
+      }
+
+      const campaignId = lido.campanha ? (campanhasAtivas.find((c) => c.name.trim().toLowerCase() === lido.campanha!.trim().toLowerCase())?.id ?? null) : null
+
+      // Repetidos: compara pelos últimos 8 dígitos (ignora o 9 extra e a
+      // formatação, que varia muito no cadastro de clientes).
+      const leadsIguais: { id: number; name: string; status: string; vendedor: string | null }[] = []
+      const clientesIguais: { id: number; razaoSocial: string; vendedor: string | null }[] = []
+      if (phone) {
+        const final8 = phone.slice(-8)
+        const somenteDigitos = (col: unknown) =>
+          sql`replace(replace(replace(replace(replace(replace(coalesce(${col}, ''), ' ', ''), '-', ''), '(', ''), ')', ''), '+', ''), '.', '')`
+        const ls = await db
+          .select({ id: leads.id, name: leads.name, status: leads.status, vendedor: users.name })
+          .from(leads)
+          .leftJoin(users, eq(users.id, leads.vendorId))
+          .where(and(eq(leads.empresaId, ctx.empresaId), isNull(leads.deletedAt), sql`${somenteDigitos(leads.phone)} like ${'%' + final8}`))
+          .limit(5)
+        leadsIguais.push(...ls)
+        const cs = await db
+          .select({ id: clientes.id, razaoSocial: clientes.razaoSocial, vendedor: users.name })
+          .from(clientes)
+          .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
+          .where(and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt), sql`${somenteDigitos(clientes.telefoneWhatsapp)} like ${'%' + final8}`))
+          .limit(5)
+        clientesIguais.push(...cs)
+      }
+
+      return {
+        nome: lido.nome?.trim() || null,
+        ddd,
+        phone,
+        telefoneLido: lido.telefone,
+        email: lido.email?.trim() || null,
+        empresa: lido.empresa?.trim() || null,
+        cnpj: (lido.cnpj ?? '').replace(/\D/g, '') || null,
+        cidade: [lido.cidade?.trim(), lido.uf?.trim()?.toUpperCase()].filter(Boolean).join(' - ') || null,
+        segmento: lido.segmento,
+        produtoInteresse: lido.produtoInteresse?.trim() || null,
+        resumo: lido.resumo?.trim() || null,
+        conversa: lido.conversa?.trim() || null,
+        campaignId,
+        leadsIguais,
+        clientesIguais,
+      }
+    }),
 
   create: protectedProcedure
     .input(
