@@ -939,7 +939,35 @@ export const expedicaoRouter = router({
               columns: { id: true },
             })
           : null
-        if (!dono) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor do cliente agenda essa coleta.' })
+        // O cadastro no CRM pode ter outro código que o do pedido no SAP
+        // (código antigo da planilha de representante, cliente em 2 cadastros
+        // — João 2026-11-16, Star Engenharia "10669" × pedido 9430). Vale
+        // também quem tem a venda do pedido no card: a vendedora da venda ou
+        // a dona do cadastro onde a venda caiu (é o mesmo card que mostra o
+        // botão de agendar).
+        const entries = p.orderEntriesSap.split(',').map((e) => Number(e.trim())).filter((n) => Number.isFinite(n) && n > 0)
+        const numeros = p.pedidosSap.split(',').map((n) => n.trim()).filter(Boolean)
+        const daVenda =
+          dono || (!entries.length && !numeros.length)
+            ? null
+            : await db
+                .select({ id: vendas.id })
+                .from(vendas)
+                .innerJoin(clientes, eq(clientes.id, vendas.clienteId))
+                .where(
+                  and(
+                    isNull(vendas.deletedAt),
+                    eq(clientes.empresaId, p.empresaId),
+                    or(
+                      entries.length ? inArray(vendas.pedidoSapEntry, entries) : undefined,
+                      numeros.length ? inArray(vendas.numeroPedido, numeros) : undefined
+                    ),
+                    or(eq(vendas.vendedorId, ctx.user.id), eq(clientes.vendedorAtualId, ctx.user.id))
+                  )
+                )
+                .limit(1)
+                .then((r) => r[0] ?? null)
+        if (!dono && !daVenda) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor do cliente agenda essa coleta.' })
       }
       return gravarAgendamento(p, input, ctx.user.id)
     }),
