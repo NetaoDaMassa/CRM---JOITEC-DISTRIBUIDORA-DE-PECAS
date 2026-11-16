@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import { PackageCheck, RefreshCw, Printer, Undo2, Trash2, Camera, X } from 'lucide-react'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -91,6 +91,18 @@ function agendaBr(v: string | null): string {
 function coletaAtrasada(p: Pedido): boolean {
   return p.etapa === 'coleta' && !!p.coletaAgendada && Date.parse(`${p.coletaAgendada}:00-03:00`) < Date.now()
 }
+// Odin Tubos (João, 2026-11-16): pedido com NF emitida esperando agendar a
+// coleta, ou com a coleta agendada que já passou da hora, sobe pro topo da
+// coluna, ganha faixa piscando e abre um aviso na tela até alguém agendar.
+const SLUGS_ALERTA_COLETA = ['odin-tubos']
+type AlertaColeta = 'agendar' | 'atrasada'
+function alertaColeta(p: Pedido): AlertaColeta | null {
+  if (p.pausadoEm) return null
+  if ((p.etapa === 'nf' || p.etapa === 'agendamento') && p.nfNumero) return 'agendar'
+  if (coletaAtrasada(p)) return 'atrasada'
+  return null
+}
+const ADIAR_AVISO_MIN = 15
 function textoPrazo(p: Pedido): string {
   if (p.etapa === 'coletado') return p.noPrazo ? 'no prazo' : 'fora do prazo'
   const h = p.horasRestantes
@@ -122,6 +134,10 @@ export default function Expedicao() {
   const [verKits, setVerKits] = useState(false)
   const [leitor, setLeitor] = useState(false)
   const [busca, setBusca] = useState('')
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const alertaLigado = SLUGS_ALERTA_COLETA.includes(empresas?.find((e) => e.id === empresaAtivaId)?.slug ?? '')
+  const alertaDe = (p: Pedido): AlertaColeta | null => (alertaLigado ? alertaColeta(p) : null)
   // Seleção de vários pedidos (admin) pra finalizar/mover/cancelar de uma vez.
   const { data: podeDescartar } = trpc.expedicao.podeDescartar.useQuery()
   const [selecionando, setSelecionando] = useState(false)
@@ -174,6 +190,26 @@ export default function Expedicao() {
   const aberto = fila?.find((p) => p.id === abertoId) ?? null
   const listaAtrasados = (fila ?? []).filter((p) => p.etapa !== 'coletado' && p.horasRestantes < 0).sort((a, b) => a.horasRestantes - b.horasRestantes)
   const atrasados = listaAtrasados.length
+  const pendentesColeta = alertaLigado
+    ? (fila ?? [])
+        .filter((p) => alertaColeta(p))
+        .sort((a, b) => (alertaColeta(a) === alertaColeta(b) ? a.horasRestantes - b.horasRestantes : alertaColeta(a) === 'atrasada' ? -1 : 1))
+    : []
+  // Aviso na tela: abre sozinho quando tem pendência; "Ver depois" segura
+  // por 15 min, mas pedido novo na lista abre de novo na hora.
+  const [avisoAdiadoAte, setAvisoAdiadoAte] = useState(0)
+  const [idsVistos, setIdsVistos] = useState<Set<number>>(new Set())
+  const [agora, setAgora] = useState(Date.now())
+  useEffect(() => {
+    const t = setInterval(() => setAgora(Date.now()), 30_000)
+    return () => clearInterval(t)
+  }, [])
+  const temPendenteNovo = pendentesColeta.some((p) => !idsVistos.has(p.id))
+  const mostrarAvisoColeta = aba === 'quadro' && !abertoId && pendentesColeta.length > 0 && (temPendenteNovo || agora >= avisoAdiadoAte)
+  const adiarAviso = () => {
+    setIdsVistos(new Set(pendentesColeta.map((p) => p.id)))
+    setAvisoAdiadoAte(Date.now() + ADIAR_AVISO_MIN * 60_000)
+  }
 
   return (
     <div className="space-y-5">
@@ -300,7 +336,13 @@ export default function Expedicao() {
         <div className={"grid gap-3 grid-cols-1 md:grid-cols-3 2xl:grid-cols-6"}>
           {colunas.map((col) => {
             // Card antigo em 'agendamento' aparece junto na coluna NF.
-            const doCol = filtrados.filter((p) => (p.etapa === 'agendamento' ? 'nf' : p.etapa) === col.etapa)
+            const doColBase = filtrados.filter((p) => (p.etapa === 'agendamento' ? 'nf' : p.etapa) === col.etapa)
+            // Pendência de coleta sobe pro topo (ordem estável no resto; a
+            // Separação mantém a ordem do admin).
+            const doCol =
+              alertaLigado && col.etapa !== 'separacao'
+                ? [...doColBase.filter((p) => alertaColeta(p) === 'atrasada'), ...doColBase.filter((p) => alertaColeta(p) === 'agendar'), ...doColBase.filter((p) => !alertaColeta(p))]
+                : doColBase
             return (
               <div key={col.etapa} className="bg-dark-900/40 border border-dark-700 rounded-2xl p-3 min-w-0">
                 <div className="flex items-center gap-2 mb-3">
@@ -340,10 +382,15 @@ export default function Expedicao() {
                       type="button"
                       onClick={() => (selecionando && p.etapa !== 'coletado' ? alternar(p.id) : setAbertoId(p.id))}
                       className={`w-full text-left bg-dark-800 border border-l-4 rounded-xl p-3 hover:border-gold-600/50 transition-colors ${
-                        selecionados.has(p.id) ? 'border-gold-500 ring-1 ring-gold-500/60' : 'border-dark-600'
+                        selecionados.has(p.id) ? 'border-gold-500 ring-1 ring-gold-500/60' : alertaDe(p) ? 'border-red-500 ring-2 ring-red-500/60' : 'border-dark-600'
                       } ${p.pausadoEm ? 'opacity-70' : ''}`}
-                      style={{ borderLeftColor: col.cor }}
+                      style={{ borderLeftColor: alertaDe(p) ? '#ef4444' : col.cor }}
                     >
+                      {alertaDe(p) && (
+                        <p className="-mx-3 -mt-3 mb-2 rounded-t-xl bg-red-600 text-white text-xs font-extrabold tracking-wide text-center py-1.5 animate-pulse">
+                          {alertaDe(p) === 'atrasada' ? `⏰ COLETA ATRASADA (${agendaBr(p.coletaAgendada)}) — REAGENDAR` : '📅 AGENDAR COLETA AGORA'}
+                        </p>
+                      )}
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-sm font-semibold text-dark-100">
                           {selecionando && p.etapa !== 'coletado' && <input type="checkbox" readOnly checked={selecionados.has(p.id)} className="mr-1.5 align-middle" />}
@@ -441,6 +488,43 @@ export default function Expedicao() {
           })}
         </div>
       )}
+
+      <Modal open={mostrarAvisoColeta} onClose={adiarAviso} title="🚚 Coleta para agendar" size="md">
+        <div className="space-y-3">
+          <p className="text-sm text-dark-200">
+            {pendentesColeta.length === 1 ? 'Tem 1 pedido' : `Tem ${pendentesColeta.length} pedidos`} esperando a coleta. Abra o pedido e agende (ou reagende) com a transportadora.
+          </p>
+          <div className="space-y-2 max-h-[50vh] overflow-y-auto">
+            {pendentesColeta.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => (adiarAviso(), setAbertoId(p.id))}
+                className="w-full text-left rounded-xl border border-red-600/60 bg-red-900/20 px-3 py-2 hover:border-red-400"
+              >
+                <span className="flex items-center justify-between gap-2">
+                  <b className="text-dark-100">Pedido {p.pedidosSap}</b>
+                  <span className="text-[11px] font-bold rounded bg-red-600 text-white px-2 py-0.5">
+                    {alertaColeta(p) === 'atrasada' ? 'REAGENDAR' : 'AGENDAR'}
+                  </span>
+                </span>
+                <span className="block text-xs text-dark-300">{p.clienteNome}</span>
+                <span className="block text-xs text-red-200">
+                  {alertaColeta(p) === 'atrasada'
+                    ? `Coleta era ${agendaBr(p.coletaAgendada)}${p.transportadora ? ` · ${p.transportadora}` : ''} e não foi coletado`
+                    : `NF ${p.nfNumero} emitida — coleta ainda não agendada`}
+                  {p.agendamentos.length > 1 ? ` · ${p.agendamentos.length}ª tentativa` : ''} · {textoPrazo(p)}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end">
+            <Button variant="ghost" onClick={adiarAviso}>
+              Ver depois ({ADIAR_AVISO_MIN} min)
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       {aberto && <PedidoModal pedido={aberto} colaboradores={colaboradores} onClose={() => setAbertoId(null)} />}
       {coletadoAberto && (
