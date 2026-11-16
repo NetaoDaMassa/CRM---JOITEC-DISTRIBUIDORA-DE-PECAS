@@ -9,6 +9,7 @@ import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
 import { criarOrdemPecaSeOdinCompressores } from './vendaParaOrdemPeca.js'
+import { montarVendedorDoPedido } from './vendedorDoPedidoSap.js'
 import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
 
 // Venda automática a partir do pedido do SAP (pedido do João, 2026-10-30).
@@ -19,7 +20,9 @@ import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSa
 //   - Joitec, Odin Tubos e Odin Automação; da Odin Compressores, só os
 //     pedidos da Bruna pra clientes da carteira dela (lib/sapCompressores.ts —
 //     o resto de lá é Pedido/ordem);
-//   - a venda conta pro vendedor DONO DO CLIENTE no CRM (o do card do mês);
+//   - a venda conta pra QUEM FEZ O PEDIDO no SAP, se tem login na empresa
+//     (João 2026-11-16, lib/vendedorDoPedidoSap.ts); sem login (representante,
+//     PPR) fica pro vendedor DONO DO CLIENTE no CRM (o do card do mês);
 //   - venda pra empresa do grupo (Comprefer etc.) não entra.
 // Contra duplicidade:
 //   1. vendas.pedidoSapEntry guarda o pedido — nunca cria duas vezes;
@@ -242,6 +245,8 @@ export async function sincronizarVendasSap(
       : []
   )
 
+  const vendedorDoPedido = await montarVendedorDoPedido(nomesVendedores)
+
   for (const p of pedidos) {
     if (grupo.has(p.CardCode.toUpperCase())) continue
     let ja = porEntry.get(p.DocEntry)
@@ -399,10 +404,15 @@ export async function sincronizarVendasSap(
       continue
     }
 
-    // Card do cliente no mês: o que já está Fechado; senão o mais recente.
-    let card = cardPreferido
+    // Card do mês de quem fez o pedido (o Fechado; senão o mais recente). Sem
+    // login dessa pessoa na empresa: o card do cliente (regra antiga).
+    const autorPedido = daCarteira ? null : vendedorDoPedido(empresa.id, p.SalesPersonCode)
+    let card = autorPedido
+      ? (cardsDoMes.find((c) => c.vendedorId === autorPedido && c.etapa === 'fechado') ?? cardsDoMes.find((c) => c.vendedorId === autorPedido))
+      : cardPreferido
+    const vendedorNovoCard = autorPedido ?? cliente.vendedorAtualId
     if (!card) {
-      if (!cliente.vendedorAtualId) {
+      if (!vendedorNovoCard) {
         r.semVendedor.push({ pedido: p.DocNum, cliente: cliente.razaoSocial })
         continue
       }
@@ -410,14 +420,19 @@ export async function sincronizarVendasSap(
       // (senão o card ficava escondido do Kanban). Prospecção nova, 2026-11-05.
       await concluirProspeccaoPorVenda(cliente.id)
       const jaCriado = await db.query.funilMensal.findFirst({
-        where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferencia), isNull(funilMensal.deletedAt)),
+        where: and(
+          eq(funilMensal.clienteId, cliente.id),
+          eq(funilMensal.mesReferencia, mesReferencia),
+          isNull(funilMensal.deletedAt),
+          autorPedido ? eq(funilMensal.vendedorId, autorPedido) : undefined
+        ),
       })
       if (jaCriado) {
         await db.update(funilMensal).set({ etapa: 'fechado', dataEntradaEtapa: agoraSqlite(), updatedAt: agoraSqlite() }).where(eq(funilMensal.id, jaCriado.id))
       }
       const novo = jaCriado
         ? { lastInsertRowid: jaCriado.id }
-        : await db.insert(funilMensal).values({ clienteId: cliente.id, vendedorId: cliente.vendedorAtualId, mesReferencia, etapa: 'fechado', dataEntradaEtapa: agoraSqlite() })
+        : await db.insert(funilMensal).values({ clienteId: cliente.id, vendedorId: vendedorNovoCard, mesReferencia, etapa: 'fechado', dataEntradaEtapa: agoraSqlite() })
       card = (await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, Number(novo.lastInsertRowid)) }))!
     } else if (card.etapa !== 'fechado') {
       await db
