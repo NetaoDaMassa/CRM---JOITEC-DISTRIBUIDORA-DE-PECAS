@@ -865,7 +865,9 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                     titulo={tituloFotoConf}
                     fotos={fotosConf}
                     minimo={regraFotos.conferencia}
-                    liberado={itensConferidos >= itensConf.length}
+                    // Odin Tubos (João, 2026-11-16): foto liberada desde o início da
+                    // conferência, não só depois de conferir tudo.
+                    liberado={ehTubos || itensConferidos >= itensConf.length}
                     podeApagar
                     travadoTexto="Termine de conferir todos os itens para liberar a foto."
                     faltaTexto="para poder terminar a conferência"
