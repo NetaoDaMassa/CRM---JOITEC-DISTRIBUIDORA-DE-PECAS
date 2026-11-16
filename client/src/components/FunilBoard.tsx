@@ -524,7 +524,8 @@ export default function FunilBoard({
           (termoDigitos &&
             ((c.telefoneWhatsapp && c.telefoneWhatsapp.replace(/\D/g, '').includes(termoDigitos)) ||
               c.telefonesExtras.some((t) => t.numero.replace(/\D/g, '').includes(termoDigitos)) ||
-              (c.cnpj && c.cnpj.includes(termoDigitos))))
+              (c.cnpj && c.cnpj.includes(termoDigitos)) ||
+              c.vendas.some((v) => v.numeroNotaFiscal && v.numeroNotaFiscal.replace(/\D/g, '').includes(termoDigitos))))
       )
     : cardsBase
 
@@ -984,6 +985,13 @@ export default function FunilBoard({
                             <p className="text-xs text-green-400">
                               Fechado: {formatarMoeda(card.valorFechadoTotal)}
                               {card.vendas.length > 1 && ` (${card.vendas.length} vendas)`}
+                            </p>
+                          )}
+                          {/* NF na frente do card (pedido do João, 2026-11-16) — vem do SAP
+                              sozinha quando o pedido é faturado, ou do que o vendedor digitou. */}
+                          {card.vendas.some((v) => v.numeroNotaFiscal) && (
+                            <p className="text-xs text-sky-300">
+                              🧾 NF {card.vendas.filter((v) => v.numeroNotaFiscal).map((v) => v.numeroNotaFiscal).join(', ')}
                             </p>
                           )}
                           {/* Odin Compressores (Carteira da Bruna) — cada venda vira um Pedido
