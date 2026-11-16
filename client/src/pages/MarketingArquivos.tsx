@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import {
   Folder, FolderPlus, FolderUp, FolderInput, Upload, Download, Trash2, ChevronRight, Home,
-  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock, MessageCircle, ExternalLink, CloudUpload, HardDrive,
+  FileImage, FileVideo, FileText, File as FileIcon, Users, Pencil, Eye, EyeOff, Lock, MessageCircle, ExternalLink, CloudUpload, HardDrive, CheckSquare, Square, X,
 } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -276,7 +276,12 @@ export default function MarketingArquivos() {
   const [enviando, setEnviando] = useState(false)
   const [verDownloadsDe, setVerDownloadsDe] = useState<{ id: number; nome: string } | null>(null)
   const [renomeando, setRenomeando] = useState<{ tipo: 'pasta' | 'arquivo'; id: number; nome: string } | null>(null)
-  const [movendo, setMovendo] = useState<{ tipo: 'pasta' | 'arquivo'; id: number; nome: string } | null>(null)
+  const [movendo, setMovendo] = useState<{ tipo: 'pasta' | 'arquivo' | 'lote'; id: number; nome: string } | null>(null)
+  // Seleção (João, 2026-11-16: "selecionar os arquivos para mover ou baixar
+  // ou fazer alterações"). Vale só pra pasta aberta — limpa ao trocar.
+  const [selArquivos, setSelArquivos] = useState<Set<number>>(new Set())
+  const [selPastas, setSelPastas] = useState<Set<number>>(new Set())
+  const [emLote, setEmLote] = useState(false)
   const [pastaDestinoEscolhida, setPastaDestinoEscolhida] = useState('')
   const [gerenciandoAcesso, setGerenciandoAcesso] = useState<{ id: number; nome: string } | null>(null)
   const [somenteVisualizacaoUpload, setSomenteVisualizacaoUpload] = useState(false)
@@ -332,6 +337,11 @@ export default function MarketingArquivos() {
       setPastaAtualId(null)
     }
   }, [erroPastas, pastaAtualId])
+
+  useEffect(() => {
+    setSelArquivos(new Set())
+    setSelPastas(new Set())
+  }, [pastaAtualId])
 
   function invalidarLista() {
     utils.marketing.listarPastas.invalidate(argPasta)
@@ -405,7 +415,13 @@ export default function MarketingArquivos() {
     },
     onError: (e) => toast.error(e.message),
   })
-  const registrarDownloadMut = trpc.marketing.registrarDownload.useMutation()
+  const prepararDownloadMut = trpc.marketing.prepararDownload.useMutation()
+  // Versões "mudas" pra ação em lote (sem um aviso por item).
+  const moverArquivoLote = trpc.marketing.moverArquivo.useMutation()
+  const moverPastaLote = trpc.marketing.moverPasta.useMutation()
+  const excluirArquivoLote = trpc.marketing.excluirArquivo.useMutation()
+  const excluirPastaLote = trpc.marketing.excluirPasta.useMutation()
+  const visualizacaoLote = trpc.marketing.alternarVisualizacao.useMutation()
   const { data: downloadsDoArquivo } = trpc.marketing.listarDownloads.useQuery(
     { arquivoId: verDownloadsDe?.id ?? 0 },
     { enabled: !!verDownloadsDe }
@@ -495,10 +511,107 @@ export default function MarketingArquivos() {
     invalidarLista()
   }
 
-  function baixar(arquivo: { id: number; nomeArmazenado: string | null }) {
-    if (!arquivo.nomeArmazenado) return
-    registrarDownloadMut.mutate({ arquivoId: arquivo.id })
-    window.open(`/uploads/${arquivo.nomeArmazenado}`, '_blank')
+  // Download de verdade (João, 2026-11-16): antes abria /uploads numa aba e
+  // foto/PDF/vídeo só eram MOSTRADOS. Agora o servidor manda como anexo, com
+  // o nome original; vários arquivos vêm num .zip.
+  async function baixarIds(ids: number[]) {
+    if (!ids.length) return
+    const carregando = toast.loading(ids.length > 1 ? `Preparando ${ids.length} arquivos...` : 'Preparando download...')
+    try {
+      const r = await prepararDownloadMut.mutateAsync({ arquivoIds: ids })
+      const a = document.createElement('a')
+      a.href = r.url
+      a.rel = 'noopener'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      toast.success(r.total > 1 ? `Baixando ${r.total} arquivos (.zip)` : 'Download iniciado', { id: carregando })
+      if (r.bloqueados) toast(`${r.bloqueados} arquivo(s) só de visualização ficaram de fora`)
+      utils.marketing.listarArquivos.invalidate(argPasta)
+    } catch (e) {
+      toast.error((e as Error).message, { id: carregando })
+    }
+  }
+  function baixar(arquivo: { id: number }) {
+    baixarIds([arquivo.id])
+  }
+
+  const podeBaixar = (a: { somenteVisualizacao: boolean }) => isAdmin || !a.somenteVisualizacao
+  const podeSelecionarArquivo = (a: { somenteVisualizacao: boolean }) => isAdmin || podeBaixar(a)
+  const arquivosSelecionaveis = (arquivos ?? []).filter(podeSelecionarArquivo)
+  const totalSelecionado = selArquivos.size + selPastas.size
+  const tudoSelecionado =
+    arquivosSelecionaveis.every((a) => selArquivos.has(a.id)) && (!isAdmin || (pastas ?? []).every((p) => selPastas.has(p.id))) && totalSelecionado > 0
+  function alternar(set: Set<number>, setter: (s: Set<number>) => void, id: number) {
+    const n = new Set(set)
+    if (n.has(id)) n.delete(id)
+    else n.add(id)
+    setter(n)
+  }
+  function selecionarTudo() {
+    if (tudoSelecionado) {
+      setSelArquivos(new Set())
+      setSelPastas(new Set())
+      return
+    }
+    setSelArquivos(new Set(arquivosSelecionaveis.map((a) => a.id)))
+    if (isAdmin) setSelPastas(new Set((pastas ?? []).map((p) => p.id)))
+  }
+  function limparSelecao() {
+    setSelArquivos(new Set())
+    setSelPastas(new Set())
+  }
+  const idsBaixaveisSelecionados = (arquivos ?? []).filter((a) => selArquivos.has(a.id) && podeBaixar(a)).map((a) => a.id)
+
+  // Ações em lote: uma chamada por item, reaproveitando as mesmas checagens
+  // do servidor (pasta dentro dela mesma, acesso etc.). Se algum falhar, os
+  // outros seguem e o erro aparece no fim.
+  async function emCadaUm(itens: { tipo: 'pasta' | 'arquivo'; id: number }[], fazer: (i: { tipo: 'pasta' | 'arquivo'; id: number }) => Promise<unknown>, ok: string) {
+    setEmLote(true)
+    const erros: string[] = []
+    for (const i of itens) {
+      try {
+        await fazer(i)
+      } catch (e) {
+        erros.push((e as Error).message)
+      }
+    }
+    setEmLote(false)
+    invalidarLista()
+    utils.marketing.listarTodasPastas.invalidate()
+    if (erros.length) toast.error(`${itens.length - erros.length} de ${itens.length} feitos. Erro: ${[...new Set(erros)].join(' · ')}`)
+    else toast.success(ok)
+    limparSelecao()
+  }
+  function itensSelecionados() {
+    return [...[...selPastas].map((id) => ({ tipo: 'pasta' as const, id })), ...[...selArquivos].map((id) => ({ tipo: 'arquivo' as const, id }))]
+  }
+  async function moverSelecionados(pastaDestinoId: number | undefined) {
+    const itens = itensSelecionados().filter((i) => !(i.tipo === 'pasta' && i.id === pastaDestinoId))
+    await emCadaUm(
+      itens,
+      (i) => (i.tipo === 'arquivo' ? moverArquivoLote.mutateAsync({ id: i.id, pastaDestinoId }) : moverPastaLote.mutateAsync({ id: i.id, pastaDestinoId })),
+      `${itens.length} ${itens.length === 1 ? 'item movido' : 'itens movidos'}`
+    )
+    fecharMover()
+  }
+  function excluirSelecionados() {
+    const itens = itensSelecionados()
+    const txtPastas = selPastas.size ? ` (inclui ${selPastas.size} pasta(s) — apaga também tudo que estiver dentro delas)` : ''
+    if (!confirm(`Excluir ${itens.length} ${itens.length === 1 ? 'item' : 'itens'}${txtPastas}?`)) return
+    emCadaUm(
+      itens,
+      (i) => (i.tipo === 'arquivo' ? excluirArquivoLote.mutateAsync({ id: i.id }) : excluirPastaLote.mutateAsync({ id: i.id })),
+      `${itens.length} ${itens.length === 1 ? 'item excluído' : 'itens excluídos'}`
+    )
+  }
+  function visualizacaoSelecionados(somenteVisualizacao: boolean) {
+    const itens = [...selArquivos].map((id) => ({ tipo: 'arquivo' as const, id }))
+    emCadaUm(
+      itens,
+      (i) => visualizacaoLote.mutateAsync({ id: i.id, somenteVisualizacao }),
+      somenteVisualizacao ? `Download bloqueado em ${itens.length} arquivo(s)` : `Download liberado em ${itens.length} arquivo(s)`
+    )
   }
 
   const carregando = carregandoPastas || carregandoArquivos
@@ -567,6 +680,55 @@ export default function MarketingArquivos() {
         ))}
       </div>
 
+      {!carregando && (arquivosSelecionaveis.length > 0 || (isAdmin && (pastas?.length ?? 0) > 0)) && (
+        <div
+          className={`sticky top-0 z-20 mb-3 flex items-center gap-2 flex-wrap rounded-xl border px-3 py-2 text-sm ${
+            totalSelecionado ? 'bg-dark-800 border-gold-600/50 shadow-lg' : 'border-transparent'
+          }`}
+        >
+          <button onClick={selecionarTudo} className="flex items-center gap-1.5 text-dark-300 hover:text-gold-400">
+            {tudoSelecionado ? <CheckSquare size={16} className="text-gold-400" /> : <Square size={16} />}
+            {tudoSelecionado ? 'Desmarcar tudo' : 'Selecionar tudo'}
+          </button>
+          {totalSelecionado > 0 && (
+            <>
+              <span className="text-dark-100 font-semibold ml-1">
+                {totalSelecionado} {totalSelecionado === 1 ? 'selecionado' : 'selecionados'}
+              </span>
+              <span className="flex-1" />
+              <Button size="sm" disabled={!idsBaixaveisSelecionados.length || emLote} loading={prepararDownloadMut.isPending} onClick={() => baixarIds(idsBaixaveisSelecionados)}>
+                <Download size={14} className="mr-1" />
+                Baixar{idsBaixaveisSelecionados.length > 1 ? ` ${idsBaixaveisSelecionados.length} (.zip)` : ''}
+              </Button>
+              {isAdmin && (
+                <>
+                  <Button size="sm" variant="secondary" disabled={emLote} onClick={() => setMovendo({ tipo: 'lote', id: 0, nome: `${totalSelecionado} ${totalSelecionado === 1 ? 'item' : 'itens'}` })}>
+                    <FolderInput size={14} className="mr-1" /> Mover
+                  </Button>
+                  {selArquivos.size > 0 && (
+                    <>
+                      <Button size="sm" variant="secondary" disabled={emLote} onClick={() => visualizacaoSelecionados(true)} title="Quem não é admin só vai poder visualizar">
+                        <EyeOff size={14} className="mr-1" /> Bloquear download
+                      </Button>
+                      <Button size="sm" variant="secondary" disabled={emLote} onClick={() => visualizacaoSelecionados(false)}>
+                        <Eye size={14} className="mr-1" /> Liberar download
+                      </Button>
+                    </>
+                  )}
+                  <Button size="sm" variant="secondary" disabled={emLote} onClick={excluirSelecionados} className="!text-red-400">
+                    <Trash2 size={14} className="mr-1" /> Excluir
+                  </Button>
+                </>
+              )}
+              <button onClick={limparSelecao} className="text-dark-400 hover:text-dark-100 p-1" title="Limpar seleção">
+                <X size={16} />
+              </button>
+            </>
+          )}
+          {emLote && <span className="text-xs text-dark-400">Aplicando...</span>}
+        </div>
+      )}
+
       {carregando ? (
         <p className="text-dark-400 text-sm">Carregando...</p>
       ) : (
@@ -574,9 +736,21 @@ export default function MarketingArquivos() {
           {pastas?.map((pasta) => (
             <div
               key={pasta.id}
-              className="bg-dark-800 border border-dark-600 rounded-xl p-4 flex items-center gap-3 hover:border-gold-600/40 transition-colors cursor-pointer group"
-              onClick={() => setPastaAtualId(pasta.id)}
+              className={`bg-dark-800 border rounded-xl p-4 flex items-center gap-3 hover:border-gold-600/40 transition-colors cursor-pointer group ${selPastas.has(pasta.id) ? 'border-gold-500 ring-1 ring-gold-500/50' : 'border-dark-600'}`}
+              onClick={() => (totalSelecionado > 0 && isAdmin ? alternar(selPastas, setSelPastas, pasta.id) : setPastaAtualId(pasta.id))}
             >
+              {isAdmin && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    alternar(selPastas, setSelPastas, pasta.id)
+                  }}
+                  className={`shrink-0 ${selPastas.has(pasta.id) ? 'text-gold-400' : 'text-dark-500 hover:text-dark-200'}`}
+                  title="Selecionar pasta"
+                >
+                  {selPastas.has(pasta.id) ? <CheckSquare size={17} /> : <Square size={17} />}
+                </button>
+              )}
               <Folder size={26} className="text-gold-400 shrink-0" />
               <span className="text-sm text-dark-100 font-medium flex-1 min-w-0 flex items-center gap-1.5">
                 <span className="truncate">{pasta.nome}</span>
@@ -615,8 +789,20 @@ export default function MarketingArquivos() {
           ))}
 
           {arquivos?.map((arquivo) => (
-            <div key={arquivo.id} className="bg-dark-800 border border-dark-600 rounded-xl p-4 flex flex-col gap-2">
+            <div
+              key={arquivo.id}
+              className={`bg-dark-800 border rounded-xl p-4 flex flex-col gap-2 ${selArquivos.has(arquivo.id) ? 'border-gold-500 ring-1 ring-gold-500/50' : 'border-dark-600'}`}
+            >
               <div className="flex items-center gap-3">
+                {podeSelecionarArquivo(arquivo) && (
+                  <button
+                    onClick={() => alternar(selArquivos, setSelArquivos, arquivo.id)}
+                    className={`shrink-0 ${selArquivos.has(arquivo.id) ? 'text-gold-400' : 'text-dark-500 hover:text-dark-200'}`}
+                    title="Selecionar arquivo"
+                  >
+                    {selArquivos.has(arquivo.id) ? <CheckSquare size={17} /> : <Square size={17} />}
+                  </button>
+                )}
                 <MiniaturaArquivo
                   tipo={arquivo.tipoArquivo}
                   nomeArmazenado={arquivo.nomeArmazenado}
@@ -777,7 +963,7 @@ export default function MarketingArquivos() {
         )}
       </Modal>
 
-      <Modal open={!!movendo} onClose={fecharMover} title={movendo?.tipo === 'arquivo' ? `Mover "${movendo?.nome ?? ''}"` : `Mover pasta "${movendo?.nome ?? ''}"`} size="sm">
+      <Modal open={!!movendo} onClose={fecharMover} title={movendo?.tipo === 'lote' ? `Mover ${movendo.nome}` : movendo?.tipo === 'arquivo' ? `Mover "${movendo?.nome ?? ''}"` : `Mover pasta "${movendo?.nome ?? ''}"`} size="sm">
         {movendo && (
           <div className="space-y-4">
             <Select
@@ -786,17 +972,18 @@ export default function MarketingArquivos() {
               onChange={(e) => setPastaDestinoEscolhida(e.target.value)}
               placeholder="Raiz (fora de qualquer pasta)"
               options={(todasPastas ?? [])
-                .filter((p) => !(movendo.tipo === 'pasta' && p.id === movendo.id))
+                .filter((p) => !(movendo.tipo === 'pasta' && p.id === movendo.id) && !(movendo.tipo === 'lote' && selPastas.has(p.id)))
                 .map((p) => ({ value: String(p.id), label: p.caminho }))}
             />
             <div className="flex gap-3">
               <Button variant="secondary" className="flex-1" onClick={fecharMover}>Cancelar</Button>
               <Button
                 className="flex-1"
-                loading={moverPastaMut.isPending || moverArquivoMut.isPending}
+                loading={moverPastaMut.isPending || moverArquivoMut.isPending || emLote}
                 onClick={() => {
                   const pastaDestinoId = pastaDestinoEscolhida ? Number(pastaDestinoEscolhida) : undefined
-                  if (movendo.tipo === 'arquivo') moverArquivoMut.mutate({ id: movendo.id, pastaDestinoId })
+                  if (movendo.tipo === 'lote') moverSelecionados(pastaDestinoId)
+                  else if (movendo.tipo === 'arquivo') moverArquivoMut.mutate({ id: movendo.id, pastaDestinoId })
                   else moverPastaMut.mutate({ id: movendo.id, pastaDestinoId })
                 }}
               >

@@ -36,6 +36,7 @@ import { trocarCodigoEAcharConta, validarState } from './lib/instagramApi.js'
 import { encryptSecret } from './lib/crypto.js'
 import { cifrar as cifrarDrive, trocarCodigo as trocarCodigoDrive, validarState as validarStateDrive, limparTokenCache as limparTokenDrive } from './lib/googleDrive.js'
 import { iniciarChatSocket } from './lib/chatSocket.js'
+import { lerTokenDownload, escreverZip, nomesUnicos } from './lib/marketingDownload.js'
 
 config()
 
@@ -536,6 +537,30 @@ app.get('/marketing-arquivo/:id/conteudo', async (req, res) => {
   res.setHeader('Content-Disposition', 'inline')
   if (arquivo.tipoArquivo) res.setHeader('Content-Type', arquivo.tipoArquivo)
   res.sendFile(path.resolve(UPLOADS_DIR, arquivo.nomeArmazenado))
+})
+
+// Download de verdade do Arquivos/Mídia (João, 2026-11-16). O link vem de
+// marketing.prepararDownload (que já checou empresa/pasta/somente
+// visualização) e vale 2 min — ver lib/marketingDownload.ts. 1 arquivo = ele
+// mesmo como anexo com o nome original; vários = um .zip.
+app.get('/marketing-arquivo/baixar/:token', async (req, res) => {
+  const arquivos = lerTokenDownload(req.params.token)
+  if (!arquivos) return res.status(410).send('Esse link de download expirou. Volte na tela e clique em Baixar de novo.')
+  if (arquivos.length === 1) {
+    return res.download(arquivos[0].caminho, nomesUnicos([arquivos[0].nome])[0], (err) => {
+      if (err && !res.headersSent) res.status(404).send('Arquivo não encontrado no servidor.')
+    })
+  }
+  const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }).replace(/\//g, '-')
+  res.setHeader('Content-Type', 'application/zip')
+  res.setHeader('Content-Disposition', `attachment; filename="arquivos-${hoje}.zip"`)
+  try {
+    await escreverZip(res, arquivos)
+    res.end()
+  } catch (e) {
+    console.error('[marketing zip]', e)
+    res.destroy()
+  }
 })
 
 // Gravação de ligação da PABXONE360 (relatório Ligações). O CRM busca o

@@ -19,6 +19,8 @@ import { db } from '../db/client.js'
 import { marketingPastas, marketingArquivos, marketingArquivoDownloads, marketingPastaAcessos, solicitacoesDesign, googleDriveConexao, googleDriveEmpresas } from '../db/schema.js'
 import { marcarArquivoPendente, marcarPastaPendente } from '../lib/googleDriveSync.js'
 import { linkPasta } from '../lib/googleDrive.js'
+import path from 'path'
+import { criarTokenDownload } from '../lib/marketingDownload.js'
 
 // Sem nenhuma linha em marketingPastaAcessos pra essa pasta = aberta pra
 // todo mundo da empresa (comportamento de sempre — pastas já existentes
@@ -424,6 +426,30 @@ export const marketingRouter = router({
     await db.insert(marketingArquivoDownloads).values({ arquivoId: input.arquivoId, userId: ctx.user.id })
     return { ok: true }
   }),
+
+  // Download de verdade, de 1 ou vários arquivos (João, 2026-11-16 — ver
+  // lib/marketingDownload.ts). Mesmas regras da listagem: só da empresa, só de
+  // pasta que a pessoa enxerga, e "somente visualização" só pra admin. Cada
+  // arquivo entra no "Quem baixou".
+  prepararDownload: protectedProcedure
+    .input(z.object({ arquivoIds: z.array(z.number()).min(1).max(500) }))
+    .mutation(async ({ ctx, input }) => {
+      const arquivos = await db.query.marketingArquivos.findMany({
+        where: and(eq(marketingArquivos.empresaId, ctx.empresaId), inArray(marketingArquivos.id, input.arquivoIds)),
+      })
+      if (arquivos.length === 0) throw new Error('Arquivo não encontrado')
+      const souAdmin = ctx.user.role === 'admin' || ctx.user.superAdmin
+      for (const pastaId of new Set(arquivos.map((a) => a.pastaId).filter((x): x is number => x != null)))
+        await assertPodeVerPasta(ctx.user.id, ctx.user.superAdmin, pastaId)
+      const baixaveis = arquivos.filter((a) => souAdmin || !a.somenteVisualizacao)
+      if (baixaveis.length === 0) throw new Error('Esse arquivo é só pra visualizar — peça pro admin liberar o download.')
+      const ordem = new Map(input.arquivoIds.map((id, i) => [id, i]))
+      baixaveis.sort((a, b) => (ordem.get(a.id) ?? 0) - (ordem.get(b.id) ?? 0))
+      await db.insert(marketingArquivoDownloads).values(baixaveis.map((a) => ({ arquivoId: a.id, userId: ctx.user.id })))
+      const dir = path.resolve(process.env.UPLOADS_DIR ?? './uploads')
+      const token = criarTokenDownload(baixaveis.map((a) => ({ caminho: path.join(dir, path.basename(a.nomeArmazenado)), nome: a.nomeOriginal })))
+      return { url: `/marketing-arquivo/baixar/${token}`, total: baixaveis.length, bloqueados: arquivos.length - baixaveis.length }
+    }),
 
   // "Quem baixou" — admin-only (vendedor não precisa ver quem mais baixou).
   listarDownloads: adminProcedure.input(z.object({ arquivoId: z.number() })).query(async ({ ctx, input }) => {
