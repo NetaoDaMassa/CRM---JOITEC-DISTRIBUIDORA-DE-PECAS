@@ -60,6 +60,15 @@ export async function avancarEtapaGarantia(params: { garantiaId: number; empresa
   const proximo = getNextStage(garantia.stage, garantia.comRetorno)
   if (!proximo) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Processo já está na última etapa' })
 
+  // Frete CIF sem valor não avança (João, 2026-11-16) — a modalidade em
+  // si não é obrigatória, só o valor quando a Odin paga.
+  if (garantia.stage === 'saida' && garantia.envioFreteModalidade === 'CIF' && !garantia.envioFreteValor) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Frete CIF: informe o valor do frete antes de avançar' })
+  }
+  if (garantia.stage === 'retorno_item_danificado' && garantia.retornoFreteModalidade === 'CIF' && !garantia.retornoFreteValor) {
+    throw new TRPCError({ code: 'BAD_REQUEST', message: 'Frete CIF: informe o valor do frete antes de avançar' })
+  }
+
   const upd = await db
     .update(garantias)
     .set({ stage: proximo, versao: garantia.versao + 1, updatedAt: agoraSqlite() })

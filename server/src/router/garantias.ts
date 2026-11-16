@@ -54,6 +54,11 @@ const CamposEtapaSchema = z.object({
   envioTransportadora: z.string().optional(),
   envioCodigoRastreio: z.string().optional(),
   rastreioObservacao: z.string().optional(),
+  envioFreteModalidade: z.enum(['CIF', 'FOB']).nullable().optional(),
+  envioFreteValor: z.number().nonnegative().nullable().optional(),
+  retornoTransportadora: z.string().optional(),
+  retornoFreteModalidade: z.enum(['CIF', 'FOB']).nullable().optional(),
+  retornoFreteValor: z.number().nonnegative().nullable().optional(),
   retornoSolicitadoEm: z.string().optional(),
   retornoObservacao: z.string().optional(),
   recebidoOdinEm: z.string().optional(),
@@ -304,6 +309,18 @@ export const garantiasCoreRouter = router({
       await assertEmpresaGarantias(ctx.empresaId)
       const { id, ...campos } = input
       await obterGarantia(id, ctx.empresaId)
+      // Regra do frete (João, 2026-11-16): CIF = Odin paga → valor
+      // obrigatório; FOB = quem paga é o cliente/transportadora → valor
+      // não existe (zera, pra não somar no relatório).
+      for (const lado of ['envio', 'retorno'] as const) {
+        const modKey = `${lado}FreteModalidade` as const
+        const valKey = `${lado}FreteValor` as const
+        if (campos[modKey] === undefined) continue
+        if (campos[modKey] === 'CIF' && !(campos[valKey] && campos[valKey]! > 0)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Frete CIF: informe o valor do frete' })
+        }
+        if (campos[modKey] !== 'CIF') campos[valKey] = null
+      }
       await db.update(garantias).set({ ...campos, updatedAt: agoraSqlite() }).where(eq(garantias.id, id))
       return { ok: true }
     }),
@@ -325,6 +342,43 @@ export const garantiasCoreRouter = router({
     await db.update(garantias).set({ status: 'cancelado', cancelMotivo: input.motivo, updatedAt: agoraSqlite() }).where(eq(garantias.id, input.id))
     await registrarHistoricoGarantia({ garantiaId: input.id, userId: ctx.user.id, action: 'cancelled', description: `Processo cancelado: ${input.motivo}`, stage: garantia.stage })
     return { ok: true }
+  }),
+
+  // Relatório de fretes de garantia (João, 2026-11-16): 1 linha por frete
+  // (envio do item novo na Saída / retorno do item danificado), com o mês
+  // de referência. A tela agrupa por mês, envio×retorno, transportadora e
+  // CIF/FOB. Mês do envio = data da NF de saída; do retorno = data da
+  // solicitação de retorno (ou do recebimento na Odin); sem data, cai no
+  // mês em que o processo foi criado. Cancelados entram (o frete foi pago).
+  relatorioFretes: adminOrFeatureProcedure('garantias_odin').query(async ({ ctx }) => {
+    await assertEmpresaGarantias(ctx.empresaId)
+    const rows = await db.query.garantias.findMany({
+      where: eq(garantias.empresaId, ctx.empresaId),
+      with: { cliente: { columns: { razaoSocial: true } } },
+    })
+    const fretes: {
+      garantiaId: number
+      cliente: string
+      status: string
+      tipo: 'envio' | 'retorno'
+      data: string
+      dataEstimada: boolean
+      transportadora: string | null
+      modalidade: 'CIF' | 'FOB' | null
+      valor: number
+    }[] = []
+    for (const g of rows) {
+      const base = { garantiaId: g.id, cliente: g.cliente?.razaoSocial ?? '—', status: g.status }
+      if (g.envioFreteModalidade || g.envioFreteValor) {
+        const d = g.nfSaidaData
+        fretes.push({ ...base, tipo: 'envio', data: (d || g.createdAt).slice(0, 10), dataEstimada: !d, transportadora: g.envioTransportadora?.trim() || null, modalidade: g.envioFreteModalidade, valor: g.envioFreteValor ?? 0 })
+      }
+      if (g.retornoFreteModalidade || g.retornoFreteValor) {
+        const d = g.retornoSolicitadoEm || g.recebidoOdinEm
+        fretes.push({ ...base, tipo: 'retorno', data: (d || g.createdAt).slice(0, 10), dataEstimada: !d, transportadora: g.retornoTransportadora?.trim() || null, modalidade: g.retornoFreteModalidade, valor: g.retornoFreteValor ?? 0 })
+      }
+    }
+    return fretes.sort((a, b) => (a.data < b.data ? 1 : -1))
   }),
 
   historico: adminOrFeatureProcedure('garantias_odin').input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {

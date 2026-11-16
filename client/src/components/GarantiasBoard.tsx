@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ChevronRight, Building2, Wrench } from 'lucide-react'
 import { timeAgo, formatDateTime } from '../lib/utils'
@@ -22,8 +23,45 @@ export default function GarantiasBoard({ garantias, comRetorno, basePath }: { ga
   const navigate = useNavigate()
   const colunas = comRetorno === null ? (['analise', 'aprovacao_diretor'] as const) : getStageSequence(comRetorno)
 
+  // Barra de rolagem lateral EM CIMA, junto dos títulos das colunas, em vez
+  // de lá embaixo (pedido do João, 2026-11-16) — mesmo esquema do
+  // OrdensBoard: uma barra fina sincronizada com o quadro, e a de baixo
+  // escondida.
+  const boardRef = useRef<HTMLDivElement>(null)
+  const topScrollRef = useRef<HTMLDivElement>(null)
+  const [boardWidth, setBoardWidth] = useState(0)
+  const [temRolagem, setTemRolagem] = useState(false)
+  useEffect(() => {
+    const board = boardRef.current
+    if (!board) return
+    const medir = () => {
+      setBoardWidth(board.scrollWidth)
+      setTemRolagem(board.scrollWidth > board.clientWidth + 1)
+    }
+    const observer = new ResizeObserver(medir)
+    observer.observe(board)
+    medir()
+    return () => observer.disconnect()
+  }, [garantias, comRetorno])
+
   return (
-    <div className="flex gap-4 overflow-x-auto pb-4">
+    <div>
+    {temRolagem && (
+      <div
+        ref={topScrollRef}
+        onScroll={() => { if (topScrollRef.current && boardRef.current) boardRef.current.scrollLeft = topScrollRef.current.scrollLeft }}
+        className="overflow-x-auto mb-2"
+        style={{ height: 14 }}
+      >
+        <div style={{ width: boardWidth, height: 1 }} />
+      </div>
+    )}
+    <div
+      ref={boardRef}
+      onScroll={() => { if (topScrollRef.current && boardRef.current) topScrollRef.current.scrollLeft = boardRef.current.scrollLeft }}
+      className="flex gap-4 overflow-x-auto pb-4 [&::-webkit-scrollbar]:hidden"
+      style={{ scrollbarWidth: 'none' }}
+    >
       {colunas.map((stage) => {
         const cards = garantias.filter((g) => g.stage === stage && g.status === 'ativo').sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1))
         return (
@@ -70,6 +108,7 @@ export default function GarantiasBoard({ garantias, comRetorno, basePath }: { ga
           </div>
         )
       })}
+    </div>
     </div>
   )
 }

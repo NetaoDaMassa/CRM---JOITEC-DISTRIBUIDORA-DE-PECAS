@@ -18,13 +18,16 @@ export const TIPO_ATENDIMENTO_LABELS: Record<TipoAtendimento, string> = {
 // GarantiasDetail.tsx.
 // "Análise" é a etapa de triagem, ANTES de tudo — pedido do João,
 // 2026-10-06. Ver comentário equivalente em server/garantiasStages.ts.
+// "NF de Devolução" passou pra DEPOIS da "Saída" (pedido do João,
+// 2026-11-16): o cliente só emite a NF de devolução depois de receber o
+// item novo.
 export const STAGE_SEQUENCE_COM_RETORNO = [
   'analise',
   'aprovacao_diretor',
   'aberto',
-  'nf_devolucao',
   'preparacao_novo_item',
   'saida',
+  'nf_devolucao',
   'retorno_item_danificado',
   'recebido_odin',
   'oficina',

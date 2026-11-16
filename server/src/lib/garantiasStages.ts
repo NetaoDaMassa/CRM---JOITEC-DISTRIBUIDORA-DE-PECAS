@@ -25,13 +25,16 @@ export type TipoAtendimento = (typeof TIPO_ATENDIMENTO_VALUES)[number]
 // processo de garantia / finalizar sem garantia) ou pede nova abordagem
 // (volta pro 'analise' com as observações dele). Pedido do João,
 // 2026-10-06.
+// "NF de Devolução" passou pra DEPOIS da "Saída" (pedido do João,
+// 2026-11-16): o cliente só emite a NF de devolução depois de receber o
+// item novo.
 export const STAGE_SEQUENCE_COM_RETORNO = [
   'analise',
   'aprovacao_diretor',
   'aberto',
-  'nf_devolucao',
   'preparacao_novo_item',
   'saida',
+  'nf_devolucao',
   'retorno_item_danificado',
   'recebido_odin',
   'oficina',

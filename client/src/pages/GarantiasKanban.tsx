@@ -9,6 +9,7 @@ import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
 import { Input, Textarea } from '../components/ui/Input'
 import GarantiasBoard from '../components/GarantiasBoard'
+import GarantiasFretesRelatorio from '../components/GarantiasFretesRelatorio'
 import GarantiasDetail from './GarantiasDetail'
 import CadastroRapidoClienteModal from '../components/CadastroRapidoClienteModal'
 
@@ -22,7 +23,7 @@ export default function GarantiasKanban() {
   const { id } = useParams()
   const navigate = useNavigate()
 
-  const [view, setView] = usePersistedState<'analise' | '1' | '0'>('garantiasKanban:view', 'analise')
+  const [view, setView] = usePersistedState<'analise' | '1' | '0' | 'fretes'>('garantiasKanban:view', 'analise')
   const [modalAberto, setModalAberto] = useState(false)
   const [busca, setBusca] = usePersistedState('garantiasKanban:busca', '')
 
@@ -36,7 +37,7 @@ export default function GarantiasKanban() {
 
   const utils = trpc.useUtils()
   const comRetornoQuery = view === 'analise' ? null : view === '1'
-  const { data: garantiasTodas, isLoading } = trpc.garantias.core.listarKanban.useQuery({ comRetorno: comRetornoQuery })
+  const { data: garantiasTodas, isLoading } = trpc.garantias.core.listarKanban.useQuery({ comRetorno: comRetornoQuery }, { enabled: view !== 'fretes' })
   const { data: clientesResultado } = trpc.clientes.list.useQuery({ q: buscaCliente, pagina: 1 }, { enabled: buscaCliente.trim().length >= 2 })
 
   const termo = busca.trim().toLowerCase()
@@ -106,8 +107,14 @@ export default function GarantiasKanban() {
           >
             Sem retorno
           </button>
+          <button
+            onClick={() => setView('fretes')}
+            className={`px-3 py-1.5 text-sm font-medium transition-colors border-l border-dark-600 ${view === 'fretes' ? 'bg-gold-600 text-dark-950' : 'bg-dark-800 text-dark-300 hover:bg-dark-700'}`}
+          >
+            Fretes
+          </button>
         </div>
-        <div className="relative w-64">
+        {view !== 'fretes' && <div className="relative w-64">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-500" />
           <input
             value={busca}
@@ -115,10 +122,16 @@ export default function GarantiasKanban() {
             placeholder="Buscar por cliente ou nº..."
             className="w-full bg-dark-800 border border-dark-600 rounded-lg pl-8 pr-3 py-1.5 text-sm text-dark-100 focus:outline-none focus:border-gold-600"
           />
-        </div>
+        </div>}
       </div>
 
-      {isLoading ? <p className="text-dark-400 text-sm">Carregando...</p> : <GarantiasBoard garantias={garantias ?? []} comRetorno={comRetornoQuery} basePath={basePath} />}
+      {view === 'fretes' ? (
+        <GarantiasFretesRelatorio basePath={basePath} />
+      ) : isLoading ? (
+        <p className="text-dark-400 text-sm">Carregando...</p>
+      ) : (
+        <GarantiasBoard garantias={garantias ?? []} comRetorno={comRetornoQuery} basePath={basePath} />
+      )}
 
       <Modal open={modalAberto} onClose={() => setModalAberto(false)} title="Nova reclamação (Análise)" size="md">
         <div className="p-5 space-y-4">

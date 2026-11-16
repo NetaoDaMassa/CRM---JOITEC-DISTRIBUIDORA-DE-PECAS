@@ -9,6 +9,7 @@ import { Input, Textarea } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import { Badge } from '../components/ui/Badge'
 import { formatDateTime } from '../lib/utils'
+import { parseValorBr } from '../lib/valorBr'
 import {
   getStageSequence,
   STAGE_LABELS,
@@ -194,6 +195,11 @@ type GarantiaData = {
   envioTransportadora: string | null
   envioCodigoRastreio: string | null
   rastreioObservacao: string | null
+  envioFreteModalidade: string | null
+  envioFreteValor: number | null
+  retornoTransportadora: string | null
+  retornoFreteModalidade: string | null
+  retornoFreteValor: number | null
   retornoSolicitadoEm: string | null
   retornoObservacao: string | null
   recebidoOdinEm: string | null
@@ -446,10 +452,55 @@ function EtapaCampos({ garantiaId, stage, garantia, readonly }: { garantiaId: nu
   function set(campo: string, valor: string) {
     setCampos((prev) => ({ ...prev, [campo]: valor }))
   }
-  function salvar(camposParaSalvar: string[]) {
+  function salvar(camposParaSalvar: string[], frete?: 'envio' | 'retorno') {
     const corpo: any = { id: garantiaId }
     for (const c of camposParaSalvar) corpo[c] = val(c as keyof GarantiaData)
+    if (frete) {
+      // Regra do frete (João, 2026-11-16): CIF = Odin paga → valor
+      // obrigatório; FOB = não paga → sem valor.
+      const modalidade = val(`${frete}FreteModalidade` as keyof GarantiaData)
+      const valor = parseValorBr(valorFreteTexto(frete))
+      if (modalidade === 'CIF' && !(valor > 0)) return toast.error('Frete CIF: informe o valor do frete')
+      corpo[`${frete}FreteModalidade`] = modalidade || null
+      corpo[`${frete}FreteValor`] = modalidade === 'CIF' ? valor : null
+    }
     salvarMut.mutate(corpo)
+  }
+  function valorFreteTexto(lado: 'envio' | 'retorno'): string {
+    const k = `${lado}FreteValor`
+    if (k in campos) return campos[k]
+    const v = garantia[k as 'envioFreteValor' | 'retornoFreteValor']
+    return v != null ? v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : ''
+  }
+  // Modalidade + valor do frete — mesmo bloco na Saída (envio do item
+  // novo) e no Retorno do Item Danificado. Valor só aparece no CIF.
+  function camposFrete(lado: 'envio' | 'retorno') {
+    const modalidade = val(`${lado}FreteModalidade` as keyof GarantiaData)
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <Select
+          label="Modalidade do frete"
+          value={modalidade}
+          onChange={(e) => set(`${lado}FreteModalidade`, e.target.value)}
+          disabled={readonly}
+          placeholder="Escolha..."
+          options={[
+            { value: 'CIF', label: 'CIF — Odin paga o frete' },
+            { value: 'FOB', label: 'FOB — Odin não paga o frete' },
+          ]}
+        />
+        {modalidade === 'CIF' && (
+          <Input
+            label="Valor do frete (R$) *"
+            inputMode="decimal"
+            placeholder="0,00"
+            value={valorFreteTexto(lado)}
+            onChange={(e) => set(`${lado}FreteValor`, e.target.value)}
+            disabled={readonly}
+          />
+        )}
+      </div>
+    )
   }
 
   if (stage === 'aberto') {
@@ -498,7 +549,7 @@ function EtapaCampos({ garantiaId, stage, garantia, readonly }: { garantiaId: nu
       <CamposComSalvar
         readonly={readonly}
         salvando={salvarMut.isPending}
-        onSalvar={() => salvar(['nfSaidaNumero', 'nfSaidaData', 'envioTransportadora', 'envioCodigoRastreio', 'rastreioObservacao'])}
+        onSalvar={() => salvar(['nfSaidaNumero', 'nfSaidaData', 'envioTransportadora', 'rastreioObservacao'], 'envio')}
       >
         <div>
           <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide mb-2">NF de saída</p>
@@ -508,13 +559,16 @@ function EtapaCampos({ garantiaId, stage, garantia, readonly }: { garantiaId: nu
           </div>
         </div>
         <div>
-          <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide mb-2">Envio e rastreamento</p>
-          <div className="grid grid-cols-2 gap-3">
+          <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide mb-2">Envio e frete</p>
+          <div className="space-y-3">
             <Input label="Transportadora" value={val('envioTransportadora')} onChange={(e) => set('envioTransportadora', e.target.value)} disabled={readonly} />
-            <Input label="Código de rastreio" value={val('envioCodigoRastreio')} onChange={(e) => set('envioCodigoRastreio', e.target.value)} disabled={readonly} />
+            {camposFrete('envio')}
           </div>
+          {/* Código de rastreio saiu da tela (João, 2026-11-16) — a coluna
+              envioCodigoRastreio continua no banco com o que já tinha. */}
+          {garantia.envioCodigoRastreio && <p className="text-xs text-dark-500 mt-2">Código de rastreio (antigo): {garantia.envioCodigoRastreio}</p>}
           <Textarea
-            label="Observação do rastreio"
+            label="Observação do envio"
             value={val('rastreioObservacao')}
             onChange={(e) => set('rastreioObservacao', e.target.value)}
             disabled={readonly}
@@ -526,8 +580,15 @@ function EtapaCampos({ garantiaId, stage, garantia, readonly }: { garantiaId: nu
 
   if (stage === 'retorno_item_danificado') {
     return (
-      <CamposComSalvar readonly={readonly} salvando={salvarMut.isPending} onSalvar={() => salvar(['retornoSolicitadoEm', 'retornoObservacao'])}>
+      <CamposComSalvar readonly={readonly} salvando={salvarMut.isPending} onSalvar={() => salvar(['retornoSolicitadoEm', 'retornoTransportadora', 'retornoObservacao'], 'retorno')}>
         <Input label="Data da solicitação de retorno" type="date" value={val('retornoSolicitadoEm')} onChange={(e) => set('retornoSolicitadoEm', e.target.value)} disabled={readonly} />
+        <div>
+          <p className="text-xs font-semibold text-dark-400 uppercase tracking-wide mb-2">Frete do retorno até a Odin</p>
+          <div className="space-y-3">
+            <Input label="Transportadora" value={val('retornoTransportadora')} onChange={(e) => set('retornoTransportadora', e.target.value)} disabled={readonly} />
+            {camposFrete('retorno')}
+          </div>
+        </div>
         <Textarea label="Observação" value={val('retornoObservacao')} onChange={(e) => set('retornoObservacao', e.target.value)} disabled={readonly} />
       </CamposComSalvar>
     )

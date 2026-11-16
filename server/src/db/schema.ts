@@ -3011,6 +3011,16 @@ export const garantias = sqliteTable(
     envioTransportadora: text('envio_transportadora'),
     envioCodigoRastreio: text('envio_codigo_rastreio'),
     rastreioObservacao: text('rastreio_observacao'),
+    // Controle de fretes (pedido do João, 2026-11-16): na Saída o "Código
+    // de rastreio" saiu da tela e entrou Modalidade (CIF/FOB) + Valor; no
+    // Retorno do Item Danificado entrou Transportadora + Modalidade + Valor.
+    // Regra: CIF = Odin paga → valor obrigatório; FOB = não paga → valor
+    // fica nulo. Somados no relatório de fretes (garantias.core.relatorioFretes).
+    envioFreteModalidade: text('envio_frete_modalidade', { enum: ['CIF', 'FOB'] }),
+    envioFreteValor: real('envio_frete_valor'),
+    retornoTransportadora: text('retorno_transportadora'),
+    retornoFreteModalidade: text('retorno_frete_modalidade', { enum: ['CIF', 'FOB'] }),
+    retornoFreteValor: real('retorno_frete_valor'),
     retornoSolicitadoEm: text('retorno_solicitado_em'),
     retornoObservacao: text('retorno_observacao'),
     recebidoOdinEm: text('recebido_odin_em'),
