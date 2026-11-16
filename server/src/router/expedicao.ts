@@ -359,6 +359,7 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
       separador: p.separacaoColaboradorId ? pessoas.get(p.separacaoColaboradorId) ?? null : null,
       conferente: p.conferenciaColaboradorId ? pessoas.get(p.conferenciaColaboradorId) ?? null : null,
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
+      conferenteTubos: p.tubosColaboradorId ? pessoas.get(p.tubosColaboradorId) ?? null : null,
       erros: errosPor.get(p.id) ?? 0,
       tubosFaltando: tubosFaltando.get(p.id) ?? 0,
       soTubos: soTubos.has(p.id),
@@ -817,6 +818,20 @@ export const expedicaoRouter = router({
 
   // Conferência às cegas: confere se a quantidade contada bate com a do
   // pedido, sem devolver a quantidade certa.
+  // Odin Tubos: quem está conferindo os tubos na etapa da NF (João,
+  // 2026-11-16). Escolhe antes de contar; dá pra trocar enquanto falta tubo.
+  // Depois de tudo conferido, só o admin troca (pelo Editar).
+  conferenteTubos: featureProcedure(FEATURE)
+    .input(z.object({ id: z.number(), colaboradorId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const p = await acharPedido(ctx.empresaId, input.id)
+      if (!(await tuboNaNf(ctx.empresaId))) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nessa empresa os tubos são conferidos junto com o resto.' })
+      if (p.tubosConferidosEm && !(ctx.user.superAdmin || (await temFeature(ctx.user.id, FEATURE_DESCARTAR))))
+        throw new TRPCError({ code: 'FORBIDDEN', message: 'Os tubos já foram conferidos — trocar a pessoa agora só o administrador.' })
+      await acharColaborador(ctx.empresaId, input.colaboradorId)
+      await db.update(expedicaoPedidos).set({ tubosColaboradorId: input.colaboradorId, updatedAt: agoraSqlite() }).where(eq(expedicaoPedidos.id, p.id))
+    }),
+
   conferirItem: featureProcedure(FEATURE)
     .input(z.object({ id: z.number(), itemId: z.number(), quantidade: z.number().min(0) }))
     .mutation(async ({ ctx, input }) => {
@@ -825,9 +840,11 @@ export const expedicaoRouter = router({
       if (!item) throw new TRPCError({ code: 'NOT_FOUND', message: 'Item não encontrado' })
       // Conferido é conferido uma vez só (João 2026-11-13: "conferir de novo não pode acontecer").
       if (item.conferidoEm) return { confere: true }
-      if ((await tuboNaNf(ctx.empresaId)) && ehTubo(item.descricao)) {
+      const ehTuboNaNf = (await tuboNaNf(ctx.empresaId)) && ehTubo(item.descricao)
+      if (ehTuboNaNf) {
         if (!(ETAPAS_CONFERE_TUBO as readonly string[]).includes(p.etapa))
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Tubo é conferido na etapa da NF — na conferência, conte só as conexões.' })
+        if (!p.tubosColaboradorId) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escolha quem está conferindo os tubos antes de contar.' })
       } else if (p.etapa !== 'conferencia' || !p.conferenciaInicio || p.conferenciaFim)
         throw new TRPCError({ code: 'BAD_REQUEST', message: 'Inicie a conferência antes de conferir os itens.' })
       // Kit sai do estoque por KIT: conta kits montados (5 PC4 = 5, não 20).
@@ -837,6 +854,12 @@ export const expedicaoRouter = router({
         .update(expedicaoItens)
         .set(confere ? { qtdConferida: input.quantidade, conferidoEm: agoraSqlite() } : { tentativasConferencia: item.tentativasConferencia + 1 })
         .where(eq(expedicaoItens.id, item.id))
+      if (confere && ehTuboNaNf) {
+        const [r] = await db.all<{ n: number }>(
+          sql.raw(`select count(*) as n from expedicao_itens where expedicao_id = ${Number(p.id)} and conferido_em is null and ${SQL_EH_TUBO}`)
+        )
+        if (Number(r?.n ?? 0) === 0) await db.update(expedicaoPedidos).set({ tubosConferidosEm: agoraSqlite() }).where(eq(expedicaoPedidos.id, p.id))
+      }
       return { confere }
     }),
 
@@ -1181,12 +1204,13 @@ export const expedicaoRouter = router({
         separacaoColaboradorId: z.number().nullable().optional(),
         conferenciaColaboradorId: z.number().nullable().optional(),
         embalagemColaboradorId: z.number().nullable().optional(),
+        tubosColaboradorId: z.number().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      const { id: _id, separacaoColaboradorId, conferenciaColaboradorId, embalagemColaboradorId, ...resto } = input
-      const pessoas = { separacaoColaboradorId, conferenciaColaboradorId, embalagemColaboradorId }
+      const { id: _id, separacaoColaboradorId, conferenciaColaboradorId, embalagemColaboradorId, tubosColaboradorId, ...resto } = input
+      const pessoas = { separacaoColaboradorId, conferenciaColaboradorId, embalagemColaboradorId, tubosColaboradorId }
       const trocaPessoa = Object.values(pessoas).some((v) => v !== undefined)
       if (trocaPessoa && !(ctx.user.superAdmin || (await temFeature(ctx.user.id, FEATURE_DESCARTAR))))
         throw new TRPCError({ code: 'FORBIDDEN', message: 'Trocar quem fez a etapa é só para administrador.' })

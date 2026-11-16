@@ -440,6 +440,7 @@ export default function Expedicao() {
                           {p.separacaoFim && <>Separou: <b className="text-dark-100">{p.separador}</b></>}
                           {p.conferenciaFim && <> · Conferiu: <b className="text-dark-100">{p.conferente}</b></>}
                           {p.embalagemFim && <> · Embalou: <b className="text-dark-100">{p.embalador}</b></>}
+                          {p.conferenteTubos && <> · Tubos: <b className="text-dark-100">{p.conferenteTubos}</b></>}
                         </p>
                       )}
                       <div className="flex flex-wrap gap-1 mt-1.5">
@@ -689,6 +690,12 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const tubosConferidos = tubos.filter((i) => i.conferidoEm).length
   const tubosFaltam = tubos.length - tubosConferidos
   const etapaTubos = ['nf', 'agendamento', 'coleta'].includes(p.etapa)
+  // Quem confere tubo pode ser qualquer um da equipe (não só conferente).
+  const pessoasTubos = colaboradores.filter((c) => c.ativo || c.id === p.tubosColaboradorId)
+  const conferenteTubos = trpc.expedicao.conferenteTubos.useMutation({
+    onSuccess: () => (utils.expedicao.fila.invalidate(), toast.success('Conferente dos tubos anotado')),
+    onError: (e) => toast.error(e.message),
+  })
   // Erro achado no agendamento/coleta conta como "expedição" (vai pro embalador).
   // Inclui o pedido já coletado: "volume ficou para trás" / "não foi pelo
   // Correios" normalmente só aparece depois que saiu (João, 2026-11-10).
@@ -738,6 +745,9 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
     { nome: 'Separação', feito: !!p.separacaoFim, texto: p.separacaoInicio ? `${p.separador ?? '—'} · ${hora(p.separacaoInicio)} → ${hora(p.separacaoFim)}` : 'aguardando' },
     { nome: 'Conferência', feito: !!p.conferenciaFim, texto: p.conferenciaInicio ? `${p.conferente ?? '—'} · ${hora(p.conferenciaInicio)} → ${hora(p.conferenciaFim)}` : 'aguardando' },
     { nome: 'Embalagem', feito: !!p.embalagemFim, texto: p.embalagemInicio ? `${p.embalador ?? '—'} · ${hora(p.embalagemInicio)} → ${hora(p.embalagemFim)}` : 'aguardando' },
+    ...(tubos.length
+      ? [{ nome: 'Tubos', feito: tubosFaltam === 0, texto: p.conferenteTubos ? `${p.conferenteTubos}${p.tubosConferidosEm ? ` · ${hora(p.tubosConferidosEm)}` : ` · conferindo (${tubosConferidos}/${tubos.length})`}` : etapaTubos ? 'escolher quem confere' : 'na etapa da NF' }]
+      : []),
     { nome: 'NF (SAP)', feito: !!p.nfNumero, texto: p.nfNumero ? `NF ${p.nfNumero} · ${hora(p.nfEmissao)}` : 'aguardando' },
     { nome: 'Agendamento', feito: !!p.agendadoEm, texto: p.agendadoEm ? `${agendaBr(p.coletaAgendada)} · ${p.transportadora ?? ''}` : p.nfNumero ? 'pronto p/ agendar' : 'depois da NF' },
     { nome: 'Coleta', feito: !!p.coletadoEm, texto: p.coletadoEm ? `${hora(p.coletadoEm)} · ${p.noPrazo ? 'no prazo' : 'fora do prazo'}` : `prazo ${hora(p.prazoLimite.replace('T', ' ').slice(0, 19))}` },
@@ -943,16 +953,34 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
         {etapaTubos && tubos.length > 0 && (
           <div className="rounded-xl border border-dark-600 bg-dark-900/50 p-4 space-y-2">
             {tubosFaltam > 0 ? (
-              <ConferenciaItens
-                pedidoId={p.id}
-                pedidoSap={p.pedidosSap}
-                itens={tubos}
-                conferidos={tubosConferidos}
-                titulo="📏 Conferência dos tubos (etapa da NF)"
-                prontoTexto="✓ Tubos conferidos — liberado para a coleta."
-              />
+              <>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="w-64">
+                    <Select
+                      label="📏 Quem está conferindo os tubos *"
+                      value={p.tubosColaboradorId ? String(p.tubosColaboradorId) : ''}
+                      onChange={(e) => e.target.value && conferenteTubos.mutate({ id: p.id, colaboradorId: Number(e.target.value) })}
+                      placeholder="Escolha seu nome"
+                      options={pessoasTubos.map((c) => ({ value: String(c.id), label: c.nome }))}
+                    />
+                  </div>
+                  {!p.tubosColaboradorId && <p className="text-xs text-amber-300 pb-2">Escolha seu nome para conferir os tubos.</p>}
+                </div>
+                {p.tubosColaboradorId ? (
+                  <ConferenciaItens
+                    pedidoId={p.id}
+                    pedidoSap={p.pedidosSap}
+                    itens={tubos}
+                    conferidos={tubosConferidos}
+                    titulo={`📏 Conferência dos tubos (etapa da NF) — ${p.conferenteTubos ?? ''}`}
+                    prontoTexto="✓ Tubos conferidos — liberado para a coleta."
+                  />
+                ) : null}
+              </>
             ) : (
-              <p className="text-sm text-green-300">✓ {tubos.length} tubo(s) conferido(s) na etapa da NF.</p>
+              <p className="text-sm text-green-300">
+                ✓ {tubos.length} tubo(s) conferido(s) na etapa da NF{p.conferenteTubos ? <> por <b>{p.conferenteTubos}</b></> : ''}.
+              </p>
             )}
           </div>
         )}
@@ -1803,6 +1831,7 @@ function MaisAcoes({
     separacao: p.separacaoColaboradorId ? String(p.separacaoColaboradorId) : '',
     conferencia: p.conferenciaColaboradorId ? String(p.conferenciaColaboradorId) : '',
     embalagem: p.embalagemColaboradorId ? String(p.embalagemColaboradorId) : '',
+    tubos: p.tubosColaboradorId ? String(p.tubosColaboradorId) : '',
   })
   if (['coletado', 'cancelado', 'descartado'].includes(p.etapa)) return null
   const nOuNull = (v: string) => (v === '' ? null : Number(v))
@@ -1928,6 +1957,7 @@ function MaisAcoes({
               <Select label="Separou" value={ed.separacao} onChange={(e) => setEd({ ...ed, separacao: e.target.value })} options={opcoesPessoa} />
               <Select label="Conferiu" value={ed.conferencia} onChange={(e) => setEd({ ...ed, conferencia: e.target.value })} options={opcoesPessoa} />
               <Select label="Embalou" value={ed.embalagem} onChange={(e) => setEd({ ...ed, embalagem: e.target.value })} options={opcoesPessoa} />
+              {ehTubos && <Select label="Conferiu os tubos" value={ed.tubos} onChange={(e) => setEd({ ...ed, tubos: e.target.value })} options={opcoesPessoa} />}
             </div>
           )}
           <Button
@@ -1941,7 +1971,7 @@ function MaisAcoes({
                 transportadora: ed.transportadora,
                 observacao: ed.observacao,
                 ...(podeAdmin
-                  ? { separacaoColaboradorId: nOuNull(ed.separacao), conferenciaColaboradorId: nOuNull(ed.conferencia), embalagemColaboradorId: nOuNull(ed.embalagem) }
+                  ? { separacaoColaboradorId: nOuNull(ed.separacao), conferenciaColaboradorId: nOuNull(ed.conferencia), embalagemColaboradorId: nOuNull(ed.embalagem), ...(ehTubos ? { tubosColaboradorId: nOuNull(ed.tubos) } : {}) }
                   : {}),
               })
             }

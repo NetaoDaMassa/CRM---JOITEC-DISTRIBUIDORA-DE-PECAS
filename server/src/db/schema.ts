@@ -4577,6 +4577,11 @@ export const expedicaoPedidos = sqliteTable(
     embalagemColaboradorId: integer('embalagem_colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
     embalagemInicio: text('embalagem_inicio'),
     embalagemFim: text('embalagem_fim'),
+    // Odin Tubos (João, 2026-11-16): quem conferiu os TUBOS na etapa da NF —
+    // nem sempre é quem conferiu as conexões. tubosConferidosEm = último tubo
+    // conferido (UTC).
+    tubosColaboradorId: integer('tubos_colaborador_id').references(() => expedicaoColaboradores.id, { onDelete: 'set null' }),
+    tubosConferidosEm: text('tubos_conferidos_em'),
     volumes: integer('volumes'),
     // O que o vendedor/faturamento lançou no pedido do SAP (TaxExtension):
     // quantidade de volumes, espécie e transportadora (nome do fornecedor).

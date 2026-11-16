@@ -614,6 +614,8 @@ async function herdarTrabalho(anteriorId: number, novoId: number): Promise<boole
         embalagemColaboradorId: a.embalagemColaboradorId,
         embalagemInicio: a.embalagemInicio,
         embalagemFim: a.embalagemFim,
+        tubosColaboradorId: a.tubosColaboradorId,
+        tubosConferidosEm: a.tubosConferidosEm,
         volumes: a.volumes,
         cabecotes: a.cabecotes,
         packs: a.packs,
