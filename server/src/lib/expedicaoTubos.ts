@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { empresas } from '../db/schema.js'
 
@@ -16,6 +16,21 @@ export const SQL_EH_TUBO = `ltrim(descricao) like 'TUBO %'`
 export async function tuboNaNf(empresaId: number): Promise<boolean> {
   const e = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
   return EMPRESAS_TUBO_NA_NF.includes(e?.slug ?? '')
+}
+
+// Pedido SÓ de tubos (João, 2026-11-16: "pedidos que forem somente tubos não
+// precisam da conferência"): não tem conexão pra contar na conferência — os
+// tubos já são conferidos na etapa da NF —, então da separação vai direto pra
+// embalagem. Vale só onde o tubo é conferido na NF (Odin Tubos).
+export const SQL_PEDIDO_SO_TUBOS = (alias: string) =>
+  `exists (select 1 from expedicao_itens i where i.expedicao_id = ${alias}.id) and not exists (select 1 from expedicao_itens i where i.expedicao_id = ${alias}.id and not (ltrim(i.descricao) like 'TUBO %'))`
+
+export async function pedidoSoTubos(expedicaoId: number, empresaId: number): Promise<boolean> {
+  if (!(await tuboNaNf(empresaId))) return false
+  const r = await db.all<{ n: number }>(
+    sql.raw(`select count(*) as n from expedicao_pedidos p where p.id = ${Number(expedicaoId)} and ${SQL_PEDIDO_SO_TUBOS('p')}`)
+  )
+  return Number(r[0]?.n ?? 0) > 0
 }
 
 // Leitor de código de barras na coleta (João, 2026-11-13). Aceita:

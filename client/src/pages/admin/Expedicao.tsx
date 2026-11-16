@@ -419,6 +419,11 @@ export default function Expedicao() {
                             📦 SAP: {[p.volumesSap != null ? `${p.volumesSap} vol.` : null, p.transportadoraSap].filter(Boolean).join(' · ')}
                           </span>
                         )}
+                        {p.soTubos && ['separacao', 'conferencia', 'embalagem'].includes(p.etapa) && (
+                          <span className="text-[10px] font-semibold rounded bg-sky-900/40 text-sky-200 px-1.5 py-0.5" title="Pedido só de tubos: da separação vai direto pra embalagem — os tubos são conferidos na etapa da NF">
+                            📏 SÓ TUBOS · sem conferência
+                          </span>
+                        )}
                         {p.tubosFaltando > 0 && ['nf', 'agendamento', 'coleta'].includes(p.etapa) && (
                           <span className="text-[11px] font-bold rounded bg-sky-900/50 text-sky-100 border border-sky-500/60 px-1.5 py-0.5">📏 CONFERIR {p.tubosFaltando} TUBO(S)</span>
                         )}

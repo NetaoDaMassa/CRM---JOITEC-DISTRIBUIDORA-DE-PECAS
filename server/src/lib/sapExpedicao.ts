@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, lte, notInArray } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, lte, notInArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoAgendamentos, expedicaoErros, expedicaoItens, expedicaoPausas, expedicaoPedidos, notifications, permissoesAdmin, sapPedidosPendentes, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from './dataBr.js'
@@ -9,6 +9,7 @@ import { slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
 import { aprenderLocalizacoes } from './sapLocalizacoes.js'
 import { atualizarKits, dadosDaLinha } from './sapKits.js'
 import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
+import { EMPRESAS_TUBO_NA_NF, SQL_PEDIDO_SO_TUBOS } from './expedicaoTubos.js'
 
 // Fila do Controle do Estoque a partir do SAP (pedido do João, 2026-10-29).
 // Jornada no SAP: cotação → financeiro libera → pedido → estoque gera o
@@ -61,6 +62,7 @@ export interface SyncExpedicaoResultado {
   novas: number
   historicas: number
   nfs: number
+  soTubosPularam: number
   freteSap: number
   foraDoEscopo: number
   atrasados: number
@@ -170,7 +172,7 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
     for (const o of e.orderEntriesSap.split(',').map(Number)) porPedido.set(o, [...(porPedido.get(o) ?? []), e])
   }
 
-  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0, retomados: 0, trocadosDeEmpresa: 0 }
+  const resultado: SyncExpedicaoResultado = { listasNoSap: 0, novas: 0, historicas: 0, nfs: 0, soTubosPularam: 0, freteSap: 0, foraDoEscopo: 0, atrasados: 0, localizacoes: 0, descartadosSap: 0, retomados: 0, trocadosDeEmpresa: 0 }
 
   await comSessaoSap(async (sap) => {
     const listas = await sap.getTodos<PickListSap>(
@@ -551,7 +553,25 @@ async function rodarSincronizacaoExpedicao(): Promise<SyncExpedicaoResultado> {
   })
 
   resultado.atrasados = await avisarAtrasados()
+  resultado.soTubosPularam = await pularConferenciaSoTubos()
   return resultado
+}
+
+// Pedido só de tubos parado na conferência sem ninguém ter começado (Odin
+// Tubos, lib/expedicaoTubos.ts) vai pra embalagem — pega os que já estavam na
+// fila quando a regra entrou e os que mudaram no SAP depois da separação.
+async function pularConferenciaSoTubos(): Promise<number> {
+  const lista = await db.query.empresas.findMany({ where: inArray(empresas.slug, EMPRESAS_TUBO_NA_NF), columns: { id: true } })
+  if (!lista.length) return 0
+  const r = await db.run(
+    sql.raw(
+      `update expedicao_pedidos set etapa = 'embalagem', updated_at = '${agoraSqlite()}'
+        where etapa = 'conferencia' and conferencia_inicio is null and historico = 0
+          and empresa_id in (${lista.map((e) => Number(e.id)).join(',')})
+          and ${SQL_PEDIDO_SO_TUBOS('expedicao_pedidos')}`
+    )
+  )
+  return r.rowsAffected
 }
 
 const ETAPAS_FILA = ['separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'coleta'] as const

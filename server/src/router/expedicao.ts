@@ -16,7 +16,7 @@ import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { horasUteisEntre, prazoLimiteExpedicao } from '../lib/expedicaoPrazo.js'
 import { ROTULO_PAUSA, TIPOS_PAUSA, vendedoresComProblemas } from '../lib/expedicaoVendedores.js'
 import { agendamentosPorCard, type AgendamentoColeta } from '../lib/expedicaoAgendamentos.js'
-import { ETAPAS_CONFERE_TUBO, SQL_EH_TUBO, ehTubo, lerCodigoColeta, tuboNaNf } from '../lib/expedicaoTubos.js'
+import { ETAPAS_CONFERE_TUBO, SQL_EH_TUBO, ehTubo, lerCodigoColeta, tuboNaNf, pedidoSoTubos, SQL_PEDIDO_SO_TUBOS } from '../lib/expedicaoTubos.js'
 
 // Controle do Estoque / Expedição — ver expedicaoPedidos em schema.ts. Cada
 // empresa vê só a própria fila e a própria equipe (estoques separados). Os 3
@@ -284,6 +284,13 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
           ).map((x) => [x.id, Number(x.n)])
         )
       : new Map<number, number>()
+  // Pedido só de tubos (pula a conferência): selo no card.
+  const soTubos =
+    ids.length && (await tuboNaNf(empresaId))
+      ? new Set(
+          (await db.all<{ id: number }>(sql.raw(`select p.id from expedicao_pedidos p where p.id in (${ids.map(Number).join(',')}) and ${SQL_PEDIDO_SO_TUBOS('p')}`))).map((x) => Number(x.id))
+        )
+      : new Set<number>()
   // Outros pedidos do mesmo cliente ainda na fila desta empresa: despachar junto.
   const naFila = pedidos.filter((p) => p.etapa !== 'coletado' && p.clienteCodigo)
   const agora = Date.now()
@@ -302,6 +309,7 @@ async function comCalculos(empresaId: number, pedidos: (typeof expedicaoPedidos.
       embalador: p.embalagemColaboradorId ? pessoas.get(p.embalagemColaboradorId) ?? null : null,
       erros: errosPor.get(p.id) ?? 0,
       tubosFaltando: tubosFaltando.get(p.id) ?? 0,
+      soTubos: soTubos.has(p.id),
       agendamentos: agendamentos.get(p.id) ?? [],
       prazoLimite: new Date(limite).toISOString(),
       horasRestantes: Math.round(horasUteisEntre(p.coletadoEm ? ms(p.coletadoEm) : agora, limite) * 10) / 10,
@@ -660,7 +668,9 @@ export const expedicaoRouter = router({
       // Embalagem → etapa NF: o pedido fica lá até agendarem a coleta —
       // "aguardando NF" ou, com a nota emitida, "liberado próxima etapa"
       // (João, 2026-10-29). 'agendamento' ficou só pra card antigo.
-      const proxima: Etapa = ETAPAS[ETAPAS.indexOf(input.etapa) + 1]
+      let proxima: Etapa = ETAPAS[ETAPAS.indexOf(input.etapa) + 1]
+      // Odin Tubos: pedido só de tubos pula a conferência (lib/expedicaoTubos.ts).
+      if (input.etapa === 'separacao' && (await pedidoSoTubos(p.id, ctx.empresaId))) proxima = 'embalagem'
       await db
         .update(expedicaoPedidos)
         .set({
@@ -686,6 +696,7 @@ export const expedicaoRouter = router({
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
       const agora = agoraSqlite()
+      const soTubos = p.etapa === 'embalagem' && (await pedidoSoTubos(p.id, ctx.empresaId))
       const set: Partial<typeof expedicaoPedidos.$inferInsert> = (() => {
         switch (p.etapa) {
           case 'coletado':
@@ -696,6 +707,9 @@ export const expedicaoRouter = router({
           case 'nf':
             return { etapa: 'embalagem', embalagemFim: null }
           case 'embalagem':
+            // Pulou a conferência (só tubos): volta direto pra separação.
+            if (!p.conferenciaInicio && soTubos)
+              return { etapa: 'separacao', embalagemColaboradorId: null, embalagemInicio: null, separacaoFim: null }
             return { etapa: 'conferencia', embalagemColaboradorId: null, embalagemInicio: null, conferenciaFim: null }
           case 'conferencia':
             return { etapa: 'separacao', conferenciaColaboradorId: null, conferenciaInicio: null, separacaoFim: null }
@@ -756,7 +770,8 @@ export const expedicaoRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
-      let responsavelId = p[campos[ETAPA_ANTERIOR[input.etapa]].pessoa]
+      // Embalagem de pedido que pulou a conferência (só tubos): o erro é de quem separou.
+      let responsavelId = p[campos[ETAPA_ANTERIOR[input.etapa]].pessoa] ?? (input.etapa === 'embalagem' ? p.separacaoColaboradorId : null)
       if (input.responsavelId) responsavelId = (await acharColaborador(ctx.empresaId, input.responsavelId)).id
       await db.insert(expedicaoErros).values({
         expedicaoId: p.id,
