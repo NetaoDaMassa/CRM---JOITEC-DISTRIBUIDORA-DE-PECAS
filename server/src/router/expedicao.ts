@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, ne, not
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
@@ -112,13 +112,27 @@ function volumesTexto(p: { volumes: number | null; packs: number | null; sacos: 
   return `${p.volumes} volume(s)${partes.length ? ` (${partes.join(' · ')})` : ''}`
 }
 
-async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJornada[]>> {
+// `porEntry` (João, 2026-11-16: "temos 103 pedidos fechados na Odin TC,
+// precisava aparecer nesses pedidos"): pedido do SAP da VENDA do cliente →
+// chave onde o passo entra. Esses aparecem sempre — coletado há mais de 3
+// dias, finalizado como "já expedido" (histórico) ou com o cliente
+// cadastrado com outro código —, porque é o processo da venda fechada.
+async function jornadaPorCodigos(
+  codigos: string[],
+  porEntry: Map<number, string> = new Map(),
+  // Pedido ainda sem picking (sap_pedidos_pendentes só tem o nº): nº do pedido da venda → chave.
+  porNumero: Map<string, string> = new Map()
+): Promise<Map<string, PassoJornada[]>> {
   const mapa = new Map<string, PassoJornada[]>()
-  if (!codigos.length) return mapa
+  if (!codigos.length && !porEntry.size) return mapa
   const add = (codigo: string, p: PassoJornada) => mapa.set(codigo, [...(mapa.get(codigo) ?? []), p])
-  const pendentes = await db.select().from(sapPedidosPendentes).where(inArray(sapPedidosPendentes.codigoCliente, codigos))
+  const pendentes = await db
+    .select()
+    .from(sapPedidosPendentes)
+    .where(or(codigos.length ? inArray(sapPedidosPendentes.codigoCliente, codigos) : undefined, porNumero.size ? inArray(sapPedidosPendentes.numero, [...porNumero.keys()]) : undefined))
   for (const p of pendentes) {
-    add(p.codigoCliente, {
+    const chaves = [...new Set([codigos.includes(p.codigoCliente) ? p.codigoCliente : null, porNumero.get(p.numero) ?? null].filter((x): x is string => !!x))]
+    for (const chave of chaves) add(chave, {
       pedido: p.numero,
       empresaSlug: p.empresaSlug,
       etapa: p.tipo,
@@ -129,17 +143,45 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
     })
   }
   const tresDias = new Date(Date.now() - 3 * 86400_000).toISOString().replace('T', ' ').slice(0, 19)
-  const exp = await db
-    .select()
-    .from(expedicaoPedidos)
-    .where(
-      and(
-        inArray(expedicaoPedidos.clienteCodigo, codigos),
-        eq(expedicaoPedidos.historico, false),
-        notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado']),
-        or(ne(expedicaoPedidos.etapa, 'coletado'), gte(expedicaoPedidos.coletadoEm, tresDias))
-      )
-    )
+  const porCodigo = codigos.length
+    ? await db
+        .select()
+        .from(expedicaoPedidos)
+        .where(
+          and(
+            inArray(expedicaoPedidos.clienteCodigo, codigos),
+            eq(expedicaoPedidos.historico, false),
+            notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado']),
+            or(ne(expedicaoPedidos.etapa, 'coletado'), gte(expedicaoPedidos.coletadoEm, tresDias))
+          )
+        )
+    : []
+  // Pela venda: cards dos últimos 90 dias (a tabela é pequena), filtrados
+  // aqui pelo pedido — order_entries_sap pode juntar mais de um ("a,b").
+  const chaveExtra = new Map<number, string>()
+  if (porEntry.size) {
+    const desde = new Date(Date.now() - 90 * 86400_000).toISOString().replace('T', ' ').slice(0, 19)
+    const candidatos = await db
+      .select()
+      .from(expedicaoPedidos)
+      .where(and(notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado']), gte(expedicaoPedidos.inicioPrazo, desde)))
+    const ja = new Set(porCodigo.map((p) => p.id))
+    // Pedido refeito (picking novo): fica só o card mais novo de cada pedido.
+    const maisNovo = new Map<string, (typeof candidatos)[number]>()
+    for (const p of candidatos) {
+      const chave = p.orderEntriesSap
+        .split(',')
+        .map((e) => porEntry.get(Number(e)))
+        .find(Boolean)
+      if (!chave) continue
+      const k = `${chave}|${p.orderEntriesSap}`
+      const atual = maisNovo.get(k)
+      if (!atual || p.id > atual.id) maisNovo.set(k, p)
+      chaveExtra.set(p.id, chave)
+    }
+    for (const p of maisNovo.values()) if (!ja.has(p.id)) porCodigo.push(p)
+  }
+  const exp = porCodigo
   const ids = [...new Set(exp.flatMap((p) => [p.separacaoColaboradorId, p.conferenciaColaboradorId, p.embalagemColaboradorId]).filter((x): x is number => !!x))]
   const nomes = new Map(ids.length ? (await db.select({ id: expedicaoColaboradores.id, nome: expedicaoColaboradores.nome }).from(expedicaoColaboradores).where(inArray(expedicaoColaboradores.id, ids))).map((c) => [c.id, c.nome]) : [])
   const nome = (id: number | null) => (id ? nomes.get(id) ?? '' : '')
@@ -150,9 +192,12 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
   const agora = Date.now()
   for (const p of exp) {
     const tentativas = agendamentos.get(p.id) ?? []
-    const atrasado = p.etapa !== 'coletado' && agora > prazoLimite(p.inicioPrazo)
+    const atrasado = p.etapa !== 'coletado' && !p.historico && agora > prazoLimite(p.inicioPrazo)
     const nf = p.nfNumero ? `NF ${p.nfNumero}` : null
     const [texto, detalhe] = ((): [string, string | null] => {
+      // Histórico (picking já fechado no SAP quando entrou, ou "finalizar já
+      // expedido" no quadro): a etapa guardada pode ser velha — já saiu.
+      if (p.historico && p.etapa !== 'coletado') return ['Já expedido', [nf, p.transportadora].filter(Boolean).join(' · ') || null]
       switch (p.etapa) {
         case 'separacao':
           return p.separacaoInicio ? [`No estoque — separando (${nome(p.separacaoColaboradorId)})`, null] : ['No estoque — na fila de separação', null]
@@ -172,10 +217,16 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
           return [tentativas.length > 1 ? `Coletado · ${tentativas.length} agendamentos` : 'Coletado', [nf, p.transportadora].filter(Boolean).join(' · ') || null]
       }
     })()
-    add(p.clienteCodigo ?? '', {
+    // Entra no cadastro do código do pedido E no da venda (o mesmo cliente às
+    // vezes tem 2 cadastros: card Fechado num, código do SAP no outro).
+    const codigoDoPedido = p.clienteCodigo ?? ''
+    const chaves = [...new Set([codigos.includes(codigoDoPedido) ? codigoDoPedido : null, chaveExtra.get(p.id) ?? null].filter((x): x is string => !!x))]
+    if (!chaves.length) chaves.push(codigoDoPedido)
+    const passo: PassoJornada = {
       pedido: p.pedidosSap,
       empresaSlug: null,
-      etapa: p.etapa,
+      // Histórico = já saiu: a barra de etapas mostra tudo feito.
+      etapa: p.historico ? 'coletado' : p.etapa,
       texto,
       detalhe,
       data: p.coletadoEm ?? p.inicioPrazo,
@@ -183,7 +234,7 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
       entrySap: Number(p.orderEntriesSap.split(',')[0]),
       agendamentos: tentativas,
       expedicaoId: p.id,
-      podeAgendar: empresasVendedorAgenda.has(p.empresaId) && !!p.nfNumero && ['nf', 'agendamento', 'coleta'].includes(p.etapa),
+      podeAgendar: !p.historico && empresasVendedorAgenda.has(p.empresaId) && !!p.nfNumero && ['nf', 'agendamento', 'coleta'].includes(p.etapa),
       transportadora: p.transportadoraSap ?? p.transportadora ?? null,
       transportadoraFixa: !!p.transportadoraSap,
       coletaAgendada: p.coletaAgendada,
@@ -191,7 +242,8 @@ async function jornadaPorCodigos(codigos: string[]): Promise<Map<string, PassoJo
       packs: p.packs,
       sacos: p.sacos,
       caixas: p.caixas,
-    })
+    }
+    for (const k of chaves) add(k, passo)
   }
   return mapa
 }
@@ -398,6 +450,24 @@ async function gravarAgendamento(
       })
 }
 
+// Pedidos do SAP das vendas (últimos 45 dias) — de uns clientes ou da empresa toda.
+async function entriesDasVendas(clienteIds: number[] | null, empresaId?: number): Promise<{ entry: number; clienteId: number; numero: string | null }[]> {
+  const desde = new Date(Date.now() - 45 * 86400_000).toISOString().replace('T', ' ').slice(0, 19)
+  const linhas = await db
+    .select({ entry: vendas.pedidoSapEntry, clienteId: vendas.clienteId, numero: vendas.numeroPedido })
+    .from(vendas)
+    .innerJoin(clientes, eq(clientes.id, vendas.clienteId))
+    .where(
+      and(
+        isNull(vendas.deletedAt),
+        isNotNull(vendas.pedidoSapEntry),
+        gte(vendas.dataFechamento, desde),
+        clienteIds ? inArray(vendas.clienteId, clienteIds) : eq(clientes.empresaId, empresaId ?? -1)
+      )
+    )
+  return linhas.filter((l): l is { entry: number; clienteId: number; numero: string | null } => l.entry != null)
+}
+
 export const expedicaoRouter = router({
   // Card aberto / ficha do cliente — o vendedor só vê cliente da carteira dele.
   jornadaCliente: protectedProcedure.input(z.object({ clienteId: z.number() })).query(async ({ ctx, input }) => {
@@ -408,8 +478,14 @@ export const expedicaoRouter = router({
     if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cliente não encontrado' })
     if (ctx.user.role !== 'admin' && c.vendedorAtualId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' })
     const codigos = [c.codigo, c.codigoAntigo].filter((x): x is string => !!x)
-    const mapa = await jornadaPorCodigos(codigos)
-    return codigos.flatMap((k) => mapa.get(k) ?? [])
+    // + os pedidos do SAP das vendas do cliente (aparecem sempre — ver jornadaPorCodigos).
+    const doCliente = await entriesDasVendas([input.clienteId])
+    const chave = codigos[0] ?? `cliente-${input.clienteId}`
+    const porEntry = new Map(doCliente.map((v) => [v.entry, chave]))
+    const porNumero = new Map(doCliente.filter((v) => v.numero).map((v) => [v.numero!, chave]))
+    const mapa = await jornadaPorCodigos(codigos, porEntry, porNumero)
+    const chaves = codigos.length ? codigos : [`cliente-${input.clienteId}`]
+    return chaves.flatMap((k) => mapa.get(k) ?? [])
   }),
 
   // Kanban: { clienteId → passo mais recente } pra etiqueta no card.
@@ -422,19 +498,31 @@ export const expedicaoRouter = router({
         .where(and(eq(expedicaoPedidos.historico, false), notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado']))),
     ])
     const codigos = [...new Set([...pend.map((x) => x.c), ...exp.map((x) => x.c)].filter((x): x is string => !!x))]
-    if (!codigos.length) return []
+    // + clientes com venda do SAP nos últimos 45 dias (card Fechado mostra o
+    // processo do pedido da venda mesmo depois de coletado).
+    const vendasSap = await entriesDasVendas(null, ctx.empresaId)
+    const idsComVenda = [...new Set(vendasSap.map((v) => v.clienteId))]
+    if (!codigos.length && !idsComVenda.length) return []
     const lista = await db.query.clientes.findMany({
       where: and(
         eq(clientes.empresaId, ctx.empresaId),
         isNull(clientes.deletedAt),
-        inArray(clientes.codigo, codigos),
+        or(codigos.length ? inArray(clientes.codigo, codigos) : undefined, idsComVenda.length ? inArray(clientes.id, idsComVenda) : undefined),
         ctx.user.role === 'admin' ? undefined : eq(clientes.vendedorAtualId, ctx.user.id)
       ),
       columns: { id: true, codigo: true },
     })
-    const mapa = await jornadaPorCodigos(lista.map((c) => c.codigo))
+    const chaveDe = (c: { id: number; codigo: string | null }) => c.codigo || `cliente-${c.id}`
+    const chavePorId = new Map(lista.map((c) => [c.id, chaveDe(c)]))
+    const porEntry = new Map(vendasSap.filter((v) => chavePorId.has(v.clienteId)).map((v) => [v.entry, chavePorId.get(v.clienteId)!]))
+    const porNumero = new Map(vendasSap.filter((v) => v.numero && chavePorId.has(v.clienteId)).map((v) => [v.numero!, chavePorId.get(v.clienteId)!]))
+    const mapa = await jornadaPorCodigos(
+      lista.map((c) => c.codigo).filter((x): x is string => !!x && codigos.includes(x)),
+      porEntry,
+      porNumero
+    )
     return lista.flatMap((c) => {
-      const passos = mapa.get(c.codigo) ?? []
+      const passos = mapa.get(chaveDe(c)) ?? []
       // O que está em andamento primeiro; coletado só se não tiver outro.
       // Odin Tubos: pedido esperando o vendedor agendar a coleta vem antes de tudo.
       const p = passos.find((x) => x.podeAgendar && x.etapa !== 'coleta') ?? passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
