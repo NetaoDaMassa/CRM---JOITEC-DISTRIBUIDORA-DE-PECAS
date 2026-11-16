@@ -30,16 +30,22 @@ export async function baixarArquivoNotaDoPedidoSap(pedidoEntry: number, nfNumero
 async function arquivoDaNota(sap: SapSessao, filial: number, nfNumero: string, formato: 'pdf' | 'xml'): Promise<Resultado> {
   const numero = Number(nfNumero)
   if (!Number.isInteger(numero) || numero <= 0) return { erro: 'Número da NF inválido' }
-  const { value: notas } = await sap.get<{ value: { DocEntry: number; AttachmentEntry: number | null }[] }>(
-    `/Invoices?$filter=SequenceSerial eq ${numero} and BPL_IDAssignedToInvoice eq ${filial} and Cancelled eq 'tNO'&$select=DocEntry,AttachmentEntry&$orderby=DocEntry desc&$top=1`
+  const { value: notas } = await sap.get<{ value: { DocEntry: number; AttachmentEntry: number | null; DocDate: string }[] }>(
+    `/Invoices?$filter=SequenceSerial eq ${numero} and BPL_IDAssignedToInvoice eq ${filial} and Cancelled eq 'tNO'&$select=DocEntry,AttachmentEntry,DocDate&$orderby=DocEntry desc&$top=1`
   )
   const nota = notas[0]
   if (!nota) return { erro: `NF ${numero} não encontrada no SAP` }
+  // Nota recém-emitida: o TaxPlus só anexa o DANFE/XML depois que a SEFAZ
+  // autoriza — com a NF rápida (lib/sapNfRapida.ts) o botão aparece antes.
+  const recente = Date.now() - Date.parse(`${nota.DocDate.slice(0, 10)}T00:00:00-03:00`) < 2 * 86400_000
+  if (!nota.AttachmentEntry && recente)
+    return { erro: `O DANFE/XML da NF ${numero} ainda não foi anexado no SAP — a nota acabou de sair e está esperando a autorização da SEFAZ. Tente de novo em 1 ou 2 minutos.` }
   if (!nota.AttachmentEntry) return { erro: `A NF ${numero} não tem o DANFE/XML anexado no SAP (as notas emitidas antes do ajuste no SAP, em 09/11/2026, ficaram sem anexo)` }
   const anexo = await sap.get<{ Attachments2_Lines?: { FileName: string; FileExtension: string }[] }>(`/Attachments2(${nota.AttachmentEntry})`)
   const linhas = (anexo.Attachments2_Lines ?? []).filter((l) => l.FileExtension?.toLowerCase() === formato)
   // XML: prefere o procNFe (nota + protocolo de autorização).
   const linha = linhas.find((l) => /^procnfe/i.test(l.FileName)) ?? linhas[0]
+  if (!linha && recente) return { erro: `${formato === 'pdf' ? 'O DANFE (PDF)' : 'O XML'} da NF ${numero} ainda não foi anexado no SAP. Tente de novo em 1 ou 2 minutos.` }
   if (!linha) return { erro: `A NF ${numero} não tem ${formato === 'pdf' ? 'o DANFE (PDF)' : 'o XML'} anexado no SAP` }
   const nomeArquivo = `${linha.FileName}.${linha.FileExtension}`
   const { dados } = await sap.getArquivo(`/Attachments2(${nota.AttachmentEntry})/$value?filename='${encodeURIComponent(nomeArquivo)}'`)

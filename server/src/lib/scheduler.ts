@@ -16,7 +16,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
@@ -236,6 +236,10 @@ export function startScheduler() {
   // só com `expedicao_sap_ativo` ligado.
   cron.schedule('4-59/5 * * * *', () => {
     rodarExpedicaoSap().catch((err) => console.error('[sap-expedicao] erro no agendador:', err))
+  })
+  // NF rápida: nº da NF-e no card/ficha/Expedição ~1 min depois de sair no SAP.
+  cron.schedule('* * * * *', () => {
+    rodarNfRapidaSap().catch((err) => console.error('[sap-nf-rapida] erro no agendador:', err))
   })
   cron.schedule('1-59/2 * * * *', () => {
     rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))

@@ -15,7 +15,7 @@ export default function NotaSapBotoes({ endereco, compacto = false }: { endereco
     try {
       const token = localStorage.getItem('odin_token')
       const empresa = localStorage.getItem('empresa_ativa_id')
-      const r = await fetch(`${endereco}?formato=${formato}`, {
+      const r = await fetch(`${endereco}${endereco.includes("?") ? "&" : "?"}formato=${formato}`, {
         headers: { Authorization: `Bearer ${token}`, ...(empresa ? { 'x-empresa-id': empresa } : {}) },
       })
       if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `erro ${r.status}`)

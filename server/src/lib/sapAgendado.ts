@@ -13,6 +13,7 @@ import { verificarCadastrosAprovadosNoSap } from '../router/cadastrosClientes.js
 import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
 import { sincronizarEstoqueSap } from './sapEstoque.js'
 import { sincronizarCatalogoSap } from './sapCatalogo.js'
+import { sincronizarNfRapida } from './sapNfRapida.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -55,6 +56,26 @@ export async function rodarVendasSap(): Promise<void> {
     console.error('[sap-vendas] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoVendas = false
+  }
+}
+
+// NF rápida (lib/sapNfRapida.ts) — de minuto em minuto, só no horário em que
+// sai nota (seg–sáb, 7h–20h de Brasília), com `sap_sync_ativo` ligado. Lê só
+// as notas de ontem e hoje (~1 s) e preenche o nº da NF de venda/Expedição.
+let rodandoNfRapida = false
+
+export async function rodarNfRapidaSap(): Promise<void> {
+  const br = new Date(Date.now() - 3 * 3600_000)
+  if (br.getUTCDay() === 0 || br.getUTCHours() < 7 || br.getUTCHours() >= 20) return
+  if (rodandoNfRapida || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoNfRapida = true
+  try {
+    const r = await sincronizarNfRapida()
+    if (r.vendas || r.expedicao || r.garantias) console.log(`[sap-nf-rapida] NF chegou: ${r.vendas} venda(s), ${r.expedicao} pedido(s) da Expedição, ${r.garantias} garantia(s)`)
+  } catch (err) {
+    console.error('[sap-nf-rapida] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoNfRapida = false
   }
 }
 

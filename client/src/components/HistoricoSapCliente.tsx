@@ -2,6 +2,7 @@ import { Fragment, useState } from 'react'
 import { ChevronDown, ChevronRight, FileText } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { formatarMoeda } from '../lib/moeda'
+import NotaSapBotoes from './NotaSapBotoes'
 
 function dataBr(iso: string | null): string {
   if (!iso) return '—'
@@ -98,7 +99,7 @@ export default function HistoricoSapCliente({ clienteId }: { clienteId: number }
               </thead>
               <tbody className="divide-y divide-dark-700/60">
                 {visiveis.map((l) => {
-                  const podeAbrir = l.itens.length > 0 || !!l.pdfPedidoPath || !!l.condicaoPagamento
+                  const podeAbrir = l.itens.length > 0 || !!l.pdfPedidoPath || !!l.condicaoPagamento || !!l.enderecoNota
                   return (
                     <Fragment key={l.chave}>
                       <tr className={`text-dark-200 ${podeAbrir ? 'cursor-pointer hover:bg-dark-700/40' : ''}`} onClick={() => podeAbrir && setAberta((a) => (a === l.chave ? null : l.chave))}>
@@ -110,7 +111,10 @@ export default function HistoricoSapCliente({ clienteId }: { clienteId: number }
                           </span>
                           {l.pdfPedidoPath && <FileText size={13} className="inline ml-1.5 text-dark-400" aria-label="tem PDF" />}
                         </td>
-                        <td className="py-1.5 font-mono text-xs hidden sm:table-cell">{[l.numeroPedido, l.numeroNota && `NF ${l.numeroNota}`].filter(Boolean).join(' · ') || '—'}</td>
+                        <td className="py-1.5 font-mono text-xs hidden sm:table-cell">
+                          {[l.numeroPedido, l.numeroNota && `NF ${l.numeroNota}`].filter(Boolean).join(' · ') || '—'}
+                          {l.enderecoNota && <FileText size={13} className="inline ml-1.5 text-gold-400" aria-label="tem DANFE" />}
+                        </td>
                         <td className="py-1.5 text-xs text-dark-400 hidden md:table-cell">{l.vendedorNome ?? '—'}</td>
                         <td className="py-1.5 text-right text-xs text-dark-400 hidden sm:table-cell">{l.itens.length || '—'}</td>
                         <td className="py-1.5 text-right font-mono">{formatarMoeda(l.valor)}</td>
@@ -120,6 +124,12 @@ export default function HistoricoSapCliente({ clienteId }: { clienteId: number }
                           <td />
                           <td colSpan={6} className="pb-3">
                             <div className="rounded-lg bg-dark-900/60 border border-dark-700 overflow-x-auto">
+                              {l.enderecoNota && (
+                                <div className="flex flex-wrap items-center gap-3 px-3 py-2 border-b border-dark-700 text-xs text-dark-300">
+                                  <span>NF {l.numeroNota}</span>
+                                  <NotaSapBotoes endereco={l.enderecoNota} compacto />
+                                </div>
+                              )}
                               {(l.pdfPedidoPath || l.condicaoPagamento) && (
                                 <div className="flex flex-wrap items-center gap-3 px-3 py-2 border-b border-dark-700 text-xs text-dark-300">
                                   {l.condicaoPagamento && <span>Pagamento: {l.condicaoPagamento}</span>}

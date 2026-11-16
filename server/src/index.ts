@@ -637,10 +637,18 @@ app.get('/expedicao-nota/:id', async (req, res) => {
   const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
   const pedido = await db.query.expedicaoPedidos.findFirst({
     where: and(eq(expedicaoPedidos.id, Number(req.params.id)), eq(expedicaoPedidos.empresaId, empresaId ?? -1)),
-    columns: { nfNumero: true, empresaId: true },
+    columns: { nfNumero: true, empresaId: true, orderEntriesSap: true },
   })
   if (!pedido) return res.status(404).json({ error: 'Pedido não encontrado' })
   if (!pedido.nfNumero) return res.status(404).json({ error: 'Esse pedido ainda não tem NF' })
+  // A filial vem do pedido do SAP (2026-11-16): Odin Automação fatura pela
+  // filial da Joitec e pedido da Odin Tubos às vezes sai pela Joitec — a
+  // empresa do card não diz de qual filial é a nota.
+  const entry = Number(pedido.orderEntriesSap.split(',')[0])
+  if (Number.isInteger(entry) && entry > 0) {
+    await enviarArquivoNota(res, formato, () => baixarArquivoNotaDoPedidoSap(entry, pedido.nfNumero!, formato))
+    return
+  }
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, pedido.empresaId), columns: { slug: true } })
   const filial = FILIAL_SAP_POR_SLUG[empresa?.slug ?? '']
   if (!filial) return res.status(404).json({ error: 'Empresa sem filial no SAP' })
@@ -660,7 +668,7 @@ app.get('/venda-nota/:id', async (req, res) => {
   })
   if (!venda) return res.status(404).json({ error: 'Venda não encontrada' })
   const [cliente, funil] = await Promise.all([
-    db.query.clientes.findFirst({ where: eq(clientes.id, venda.clienteId), columns: { empresaId: true } }),
+    db.query.clientes.findFirst({ where: eq(clientes.id, venda.clienteId), columns: { empresaId: true, vendedorAtualId: true } }),
     db.query.funilMensal.findFirst({ where: eq(funilMensal.id, venda.funilMensalId), columns: { vendedorId: true } }),
   ])
   const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
@@ -668,10 +676,35 @@ app.get('/venda-nota/:id', async (req, res) => {
     user.superAdmin ||
     (user.role === 'admin' && cliente?.empresaId === empresaId) ||
     user.id === venda.vendedorId ||
-    user.id === funil?.vendedorId
+    user.id === funil?.vendedorId ||
+    user.id === cliente?.vendedorAtualId
   if (!pode) return res.status(403).json({ error: 'Sem permissão' })
   if (!venda.numeroNotaFiscal || !venda.pedidoSapEntry) return res.status(404).json({ error: 'Essa venda não tem NF do SAP' })
   await enviarArquivoNota(res, formato, () => baixarArquivoNotaDoPedidoSap(venda.pedidoSapEntry!, venda.numeroNotaFiscal!, formato))
+})
+
+// Nota do SAP sem venda ligada, na ficha do cliente (Odin Compressores mostra
+// tudo que o cliente comprou — historicoSap.vendasDoCliente). Mesma regra da
+// ficha: admin da empresa do cliente ou o vendedor dele. Filial = a da
+// empresa do cliente.
+app.get('/cliente-nota/:id', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  const formato = req.query.formato === 'xml' ? 'xml' : 'pdf'
+  const nf = String(req.query.nf ?? '').replace(/\D/g, '')
+  if (!nf) return res.status(400).json({ error: 'Número da NF não informado' })
+  const cliente = await db.query.clientes.findFirst({
+    where: and(eq(clientes.id, Number(req.params.id)), isNull(clientes.deletedAt)),
+    columns: { empresaId: true, vendedorAtualId: true },
+  })
+  if (!cliente) return res.status(404).json({ error: 'Cliente não encontrado' })
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  const pode = user.superAdmin || (user.role === 'admin' && cliente.empresaId === empresaId) || user.id === cliente.vendedorAtualId
+  if (!pode) return res.status(403).json({ error: 'Sem permissão' })
+  const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, cliente.empresaId), columns: { slug: true } })
+  const filial = FILIAL_SAP_POR_SLUG[empresa?.slug ?? '']
+  if (!filial) return res.status(404).json({ error: 'Empresa sem filial no SAP' })
+  await enviarArquivoNota(res, formato, () => baixarArquivoNotaSap(filial, nf, formato))
 })
 
 async function enviarArquivoNota(res: express.Response, formato: 'pdf' | 'xml', buscar: () => Promise<ArquivoNota | { erro: string }>) {

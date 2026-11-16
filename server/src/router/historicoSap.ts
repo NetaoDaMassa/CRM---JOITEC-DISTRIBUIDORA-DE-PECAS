@@ -171,6 +171,7 @@ export const historicoSapRouter = router({
         valor: vendas.valorFechado,
         numeroPedido: vendas.numeroPedido,
         numeroNotaFiscal: vendas.numeroNotaFiscal,
+        pedidoSapEntry: vendas.pedidoSapEntry,
         condicaoPagamento: vendas.condicaoPagamento,
         pdfPedidoPath: vendas.pdfPedidoPath,
         vendedorNome: users.name,
@@ -242,12 +243,16 @@ export const historicoSapRouter = router({
       pdfPedidoPath: string | null
       itensDe: 'nota' | 'pdf' | null
       itens: ItemVenda[]
+      // Botões DANFE/XML (busca no SAP na hora): /venda-nota/:id quando a
+      // venda veio do pedido do SAP com NF; /cliente-nota/:id?nf= para nota do
+      // SAP sem venda (Odin Compressores). Null = sem botão.
+      enderecoNota: string | null
     }
     const linhas: Linha[] = []
     // Mais antigo primeiro pra nota ir pro primeiro pedido que bate.
     for (const p of [...pedidosSap].sort((a, b) => a.data.localeCompare(b.data) || a.id - b.id)) {
       const n = acharNota(p.data, p.valor, [0, 20])
-      linhas.push({ chave: `sap-${p.id}`, origem: 'sap', data: p.data, numeroPedido: p.numero, numeroNota: n?.numero ?? null, valor: p.valor, vendedorNome: null, condicaoPagamento: null, pdfPedidoPath: null, itensDe: n ? 'nota' : null, itens: n?.itens ?? [] })
+      linhas.push({ chave: `sap-${p.id}`, origem: 'sap', data: p.data, numeroPedido: p.numero, numeroNota: n?.numero ?? null, valor: p.valor, vendedorNome: null, condicaoPagamento: null, pdfPedidoPath: null, itensDe: n ? 'nota' : null, itens: n?.itens ?? [], enderecoNota: null })
     }
     const pdfPorVenda = new Map<number, ItemVenda[]>()
     for (const i of itensPdf) {
@@ -271,6 +276,7 @@ export const historicoSapRouter = router({
         pdfPedidoPath: v.pdfPedidoPath,
         itensDe: n ? 'nota' : pdf.length ? 'pdf' : null,
         itens: n?.itens ?? pdf,
+        enderecoNota: v.pedidoSapEntry && v.numeroNotaFiscal ? `/venda-nota/${v.id}` : null,
       })
     }
     // Odin Compressores (carteira da Bruna, lib/sapCompressores.ts): a ficha
@@ -282,7 +288,7 @@ export const historicoSapRouter = router({
     if (empresa?.slug === SLUG_COMPRESSORES) {
       for (const n of notas.values()) {
         if (usadas.has(n.numero)) continue
-        linhas.push({ chave: `nota-${n.numero}`, origem: 'sap', data: n.data, numeroPedido: null, numeroNota: n.numero, valor: n.total ?? n.soma, vendedorNome: null, condicaoPagamento: null, pdfPedidoPath: null, itensDe: 'nota', itens: n.itens })
+        linhas.push({ chave: `nota-${n.numero}`, origem: 'sap', data: n.data, numeroPedido: null, numeroNota: n.numero, valor: n.total ?? n.soma, vendedorNome: null, condicaoPagamento: null, pdfPedidoPath: null, itensDe: 'nota', itens: n.itens, enderecoNota: `/cliente-nota/${cliente.id}?nf=${encodeURIComponent(n.numero)}` })
       }
     }
     linhas.sort((a, b) => b.data.localeCompare(a.data) || b.chave.localeCompare(a.chave))
