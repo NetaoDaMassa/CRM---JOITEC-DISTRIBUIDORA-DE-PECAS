@@ -1,6 +1,7 @@
 import { Fragment, useState } from 'react'
 import { BarChart3 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import { ehErroDeEmbalagem, labelTipoErro, TIPOS_ERRO } from '../../lib/expedicaoErros'
 
@@ -37,6 +38,11 @@ export default function ExpedicaoDesempenho() {
     }
   }
   const { data, isLoading } = trpc.expedicao.desempenho.useQuery({ de, ate }, { enabled: aba === 'desempenho' })
+  // Só na Joitec a coluna "Pedidos" abre em Separados / Conferidos / Embalados
+  // (João, 2026-11-16) — Odin Tubos e as outras continuam com a coluna única.
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const porEtapa = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'joitec'
   const atalho = (d: string, a: string) => (setDe(d), setAte(a))
   const mesPassado = (() => {
     const d = new Date(`${hoje.slice(0, 8)}01T12:00:00Z`)
@@ -118,7 +124,15 @@ export default function ExpedicaoDesempenho() {
                 <th className="py-2 pr-3 font-medium">Bonificação</th>
                 <th className="py-2 pr-3 font-medium">Colaborador</th>
                 <th className="py-2 pr-3 font-medium">Cargo</th>
-                <th className="py-2 pr-3 font-medium text-right">Pedidos</th>
+                {porEtapa ? (
+                  <>
+                    <th className="py-2 pr-3 font-medium text-right">Pedidos separados</th>
+                    <th className="py-2 pr-3 font-medium text-right">Pedidos conferidos</th>
+                    <th className="py-2 pr-3 font-medium text-right">Pedidos embalados</th>
+                  </>
+                ) : (
+                  <th className="py-2 pr-3 font-medium text-right">Pedidos</th>
+                )}
                 <th className="py-2 pr-3 font-medium text-right">Peças</th>
                 <th className="py-2 pr-3 font-medium text-right">Erros</th>
                 <th className="py-2 pr-3 font-medium text-right">Taxa de erro</th>
@@ -139,7 +153,15 @@ export default function ExpedicaoDesempenho() {
                   </td>
                   <td className="py-2 pr-3 text-dark-100 font-medium">{l.nome}</td>
                   <td className="py-2 pr-3 text-dark-300">{CARGO[l.cargo]}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{num(l.pedidos)}</td>
+                  {porEtapa ? (
+                    <>
+                      <td className="py-2 pr-3 text-right font-mono">{l.separados ? num(l.separados) : <span className="text-dark-500">—</span>}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{l.conferidos ? num(l.conferidos) : <span className="text-dark-500">—</span>}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{l.embalados ? num(l.embalados) : <span className="text-dark-500">—</span>}</td>
+                    </>
+                  ) : (
+                    <td className="py-2 pr-3 text-right font-mono">{num(l.pedidos)}</td>
+                  )}
                   <td className="py-2 pr-3 text-right font-mono">{num(l.pecas)}</td>
                   <td className="py-2 pr-3 text-right font-mono">{num(l.erros)}</td>
                   <td className={`py-2 pr-3 text-right font-mono ${l.pedidos && l.limiteErrosQtd == null && l.taxaErro > l.limiteErro ? 'text-red-300' : ''}`}>{l.pedidos ? pct(l.taxaErro) : '—'}</td>

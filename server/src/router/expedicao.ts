@@ -1572,11 +1572,15 @@ export const expedicaoRouter = router({
         let cabecotes = 0
         let paletes = 0
         let minutos = 0
+        // Pedidos por etapa (Joitec, João 2026-11-16: "separar Pedidos em
+        // Separados / Conferidos / Embalados") — a soma das 3 = `pedidos`.
+        const porEtapa: Record<EtapaPessoa, number> = { separacao: 0, conferencia: 0, embalagem: 0 }
         for (const p of pedidos) {
           for (const etapa of ETAPAS_COM_PESSOA) {
             const f = campos[etapa]
             if (p[f.pessoa] !== c.id || !dentro(p[f.fim])) continue
             qtd++
+            porEtapa[etapa]++
             pecas += p.pecas
             itens += p.itens
             minutos += (ms(p[f.fim]) - ms(p[f.inicio])) / 60_000
@@ -1595,6 +1599,9 @@ export const expedicaoRouter = router({
           cargo: c.cargo,
           ativo: c.ativo,
           pedidos: qtd,
+          separados: porEtapa.separacao,
+          conferidos: porEtapa.conferencia,
+          embalados: porEtapa.embalagem,
           itens,
           pecas,
           erros: nErros,
