@@ -114,14 +114,26 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       })
     : []
   // Gravação das ligações do PABX (o link chega uns minutos depois).
-  const idsAuto = contatos.filter((c) => c.origem === 'ligacao_automatica').map((c) => c.id)
+  // + ligação pelo WhatsApp (print) e o botão "não foi conversa" (2026-11-17).
+  const idsAuto = contatos.filter((c) => c.origem === 'ligacao_automatica' || (c.tipo === 'ligacao' && c.origem === 'manual')).map((c) => c.id)
   const gravacaoPorContato = new Map<number, { ligacaoId: number; partes: number }>()
+  const ligacaoPorContato = new Map<number, { id: number; efetiva: boolean; tiradaPeloBotao: boolean; print: string | null }>()
   for (let i = 0; i < idsAuto.length; i += 500) {
     for (const l of await db
-      .select({ id: pabxLigacoesProcessadas.id, registroContatoId: pabxLigacoesProcessadas.registroContatoId, link: pabxLigacoesProcessadas.linkGravacao })
+      .select({
+        id: pabxLigacoesProcessadas.id,
+        registroContatoId: pabxLigacoesProcessadas.registroContatoId,
+        link: pabxLigacoesProcessadas.linkGravacao,
+        efetiva: pabxLigacoesProcessadas.efetiva,
+        naoEfetivaPorId: pabxLigacoesProcessadas.naoEfetivaPorId,
+        anexoPrint: pabxLigacoesProcessadas.anexoPrint,
+      })
       .from(pabxLigacoesProcessadas)
-      .where(inArray(pabxLigacoesProcessadas.registroContatoId, idsAuto.slice(i, i + 500))))
-      if (l.registroContatoId && l.link) gravacaoPorContato.set(l.registroContatoId, { ligacaoId: l.id, partes: l.link.split('\n').filter(Boolean).length })
+      .where(inArray(pabxLigacoesProcessadas.registroContatoId, idsAuto.slice(i, i + 500)))) {
+      if (!l.registroContatoId) continue
+      if (l.link) gravacaoPorContato.set(l.registroContatoId, { ligacaoId: l.id, partes: l.link.split('\n').filter(Boolean).length })
+      ligacaoPorContato.set(l.registroContatoId, { id: l.id, efetiva: !!l.efetiva, tiradaPeloBotao: !!l.naoEfetivaPorId, print: l.anexoPrint })
+    }
   }
   const contatosPorFunil = new Map<number, typeof contatos>()
   for (const c of contatos) {
@@ -366,6 +378,7 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       dataHora: c.dataHora,
       editavel: ctxIsAdmin || c.vendedorId === ctxUserId,
       gravacao: gravacaoPorContato.get(c.id) ?? null,
+      ligacao: ligacaoPorContato.get(c.id) ?? null,
     })),
   }))
 }

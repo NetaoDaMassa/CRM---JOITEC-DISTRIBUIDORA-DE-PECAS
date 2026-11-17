@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { PhoneCall, PhoneIncoming, PhoneOutgoing, Settings2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import GravacaoLigacao from '../../components/ui/GravacaoLigacao'
+import { NaoFoiConversaButton } from '../../components/LigacaoWhatsapp'
 import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
@@ -17,6 +18,7 @@ import Button from '../../components/ui/Button'
 const STATUS: Record<string, { label: string; classe: string }> = {
   atendida: { label: 'Efetiva', classe: 'bg-green-500/15 text-green-300 border-green-500/30' },
   curta: { label: 'Atendida, curta', classe: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
+  caixa_postal: { label: 'Não foi conversa', classe: 'bg-amber-500/15 text-amber-300 border-amber-500/30' },
   nao_atendida: { label: 'Não atendeu', classe: 'bg-dark-700 text-dark-300 border-dark-600' },
   ocupado: { label: 'Ocupado', classe: 'bg-dark-700 text-dark-300 border-dark-600' },
   falha: { label: 'Falhou', classe: 'bg-red-500/15 text-red-300 border-red-500/30' },
@@ -472,7 +474,7 @@ export default function LigacoesPabx() {
                     <tbody>
                       {chamadas.map((c) => {
                         const st = c.tipo === 'colega' ? { label: 'Interna', classe: 'bg-dark-700 text-dark-300 border-dark-600' } : STATUS[c.status ?? ''] ?? { label: c.efetiva ? 'Efetiva' : 'Tentativa', classe: 'bg-dark-700 text-dark-300 border-dark-600' }
-                        const temDetalhe = !!(c.resumo || c.transcricao || c.linkGravacao || c.motivo)
+                        const temDetalhe = !!(c.resumo || c.transcricao || c.linkGravacao || c.motivo || c.anexoPrint || c.efetiva || c.naoEfetivaPorId)
                         return (
                           <Fragment key={c.id}>
                             <tr className={`border-t border-dark-700/70 ${temDetalhe ? 'cursor-pointer hover:bg-dark-700/30' : ''}`} onClick={() => temDetalhe && setAberta(aberta === c.id ? null : c.id)}>
@@ -486,7 +488,9 @@ export default function LigacoesPabx() {
                                 </span>
                               </td>
                               <td className="py-1.5 pr-3 whitespace-nowrap">{c.vendedor ?? (c.ramal ? `Ramal ${c.ramal}` : '—')}</td>
-                              <td className="py-1.5 pr-3 whitespace-nowrap font-mono text-dark-300">{telefone(c.numero)}</td>
+                              <td className="py-1.5 pr-3 whitespace-nowrap font-mono text-dark-300">
+                                {c.fonte === 'whatsapp' ? <span className="font-sans text-green-300">📱 WhatsApp</span> : telefone(c.numero)}
+                              </td>
                               <td className="py-1.5 pr-3">
                                 {c.contato ?? (c.tipo !== 'colega' && <span className="text-dark-500">não encontrado no CRM</span>)}
                                 <span className={`ml-1.5 text-[10px] uppercase ${TIPO[c.tipo]?.classe ?? ''}`}>{TIPO[c.tipo]?.label ?? ''}</span>
@@ -501,6 +505,14 @@ export default function LigacoesPabx() {
                                 <td />
                                 <td colSpan={6} className="py-2 pr-3 space-y-2 text-sm">
                                   {c.linkGravacao && <GravacaoLigacao ligacaoId={c.id} partes={c.linkGravacao.split('\n').filter(Boolean).length} />}
+                                  {c.anexoPrint && (
+                                    <a href={c.anexoPrint} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="inline-block">
+                                      <img src={c.anexoPrint} alt="print da ligação pelo WhatsApp" className="h-24 rounded border border-dark-600" />
+                                    </a>
+                                  )}
+                                  <div onClick={(e) => e.stopPropagation()}>
+                                    <NaoFoiConversaButton ligacaoId={c.id} efetiva={!!c.efetiva} tiradaPeloBotao={!!c.naoEfetivaPorId} />
+                                  </div>
                                   {c.resumo && (
                                     <p>
                                       <span className="text-dark-400">Resumo: </span>

@@ -1205,6 +1205,13 @@
       "when": 1795100300000,
       "tag": "0171_cobranca_banco_cnpj",
       "breakpoints": true
+    },
+    {
+      "idx": 172,
+      "version": "6",
+      "when": 1795100400000,
+      "tag": "0172_ligacoes_efetivas_whatsapp",
+      "breakpoints": true
     }
   ]
 }

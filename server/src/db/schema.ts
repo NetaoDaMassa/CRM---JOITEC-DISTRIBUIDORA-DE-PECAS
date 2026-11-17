@@ -918,6 +918,15 @@ export const pabxLigacoesProcessadas = sqliteTable('pabx_ligacoes_processadas', 
   linkGravacao: text('link_gravacao'),
   resumo: text('resumo'),
   transcricao: text('transcricao'),
+  // 2026-11-17 (João): 'whatsapp' = ligação pelo WhatsApp registrada pelo
+  // vendedor no card, com print da tela da ligação (anexoPrint) como prova.
+  // Nulo = central telefônica (PABXONE360/GoTo).
+  fonte: text('fonte'),
+  anexoPrint: text('anexo_print'),
+  // Botão "Não foi conversa (caixa postal)": quem tirou a ligação das
+  // efetivas e quando. efetiva vira false; fica registrado pra auditoria.
+  naoEfetivaPorId: integer('nao_efetiva_por_id').references(() => users.id, { onDelete: 'set null' }),
+  naoEfetivaEm: text('nao_efetiva_em'),
 }, (t) => ({
   dataIdx: index('idx_pabx_ligacoes_data').on(t.dataHora),
   userDataIdx: index('idx_pabx_ligacoes_user_data').on(t.userId, t.dataHora),

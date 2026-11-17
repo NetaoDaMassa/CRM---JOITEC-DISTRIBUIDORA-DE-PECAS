@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, eq, isNull, lte, sql } from 'drizzle-orm'
 import { router, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { registroContato, funilMensal, compromissos } from '../db/schema.js'
+import { registroContato, funilMensal, compromissos, pabxLigacoesProcessadas } from '../db/schema.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 
 export const contatosRouter = router({
@@ -174,6 +174,10 @@ export const contatosRouter = router({
     if (!podeExcluir) throw new Error('Não é mais possível excluir este contato (mês fechado ou não é seu).')
 
     await db.update(registroContato).set({ deletedAt: new Date().toISOString() }).where(eq(registroContato.id, input.id))
+    // Ligação pelo WhatsApp: a linha do contador/meta sai junto (2026-11-17).
+    await db
+      .delete(pabxLigacoesProcessadas)
+      .where(and(eq(pabxLigacoesProcessadas.registroContatoId, input.id), eq(pabxLigacoesProcessadas.fonte, 'whatsapp')))
     return { success: true }
   }),
 })

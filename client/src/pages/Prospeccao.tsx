@@ -19,6 +19,7 @@ import Modal from '../components/ui/Modal'
 import { soDigitos, usePabxDiscar } from '../components/ui/ContatoButtons'
 import { hojeBrString, primeiroDiaMesString, timeAgo } from '../lib/utils'
 import GravacoesDoContato from '../components/ui/GravacoesDoContato'
+import { LigacaoWhatsappButton } from '../components/LigacaoWhatsapp'
 
 type Etapa = 'novo' | 'tentando' | 'conversando' | 'orcamento' | 'ganho' | 'perdido' | 'desqualificado'
 const ETAPAS: { id: Etapa; nome: string; dica: string }[] = [
@@ -417,6 +418,7 @@ function FichaProspect({
             )}
           </form>
         )}
+        {aberto && <LigacaoWhatsappButton clienteId={p.id} onRegistrada={invalidar} />}
 
         <GravacoesDoContato clienteId={p.id} />
 
@@ -431,7 +433,12 @@ function FichaProspect({
                   <span className="mr-1">{TIPO_ICONE[r.tipo]}</span>
                   <b className="text-dark-100">{TIPO_LABEL[r.tipo]}</b>
                   {r.pendente ? <span className="ml-1 text-gold-400">· esperando confirmar</span> : r.resultado ? <span className="ml-1 text-dark-400">· {r.resultado === 'respondeu' ? 'respondeu' : 'não respondeu'}</span> : null}
-                  <span className="text-dark-300"> — {r.observacao}</span>
+                  <span className="text-dark-300"> — {r.observacao.replace(/\nPrint: \/uploads\/\S+/, '')}</span>
+                  {/\nPrint: (\/uploads\/\S+)/.test(r.observacao) && (
+                    <a href={r.observacao.match(/\nPrint: (\/uploads\/\S+)/)![1]} target="_blank" rel="noreferrer" className="block mt-1">
+                      <img src={r.observacao.match(/\nPrint: (\/uploads\/\S+)/)![1]} alt="print da ligação" className="h-16 rounded border border-dark-600" />
+                    </a>
+                  )}
                   <span className="block text-[11px] text-dark-500">
                     {timeAgo(r.createdAt)} · {r.registradoPor?.name}
                   </span>

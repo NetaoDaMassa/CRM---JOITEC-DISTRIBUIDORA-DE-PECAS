@@ -15,6 +15,7 @@ import {
 } from '../lib/pabxone360.js'
 import { acompanharLigacao } from '../lib/pabxAcompanhamento.js'
 import { chaveMeta, idsDaPessoa, metaDaPessoa, metaEfetivasHoje, metasPorEmpresa } from '../lib/metaLigacoes.js'
+import { marcarNaoEfetiva, registrarLigacaoWhatsapp, segundosMinimosEfetiva } from '../lib/ligacaoWhatsapp.js'
 
 // Telefonia PABXONE360 das 3 empresas Odin (uma conta só) — ver o cabeçalho
 // de lib/pabxone360.ts. Configuração e ramais: só superAdmin (o token nunca
@@ -109,7 +110,7 @@ export const pabxRouter = router({
       getConfigTexto('pabxone360_token'),
       getConfigBool('pabxone360_ligada', false),
       getConfigBool('pabxone360_click2call', false),
-      getConfigNumero('pabxone360_duracao_minima_segundos', 15),
+      getConfigNumero('pabxone360_duracao_minima_segundos', 30),
       getConfigTexto('pabxone360_ultima_sync'),
       getConfigTexto('pabxone360_ultimo_erro'),
       getConfigTexto('pabxone360_prefixo_discagem'),
@@ -163,7 +164,7 @@ export const pabxRouter = router({
     const cred = await credenciaisOuErro()
     const ramais = await listarRamaisPabx(cred)
     const hoje = new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10)
-    const chamadas = await buscarChamadasPabxone360(cred, inicioDiaBr(hoje), new Date(), await getConfigNumero('pabxone360_duracao_minima_segundos', 15))
+    const chamadas = await buscarChamadasPabxone360(cred, inicioDiaBr(hoje), new Date(), await getConfigNumero('pabxone360_duracao_minima_segundos', 30))
     return { ramais: ramais.length, chamadasHoje: chamadas.length, efetivasHoje: chamadas.filter((c) => c.efetiva).length }
   }),
 
@@ -226,7 +227,7 @@ export const pabxRouter = router({
     .input(z.object({ dataInicio: z.string(), dataFim: z.string() }))
     .mutation(async ({ input }) => {
       const cred = await credenciaisOuErro()
-      const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 15)
+      const duracaoMinima = await getConfigNumero('pabxone360_duracao_minima_segundos', 30)
       const resultados = await registrarLigacoesAutomaticasPabxone360(cred, inicioDiaBr(input.dataInicio), fimDiaBr(input.dataFim), duracaoMinima, true)
       return {
         novas: resultados.length,
@@ -304,6 +305,94 @@ export const pabxRouter = router({
   // null = pessoa sem ramal ou empresa sem meta (não mostra nada).
   minhaMetaHoje: protectedProcedure.query(({ ctx }) => metaEfetivasHoje(ctx.user.id)),
 
+  // Lista de hoje pra quem liga (contador do topo → clique): toda ligação
+  // da pessoa (ramal PABX/GoTo + WhatsApp registrado), pra ela conferir e
+  // tirar das efetivas o que foi caixa postal (João, 2026-11-17).
+  minhasLigacoesHoje: protectedProcedure.query(async ({ ctx }) => {
+    const ids = await idsDaPessoa(ctx.user.id)
+    const temPabx = !!(await db.query.pabxRamais.findFirst({ where: inArray(pabxRamais.userId, ids), columns: { id: true } }))
+    const temGoto = !!(await db.query.gotoRamais.findFirst({ where: inArray(gotoRamais.userId, ids), columns: { ramal: true } }))
+    const hoje = hojeBrString()
+    const linhas = await db
+      .select({
+        id: pabxLigacoesProcessadas.id,
+        dataHora: pabxLigacoesProcessadas.dataHora,
+        direcao: pabxLigacoesProcessadas.direcao,
+        numero: pabxLigacoesProcessadas.numeroExterno,
+        duracao: pabxLigacoesProcessadas.duracaoSegundos,
+        efetiva: pabxLigacoesProcessadas.efetiva,
+        status: pabxLigacoesProcessadas.statusChamada,
+        clienteId: pabxLigacoesProcessadas.clienteId,
+        leadId: pabxLigacoesProcessadas.leadId,
+        fonte: pabxLigacoesProcessadas.fonte,
+        anexoPrint: pabxLigacoesProcessadas.anexoPrint,
+        naoEfetivaPorId: pabxLigacoesProcessadas.naoEfetivaPorId,
+      })
+      .from(pabxLigacoesProcessadas)
+      .where(
+        and(
+          inArray(pabxLigacoesProcessadas.userId, ids),
+          isNotNull(pabxLigacoesProcessadas.numeroExterno),
+          gte(pabxLigacoesProcessadas.dataHora, paraSqlite(inicioDiaBr(hoje))),
+          lte(pabxLigacoesProcessadas.dataHora, paraSqlite(fimDiaBr(hoje)))
+        )
+      )
+      .orderBy(desc(pabxLigacoesProcessadas.dataHora))
+    if (!temPabx && !temGoto && !linhas.length) return null
+    const idsCliente = [...new Set(linhas.map((l) => l.clienteId).filter((x): x is number => !!x))]
+    const idsLead = [...new Set(linhas.map((l) => l.leadId).filter((x): x is number => !!x))]
+    const nomeCliente = new Map(
+      idsCliente.length ? (await db.query.clientes.findMany({ where: inArray(clientes.id, idsCliente), columns: { id: true, razaoSocial: true } })).map((c) => [c.id, c.razaoSocial]) : []
+    )
+    const nomeLead = new Map(idsLead.length ? (await db.query.leads.findMany({ where: inArray(leads.id, idsLead), columns: { id: true, name: true } })).map((l) => [l.id, l.name]) : [])
+    const meta = temPabx ? await metaDaPessoa(ids, await metasPorEmpresa()) : 0
+    return {
+      meta,
+      minimoSegundos: await segundosMinimosEfetiva(),
+      efetivas: linhas.filter((l) => l.efetiva).length,
+      tentativas: linhas.length,
+      ligacoes: linhas.map((l) => ({
+        ...l,
+        contato: l.clienteId ? (nomeCliente.get(l.clienteId) ?? null) : l.leadId ? (nomeLead.get(l.leadId) ?? null) : null,
+        tiradaPeloBotao: !!l.naoEfetivaPorId,
+      })),
+    }
+  }),
+
+  marcarNaoEfetiva: protectedProcedure
+    .input(z.object({ id: z.number(), desfazer: z.boolean().default(false) }))
+    .mutation(async ({ ctx, input }) => {
+      const podeQualquer = ctx.user.superAdmin || (ctx.user.role !== 'vendor' && (await temFeature(ctx.user.id, FEATURE_RELATORIO)))
+      await marcarNaoEfetiva({ ligacaoId: input.id, porUserId: ctx.user.id, desfazer: input.desfazer, podeQualquer, meusIds: await idsDaPessoa(ctx.user.id) })
+      return { ok: true }
+    }),
+
+  // Ligação feita pelo WhatsApp, com print da tela da ligação (João,
+  // 2026-11-17) — conta na meta igual ao ramal. Ver lib/ligacaoWhatsapp.ts.
+  registrarWhatsapp: protectedProcedure
+    .input(
+      z.object({
+        clienteId: z.number().optional(),
+        leadId: z.number().optional(),
+        duracaoSegundos: z.number().int().min(1).max(4 * 3600),
+        print: z.object({ filename: z.string().min(1).max(300), originalName: z.string().max(300), mimeType: z.string().max(100), size: z.number().int().min(1) }),
+        observacao: z.string().max(2000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!input.print.mimeType.startsWith('image/')) throw new Error('O print precisa ser uma imagem')
+      if (/[\\/]/.test(input.print.filename)) throw new Error('Arquivo inválido')
+      return registrarLigacaoWhatsapp({
+        empresaId: ctx.empresaId,
+        userId: ctx.user.id,
+        clienteId: input.clienteId,
+        leadId: input.leadId,
+        duracaoSegundos: input.duracaoSegundos,
+        printArquivo: input.print,
+        observacao: input.observacao,
+      })
+    }),
+
   minhaUltimaLigacao: protectedProcedure.query(async ({ ctx }) => ({ id: await ultimaLigacaoId(await idsDaPessoa(ctx.user.id)) })),
 
   // Relatório de ligações: tentativas x efetivas por vendedor + lista.
@@ -344,6 +433,9 @@ export const pabxRouter = router({
           linkGravacao: pabxLigacoesProcessadas.linkGravacao,
           resumo: pabxLigacoesProcessadas.resumo,
           transcricao: pabxLigacoesProcessadas.transcricao,
+          fonte: pabxLigacoesProcessadas.fonte,
+          anexoPrint: pabxLigacoesProcessadas.anexoPrint,
+          naoEfetivaPorId: pabxLigacoesProcessadas.naoEfetivaPorId,
         })
         .from(pabxLigacoesProcessadas)
         .leftJoin(users, eq(users.id, pabxLigacoesProcessadas.userId))

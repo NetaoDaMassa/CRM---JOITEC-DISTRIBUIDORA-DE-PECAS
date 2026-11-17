@@ -456,8 +456,8 @@ async function anotarRamais(relatorio: RelatorioChamada): Promise<void> {
 }
 
 async function segundosParaAtendida(): Promise<number> {
-  const v = await getConfigNumero('goto_duracao_minima_segundos', 15)
-  return v > 0 ? v : 15
+  const v = await getConfigNumero('goto_duracao_minima_segundos', 30)
+  return v > 0 ? v : 30
 }
 
 // Idempotência via banco (não em memória): a "reserva" do conversationSpaceId

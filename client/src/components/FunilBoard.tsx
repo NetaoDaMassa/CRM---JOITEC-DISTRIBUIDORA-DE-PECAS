@@ -35,6 +35,7 @@ import { AvatarIniciais, dispararConfete } from './ui/Visual'
 import ColunaAgendamentosPecas from './agendamentos/ColunaAgendamentosPecas'
 import GravacaoLigacao from './ui/GravacaoLigacao'
 import NotaSapBotoes from './NotaSapBotoes'
+import { LigacaoWhatsappButton, NaoFoiConversaButton } from './LigacaoWhatsapp'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
 // urgência na lateral do card (verde/amarelo/vermelho pelos dias sem contato).
@@ -2374,9 +2375,12 @@ function CardModal({
 
         {!mostrarRegistroManual ? (
           <div className="border-t border-dark-700 pt-4">
-            <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarRegistroManual(true)}>
-              📝 Registrar manual
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" variant="secondary" onClick={() => setMostrarRegistroManual(true)}>
+                📝 Registrar manual
+              </Button>
+              <LigacaoWhatsappButton clienteId={card.clienteId} />
+            </div>
           </div>
         ) : (
         <form onSubmit={handleRegistrar} className="space-y-2 border-t border-dark-700 pt-4">
@@ -3149,6 +3153,16 @@ function ContatoItem({
       ) : (
         contato.origem === 'ligacao_automatica' &&
         contato.resultado === 'respondeu' && <p className="mt-1 text-[11px] text-dark-500">🎧 A gravação aparece aqui alguns minutos depois da ligação.</p>
+      )}
+      {contato.ligacao?.print && (
+        <a href={contato.ligacao.print} target="_blank" rel="noreferrer" className="mt-1 inline-block">
+          <img src={contato.ligacao.print} alt="print da ligação" className="h-16 rounded border border-dark-600" />
+        </a>
+      )}
+      {contato.ligacao && contato.editavel && (
+        <div className="mt-1">
+          <NaoFoiConversaButton ligacaoId={contato.ligacao.id} efetiva={contato.ligacao.efetiva} tiradaPeloBotao={contato.ligacao.tiradaPeloBotao} />
+        </div>
       )}
     </div>
   )

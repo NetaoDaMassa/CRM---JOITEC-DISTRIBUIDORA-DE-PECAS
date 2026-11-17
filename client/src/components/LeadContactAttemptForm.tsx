@@ -4,6 +4,7 @@ import { trpc } from '../lib/trpc'
 import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input } from './ui/Input'
+import { LigacaoWhatsappButton } from './LigacaoWhatsapp'
 import { LEAD_CHANNEL_VALUES, LEAD_CHANNEL_LABELS, LEAD_RESULT_VALUES, LEAD_RESULT_LABELS } from '../lib/leadsShared'
 
 // Registra uma tentativa de contato (ligação/whatsapp/email) — leads ativos
@@ -37,6 +38,7 @@ export default function LeadContactAttemptForm({ leadId, proximoContato, encerra
   })
 
   return (
+    <div className="space-y-2">
     <form
       onSubmit={(e) => {
         e.preventDefault()
@@ -78,5 +80,8 @@ export default function LeadContactAttemptForm({ leadId, proximoContato, encerra
         Registrar
       </Button>
     </form>
+    {/* Fora do <form> de cima: a janela do WhatsApp tem o próprio formulário. */}
+    <LigacaoWhatsappButton leadId={leadId} className="w-full" />
+    </div>
   )
 }

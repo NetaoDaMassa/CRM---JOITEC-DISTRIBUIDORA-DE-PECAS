@@ -93,6 +93,17 @@ function paraHoraBr(data: Date): string {
 
 // "00:01:06" -> 66. Formato sempre HH:MM:SS (sem casas decimais) no campo
 // "duracao" — "duracao_real" tem vírgula com milissegundos, não usamos.
+// "00:00:11,724" -> 12. A "duracao" vem ARREDONDADA como a operadora
+// cobra (mínimo 30s, depois de 6 em 6s): caixa postal de 2s aparecia como
+// 30s e passava como efetiva — 884 ligações "de 30s" em 2 semanas. Achado
+// do João, 2026-11-17: o tempo de verdade está na "duracao_real".
+function duracaoRealParaSegundos(duracaoReal: unknown): number | null {
+  const partes = String(duracaoReal ?? '').replace(',', '.').split(':').map(Number)
+  if (partes.length !== 3 || partes.some(Number.isNaN)) return null
+  const [h, m, s] = partes
+  return Math.round(h * 3600 + m * 60 + s)
+}
+
 function duracaoParaSegundos(duracao: string): number {
   const partes = String(duracao ?? '').split(':').map(Number)
   if (partes.length !== 3 || partes.some(Number.isNaN)) return 0
@@ -227,7 +238,7 @@ export async function buscarChamadasPabxone360(
   }
 
   return todas.map((c) => {
-    const duracaoSegundos = duracaoParaSegundos(c.duracao)
+    const duracaoSegundos = duracaoRealParaSegundos(c.duracao_real) ?? duracaoParaSegundos(c.duracao)
     const sipCode = String(c.sip_code ?? '')
     const status = classificar(sipCode, duracaoSegundos, duracaoMinimaSegundos)
     return {
@@ -355,6 +366,12 @@ type LeadIdx = { id: number; empresaId: number; vendorId: number | null; status:
 
 // Índice telefone → clientes/leads das 3 empresas Odin, montado 1x por
 // rodada (antes carregava a carteira inteira de novo a cada ligação).
+export function telefoneLeadCompleto(ddd: number | null, phone: string | null): string | null {
+  if (!phone) return null
+  const d = phone.replace(/\D/g, '')
+  return d.length <= 9 && ddd ? `${ddd}${d}` : d
+}
+
 async function montarIndiceTelefones(empresaIds: number[]) {
   const porTelCliente = new Map<string, ClienteIdx[]>()
   const porTelLead = new Map<string, LeadIdx[]>()
@@ -378,9 +395,12 @@ async function montarIndiceTelefones(empresaIds: number[]) {
   }
   const ls = await db.query.leads.findMany({
     where: and(isNull(leads.deletedAt), inArray(leads.empresaId, empresaIds)),
-    columns: { id: true, empresaId: true, phone: true, vendorId: true, status: true, createdAt: true },
+    columns: { id: true, empresaId: true, ddd: true, phone: true, vendorId: true, status: true, createdAt: true },
   })
-  for (const l of ls) add(porTelLead, l.phone, { id: l.id, empresaId: l.empresaId, vendorId: l.vendorId, status: l.status, createdAt: l.createdAt })
+  // Lead guarda o telefone SEM o DDD (fica em leads.ddd) em ~90% dos
+  // casos — sem juntar os dois, nenhuma ligação achava o lead (758 em 2
+  // semanas caíam em "cliente_nao_encontrado"; João, 2026-11-17).
+  for (const l of ls) add(porTelLead, telefoneLeadCompleto(l.ddd, l.phone), { id: l.id, empresaId: l.empresaId, vendorId: l.vendorId, status: l.status, createdAt: l.createdAt })
   return { porTelCliente, porTelLead }
 }
 
@@ -637,7 +657,7 @@ export async function registrarChamadasNoCrm(
 // SLA e o "Atrasado", e lead em "Novo" vai pra "Abordagem". Se o vendedor
 // tinha clicado Ligar (tentativa pendente) nas últimas 2h, confirma aquela
 // em vez de criar outra.
-async function registrarLigacaoEfetivaNoLead(leadId: number, userId: number | null, dataHora: string, detalhe: string) {
+export async function registrarLigacaoEfetivaNoLead(leadId: number, userId: number | null, dataHora: string, detalhe: string) {
   const lead = await db.query.leads.findFirst({ where: eq(leads.id, leadId) })
   if (!lead) return
   const duasHorasAntes = new Date(new Date(dataHora.replace(' ', 'T') + 'Z').getTime() - 2 * 3600e3).toISOString().replace('T', ' ').slice(0, 19)
@@ -727,5 +747,5 @@ export async function pabxLigada(): Promise<boolean> {
 }
 
 export async function duracaoMinimaPabx(): Promise<number> {
-  return getConfigNumero('pabxone360_duracao_minima_segundos', 15)
+  return getConfigNumero('pabxone360_duracao_minima_segundos', 30)
 }
