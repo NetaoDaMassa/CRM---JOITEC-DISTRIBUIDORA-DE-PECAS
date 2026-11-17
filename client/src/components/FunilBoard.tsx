@@ -182,8 +182,9 @@ function pesoChegada(card: Card): number {
 }
 
 const CHEGADA_ROTULO: Record<string, { texto: string; titulo: string }> = {
-  transferido: { texto: '↪ TRANSFERIDO PARA A CARTEIRA', titulo: 'Este cliente foi transferido para esta carteira' },
+  transferido: { texto: '↪ TRANSFERIDO DE OUTRO VENDEDOR', titulo: 'Este cliente era de outro vendedor e foi transferido para esta carteira' },
   novo: { texto: '✨ CLIENTE NOVO NA CARTEIRA', titulo: 'Cliente novo, cadastrado agora' },
+  banco: { texto: '📥 VEIO DO BANCO DE CLIENTES', titulo: 'O gestor passou este cliente do banco de clientes para esta carteira' },
   aprovado: { texto: '✅ CADASTRO APROVADO PELO FINANCEIRO', titulo: 'O financeiro aprovou o cadastro deste cliente no SAP' },
 }
 

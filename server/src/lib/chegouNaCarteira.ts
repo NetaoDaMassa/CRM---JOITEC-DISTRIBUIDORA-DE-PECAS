@@ -8,7 +8,7 @@ import { cadastrosClientesSap, carteiraHistorico, clientes } from '../db/schema.
 // empresas e usa o carteira_historico (toda entrada de cliente numa carteira
 // grava uma linha ali: transferência, cadastro, aprovação, lead, SAP).
 export const DIAS_CHEGOU_NA_CARTEIRA = 30
-export type MotivoChegada = 'aprovado' | 'novo' | 'transferido'
+export type MotivoChegada = 'aprovado' | 'novo' | 'banco' | 'transferido'
 export type ChegouNaCarteira = { motivo: MotivoChegada; em: string }
 
 function utc(s: string): number {
@@ -41,10 +41,14 @@ export async function chegadasNaCarteira(pares: { clienteId: number; vendedorId:
     )
   const ids = [...new Set(recentes.map((h) => h.clienteId))]
   const criadoEm = new Map<number, string>()
+  const doBanco = new Set<number>()
   const aprovadoEm = new Map<number, string>()
   for (let i = 0; i < ids.length; i += 500) {
     const fatia = ids.slice(i, i + 500)
-    for (const c of await db.select({ id: clientes.id, createdAt: clientes.createdAt }).from(clientes).where(inArray(clientes.id, fatia))) criadoEm.set(c.id, c.createdAt)
+    for (const c of await db.select({ id: clientes.id, createdAt: clientes.createdAt, origemBanco: clientes.origemBanco }).from(clientes).where(inArray(clientes.id, fatia))) {
+      criadoEm.set(c.id, c.createdAt)
+      if (c.origemBanco) doBanco.add(c.id)
+    }
     for (const a of await db
       .select({ clienteId: cadastrosClientesSap.clienteId, aprovadoEm: cadastrosClientesSap.aprovadoEm })
       .from(cadastrosClientesSap)
@@ -57,7 +61,8 @@ export async function chegadasNaCarteira(pares: { clienteId: number; vendedorId:
     const anteriorDeOutro = historico.some((x) => x.clienteId === h.clienteId && x.vendedorId !== h.vendedorId && x.createdAt < h.createdAt)
     const criado = criadoEm.get(h.clienteId)
     const novo = !!criado && Math.abs(utc(criado) - utc(h.createdAt)) < 2 * 86400000
-    const motivo: MotivoChegada = aprovadoEm.has(h.clienteId) ? 'aprovado' : anteriorDeOutro || !novo ? 'transferido' : 'novo'
+    // Banco de clientes: cliente antigo sem vendedor antes (ou marcado com o banco de origem) que o gestor passou pra carteira.
+    const motivo: MotivoChegada = aprovadoEm.has(h.clienteId) ? 'aprovado' : novo && !anteriorDeOutro ? 'novo' : doBanco.has(h.clienteId) || !anteriorDeOutro ? 'banco' : 'transferido'
     out.set(chave, { motivo, em: h.createdAt })
   }
   return out
