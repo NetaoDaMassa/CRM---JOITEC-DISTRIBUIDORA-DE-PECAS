@@ -82,15 +82,23 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
 // Fotos que a expedição tirou do pedido (bancada na conferência e pedido
 // completo com a NF) — pro vendedor mostrar/mandar pro cliente (João, 2026-11-17).
 // Clique amplia com zoom; dá pra baixar pelo botão direito/segurar no celular.
+// Começa FECHADO (só a linha com a quantidade) pra não esticar o card (João, 2026-11-17).
 function FotosDaExpedicao({ pedido, fotos }: { pedido: string; fotos: { url: string; tipo: 'conferencia' | 'nf'; data: string }[] }) {
+  const [aberto, setAberto] = useState(false)
   const grupos = [
     { tipo: 'conferencia' as const, rotulo: 'Conferência (bancada)' },
     { tipo: 'nf' as const, rotulo: 'Pedido completo com a NF' },
   ]
   return (
     <div className="space-y-1.5">
-      <p className="text-xs font-semibold text-dark-300">📷 Fotos da expedição</p>
-      {grupos.map((g) => {
+      <button
+        type="button"
+        onClick={(e) => (e.stopPropagation(), setAberto((v) => !v))}
+        className="text-xs font-semibold text-cyan-300 hover:text-cyan-200"
+      >
+        📷 {aberto ? 'Fechar fotos da expedição' : `Ver fotos da expedição (${fotos.length})`} {aberto ? '▲' : '▼'}
+      </button>
+      {aberto && grupos.map((g) => {
         const lista = fotos.filter((f) => f.tipo === g.tipo)
         if (!lista.length) return null
         return (
