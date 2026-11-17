@@ -21,11 +21,16 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
   const utils = trpc.useUtils()
   const { data, isLoading } = trpc.adiantamentoPix.listar.useQuery({ aba })
   const [busca, setBusca] = useState('')
+  // Conferir em 2 passos (João, 2026-11-17: pedido 9524 apareceu como
+  // conferido sem o financeiro ter conferido — o botão "Conferido" parecia
+  // só um aviso). Só libera depois de abrir o comprovante, e pede confirmação.
+  const [abertos, setAbertos] = useState<Set<number>>(new Set())
+  const [confirmando, setConfirmando] = useState<number | null>(null)
   const recarregar = () => {
     utils.adiantamentoPix.listar.invalidate()
     utils.adiantamentoPix.contagem.invalidate()
   }
-  const conferir = trpc.adiantamentoPix.conferir.useMutation({ onSuccess: () => (toast.success('Conferido'), recarregar()), onError: (e) => toast.error(e.message) })
+  const conferir = trpc.adiantamentoPix.conferir.useMutation({ onSuccess: () => (toast.success('Conferido'), setConfirmando(null), recarregar()), onError: (e) => toast.error(e.message) })
   const desfazer = trpc.adiantamentoPix.desfazerConferencia.useMutation({ onSuccess: () => (toast.success('Voltou para À conferir'), recarregar()), onError: (e) => toast.error(e.message) })
 
   const q = busca.trim().toLowerCase()
@@ -67,13 +72,36 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
                 )}
                 {l.status === 'anexado' && l.comprovantePath && (
                   <>
-                    <a href={urlArquivo(l.comprovantePath)} target="_blank" rel="noreferrer" className="text-sm text-sky-300 hover:underline">
+                    <a
+                      href={urlArquivo(l.comprovantePath)}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={() => setAbertos((s) => new Set(s).add(l.vendaId))}
+                      className="text-sm text-sky-300 hover:underline"
+                    >
                       📎 Ver comprovante
                     </a>
                     <span className="text-[11px] text-dark-500">anexado {l.anexadoEm ? formatDateTime(l.anexadoEm) : ''}</span>
-                    <Button size="sm" onClick={() => conferir.mutate({ vendaId: l.vendaId })} disabled={conferir.isPending}>
-                      <Check size={14} className="mr-1" /> Conferido
-                    </Button>
+                    {confirmando === l.vendaId ? (
+                      <div className="rounded-lg border border-gold-600/60 bg-dark-900 p-2 text-right space-y-1.5 max-w-[260px]">
+                        <p className="text-xs text-dark-100">Confirma que abriu o comprovante e que o PIX de {formatarMoeda(l.valor)} caiu na conta?</p>
+                        <div className="flex justify-end gap-1.5">
+                          <Button size="sm" variant="secondary" onClick={() => setConfirmando(null)}>
+                            Cancelar
+                          </Button>
+                          <Button size="sm" onClick={() => conferir.mutate({ vendaId: l.vendaId })} disabled={conferir.isPending}>
+                            <Check size={14} className="mr-1" /> Sim, conferi
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmando(l.vendaId)} disabled={!abertos.has(l.vendaId)}>
+                          <Check size={14} className="mr-1" /> Marcar como conferido
+                        </Button>
+                        {!abertos.has(l.vendaId) && <span className="text-[11px] text-dark-500">abra o comprovante antes</span>}
+                      </>
+                    )}
                   </>
                 )}
                 {l.status === 'conferido' && (

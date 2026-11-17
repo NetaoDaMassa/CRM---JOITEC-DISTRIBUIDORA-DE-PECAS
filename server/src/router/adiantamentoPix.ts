@@ -8,6 +8,7 @@ import { adiantamentosPix, clientes, empresas, users, vendas } from '../db/schem
 import { agoraSqlite } from '../lib/dataBr.js'
 import { EMPRESAS_PIX, lerPixDesde, lerRegraPix, normalizar, pixDasVendas, salvarPixDesde, salvarRegraPix, tipoPix } from '../lib/adiantamentoPix.js'
 import { filtroPiloto } from '../lib/pilotoFinanceiro.js'
+import { registrarAuditoria } from '../lib/auditoria.js'
 
 // Tela Adiantamento PIX (financeiro, 2026-11-13) — cross-empresa (Joitec,
 // Odin Tubos, Odin Automação) igual Registros de liberação: quem tem a
@@ -100,13 +101,19 @@ export const adiantamentoPixRouter = router({
         .update(adiantamentosPix)
         .set({ conferidoEm: agoraSqlite(), conferidoPor: ctx.user.id, observacao: input.observacao?.trim() || l.observacao })
         .where(eq(adiantamentosPix.id, l.id))
+      // Histórico de quem conferiu/desfez (João, 2026-11-17: financeiro disse
+      // que não conferiu o pedido 9524 e estava "conferido por rubia").
+      await registrarAuditoria({ tabela: 'adiantamentos_pix', registroId: l.id, acao: 'editar', campo: 'conferido', valorNovo: `conferido (venda ${input.vendaId})`, alteradoPor: ctx.user.id })
       return { ok: true }
     }),
 
   desfazerConferencia: featureProcedure(FEATURE)
     .input(z.object({ vendaId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      const l = await db.query.adiantamentosPix.findFirst({ where: eq(adiantamentosPix.vendaId, input.vendaId) })
       await db.update(adiantamentosPix).set({ conferidoEm: null, conferidoPor: null }).where(eq(adiantamentosPix.vendaId, input.vendaId))
+      if (l?.conferidoEm)
+        await registrarAuditoria({ tabela: 'adiantamentos_pix', registroId: l.id, acao: 'editar', campo: 'conferido', valorAnterior: `conferido em ${l.conferidoEm} por usuário ${l.conferidoPor}`, valorNovo: `desfeito (venda ${input.vendaId})`, alteradoPor: ctx.user.id })
       return { ok: true }
     }),
 
