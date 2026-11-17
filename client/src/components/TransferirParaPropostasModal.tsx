@@ -5,6 +5,8 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
 import ProductSelector from './ProductSelector'
+import CampoCnpjProposta from './propostas/CampoCnpjProposta'
+import { documentoValido, soDigitos, formatarDocumento } from '../lib/documentoCliente'
 
 // Lead "Ganho" da Odin Compressores vira Proposta (não Carteira — essa
 // empresa não usa) — diferente da "Nova Proposta" comum (só exige nome),
@@ -16,12 +18,14 @@ export default function TransferirParaPropostasModal({
   leadId,
   telefoneSugerido,
   codSapSugerido,
+  cnpjSugerido,
 }: {
   open: boolean
   onClose: () => void
   leadId: number
   telefoneSugerido: string
   codSapSugerido?: string | null
+  cnpjSugerido?: string | null
 }) {
   const utils = trpc.useUtils()
   const [produtosDescricao, setProdutosDescricao] = useState('')
@@ -29,6 +33,7 @@ export default function TransferirParaPropostasModal({
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [formaPagamento, setFormaPagamento] = useState('')
   const [codSap, setCodSap] = useState('')
+  const [cnpj, setCnpj] = useState('')
   const [observacoes, setObservacoes] = useState('')
 
   useEffect(() => {
@@ -37,8 +42,10 @@ export default function TransferirParaPropostasModal({
       // Se o lead já tem código SAP (cadastrado antes, em LeadDetail), vem
       // pré-preenchido — o vendedor só digita aqui quando ainda não tem.
       setCodSap(codSapSugerido ?? '')
+      // CNPJ que veio com o lead (formulário da Meta / Receita).
+      setCnpj(formatarDocumento(cnpjSugerido))
     }
-  }, [open, telefoneSugerido, codSapSugerido])
+  }, [open, telefoneSugerido, codSapSugerido, cnpjSugerido])
 
   const mut = trpc.leads.transferirParaPropostas.useMutation({
     onSuccess() {
@@ -54,6 +61,7 @@ export default function TransferirParaPropostasModal({
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!produtosDescricao.trim()) return toast.error('Descreva o que está sendo proposto')
+    if (!documentoValido(cnpj)) return toast.error('Informe o CNPJ (ou CPF) do cliente')
     mut.mutate({
       leadId,
       produtosDescricao,
@@ -61,6 +69,7 @@ export default function TransferirParaPropostasModal({
       clienteWhatsapp: clienteWhatsapp || undefined,
       formaPagamento: formaPagamento || undefined,
       codSap: codSap.trim() || undefined,
+      cnpj: soDigitos(cnpj),
       observacoes: observacoes || undefined,
     })
   }
@@ -78,6 +87,7 @@ export default function TransferirParaPropostasModal({
             onItensChange={setProdutosItens}
           />
         </div>
+        <CampoCnpjProposta valor={cnpj} onChange={setCnpj} />
         <Input label="WhatsApp do cliente" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Forma de pagamento (opcional)" value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} />

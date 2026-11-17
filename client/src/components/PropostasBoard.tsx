@@ -49,6 +49,7 @@ export const DIAS_PARADA_ALERTA = 7
 export type PropostaCard = {
   id: number
   clienteNome: string
+  cnpj?: string | null
   stage: string
   prioridade: string
   vendedorId: number

@@ -11,6 +11,7 @@ import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { assertDonoOuGestor, mudarEtapaProposta, notificarGestores } from '../lib/propostasGates.js'
 import { propostaGeradorRouter } from './propostaGerador.js'
+import { documentoValido, soDigitos } from '../lib/documentoCliente.js'
 
 export const SLUG_PROPOSTAS = 'odin-compressores'
 
@@ -43,6 +44,25 @@ export const propostasRouter = router({
     })
   }),
 
+  // Propostas já existentes do mesmo CNPJ/CPF — avisa na hora de criar pra
+  // não duplicar card do mesmo cliente (2026-11-17). Mostra de todos os
+  // vendedores (é justamente pra ver se outro já está atendendo), só o
+  // básico.
+  porDocumento: adminOrFeatureProcedure('propostas_odin')
+    .input(z.object({ cnpj: z.string() }))
+    .query(async ({ ctx, input }) => {
+      await assertEmpresaPropostas(ctx.empresaId)
+      const doc = soDigitos(input.cnpj)
+      if (doc.length !== 11 && doc.length !== 14) return []
+      const rows = await db.query.propostas.findMany({
+        where: and(eq(propostas.empresaId, ctx.empresaId), eq(propostas.cnpj, doc)),
+        columns: { id: true, clienteNome: true, stage: true, createdAt: true, updatedAt: true, vendedorId: true },
+        with: { vendedor: { columns: { name: true } } },
+        orderBy: (p, { desc }) => [desc(p.createdAt)],
+      })
+      return rows.map((r) => ({ ...r, minha: r.vendedorId === ctx.user.id }))
+    }),
+
   listar: adminOrFeatureProcedure('propostas_odin').input(z.object({ vendedorId: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
     await assertEmpresaPropostas(ctx.empresaId)
     const filtroVendedor = ctx.user.role === 'admin' ? input?.vendedorId : ctx.user.id
@@ -57,6 +77,9 @@ export const propostasRouter = router({
     .input(
       z.object({
         clienteNome: z.string().min(1),
+        // Obrigatório (CNPJ ou CPF) desde 2026-11-17 — liga as propostas do
+        // mesmo cliente e evita card duplicado. Pedido da Agatta/João.
+        cnpj: z.string().refine(documentoValido, 'Informe um CNPJ (ou CPF) válido do cliente'),
         clienteWhatsapp: z.string().optional(),
         produtosDescricao: z.string().optional(),
         produtosItens: z.string().optional(),
@@ -72,12 +95,13 @@ export const propostasRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaPropostas(ctx.empresaId)
-      const { stage, ...rest } = input
+      const { stage, cnpj, ...rest } = input
       // "Fechamento / Sem Proposta" cria direto em "fechado"; qualquer outro valor cai em "proposta".
       const result = await db.insert(propostas).values({
         empresaId: ctx.empresaId,
         vendedorId: ctx.user.id,
         ...rest,
+        cnpj: soDigitos(cnpj),
         stage: stage === 'fechado' ? 'fechado' : 'proposta',
       })
       const propostaId = Number(result.lastInsertRowid)
@@ -99,6 +123,7 @@ export const propostasRouter = router({
       z.object({
         id: z.number(),
         clienteNome: z.string().optional(),
+        cnpj: z.string().optional(),
         clienteWhatsapp: z.string().optional(),
         produtosDescricao: z.string().optional(),
         produtosItens: z.string().optional(),
@@ -114,9 +139,16 @@ export const propostasRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaPropostas(ctx.empresaId)
-      const { id, ...values } = input
+      const { id, cnpj, ...values } = input
       const proposta = await assertPropostaAlcancavel(id, ctx.empresaId)
       assertDonoOuGestor(proposta, ctx.user.id, ctx.user.role)
+      // CNPJ/CPF: se veio, tem que ser válido; não dá pra apagar um já salvo.
+      const cnpjNovo = cnpj !== undefined && soDigitos(cnpj) ? soDigitos(cnpj) : undefined
+      if (cnpjNovo !== undefined && !documentoValido(cnpjNovo)) throw new TRPCError({ code: 'BAD_REQUEST', message: 'CNPJ (ou CPF) inválido' })
+      // Só cobra no salvar do formulário (que manda clienteNome) — ações
+      // pequenas como "Chamar depois" (só dataRetorno) seguem valendo em
+      // proposta antiga sem CNPJ.
+      if (cnpjNovo === undefined && !proposta.cnpj && values.clienteNome !== undefined) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Informe o CNPJ (ou CPF) do cliente' })
 
       // Produtos/Serviços trava pro vendedor assim que sai da coluna "Proposta" —
       // só destrava via "Solicitar Alteração", que devolve a proposta pra lá.
@@ -127,7 +159,7 @@ export const propostasRouter = router({
         throw new TRPCError({ code: 'FORBIDDEN', message: "Campo travado após o envio — use 'Solicitar Alteração' para poder editar" })
       }
 
-      await db.update(propostas).set({ ...values, updatedAt: agoraSqlite() }).where(eq(propostas.id, id))
+      await db.update(propostas).set({ ...values, ...(cnpjNovo ? { cnpj: cnpjNovo } : {}), updatedAt: agoraSqlite() }).where(eq(propostas.id, id))
       return { ok: true }
     }),
 

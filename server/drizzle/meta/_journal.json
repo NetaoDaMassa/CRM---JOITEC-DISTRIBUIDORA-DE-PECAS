@@ -1191,6 +1191,13 @@
       "when": 1795100100000,
       "tag": "0169_propostas_geracao",
       "breakpoints": true
+    },
+    {
+      "idx": 170,
+      "version": "6",
+      "when": 1795100200000,
+      "tag": "0170_propostas_cnpj",
+      "breakpoints": true
     }
   ]
 }

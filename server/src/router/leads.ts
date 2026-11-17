@@ -26,6 +26,7 @@ import { validateNextContactLimit, LEADS_MAX_DIAS_PROXIMO_CONTATO_PADRAO, toLoca
 import { getConfigNumero } from '../lib/configuracoes.js'
 import { enviarEventoMeta } from '../lib/metaConversionsApi.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
+import { documentoValido } from '../lib/documentoCliente.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
 import { REGIAO_VALUES } from '../lib/regiao.js'
 import { mesReferenciaAtual, hojeBrString } from '../lib/dataBr.js'
@@ -1819,6 +1820,9 @@ export const leadsRouter = router({
         // vendedor pode digitar aqui na hora de transferir, sem precisar
         // voltar pro cadastro do lead antes. Pedido do João, 2026-09-11.
         codSap: z.string().optional(),
+        // CNPJ/CPF do cliente — obrigatório na proposta desde 2026-11-17.
+        // Vem do lead (leads.cnpj, formulário da Meta) se não digitar.
+        cnpj: z.string().optional(),
         observacoes: z.string().optional(),
       })
     )
@@ -1845,6 +1849,8 @@ export const leadsRouter = router({
       // pode já ter vindo com um de leads.codSap), prevalece o que foi
       // digitado — mas sem apagar um valor já existente por engano.
       const codSap = input.codSap?.trim() || lead.codSap || undefined
+      const docCliente = (input.cnpj?.trim() || lead.cnpj || '').replace(/\D/g, '')
+      if (!documentoValido(docCliente)) throw new Error('Informe um CNPJ (ou CPF) válido do cliente')
 
       const result = await db.insert(propostas).values({
         empresaId: ctx.empresaId,
@@ -1856,6 +1862,7 @@ export const leadsRouter = router({
         formaPagamento: input.formaPagamento || undefined,
         observacoes: input.observacoes || undefined,
         codSap,
+        cnpj: docCliente,
         stage: 'proposta',
       })
       const propostaId = Number(result.lastInsertRowid)

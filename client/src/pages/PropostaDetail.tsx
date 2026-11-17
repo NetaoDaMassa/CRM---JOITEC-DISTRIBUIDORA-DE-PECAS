@@ -10,6 +10,8 @@ import { Badge } from '../components/ui/Badge'
 import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, type PropostaStage } from '../lib/propostasShared'
 import ProductSelector from '../components/ProductSelector'
 import GerarPropostaModal from '../components/GerarPropostaModal'
+import CampoCnpjProposta from '../components/propostas/CampoCnpjProposta'
+import { documentoValido, soDigitos, formatarDocumento } from '../lib/documentoCliente'
 import { formatDateTime } from '../lib/utils'
 
 export default function PropostaDetail({ propostaId, onClose }: { propostaId: number; onClose: () => void }) {
@@ -214,6 +216,7 @@ function PropostaForm({
     revenda: string | null
     formaPagamento: string | null
     codSap?: string | null
+    cnpj?: string | null
     observacoes: string | null
     prioridade: string
     motivoUrgencia: string | null
@@ -231,6 +234,7 @@ function PropostaForm({
   const [revenda, setRevenda] = useState(proposta.revenda ?? '')
   const [formaPagamento, setFormaPagamento] = useState(proposta.formaPagamento ?? '')
   const [codSap, setCodSap] = useState(proposta.codSap ?? '')
+  const [cnpj, setCnpj] = useState(formatarDocumento(proposta.cnpj))
   const [observacoes, setObservacoes] = useState(proposta.observacoes ?? '')
   const [prioridade, setPrioridade] = useState(proposta.prioridade ?? 'normal')
   const [motivoUrgencia, setMotivoUrgencia] = useState(proposta.motivoUrgencia ?? '')
@@ -297,7 +301,11 @@ function PropostaForm({
   }
 
   function salvarTudo() {
-    salvarMut.mutate({ id: propostaId, clienteNome, clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, codSap: codSap.trim() || undefined, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })
+    if (!documentoValido(cnpj)) {
+      toast.error('Informe o CNPJ (ou CPF) do cliente — campo obrigatório')
+      return
+    }
+    salvarMut.mutate({ id: propostaId, clienteNome, cnpj: soDigitos(cnpj), clienteWhatsapp, produtosDescricao, produtosItens, comissao, revenda, formaPagamento, codSap: codSap.trim() || undefined, observacoes, prioridade: prioridade as 'normal' | 'urgente', motivoUrgencia })
   }
 
   function compartilharWhatsapp() {
@@ -321,6 +329,7 @@ function PropostaForm({
     <div className="space-y-6">
       <div className="grid grid-cols-1 gap-4">
         <Input label="Cliente *" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} disabled={!podeEditar} />
+        <CampoCnpjProposta valor={cnpj} onChange={setCnpj} ignorarId={propostaId} disabled={!podeEditar} />
 
         <div>
           <label className="text-xs text-dark-400 mb-1.5 block">Prioridade</label>

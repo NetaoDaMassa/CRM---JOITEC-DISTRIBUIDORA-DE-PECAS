@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2, Search, FileClock, Zap, FileWarning, MessageSquareWarning, Hourglass, PhoneCall, Trophy, Columns3, List } from 'lucide-react'
+import { Plus, Download, RefreshCw, CalendarRange, X, CheckCircle2, Search, FileClock, Zap, FileWarning, MessageSquareWarning, Hourglass, PhoneCall, Trophy, Columns3, List, Building2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
@@ -26,6 +26,9 @@ import {
   type FiltroProposta,
 } from '../components/propostas/PainelPropostas'
 import { Esqueleto } from '../components/ui/Visual'
+import CampoCnpjProposta from '../components/propostas/CampoCnpjProposta'
+import PropostasPorCliente from '../components/propostas/PropostasPorCliente'
+import { documentoValido, soDigitos } from '../lib/documentoCliente'
 
 // Atalho "Mês" — preenche De/Até com o mês inteiro de uma vez, igual ao
 // filtro de data do Propostas.tsx no odincrm original.
@@ -61,6 +64,7 @@ export default function PropostasKanban() {
   const [modalAberto, setModalAberto] = useState(false)
   const [semProposta, setSemProposta] = useState(false)
   const [clienteNome, setClienteNome] = useState('')
+  const [cnpj, setCnpj] = useState('')
   const [clienteWhatsapp, setClienteWhatsapp] = useState('')
   const [produtosDescricao, setProdutosDescricao] = useState('')
   const [produtosItens, setProdutosItens] = useState('')
@@ -79,7 +83,7 @@ export default function PropostasKanban() {
   const [dataAte, setDataAte] = usePersistedState('propostasKanban:dataAte', '')
   const [busca, setBusca] = usePersistedState('propostasKanban:busca', '')
   const [filtroRapido, setFiltroRapido] = usePersistedState<FiltroProposta | ''>('propostasKanban:filtroRapido', '')
-  const [modo, setModo] = usePersistedState<'quadro' | 'lista'>('propostasKanban:modo', 'quadro')
+  const [modo, setModo] = usePersistedState<'quadro' | 'lista' | 'clientes'>('propostasKanban:modo', 'quadro')
   const [novidadesVistas, setNovidadesVistas] = usePersistedState('propostasKanban:novidadesVistas:v1', false)
 
   const utils = trpc.useUtils()
@@ -109,6 +113,7 @@ export default function PropostasKanban() {
           String(p.id).includes(termo) ||
           p.clienteNome.toLowerCase().includes(termo) ||
           p.vendedor?.name.toLowerCase().includes(termo) ||
+          (termoDigitos.length >= 3 && soDigitos(p.cnpj).includes(termoDigitos)) ||
           (termoDigitos && p.clienteWhatsapp?.replace(/\D/g, '').includes(termoDigitos))
       )
     : propostasPorData
@@ -172,6 +177,7 @@ export default function PropostasKanban() {
 
   function limparFormulario() {
     setClienteNome('')
+    setCnpj('')
     setClienteWhatsapp('')
     setProdutosDescricao('')
     setProdutosItens('')
@@ -205,6 +211,7 @@ export default function PropostasKanban() {
             opcoes={[
               { valor: 'quadro', rotulo: 'Quadro', icone: Columns3 },
               { valor: 'lista', rotulo: 'Lista', icone: List },
+              { valor: 'clientes', rotulo: 'Por cliente', icone: Building2 },
             ]}
           />
           <BotaoLegenda secoes={LEGENDA_PROPOSTAS} aoRever={() => setNovidadesVistas(false)} />
@@ -224,7 +231,7 @@ export default function PropostasKanban() {
             <input
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar cliente, telefone ou #proposta..."
+              placeholder="Buscar cliente, CNPJ, telefone ou #proposta..."
               className="w-64 rounded-lg border border-dark-600 bg-dark-900 py-1.5 pl-8 pr-2 text-xs text-dark-100 placeholder-dark-500 focus:outline-none focus:border-gold-600"
             />
           </div>
@@ -315,7 +322,9 @@ export default function PropostasKanban() {
 
           {filtroRapido && <AvisoFiltro quantidade={visiveis.length} texto={ROTULO_FILTRO_PROPOSTA[filtroRapido]} aoLimpar={() => setFiltroRapido('')} />}
 
-          {modo === 'lista' ? (
+          {modo === 'clientes' ? (
+            <PropostasPorCliente lista={busca.trim() ? listaBase : propostasTodas ?? []} filtrando={!!busca.trim()} mostrarVendedor={isAdmin} aoAbrir={(pid) => navigate(`${basePath}/${pid}`)} />
+          ) : modo === 'lista' ? (
             <TabelaPropostas lista={visiveis} mostrarVendedor={isAdmin} aoAbrir={(pid) => navigate(`${basePath}/${pid}`)} />
           ) : (
             <PropostasBoard propostas={visiveis} basePath={basePath} mostrarVendedor={isAdmin} />
@@ -328,6 +337,7 @@ export default function PropostasKanban() {
           {semProposta && (
             <p className="text-xs text-dark-400">Cria a proposta já em <span className="font-semibold text-dark-200">Fechado</span>, sem precisar anexar PDF. Complete os demais dados abrindo o card.</p>
           )}
+          <CampoCnpjProposta valor={cnpj} onChange={setCnpj} aoAcharRazao={(r) => setClienteNome(r)} aoAbrirProposta={(pid) => { setModalAberto(false); navigate(`${basePath}/${pid}`) }} />
           <Input label="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} />
           <Input label="WhatsApp do cliente" value={clienteWhatsapp} onChange={(e) => setClienteWhatsapp(e.target.value)} />
 
@@ -401,10 +411,11 @@ export default function PropostasKanban() {
 
           <Button
             className="w-full"
-            disabled={!clienteNome || criarMut.isPending || enviandoArquivos}
+            disabled={!clienteNome || !documentoValido(cnpj) || criarMut.isPending || enviandoArquivos}
             loading={criarMut.isPending || enviandoArquivos}
             onClick={() => criarMut.mutate({
               clienteNome,
+              cnpj: soDigitos(cnpj),
               clienteWhatsapp: clienteWhatsapp || undefined,
               produtosDescricao: produtosDescricao || undefined,
               produtosItens: produtosItens || undefined,

@@ -3142,6 +3142,11 @@ export const propostas = sqliteTable(
     // gerar.ts): cliente, itens com valores, pagamento — digitados uma vez e
     // reaproveitados nas próximas versões da proposta. João, 2026-11-17.
     geracaoDados: text('geracao_dados'),
+    // CNPJ (ou CPF, cliente pessoa física) do cliente, só dígitos —
+    // obrigatório pra criar proposta desde 2026-11-17 (pedido da Agatta/
+    // João): liga as propostas do mesmo cliente, evita duplicar e alimenta a
+    // visão "Por cliente". Propostas antigas podem estar sem.
+    cnpj: text('cnpj'),
     prioridade: text('prioridade', { enum: ['normal', 'urgente'] }).notNull().default('normal'),
     motivoUrgencia: text('motivo_urgencia'),
     motivoPerda: text('motivo_perda'),
@@ -3160,6 +3165,7 @@ export const propostas = sqliteTable(
   (t) => ({
     empresaStageIdx: index('propostas_empresa_stage_idx').on(t.empresaId, t.stage),
     vendedorIdx: index('propostas_vendedor_idx').on(t.vendedorId),
+    empresaCnpjIdx: index('propostas_empresa_cnpj_idx').on(t.empresaId, t.cnpj),
   })
 )
 

@@ -13,6 +13,7 @@ import { db } from '../db/client.js'
 import { empresas, propostas, propostaArquivos, propostaHistorico, users } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
 import { assertDonoOuGestor } from '../lib/propostasGates.js'
+import { documentoValido } from '../lib/documentoCliente.js'
 import { carregarBiblioteca, montarPptx, converterPdf, type DadosGeracao } from '../lib/propostaModelo/gerar.js'
 
 const UPLOADS_DIR = process.env.UPLOADS_DIR ?? './uploads'
@@ -119,6 +120,7 @@ export const propostaGeradorRouter = router({
         salvos,
         sugestao: {
           numero: p.codSap ? `D.${p.codSap.trim()}` : '',
+          cnpj: p.cnpj ?? '',
           data: hojeBr(),
           clienteNome: p.clienteNome.trim(),
           clienteWhatsapp: p.clienteWhatsapp ?? '',
@@ -150,7 +152,10 @@ export const propostaGeradorRouter = router({
       const d = input.dados as DadosGeracao
       const conjunto = bib.catalogo.conjuntos.find((c) => c.id === d.conjunto)
       if (!conjunto) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Conjunto não encontrado nos modelos' })
-      await db.update(propostas).set({ geracaoDados: JSON.stringify(d) }).where(eq(propostas.id, p.id))
+      // CNPJ digitado aqui completa a proposta que ainda não tinha.
+      const docGerado = d.cliente.cnpj.replace(/\D/g, '')
+      const completaCnpj = !p.cnpj && documentoValido(docGerado) ? { cnpj: docGerado } : {}
+      await db.update(propostas).set({ geracaoDados: JSON.stringify(d), ...completaCnpj }).where(eq(propostas.id, p.id))
 
       let pptx: Buffer
       try {

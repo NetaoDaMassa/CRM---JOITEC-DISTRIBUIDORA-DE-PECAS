@@ -11,6 +11,7 @@ import Button from './ui/Button'
 import { Input } from './ui/Input'
 import Select from './ui/Select'
 import { parseValorBr, formatarValorInput } from '../lib/valorBr'
+import { formatarDocumento } from '../lib/documentoCliente'
 
 type Item = { ficha: string | null; descricao: string; qtd: string; valor: string; valor2: string }
 type TipoPg = 'normal' | 'dupla' | 'credito'
@@ -53,7 +54,7 @@ export default function GerarPropostaModal({ propostaId, open, onClose }: { prop
       setConjunto(s.conjunto ?? '')
       setNumero(s.numero ?? '')
       setData(s.data || dados.sugestao.data)
-      setCliente({ ...CLIENTE_VAZIO, ...(s.cliente ?? {}) })
+      setCliente({ ...CLIENTE_VAZIO, ...(s.cliente ?? {}), cnpj: s.cliente?.cnpj || formatarDocumento(dados.sugestao.cnpj) })
       setItens((s.itens ?? []).map((it) => ({ ficha: it.ficha, descricao: it.descricao, qtd: String(it.qtd), valor: formatarValorInput(it.valor), valor2: it.valor2 != null ? formatarValorInput(it.valor2) : '' })))
       if (s.pagamento) {
         setTipoPg(s.pagamento.tipo)
@@ -67,7 +68,7 @@ export default function GerarPropostaModal({ propostaId, open, onClose }: { prop
     } else {
       setNumero(dados.sugestao.numero)
       setData(dados.sugestao.data)
-      setCliente({ ...CLIENTE_VAZIO, razao: dados.sugestao.clienteNome, telefone: dados.sugestao.clienteWhatsapp })
+      setCliente({ ...CLIENTE_VAZIO, razao: dados.sugestao.clienteNome, telefone: dados.sugestao.clienteWhatsapp, cnpj: formatarDocumento(dados.sugestao.cnpj) })
       setAssinatura([...dados.sugestao.assinatura, '', ''].slice(0, 2))
     }
     setCarregado(true)
