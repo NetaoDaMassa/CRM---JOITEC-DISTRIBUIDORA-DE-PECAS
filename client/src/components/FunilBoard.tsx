@@ -177,6 +177,29 @@ function nomeComPedido(card: Card): string {
 // Adiantamento PIX (financeiro, 2026-11-13): 2 = venda à vista/entrada sem
 // comprovante, 1 = à vista/entrada com comprovante, 0 = não é PIX. No
 // Fechado os PIX vão pra cima, os sem comprovante primeiro.
+function pesoChegada(card: Card): number {
+  return card.chegouNaCarteira && !card.chegouNaCarteira.contatado ? 1 : 0
+}
+
+const CHEGADA_ROTULO: Record<string, { texto: string; titulo: string }> = {
+  transferido: { texto: '↪ TRANSFERIDO PARA A CARTEIRA', titulo: 'Este cliente foi transferido para esta carteira' },
+  novo: { texto: '✨ CLIENTE NOVO NA CARTEIRA', titulo: 'Cliente novo, cadastrado agora' },
+  aprovado: { texto: '✅ CADASTRO APROVADO PELO FINANCEIRO', titulo: 'O financeiro aprovou o cadastro deste cliente no SAP' },
+}
+
+export function EtiquetaChegada({ chegada }: { chegada: NonNullable<Card['chegouNaCarteira']> }) {
+  const r = CHEGADA_ROTULO[chegada.motivo] ?? CHEGADA_ROTULO.transferido
+  const dia = `${chegada.em.slice(8, 10)}/${chegada.em.slice(5, 7)}`
+  return (
+    <p
+      className={`text-[11px] font-bold rounded-lg px-2 py-1 mb-2 border text-fuchsia-100 bg-fuchsia-900/40 border-fuchsia-500/80 ${chegada.contatado ? '' : 'animate-pulse'}`}
+      title={`${r.titulo} em ${dia}.${chegada.contatado ? ' Já teve contato.' : ' Ainda sem contato — fica no topo até o primeiro contato.'} A etiqueta fica 30 dias.`}
+    >
+      {r.texto} · {dia}
+    </p>
+  )
+}
+
 function pesoPix(card: Card): number {
   if (card.vendas.some((v) => v.pix?.status === 'aguardando')) return 2
   if (card.vendas.some((v) => v.pix)) return 1
@@ -505,6 +528,8 @@ export default function FunilBoard({
   const [busca, setBusca] = useState('')
   const [ordenacao, setOrdenacao] = useState('padrao')
   const [dataInicioFiltro, setDataInicioFiltro] = useState('')
+  // Filtro "só quem chegou na carteira" (transferido / novo / aprovado) — João, 2026-11-17.
+  const [soChegaram, setSoChegaram] = useState(false)
   const [dataFimFiltro, setDataFimFiltro] = useState('')
   // Clique numa urgência do Painel do dia — mostra só aqueles cards.
   const [filtroPainel, setFiltroPainel] = useState<FiltroPainel>(null)
@@ -551,9 +576,11 @@ export default function FunilBoard({
       })
     : cardsFiltrados
 
-  const cardsClassificados = classificacaoFiltro
+  const cardsClassificadosTodos = classificacaoFiltro
     ? cardsNoPeriodo.filter((c) => c.classificacaoComercial === classificacaoFiltro)
     : cardsNoPeriodo
+  const qtdChegaram = cardsClassificadosTodos.filter((c) => c.chegouNaCarteira).length
+  const cardsClassificados = soChegaram ? cardsClassificadosTodos.filter((c) => c.chegouNaCarteira) : cardsClassificadosTodos
 
   // Ordenação dentro de cada coluna — "padrão" mantém a ordem que já vem do
   // backend (mais antigo sem contato primeiro, ver buscarFunilDoVendedor),
@@ -653,6 +680,16 @@ export default function FunilBoard({
             />
           </div>
         )}
+        {(qtdChegaram > 0 || soChegaram) && (
+          <button
+            type="button"
+            onClick={() => setSoChegaram(!soChegaram)}
+            title="Clientes que chegaram na carteira nos últimos 30 dias: transferidos, novos ou com cadastro aprovado pelo financeiro"
+            className={`mb-1 rounded-lg border px-3 py-2 text-xs font-bold transition-colors ${soChegaram ? 'border-fuchsia-400 bg-fuchsia-600 text-white' : 'border-fuchsia-500/60 bg-fuchsia-900/25 text-fuchsia-200 hover:bg-fuchsia-900/40'}`}
+          >
+            ✨ Chegaram na carteira ({qtdChegaram}){soChegaram ? ' · mostrando só eles' : ''}
+          </button>
+        )}
         {(dataInicioFiltro || dataFimFiltro) && (
           <button
             onClick={() => {
@@ -746,6 +783,8 @@ export default function FunilBoard({
           if (ehBalcao && ordenacao === 'padrao') colCards.sort((a, b) => dataVendaCard(b).localeCompare(dataVendaCard(a)))
           // Abordagem: quem acabou de sair de Novo fica em cima (João, 2026-11-09).
           if (etapa.value === 'abordagem' && ordenacao === 'padrao') colCards.sort((a, b) => b.dataEntradaEtapa.localeCompare(a.dataEntradaEtapa))
+          // Cliente que acabou de chegar na carteira e ainda não teve contato sobe pro topo.
+          if (ordenacao === 'padrao') colCards.sort((a, b) => pesoChegada(b) - pesoChegada(a))
           if (etapa.value === 'fechado') colCards.sort((a, b) => pesoPix(b) - pesoPix(a))
           const resumoDia = new Map<string, { qtd: number; total: number }>()
           if (ehBalcao) {
@@ -834,6 +873,7 @@ export default function FunilBoard({
                           </Badge>
                         )}
                       </div>
+                      {card.chegouNaCarteira && <EtiquetaChegada chegada={card.chegouNaCarteira} />}
                       {(() => {
                         const semComprovante = card.vendas.filter((v) => v.pix?.status === 'aguardando')
                         if (semComprovante.length)

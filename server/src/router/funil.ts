@@ -1,5 +1,6 @@
 import { avisarVendedorPix } from '../lib/adiantamentoPix.js'
 import { pixDasVendas } from '../lib/adiantamentoPix.js'
+import { chegadasNaCarteira } from '../lib/chegouNaCarteira.js'
 import { ehClienteBalcao } from '../lib/consumidorFinalBalcao.js'
 import { z } from 'zod'
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
@@ -104,6 +105,8 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
   const funilIds = funis.map((f) => f.id)
   // Adiantamento PIX: situação do comprovante de cada venda à vista/entrada.
   const pixPorVenda = await pixDasVendas(funis.flatMap((f) => f.vendas))
+  // Etiqueta "chegou na carteira" (transferido / novo / cadastro aprovado).
+  const chegadas = await chegadasNaCarteira(funis.map((f) => ({ clienteId: f.clienteId, vendedorId: f.vendedorId })))
   const contatos = funilIds.length
     ? await db.query.registroContato.findMany({
         where: and(inArray(registroContato.funilMensalId, funilIds), isNull(registroContato.deletedAt)),
@@ -297,6 +300,13 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     cadastroRapido: f.cliente.cadastroRapido,
     importadoRecentemente: f.cliente.importadoRecentemente,
     novoDoSapEm: f.cliente.novoDoSapEm,
+    chegouNaCarteira: (() => {
+      const c = chegadas.get(`${f.clienteId}:${f.vendedorId}`)
+      if (!c) return null
+      // "contatado" = o vendedor já registrou contato neste card depois que o cliente chegou.
+      const contatado = (contatosPorFunil.get(f.id) ?? []).some((x) => String(x.dataHora).replace('T', ' ') >= c.em)
+      return { ...c, contatado }
+    })(),
     classificacaoComercial: f.cliente.classificacaoComercial,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,
     pedidoCarteira: pedidoCarteiraPorCliente.get(f.cliente.id) ?? null,
