@@ -42,6 +42,20 @@ export interface EtiquetaItem {
   descricao: string
   pedido: string
   localizacao?: string | null
+  // Odin Tubos (João, 2026-11-17): código antigo (POD05…) em destaque e
+  // "PACOTE: 5 UNIDADES" — quantidade digitada na hora de imprimir.
+  codigoAntigo?: string | null
+  pacote?: number | null
+}
+
+// Unidades por pacote: cada computador lembra o último valor de cada item.
+export function lerPacote(codigo: string | null): string {
+  if (!codigo) return ''
+  try { return localStorage.getItem(`etiqueta_pacote_${codigo}`) ?? '' } catch { return '' }
+}
+export function salvarPacote(codigo: string | null, valor: string) {
+  if (!codigo) return
+  try { if (Number(valor) > 0) localStorage.setItem(`etiqueta_pacote_${codigo}`, String(Number(valor))); else localStorage.removeItem(`etiqueta_pacote_${codigo}`) } catch { /* sem storage */ }
 }
 
 export interface EtiquetaVolume {
@@ -57,10 +71,16 @@ export interface EtiquetaVolume {
 
 export function htmlEtiquetaItem(e: EtiquetaItem, t: TamanhoEtiqueta): string {
   const pequena = t.h <= 40
+  const pacote = e.pacote && e.pacote > 0 ? e.pacote : null
+  // Com código antigo: ele vem grande e o do SAP pequeno ao lado do pedido.
+  const principal = e.codigoAntigo || e.codigo || ''
+  const lateral = e.codigoAntigo && e.codigo ? `${esc(e.codigo)} · Pedido ${esc(e.pedido)}` : `Pedido ${esc(e.pedido)}`
+  const barra = pacote ? (pequena ? 0.22 : 0.27) : pequena ? 0.28 : 0.32
   return `<div class="et">
     <div class="desc" style="font-size:${pequena ? 2.6 : 3.6}mm">${esc(e.descricao)}</div>
-    <div class="linha"><b style="font-size:${pequena ? 3.4 : 5}mm">${esc(e.codigo ?? '')}</b><span>Pedido ${esc(e.pedido)}</span></div>
-    ${e.codigo ? `<svg class="bc" data-v="${esc(e.codigo)}" data-h="${Math.round(t.h * (pequena ? 0.28 : 0.32))}"></svg>` : ''}
+    <div class="linha"><b style="font-size:${pequena ? 3.4 : 5}mm">${esc(principal)}</b><span>${lateral}</span></div>
+    ${pacote ? `<div style="font-size:${pequena ? 3.4 : 4.6}mm;font-weight:800;text-align:center;border:0.3mm solid #000;border-radius:1mm;padding:0.2mm 0">PACOTE: ${pacote} ${pacote === 1 ? 'UNIDADE' : 'UNIDADES'}</div>` : ''}
+    ${e.codigo ? `<svg class="bc" data-v="${esc(e.codigo)}" data-h="${Math.round(t.h * barra)}"></svg>` : ''}
   </div>`
 }
 

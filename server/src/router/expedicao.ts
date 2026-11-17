@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, ne, not
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoAgendamentos, funilMensal, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users, vendas } from '../db/schema.js'
+import { clientes, empresas, expedicaoAgendamentos, funilMensal, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapCatalogoItens, sapEstoqueItens, sapPedidosPendentes, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
@@ -264,6 +264,24 @@ async function jornadaPorCodigos(
 }
 
 const POR_PAGINA_COLETADOS = 100
+
+// Código antigo do item (Items.U_CodigoAntigo no SAP, ex.: POD05, ACM1) pra
+// etiqueta — só Odin Tubos (João, 2026-11-17). Vem do catálogo copiado do SAP;
+// item fora do catálogo de venda cai na foto do estoque.
+const EMPRESAS_CODIGO_ANTIGO_ETIQUETA = ['odin-tubos']
+async function codigosAntigosItens(empresaId: number, codigos: (string | null)[]): Promise<Map<string, string>> {
+  const lista = [...new Set(codigos.filter((c): c is string => !!c))]
+  const mapa = new Map<string, string>()
+  if (!lista.length) return mapa
+  const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
+  if (!EMPRESAS_CODIGO_ANTIGO_ETIQUETA.includes(emp?.slug ?? '')) return mapa
+  const [cat, est] = await Promise.all([
+    db.select({ c: sapCatalogoItens.itemCodigo, a: sapCatalogoItens.codigoAntigo }).from(sapCatalogoItens).where(inArray(sapCatalogoItens.itemCodigo, lista)),
+    db.select({ c: sapEstoqueItens.itemCodigo, a: sapEstoqueItens.codigoAntigo }).from(sapEstoqueItens).where(inArray(sapEstoqueItens.itemCodigo, lista)),
+  ])
+  for (const r of [...est, ...cat]) if (r.a?.trim()) mapa.set(r.c, r.a.trim())
+  return mapa
+}
 
 // Nomes de quem fez cada etapa, erros e prazo: o que a tela usa de cada pedido.
 // Ordem de separação (pedido do João, 2026-11-09): o admin escolhe qual
@@ -727,8 +745,9 @@ export const expedicaoRouter = router({
         regraFotosPedido(ctx.empresaId),
       ])
       const tubosNaNf = await tuboNaNf(ctx.empresaId)
+      const antigos = await codigosAntigosItens(ctx.empresaId, itens.map((i) => i.itemCodigo))
       return {
-        itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null, tubo: tubosNaNf && ehTubo(i.descricao) })),
+        itens: comKits.map((i) => ({ ...i, foto: (i.itemCodigo && fotos.get(i.itemCodigo)) || null, tubo: tubosNaNf && ehTubo(i.descricao), codigoAntigo: (i.itemCodigo && antigos.get(i.itemCodigo)) || null })),
         erros,
         fotosPedido,
         minimoFotos,

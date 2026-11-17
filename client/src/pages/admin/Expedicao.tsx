@@ -12,7 +12,7 @@ import ComoUsar from '../../components/ui/ComoUsar'
 import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
 import { TIPOS_ERRO_EMBALAGEM, TIPOS_ERRO_ITEM, ehErroDeEmbalagem, labelTipoErro, type TipoErro } from '../../lib/expedicaoErros'
 import { useAuth } from '../../contexts/AuthContext'
-import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerTamanho, salvarTamanho } from '../../lib/etiquetasTermicas'
+import { TAMANHOS_ETIQUETA, htmlEtiquetaItem, htmlEtiquetaVolume, imprimirEtiquetas, lerPacote, lerTamanho, salvarPacote, salvarTamanho } from '../../lib/etiquetasTermicas'
 import HistoricoAgendamentos from '../../components/HistoricoAgendamentos'
 import NotaSapBotoes from '../../components/NotaSapBotoes'
 import { FotoProduto } from '../../components/FotoProduto'
@@ -1267,6 +1267,8 @@ type ItemDetalhe = inferRouterOutputs<AppRouter>['expedicao']['detalhe']['itens'
 function EtiquetasItensModal({ pedidoSap, itens, onClose }: { pedidoSap: string; itens: ItemDetalhe[]; onClose: () => void }) {
   const [qtd, setQtd] = useState<Record<number, string>>(() => Object.fromEntries(itens.map((i) => [i.id, String(i.quantidade)])))
   const [tamanho, setTamanho] = useState(lerTamanho('item').id)
+  // Unidades por pacote (opcional) — sai "PACOTE: N UNIDADES" na etiqueta.
+  const [pacote, setPacote] = useState<Record<number, string>>(() => Object.fromEntries(itens.map((i) => [i.id, lerPacote(i.itemCodigo)])))
   const total = itens.reduce((s, i) => s + (Number(qtd[i.id]) || 0), 0)
   const todas = (f: (i: ItemDetalhe) => number) => setQtd(Object.fromEntries(itens.map((i) => [i.id, String(f(i))])))
   return (
@@ -1279,6 +1281,14 @@ function EtiquetasItensModal({ pedidoSap, itens, onClose }: { pedidoSap: string;
           <button type="button" className="text-xs rounded-lg border border-dark-600 px-2.5 py-1.5 text-dark-200 hover:bg-dark-800" onClick={() => todas(() => 1)}>
             Uma de cada item
           </button>
+          <button
+            type="button"
+            className="text-xs rounded-lg border border-dark-600 px-2.5 py-1.5 text-dark-200 hover:bg-dark-800"
+            title="Quem tem unidades por pacote: quantidade ÷ pacote (arredonda pra cima). Sem pacote: uma por unidade."
+            onClick={() => todas((i) => (Number(pacote[i.id]) > 0 ? Math.ceil(i.quantidade / Number(pacote[i.id])) : i.quantidade))}
+          >
+            Uma por pacote
+          </button>
           <button type="button" className="text-xs rounded-lg border border-dark-600 px-2.5 py-1.5 text-dark-200 hover:bg-dark-800" onClick={() => todas(() => 0)}>
             Zerar
           </button>
@@ -1290,10 +1300,27 @@ function EtiquetasItensModal({ pedidoSap, itens, onClose }: { pedidoSap: string;
           {itens.map((i) => (
             <div key={i.id} className="flex items-center gap-3 px-3 py-1.5">
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] text-dark-400 font-mono">{i.itemCodigo}</p>
+                <p className="text-[11px] text-dark-400 font-mono">
+                  {i.codigoAntigo ? <b className="text-dark-200">{i.codigoAntigo}</b> : null}
+                  {i.codigoAntigo ? ' · ' : ''}
+                  {i.itemCodigo}
+                </p>
                 <p className="text-sm text-dark-100 leading-tight truncate">{i.descricao}</p>
               </div>
               <span className="text-xs text-dark-500 whitespace-nowrap">pedido: {num(i.quantidade)}</span>
+              <label className="flex items-center gap-1 text-[11px] text-dark-400 whitespace-nowrap">
+                pacote
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="—"
+                  value={pacote[i.id] ?? ''}
+                  onChange={(e) => (setPacote({ ...pacote, [i.id]: e.target.value }), salvarPacote(i.itemCodigo, e.target.value))}
+                  className="w-16 bg-dark-800 border border-dark-600 rounded px-2 py-1 text-sm text-dark-100 text-right"
+                  aria-label={`Unidades por pacote de ${i.descricao}`}
+                />
+                un
+              </label>
               <input
                 type="number"
                 min={0}
@@ -1311,7 +1338,7 @@ function EtiquetasItensModal({ pedidoSap, itens, onClose }: { pedidoSap: string;
             disabled={total === 0 || total > 2000}
             onClick={() => {
               const t = TAMANHOS_ETIQUETA.find((x) => x.id === tamanho) ?? lerTamanho('item')
-              const html = itens.flatMap((i) => Array.from({ length: Math.max(0, Number(qtd[i.id]) || 0) }, () => htmlEtiquetaItem({ codigo: i.itemCodigo, descricao: i.descricao, pedido: pedidoSap, localizacao: i.localizacao }, t)))
+              const html = itens.flatMap((i) => Array.from({ length: Math.max(0, Number(qtd[i.id]) || 0) }, () => htmlEtiquetaItem({ codigo: i.itemCodigo, descricao: i.descricao, pedido: pedidoSap, localizacao: i.localizacao, codigoAntigo: i.codigoAntigo, pacote: Number(pacote[i.id]) || null }, t)))
               if (!imprimirEtiquetas(html, t, `Etiquetas — pedido ${pedidoSap}`)) toast.error('O navegador bloqueou a janela de impressão')
             }}
           >
@@ -1652,10 +1679,13 @@ function ConferenciaItens({
   prontoTexto?: string
 }) {
   const [qtdEtiquetas, setQtdEtiquetas] = useState('1')
+  const [pacoteItem, setPacoteItem] = useState('')
   const utils = trpc.useUtils()
   const faltam = itens.filter((i) => !i.conferidoEm)
   const [escolhidoId, setEscolhidoId] = useState<number | null>(null)
   const escolhido = faltam.find((i) => i.id === escolhidoId) ?? null
+  // Pacote lembrado deste item (neste computador) quando troca de item.
+  useEffect(() => setPacoteItem(lerPacote(escolhido?.itemCodigo ?? null)), [escolhido?.itemCodigo])
   const [qtd, setQtd] = useState('')
   const [aviso, setAviso] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
@@ -1712,13 +1742,23 @@ function ConferenciaItens({
                 className="w-16 bg-dark-800 border border-dark-600 rounded px-2 py-0.5 text-xs text-dark-100"
                 aria-label="Quantidade de etiquetas"
               />
+              <input
+                type="number"
+                min={0}
+                placeholder="pacote"
+                title="Unidades por pacote (opcional) — sai PACOTE: N UNIDADES na etiqueta"
+                value={pacoteItem}
+                onChange={(e) => (setPacoteItem(e.target.value), salvarPacote(escolhido.itemCodigo, e.target.value))}
+                className="w-20 bg-dark-800 border border-dark-600 rounded px-2 py-0.5 text-xs text-dark-100"
+                aria-label="Unidades por pacote"
+              />
               <button
                 type="button"
                 className="text-xs text-blue-300 hover:text-blue-200"
                 onClick={() => {
                   const t = lerTamanho('item')
                   const n = Math.max(1, Math.min(500, Number(qtdEtiquetas) || 1))
-                  const html = Array.from({ length: n }, () => htmlEtiquetaItem({ codigo: escolhido.itemCodigo, descricao: escolhido.descricao, pedido: pedidoSap, localizacao: escolhido.localizacao }, t))
+                  const html = Array.from({ length: n }, () => htmlEtiquetaItem({ codigo: escolhido.itemCodigo, descricao: escolhido.descricao, pedido: pedidoSap, localizacao: escolhido.localizacao, codigoAntigo: escolhido.codigoAntigo, pacote: Number(pacoteItem) || null }, t))
                   if (!imprimirEtiquetas(html, t, `Etiqueta ${escolhido.itemCodigo ?? ''}`)) toast.error('O navegador bloqueou a janela de impressão')
                 }}
               >
