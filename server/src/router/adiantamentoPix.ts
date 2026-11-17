@@ -6,7 +6,7 @@ import { router, featureProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { adiantamentosPix, clientes, empresas, users, vendas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
-import { EMPRESAS_PIX, lerPixDesde, lerRegraPix, normalizar, pixDasVendas, salvarPixDesde, salvarRegraPix, tipoPix } from '../lib/adiantamentoPix.js'
+import { EMPRESAS_PIX, MAX_COMPROVANTES_PIX, gravarComprovantes, lerComprovantes, lerPixDesde, lerRegraPix, normalizar, pixDasVendas, salvarPixDesde, salvarRegraPix, tipoPix } from '../lib/adiantamentoPix.js'
 import { filtroPiloto } from '../lib/pilotoFinanceiro.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 
@@ -72,7 +72,10 @@ export const adiantamentoPixRouter = router({
       const lista = linhas
         .map((l) => ({ ...l, tipo: tipoPix(l.condicaoPagamento, regra) }))
         .filter((l) => l.tipo && piloto(l.vendedorId))
-        .map((l) => ({ ...l, status: l.conferidoEm ? 'conferido' : l.comprovantePath ? 'anexado' : 'aguardando' }))
+        .map((l) => {
+          const comprovantes = lerComprovantes(l.comprovantePath, l.comprovanteNome)
+          return { ...l, comprovantes, comprovantePath: comprovantes[0]?.path ?? null, status: l.conferidoEm ? 'conferido' : comprovantes.length ? 'anexado' : 'aguardando' }
+        })
       // À conferir: os que já têm comprovante em cima (é o que o financeiro
       // tem pra fazer agora); depois os que esperam o vendedor.
       if (input.aba === 'conferir') lista.sort((a, b) => Number(b.status === 'anexado') - Number(a.status === 'anexado'))
@@ -138,16 +141,25 @@ export const adiantamentoPixRouter = router({
       return { ok: true }
     }),
 
-  // Vendedor (dono da venda) ou admin anexa o comprovante no card.
+  // Vendedor (dono da venda) ou admin anexa o(s) comprovante(s) no card —
+  // soma aos que já estão lá (até MAX_COMPROVANTES_PIX).
   anexar: protectedProcedure
-    .input(z.object({ vendaId: z.number(), path: z.string().min(1).max(500), nome: z.string().max(255).optional() }))
+    .input(
+      z.object({
+        vendaId: z.number(),
+        arquivos: z.array(z.object({ path: z.string().min(1).max(500), nome: z.string().max(255).optional() })).min(1).max(MAX_COMPROVANTES_PIX),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const v = await acharVenda(input.vendaId)
       if (ctx.user.role !== 'admin' && v.vendedorId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor da venda anexa o comprovante.' })
       const pix = (await pixDasVendas([v])).get(v.id)
       if (!pix) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Essa venda não é à vista nem entrada + boleto.' })
       if (pix.status === 'conferido') throw new TRPCError({ code: 'BAD_REQUEST', message: 'O financeiro já conferiu esse comprovante.' })
-      const dados = { comprovantePath: input.path, comprovanteNome: input.nome ?? null, anexadoEm: agoraSqlite(), anexadoPor: ctx.user.id }
+      const atual = await db.query.adiantamentosPix.findFirst({ where: eq(adiantamentosPix.vendaId, v.id) })
+      const lista = [...lerComprovantes(atual?.comprovantePath, atual?.comprovanteNome), ...input.arquivos.map((a) => ({ path: a.path, nome: a.nome ?? null }))]
+      if (lista.length > MAX_COMPROVANTES_PIX) throw new TRPCError({ code: 'BAD_REQUEST', message: `No máximo ${MAX_COMPROVANTES_PIX} arquivos por venda.` })
+      const dados = { ...gravarComprovantes(lista), anexadoEm: agoraSqlite(), anexadoPor: ctx.user.id }
       await db
         .insert(adiantamentosPix)
         .values({ vendaId: v.id, ...dados })
@@ -155,12 +167,17 @@ export const adiantamentoPixRouter = router({
       return { ok: true }
     }),
 
-  removerComprovante: protectedProcedure.input(z.object({ vendaId: z.number() })).mutation(async ({ ctx, input }) => {
+  // Sem `path` tira todos; com `path` tira só aquele arquivo.
+  removerComprovante: protectedProcedure.input(z.object({ vendaId: z.number(), path: z.string().optional() })).mutation(async ({ ctx, input }) => {
     const v = await acharVenda(input.vendaId)
     if (ctx.user.role !== 'admin' && v.vendedorId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor da venda mexe no comprovante.' })
     const l = await db.query.adiantamentosPix.findFirst({ where: eq(adiantamentosPix.vendaId, v.id) })
     if (l?.conferidoEm) throw new TRPCError({ code: 'BAD_REQUEST', message: 'O financeiro já conferiu — peça pra desfazer a conferência antes.' })
-    await db.update(adiantamentosPix).set({ comprovantePath: null, comprovanteNome: null, anexadoEm: null, anexadoPor: null }).where(eq(adiantamentosPix.vendaId, v.id))
+    const resto = input.path ? lerComprovantes(l?.comprovantePath, l?.comprovanteNome).filter((a) => a.path !== input.path) : []
+    await db
+      .update(adiantamentosPix)
+      .set(resto.length ? gravarComprovantes(resto) : { comprovantePath: null, comprovanteNome: null, anexadoEm: null, anexadoPor: null })
+      .where(eq(adiantamentosPix.vendaId, v.id))
     return { ok: true }
   }),
 })

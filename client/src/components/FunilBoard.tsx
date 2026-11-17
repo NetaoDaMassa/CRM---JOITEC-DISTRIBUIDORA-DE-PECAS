@@ -1236,18 +1236,27 @@ const TIPO_COMPROVANTE_OPTIONS = [
 function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onMudou: () => void }) {
   const pix = venda.pix!
   const [enviando, setEnviando] = useState(false)
-  const anexar = trpc.adiantamentoPix.anexar.useMutation({ onSuccess: () => (toast.success('Comprovante anexado — o financeiro vai conferir'), onMudou()), onError: (e) => toast.error(e.message) })
+  const anexar = trpc.adiantamentoPix.anexar.useMutation({
+    onSuccess: (_r, vars) => (toast.success(vars.arquivos.length > 1 ? `${vars.arquivos.length} arquivos anexados — o financeiro vai conferir` : 'Comprovante anexado — o financeiro vai conferir'), onMudou()),
+    onError: (e) => toast.error(e.message),
+  })
   const remover = trpc.adiantamentoPix.removerComprovante.useMutation({ onSuccess: () => onMudou(), onError: (e) => toast.error(e.message) })
-  const enviar = async (f: File | undefined) => {
-    if (!f) return
+  // Pode escolher várias imagens de uma vez (e anexar mais depois, até o financeiro conferir).
+  const enviar = async (lista: FileList | null) => {
+    const files = lista ? Array.from(lista) : []
+    if (!files.length) return
     setEnviando(true)
     try {
-      const form = new FormData()
-      form.append('file', f)
-      const r = await fetch('/upload/lead-attachment', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
-      if (!r.ok) throw new Error('Falha ao enviar o arquivo')
-      const j = (await r.json()) as { path: string; originalName?: string }
-      await anexar.mutateAsync({ vendaId: venda.id, path: j.path, nome: j.originalName || f.name })
+      const arquivos: { path: string; nome: string }[] = []
+      for (const f of files) {
+        const form = new FormData()
+        form.append('file', f)
+        const r = await fetch('/upload/lead-attachment', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
+        if (!r.ok) throw new Error(`Falha ao enviar ${f.name}`)
+        const j = (await r.json()) as { path: string; originalName?: string }
+        arquivos.push({ path: j.path, nome: j.originalName || f.name })
+      }
+      await anexar.mutateAsync({ vendaId: venda.id, arquivos })
     } catch (e) {
       toast.error((e as Error).message)
     } finally {
@@ -1255,7 +1264,8 @@ function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onM
     }
   }
   const tipo = pix.tipo === 'entrada_boleto' ? 'entrada + boleto' : 'à vista'
-  const url = pix.comprovantePath ? (pix.comprovantePath.startsWith('/') ? pix.comprovantePath : `/uploads/${pix.comprovantePath}`) : null
+  const urlDe = (p: string) => (p.startsWith('/') || p.startsWith('http') ? p : `/uploads/${p}`)
+  const arquivos = pix.comprovantes ?? []
   if (pix.status === 'aguardando')
     return (
       <div className="rounded-lg border border-amber-500/70 bg-amber-900/30 px-2.5 py-2 space-y-1.5">
@@ -1264,23 +1274,32 @@ function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onM
           Venda {tipo}{pix.tipo === 'entrada_boleto' ? ' (comprovante da entrada)' : ''}. Sem o comprovante (e a conferência do financeiro) <b>NÃO SAI NOTA</b> e a expedição <b>NÃO TERMINA</b>.
         </p>
         <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-dark-900 hover:bg-amber-400">
-          {enviando ? 'Enviando…' : '📎 Anexar comprovante do PIX'}
-          <input type="file" accept="image/*,application/pdf" className="hidden" disabled={enviando} onChange={(e) => (enviar(e.target.files?.[0]), (e.target.value = ''))} />
+          {enviando ? 'Enviando…' : '📎 Anexar comprovante(s) do PIX'}
+          <input type="file" multiple accept="image/*,application/pdf" className="hidden" disabled={enviando} onChange={(e) => (enviar(e.target.files), (e.target.value = ''))} />
         </label>
+        <p className="text-[10px] text-amber-200/70">Dá pra escolher várias imagens de uma vez.</p>
       </div>
     )
   return (
     <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs ${pix.status === 'conferido' ? 'border-green-700/40 bg-green-900/15 text-green-300' : 'border-sky-700/40 bg-sky-900/15 text-sky-200'}`}>
       <span>{pix.status === 'conferido' ? '✓ PIX conferido pelo financeiro' : '📎 Comprovante enviado · financeiro conferindo'}</span>
-      {url && (
-        <a href={url} target="_blank" rel="noreferrer" className="underline">
-          ver
-        </a>
-      )}
+      {arquivos.map((a, i) => (
+        <span key={a.path} className="inline-flex items-center gap-1">
+          <a href={urlDe(a.path)} target="_blank" rel="noreferrer" className="underline" title={a.nome ?? undefined}>
+            {arquivos.length > 1 ? `ver ${i + 1}` : 'ver'}
+          </a>
+          {pix.status === 'anexado' && (
+            <button type="button" className="text-dark-400 hover:text-red-400" title="Tirar este arquivo" onClick={() => remover.mutate({ vendaId: venda.id, path: a.path })}>
+              ×
+            </button>
+          )}
+        </span>
+      ))}
       {pix.status === 'anexado' && (
-        <button type="button" className="text-dark-400 hover:text-red-400" onClick={() => remover.mutate({ vendaId: venda.id })}>
-          trocar
-        </button>
+        <label className="cursor-pointer text-dark-300 hover:text-white underline">
+          {enviando ? 'enviando…' : '+ anexar mais'}
+          <input type="file" multiple accept="image/*,application/pdf" className="hidden" disabled={enviando} onChange={(e) => (enviar(e.target.files), (e.target.value = ''))} />
+        </label>
       )}
     </div>
   )

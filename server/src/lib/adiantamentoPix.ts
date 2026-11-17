@@ -66,11 +66,36 @@ export function tipoPix(condicao: string | null | undefined, regra: RegraPix): T
 }
 
 export type StatusPix = 'aguardando' | 'anexado' | 'conferido'
+
+// Vários comprovantes por venda (João, 2026-11-17: "poder anexar mais de uma
+// imagem"). Sem migração: com 1 arquivo `comprovante_path` continua sendo o
+// caminho puro (como sempre foi); com 2+ vira um JSON [{path, nome}] e
+// `comprovante_nome` = "N arquivos". Ler/gravar SEMPRE por estas funções.
+export type ArquivoPix = { path: string; nome: string | null }
+export const MAX_COMPROVANTES_PIX = 15
+export function lerComprovantes(path: string | null | undefined, nome: string | null | undefined): ArquivoPix[] {
+  if (!path) return []
+  if (path.startsWith('[')) {
+    try {
+      const a = JSON.parse(path)
+      if (Array.isArray(a)) return a.filter((x) => x && typeof x.path === 'string' && x.path).map((x) => ({ path: x.path as string, nome: typeof x.nome === 'string' ? x.nome : null }))
+    } catch {
+      /* caminho antigo que por acaso começa com "[" — trata como arquivo único */
+    }
+  }
+  return [{ path, nome: nome ?? null }]
+}
+export function gravarComprovantes(lista: ArquivoPix[]): { comprovantePath: string | null; comprovanteNome: string | null } {
+  if (!lista.length) return { comprovantePath: null, comprovanteNome: null }
+  if (lista.length === 1) return { comprovantePath: lista[0].path, comprovanteNome: lista[0].nome }
+  return { comprovantePath: JSON.stringify(lista), comprovanteNome: `${lista.length} arquivos` }
+}
 export type PixDaVenda = {
   tipo: TipoPix
   status: StatusPix
   comprovantePath: string | null
   comprovanteNome: string | null
+  comprovantes: ArquivoPix[]
   anexadoEm: string | null
   conferidoEm: string | null
 }
@@ -103,11 +128,13 @@ export async function pixDasVendas(lista: VendaBase[]): Promise<Map<number, PixD
   )
   for (const v of validas) {
     const l = linhas.get(v.id)
+    const comprovantes = lerComprovantes(l?.comprovantePath, l?.comprovanteNome)
     out.set(v.id, {
       tipo: tipoPix(v.condicaoPagamento, regra)!,
-      status: l?.conferidoEm ? 'conferido' : l?.comprovantePath ? 'anexado' : 'aguardando',
-      comprovantePath: l?.comprovantePath ?? null,
-      comprovanteNome: l?.comprovanteNome ?? null,
+      status: l?.conferidoEm ? 'conferido' : comprovantes.length ? 'anexado' : 'aguardando',
+      comprovantePath: comprovantes[0]?.path ?? null,
+      comprovanteNome: comprovantes[0]?.nome ?? null,
+      comprovantes,
       anexadoEm: l?.anexadoEm ?? null,
       conferidoEm: l?.conferidoEm ?? null,
     })

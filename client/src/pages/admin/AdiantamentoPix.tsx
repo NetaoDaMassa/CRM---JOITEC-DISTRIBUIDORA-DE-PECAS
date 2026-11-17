@@ -17,6 +17,21 @@ function urlArquivo(path: string) {
   return path.startsWith('/') || path.startsWith('http') ? path : `/uploads/${path}`
 }
 
+// 1 arquivo = "Ver comprovante"; vários = um link por arquivo.
+// onAbrir: a conferência em 2 passos só libera depois de abrir o comprovante.
+function LinksComprovantes({ arquivos, onAbrir }: { arquivos: { path: string; nome: string | null }[]; onAbrir?: () => void }) {
+  if (!arquivos.length) return null
+  return (
+    <div className="flex flex-wrap justify-end gap-x-3 gap-y-0.5">
+      {arquivos.map((a, i) => (
+        <a key={a.path} href={urlArquivo(a.path)} target="_blank" rel="noreferrer" onClick={onAbrir} className="text-sm text-sky-300 hover:underline" title={a.nome ?? undefined}>
+          📎 {arquivos.length > 1 ? `Comprovante ${i + 1}` : 'Ver comprovante'}
+        </a>
+      ))}
+    </div>
+  )
+}
+
 function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
   const utils = trpc.useUtils()
   const { data, isLoading } = trpc.adiantamentoPix.listar.useQuery({ aba })
@@ -70,17 +85,9 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
                 {l.status === 'aguardando' && (
                   <span className="text-[11px] font-bold rounded-lg px-2 py-1 border text-amber-200 bg-amber-900/30 border-amber-600/60">⏳ AGUARDANDO COMPROVANTE DO VENDEDOR</span>
                 )}
-                {l.status === 'anexado' && l.comprovantePath && (
+                {l.status === 'anexado' && l.comprovantes.length > 0 && (
                   <>
-                    <a
-                      href={urlArquivo(l.comprovantePath)}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={() => setAbertos((s) => new Set(s).add(l.vendaId))}
-                      className="text-sm text-sky-300 hover:underline"
-                    >
-                      📎 Ver comprovante
-                    </a>
+                    <LinksComprovantes arquivos={l.comprovantes} onAbrir={() => setAbertos((s) => new Set(s).add(l.vendaId))} />
                     <span className="text-[11px] text-dark-500">anexado {l.anexadoEm ? formatDateTime(l.anexadoEm) : ''}</span>
                     {confirmando === l.vendaId ? (
                       <div className="rounded-lg border border-gold-600/60 bg-dark-900 p-2 text-right space-y-1.5 max-w-[260px]">
@@ -106,11 +113,7 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
                 )}
                 {l.status === 'conferido' && (
                   <>
-                    {l.comprovantePath && (
-                      <a href={urlArquivo(l.comprovantePath)} target="_blank" rel="noreferrer" className="text-sm text-sky-300 hover:underline">
-                        📎 Ver comprovante
-                      </a>
-                    )}
+                    <LinksComprovantes arquivos={l.comprovantes} />
                     <span className="text-[11px] text-green-400">
                       ✓ conferido {l.conferidoEm ? formatDateTime(l.conferidoEm) : ''} {l.conferidoPor ? `por ${l.conferidoPor}` : ''}
                     </span>
