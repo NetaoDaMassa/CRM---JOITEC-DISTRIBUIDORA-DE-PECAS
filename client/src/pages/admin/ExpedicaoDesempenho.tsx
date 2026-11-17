@@ -208,7 +208,10 @@ export default function ExpedicaoDesempenho() {
   )
 }
 
-const ETAPA_ERRO: Record<string, string> = { conferencia: 'Conferência', embalagem: 'Embalagem', expedicao: 'Expedição' }
+// O erro é gravado pela etapa onde foi achado; mostra de qual trabalho ele é
+// (achado na conferência = erro de separação etc.). Campo "Erro de" na tela
+// da Expedição escolhe isso direto (João, 2026-11-17).
+const ETAPA_ERRO: Record<string, string> = { conferencia: 'Separação', embalagem: 'Conferência', expedicao: 'Embalagem' }
 
 // Erros do período, um por linha, com pra quem contou — o "placar" que
 // entra na bonificação. Filtro rápido só embalagem/despacho.
@@ -252,7 +255,7 @@ function ErrosDoPeriodo({ de, ate }: { de: string; ate: string }) {
                 <th className="py-2 pr-3 font-medium">Quando</th>
                 <th className="py-2 pr-3 font-medium">Pedido</th>
                 <th className="py-2 pr-3 font-medium">Tipo</th>
-                <th className="py-2 pr-3 font-medium">Onde achou</th>
+                <th className="py-2 pr-3 font-medium">Erro de</th>
                 <th className="py-2 pr-3 font-medium">Conta para</th>
                 <th className="py-2 font-medium">Detalhe</th>
               </tr>
@@ -553,7 +556,7 @@ function CurvaAbcErros({ de, ate }: { de: string; ate: string }) {
                           <td colSpan={8} className="py-1.5 px-3 text-dark-300">
                             {dataHora(e.createdAt)} · Pedido {e.pedidosSap}
                             {e.nfNumero ? ` · NF ${e.nfNumero}` : ''} · {e.clienteNome ?? '—'} · <b className="text-dark-100">{labelTipoErro(e.tipo)}</b>
-                            {e.quantidade ? ` · ${e.quantidade} un` : ''} · achado na {ETAPA_ERRO[e.etapa] ?? e.etapa} · conta para {e.responsavelNome ?? '—'}
+                            {e.quantidade ? ` · ${e.quantidade} un` : ''} · erro de {(ETAPA_ERRO[e.etapa] ?? e.etapa).toLowerCase()} · conta para {e.responsavelNome ?? '—'}
                             {e.observacao ? ` · ${e.observacao}` : ''}
                           </td>
                         </tr>

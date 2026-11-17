@@ -690,6 +690,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   const [erroItem, setErroItem] = useState('')
   const [erroTipo, setErroTipo] = useState<TipoErro>(['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa) ? 'volume_ficou' : 'faltou')
   const [erroConta, setErroConta] = useState('')
+  const [erroOrigem, setErroOrigem] = useState('')
   const [erroQtd, setErroQtd] = useState('')
   const [erroObs, setErroObs] = useState('')
 
@@ -718,7 +719,20 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
   // Correios" normalmente só aparece depois que saiu (João, 2026-11-10).
   const etapaErro = p.etapa === 'conferencia' || p.etapa === 'embalagem' ? p.etapa : ['nf', 'agendamento', 'coleta', 'coletado'].includes(p.etapa) ? 'expedicao' : null
   const tiposErro = etapaErro === 'expedicao' ? [...TIPOS_ERRO_EMBALAGEM, ...TIPOS_ERRO_ITEM] : TIPOS_ERRO_ITEM
-  const responsavelPadrao = etapaErro === 'expedicao' ? p.embalagemColaboradorId : etapaErro === 'embalagem' ? p.conferenciaColaboradorId : etapaErro === 'conferencia' ? p.separacaoColaboradorId : null
+  // "Erro de": de qual trabalho é o erro (Joitec e Odin Tubos, João 2026-11-17).
+  // Grava como a etapa onde ele seria achado (separação → 'conferencia',
+  // conferência → 'embalagem', embalagem → 'expedicao'), assim o Desempenho,
+  // a Curva ABC e o placar continuam iguais. Só aparece o que já foi feito.
+  const origensErro = (
+    etapaErro === 'expedicao' ? ['separacao', 'conferencia', 'embalagem'] : etapaErro === 'embalagem' ? ['separacao', 'conferencia'] : etapaErro === 'conferencia' ? ['separacao'] : []
+  ) as ('separacao' | 'conferencia' | 'embalagem')[]
+  const ETAPA_DA_ORIGEM = { separacao: 'conferencia', conferencia: 'embalagem', embalagem: 'expedicao' } as const
+  const LABEL_ORIGEM = { separacao: 'Separação', conferencia: 'Conferência', embalagem: 'Embalagem' } as const
+  const origemPadrao = etapaErro === 'expedicao' ? 'embalagem' : etapaErro === 'embalagem' ? 'conferencia' : 'separacao'
+  const origemEscolhida = ehErroDeEmbalagem(erroTipo) ? 'embalagem' : origensErro.includes(erroOrigem as never) ? (erroOrigem as 'separacao' | 'conferencia' | 'embalagem') : origemPadrao
+  const etapaGravar = etapaErro ? ETAPA_DA_ORIGEM[origemEscolhida] : null
+  const responsavelPadrao =
+    origemEscolhida === 'embalagem' ? p.embalagemColaboradorId : origemEscolhida === 'conferencia' ? p.conferenciaColaboradorId ?? p.separacaoColaboradorId : p.separacaoColaboradorId
   const { empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
   const remetente = empresas?.find((e) => e.id === empresaAtivaId)?.nome ?? ''
@@ -1102,7 +1116,14 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
               {etapaErro === 'expedicao' && (
                 <p className="text-xs text-dark-400">Erro de embalagem ou despacho (volume que ficou, transporte errado, não despachou...) conta para quem embalou — mesmo depois da coleta.</p>
               )}
-              <div className="grid sm:grid-cols-[1.6fr_1.6fr_80px_1.2fr_1.2fr_auto] gap-2 items-end">
+              <div className="grid sm:grid-cols-[1fr_1.6fr_1.6fr_80px_1.2fr_1.2fr_auto] gap-2 items-end">
+                <Select
+                  label="Erro de"
+                  value={origemEscolhida}
+                  onChange={(e) => (setErroOrigem(e.target.value), setErroConta(''))}
+                  disabled={ehErroDeEmbalagem(erroTipo)}
+                  options={(ehErroDeEmbalagem(erroTipo) ? (['embalagem'] as const) : origensErro).map((o) => ({ value: o, label: LABEL_ORIGEM[o] }))}
+                />
                 <Select label="Tipo" value={erroTipo} onChange={(e) => setErroTipo(e.target.value as TipoErro)} options={tiposErro.map((t) => ({ value: t.value, label: t.label }))} />
                 {ehErroDeEmbalagem(erroTipo) && erroTipo !== 'embalagem_mal_feita' ? (
                   <div className="hidden sm:block" />
@@ -1132,7 +1153,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                     registrarErro.mutate(
                       {
                         id: p.id,
-                        etapa: etapaErro,
+                        etapa: etapaGravar ?? etapaErro,
                         tipo: erroTipo,
                         itemCodigo: item?.itemCodigo ?? undefined,
                         descricao: item?.descricao,
@@ -1140,7 +1161,7 @@ function PedidoModal({ pedido: p, colaboradores, onClose }: { pedido: Pedido; co
                         observacao: erroObs,
                         responsavelId: erroConta ? Number(erroConta) : undefined,
                       },
-                      { onSuccess: () => (setErroItem(''), setErroQtd(''), setErroObs(''), setErroConta(''), toast.success('Erro anotado')) }
+                      { onSuccess: () => (setErroItem(''), setErroQtd(''), setErroObs(''), setErroConta(''), setErroOrigem(''), toast.success('Erro anotado')) }
                     )
                   }}
                 >
