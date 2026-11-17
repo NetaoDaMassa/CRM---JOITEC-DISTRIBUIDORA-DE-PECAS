@@ -279,6 +279,16 @@ function limitesDia(input: { dataInicio: string; dataFim: string }) {
   return { inicio: `${input.dataInicio} 00:00:00`, fim: `${input.dataFim} 23:59:59` }
 }
 
+// Itens do SAP mês a mês: PPR é produto da Odin Tubos. Nota de PPR emitida
+// pela Joitec (inclusive venda pra própria Odin Tubos) não entra no relatório
+// da Joitec — "cada uma tem que ficar com seus itens" (João, 2026-11-17).
+// A nota continua guardada; só sai da conta.
+async function filtroItensDeOutraEmpresa(empresaId: number) {
+  const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
+  if (emp?.slug !== 'joitec') return null
+  return sql`upper(${sapItensHistorico.descricao}) not like '%PPR%'`
+}
+
 export const reportsRouter = router({
   curvaAbc: protectedProcedure.input(periodoInput).query(async ({ ctx, input }) => {
     const { inicio, fim } = limitesDia(input)
@@ -1890,6 +1900,8 @@ export const reportsRouter = router({
       if (filtroVend) filtros.push(filtroVend)
       const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
       if (filtroReg) filtros.push(filtroReg)
+      const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId)
+      if (filtroOutra) filtros.push(filtroOutra)
       const chave = sql<string>`coalesce(nullif(trim(${sapItensHistorico.codigoItem}), ''), upper(trim(${sapItensHistorico.descricao})))`
       const mes = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
       const linhas = await db
@@ -1968,6 +1980,8 @@ export const reportsRouter = router({
       if (filtroVend) filtros.push(filtroVend)
       const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
       if (filtroReg) filtros.push(filtroReg)
+      const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId)
+      if (filtroOutra) filtros.push(filtroOutra)
       const mes = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
       return db
         .select({
