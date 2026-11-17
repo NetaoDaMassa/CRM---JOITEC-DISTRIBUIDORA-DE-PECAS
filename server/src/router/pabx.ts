@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, desc, eq, gte, inArray, isNotNull, lte, max, sql } from 'drizzle-orm'
 import { router, protectedProcedure, superAdminProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, contasVinculadas, empresas, funilMensal, gotoRamais, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
+import { clientes, cobrancaContatos, contasVinculadas, empresas, funilMensal, gotoRamais, leads, pabxLigacoesProcessadas, pabxRamais, registroContato, users } from '../db/schema.js'
 import { getConfigBool, getConfigNumero, getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { agoraSqlite, contarDiasUteis, hojeBrString } from '../lib/dataBr.js'
 import {
@@ -43,11 +43,17 @@ const paraSqlite = (d: Date) => d.toISOString().replace('T', ' ').slice(0, 19)
 export async function podeOuvirLigacao(
   user: { id: number; role: string; superAdmin: boolean },
   empresaIdAtual: number | null,
-  ligacao: { userId: number | null; empresaId: number | null; registroContatoId?: number | null; leadId?: number | null; clienteId?: number | null }
+  ligacao: { id?: number; userId: number | null; empresaId: number | null; registroContatoId?: number | null; leadId?: number | null; clienteId?: number | null }
 ): Promise<boolean> {
   if (user.superAdmin) return true
   const meus = await idsDaPessoa(user.id)
   if (ligacao.userId && meus.includes(ligacao.userId)) return true
+  // Ligação de cobrança (lib/cobrancaLigacoes.ts): todo mundo da tela
+  // Cobrança ouve — o financeiro acompanha as cobranças umas das outras.
+  if (ligacao.id && (await temFeature(user.id, 'cobranca_sap'))) {
+    const c = await db.query.cobrancaContatos.findFirst({ where: eq(cobrancaContatos.pabxLigacaoId, ligacao.id), columns: { id: true } })
+    if (c) return true
+  }
   // Ligação registrada num card do Kanban: o dono do card ouve; admin da
   // empresa do card também (é ele quem acompanha a carteira).
   if (ligacao.registroContatoId) {

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Mail, MessageCircle, Phone, RefreshCw } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
+import GravacaoLigacao from '../../components/ui/GravacaoLigacao'
 import { Input, Textarea } from '../../components/ui/Input'
 import { formatDateTime } from '../../lib/utils'
 import { formatarMoeda } from '../../lib/moeda'
@@ -80,9 +81,14 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
   const ligar = () => {
     const tel = g.contato?.telefone
     if (!tel) return toast.error('Cliente sem telefone no cadastro do CRM')
-    if (ramal?.click2call) discar.mutate({ numero: tel }, { onSuccess: () => toast.success('Ligando pelo PABX — atenda o seu ramal') })
-    else window.location.href = `tel:${tel.replace(/\D/g, '')}`
-    reg('ligacao')
+    // Pelo PABX a ligação entra sozinha no histórico (atendida ou não, com a
+    // gravação) — lib/cobrancaLigacoes.ts. Sem PABX, registra no clique.
+    if (ramal?.click2call)
+      discar.mutate({ numero: tel }, { onSuccess: () => toast.success('Ligando pelo PABX — atenda o seu ramal. A ligação entra sozinha no histórico.') })
+    else {
+      window.location.href = `tel:${tel.replace(/\D/g, '')}`
+      reg('ligacao')
+    }
   }
   const email = () => {
     if (!g.contato?.email) return toast.error('Cliente sem e-mail no cadastro do CRM')
@@ -242,6 +248,12 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                     {formatDateTime(c.createdAt)} · {TIPO_LABEL[c.tipo]} por {CANAL_LABEL[c.canal]}
                     {c.diaRegua ? ` (dia ${c.diaRegua})` : ''} · {c.quem ?? '—'}
                     {c.observacao ? ` — ${c.observacao}` : ''}
+                    {c.ligacaoId && c.ligacaoPartes > 0 && (
+                      <div className="mt-1 mb-1.5">
+                        <GravacaoLigacao ligacaoId={c.ligacaoId} partes={c.ligacaoPartes} />
+                      </div>
+                    )}
+                    {c.ligacaoId && !c.ligacaoPartes && c.ligacaoEfetiva && <span className="text-dark-500"> · 🎧 a gravação aparece aqui alguns minutos depois</span>}
                   </li>
                 ))}
             </ul>

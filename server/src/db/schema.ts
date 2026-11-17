@@ -5535,8 +5535,12 @@ export const cobrancaContatos = sqliteTable(
     observacao: text('observacao'),
     userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    // Ligação do PABX/GoTo que virou este contato (registro automático +
+    // gravação) — lib/cobrancaLigacoes.ts, 2026-11-17.
+    pabxLigacaoId: integer('pabx_ligacao_id').references(() => pabxLigacoesProcessadas.id, { onDelete: 'set null' }),
   },
   (t) => ({
     tituloIdx: index('idx_cobranca_contatos_titulo').on(t.tituloId),
+    ligacaoIdx: index('idx_cobranca_contatos_ligacao').on(t.pabxLigacaoId),
   })
 )

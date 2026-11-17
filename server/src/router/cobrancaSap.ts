@@ -3,7 +3,8 @@ import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, cobrancaContatos, cobrancaTitulos, empresas, sapTitulosAbertos, users } from '../db/schema.js'
+import { clientes, cobrancaContatos, cobrancaTitulos, empresas, pabxLigacoesProcessadas, sapTitulosAbertos, users } from '../db/schema.js'
+import { registrarLigacoesCobranca } from '../lib/cobrancaLigacoes.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { setConfig } from '../lib/configuracoes.js'
 import { diaUtilApos } from '../lib/reguaCobranca.js'
@@ -27,6 +28,8 @@ export const cobrancaSapRouter = router({
       } catch (e) {
         console.error('[cobranca] atualizar falhou', e)
       }
+      // Ligações que acabaram de acontecer já entram no histórico ao abrir a tela.
+      await registrarLigacoesCobranca().catch((e) => console.error('[cobranca] ligações', e))
       const hoje = hojeBrString()
       const titulos = await db
         .select()
@@ -35,14 +38,28 @@ export const cobrancaSapRouter = router({
         .orderBy(cobrancaTitulos.vencimento)
         .limit(input.aba === 'pago' ? 400 : 3000)
       const ids = titulos.map((t) => t.id)
-      const contatos = ids.length
+      const contatosBrutos = ids.length
         ? await db
-            .select({ id: cobrancaContatos.id, tituloId: cobrancaContatos.tituloId, canal: cobrancaContatos.canal, tipo: cobrancaContatos.tipo, diaRegua: cobrancaContatos.diaRegua, observacao: cobrancaContatos.observacao, createdAt: cobrancaContatos.createdAt, quem: users.name })
+            .select({
+              id: cobrancaContatos.id,
+              tituloId: cobrancaContatos.tituloId,
+              canal: cobrancaContatos.canal,
+              tipo: cobrancaContatos.tipo,
+              diaRegua: cobrancaContatos.diaRegua,
+              observacao: cobrancaContatos.observacao,
+              createdAt: cobrancaContatos.createdAt,
+              quem: users.name,
+              ligacaoId: cobrancaContatos.pabxLigacaoId,
+              ligacaoEfetiva: pabxLigacoesProcessadas.efetiva,
+              ligacaoGravacao: pabxLigacoesProcessadas.linkGravacao,
+            })
             .from(cobrancaContatos)
             .leftJoin(users, eq(users.id, cobrancaContatos.userId))
+            .leftJoin(pabxLigacoesProcessadas, eq(pabxLigacoesProcessadas.id, cobrancaContatos.pabxLigacaoId))
             .where(inArray(cobrancaContatos.tituloId, ids))
             .orderBy(desc(cobrancaContatos.id))
         : []
+      const contatos = contatosBrutos.map(({ ligacaoGravacao, ...c }) => ({ ...c, ligacaoPartes: (ligacaoGravacao ?? '').split('\n').filter(Boolean).length }))
       const contatosPor = new Map<number, typeof contatos>()
       for (const c of contatos) contatosPor.set(c.tituloId, [...(contatosPor.get(c.tituloId) ?? []), c])
 

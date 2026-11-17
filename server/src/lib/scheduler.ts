@@ -20,6 +20,7 @@ import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, 
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
+import { registrarLigacoesCobranca } from './cobrancaLigacoes.js'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
 // (backup) e 14 (resumo diário).
@@ -218,6 +219,14 @@ export function startScheduler() {
     enviarVencidasAoCartorio()
       .then((n) => n && console.log(`[regua-cobranca] ${n} cobrança(s) enviada(s) ao cartório`))
       .catch((err) => console.error('[regua-cobranca] erro:', err))
+  })
+
+  // Cobrança: ligação do financeiro pra cliente com título a cobrar entra
+  // sozinha no histórico, com a gravação (lib/cobrancaLigacoes.ts).
+  cron.schedule('* * * * *', () => {
+    registrarLigacoesCobranca()
+      .then((n) => n && console.log(`[cobranca] ${n} ligação(ões) registrada(s) na cobrança`))
+      .catch((err) => console.error('[cobranca] erro ao registrar ligações:', err))
   })
 
   // SAP Business One (sapAgendado.ts): itens das notas + contas a receber,
