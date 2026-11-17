@@ -1184,6 +1184,13 @@
       "when": 1795100000000,
       "tag": "0168_cobranca_ligacao",
       "breakpoints": true
+    },
+    {
+      "idx": 169,
+      "version": "6",
+      "when": 1795100100000,
+      "tag": "0169_propostas_geracao",
+      "breakpoints": true
     }
   ]
 }

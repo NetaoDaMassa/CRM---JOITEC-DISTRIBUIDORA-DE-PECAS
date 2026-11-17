@@ -10,6 +10,7 @@ import { empresas, clientes, propostas, propostaArquivos, propostaFeedbacks, pro
 import { agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { assertDonoOuGestor, mudarEtapaProposta, notificarGestores } from '../lib/propostasGates.js'
+import { propostaGeradorRouter } from './propostaGerador.js'
 
 export const SLUG_PROPOSTAS = 'odin-compressores'
 
@@ -25,6 +26,9 @@ async function assertPropostaAlcancavel(propostaId: number, empresaId: number) {
 }
 
 export const propostasRouter = router({
+  // "Gerar proposta" a partir dos modelos PowerPoint da Odin (2026-11-17).
+  gerador: propostaGeradorRouter,
+
   // Catálogo de modelos (mesmo do Almoxarifado) — usado no seletor de
   // Produtos/Serviços da proposta (ProductSelector.tsx), igual ao odincrm
   // original (ProductSelector busca em inventoryApi.searchModelCatalog()).

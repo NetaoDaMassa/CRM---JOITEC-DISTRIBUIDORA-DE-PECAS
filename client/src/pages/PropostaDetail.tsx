@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { ArrowRight, ArrowLeft, XCircle, RefreshCcw, X, Paperclip, Trash2, MessageCircle, Send, AlertCircle } from 'lucide-react'
+import { ArrowRight, ArrowLeft, XCircle, RefreshCcw, X, Paperclip, Trash2, MessageCircle, Send, AlertCircle, FileText } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import Button from '../components/ui/Button'
@@ -9,6 +9,7 @@ import { Input, Textarea } from '../components/ui/Input'
 import { Badge } from '../components/ui/Badge'
 import { PROPOSTA_STAGE_LABELS, PROPOSTA_STAGE_NEXT, PROPOSTA_STAGE_PREV, type PropostaStage } from '../lib/propostasShared'
 import ProductSelector from '../components/ProductSelector'
+import GerarPropostaModal from '../components/GerarPropostaModal'
 import { formatDateTime } from '../lib/utils'
 
 export default function PropostaDetail({ propostaId, onClose }: { propostaId: number; onClose: () => void }) {
@@ -234,6 +235,7 @@ function PropostaForm({
   const [prioridade, setPrioridade] = useState(proposta.prioridade ?? 'normal')
   const [motivoUrgencia, setMotivoUrgencia] = useState(proposta.motivoUrgencia ?? '')
   const [enviandoPdf, setEnviandoPdf] = useState(false)
+  const [gerarAberto, setGerarAberto] = useState(false)
   const [enviandoCad, setEnviandoCad] = useState(false)
   const [novaAlteracao, setNovaAlteracao] = useState('')
   const [novoFeedback, setNovoFeedback] = useState('')
@@ -403,10 +405,16 @@ function PropostaForm({
             PDF da Proposta {proposta.stage === 'proposta' && <span className="text-red-400 ml-1">*obrigatório para avançar</span>}
           </p>
           {podeEditar && (
-            <label className="flex items-center gap-1.5 rounded-lg bg-gold-600 hover:bg-gold-500 px-3 py-1.5 text-xs font-semibold text-dark-950 cursor-pointer">
-              {enviandoPdf ? 'Enviando...' : 'Anexar PDF'}
-              <input type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f, 'proposta_pdf'); e.target.value = '' }} disabled={enviandoPdf} />
-            </label>
+            <div className="flex items-center gap-2">
+              {/* Monta o PDF a partir dos modelos PowerPoint da Odin (2026-11-17). */}
+              <button onClick={() => setGerarAberto(true)} className="flex items-center gap-1.5 rounded-lg bg-gold-600 hover:bg-gold-500 px-3 py-1.5 text-xs font-semibold text-dark-950">
+                <FileText size={13} /> Gerar proposta
+              </button>
+              <label className="flex items-center gap-1.5 rounded-lg bg-dark-700 hover:bg-dark-600 border border-dark-600 px-3 py-1.5 text-xs font-semibold text-dark-100 cursor-pointer">
+                {enviandoPdf ? 'Enviando...' : 'Anexar PDF'}
+                <input type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f, 'proposta_pdf'); e.target.value = '' }} disabled={enviandoPdf} />
+              </label>
+            </div>
           )}
         </div>
         {pdfFiles.length === 0 ? (
@@ -422,6 +430,8 @@ function PropostaForm({
           </div>
         )}
       </div>
+
+      {gerarAberto && <GerarPropostaModal propostaId={propostaId} open={gerarAberto} onClose={() => setGerarAberto(false)} />}
 
       <div className="rounded-xl border border-amber-700/40 p-4 space-y-3">
         <p className="text-xs font-semibold text-amber-400 uppercase tracking-wide flex items-center gap-1.5">

@@ -29,6 +29,11 @@ ENV NODE_ENV=production
 # ffmpeg: as gravações da PABXONE360 vêm em WAV de telefonia que o navegador
 # não toca (player 0:00) — o /pabx-gravacao converte pra MP3 (2026-11-05).
 RUN apk add --no-cache ffmpeg
+# LibreOffice: "Gerar proposta" (Odin Compressores, 2026-11-17) transforma o
+# PowerPoint preenchido em PDF. Precisa do pacote completo — só o
+# libreoffice-impress quebra na conversão (RuntimeException) no Alpine.
+# Carlito = mesma medida da Calibri; Liberation = da Arial (fontes dos modelos).
+RUN apk add --no-cache libreoffice font-carlito font-liberation
 
 # package.json é necessário para o Node tratar os .js como ESM ("type": "module").
 COPY --from=build /app/package.json ./package.json

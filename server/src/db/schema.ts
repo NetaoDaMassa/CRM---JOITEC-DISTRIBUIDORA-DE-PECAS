@@ -3138,6 +3138,10 @@ export const propostas = sqliteTable(
     codSap: text('cod_sap'),
     formaPagamento: text('forma_pagamento'),
     observacoes: text('observacoes'),
+    // Dados do "Gerar proposta" (JSON de DadosGeracao, lib/propostaModelo/
+    // gerar.ts): cliente, itens com valores, pagamento — digitados uma vez e
+    // reaproveitados nas próximas versões da proposta. João, 2026-11-17.
+    geracaoDados: text('geracao_dados'),
     prioridade: text('prioridade', { enum: ['normal', 'urgente'] }).notNull().default('normal'),
     motivoUrgencia: text('motivo_urgencia'),
     motivoPerda: text('motivo_perda'),
