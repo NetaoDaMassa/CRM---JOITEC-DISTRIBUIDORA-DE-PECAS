@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { trpc } from '../lib/trpc'
 import { textoVolumes } from '../lib/volumesExpedicao'
 import ConversarSobreIssoButton from './chat/ConversarSobreIssoButton'
+import { FotoProduto } from './FotoProduto'
 import HistoricoAgendamentos from './HistoricoAgendamentos'
 
 const PASSOS = ['aprovacao', 'pedido', 'separacao', 'conferencia', 'embalagem', 'nf', 'agendamento', 'coleta', 'coletado'] as const
@@ -66,10 +67,45 @@ export default function JornadaPedidosCliente({ clienteId }: { clienteId: number
             {p.podeAgendar && p.expedicaoId && (
               <AgendarColeta expedicaoId={p.expedicaoId} pedido={p.pedido} jaAgendada={p.etapa === 'coleta'} transportadora={p.transportadora ?? ''} transportadoraFixa={!!p.transportadoraFixa} coletaAgendada={p.coletaAgendada ?? ''} volumes={textoVolumes(p)} />
             )}
+            {p.fotos && p.fotos.length > 0 && <FotosDaExpedicao pedido={p.pedido} fotos={p.fotos} />}
             {p.agendamentos && p.agendamentos.length > 1 && <HistoricoAgendamentos agendamentos={p.agendamentos} />}
             {p.entrySap ? (
               <ConversarSobreIssoButton tipoOrigem="expedicao" idOrigem={p.entrySap} titulo={`Pedido ${p.pedido} — expedição`} rotulo="Falar com a expedição" />
             ) : null}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Fotos que a expedição tirou do pedido (bancada na conferência e pedido
+// completo com a NF) — pro vendedor mostrar/mandar pro cliente (João, 2026-11-17).
+// Clique amplia com zoom; dá pra baixar pelo botão direito/segurar no celular.
+function FotosDaExpedicao({ pedido, fotos }: { pedido: string; fotos: { url: string; tipo: 'conferencia' | 'nf'; data: string }[] }) {
+  const grupos = [
+    { tipo: 'conferencia' as const, rotulo: 'Conferência (bancada)' },
+    { tipo: 'nf' as const, rotulo: 'Pedido completo com a NF' },
+  ]
+  return (
+    <div className="space-y-1.5">
+      <p className="text-xs font-semibold text-dark-300">📷 Fotos da expedição</p>
+      {grupos.map((g) => {
+        const lista = fotos.filter((f) => f.tipo === g.tipo)
+        if (!lista.length) return null
+        return (
+          <div key={g.tipo} className="space-y-1">
+            <p className="text-[11px] text-dark-500">{g.rotulo}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {lista.map((f) => (
+                <div key={f.url} className="flex flex-col items-center gap-0.5">
+                  <FotoProduto codigo={null} nome={`Pedido ${pedido} — ${g.rotulo} · ${dataHoraBr(f.data)}`} foto={f.url} tamanho="h-16 w-16" />
+                  <a href={f.url} download className="text-[10px] text-cyan-300 hover:underline" onClick={(e) => e.stopPropagation()}>
+                    baixar
+                  </a>
+                </div>
+              ))}
+            </div>
           </div>
         )
       })}

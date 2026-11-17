@@ -3,7 +3,7 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, like, lte, ne, not
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoAgendamentos, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users, vendas } from '../db/schema.js'
+import { clientes, empresas, expedicaoAgendamentos, funilMensal, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapPedidosPendentes, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
 import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
@@ -102,6 +102,9 @@ type PassoJornada = {
   // Kanban (João 2026-11-12). Só com a NF emitida.
   expedicaoId?: number; podeAgendar?: boolean; transportadora?: string | null; transportadoraFixa?: boolean; coletaAgendada?: string | null
   volumes?: number | null; packs?: number | null; sacos?: number | null; caixas?: number | null
+  // Fotos que a expedição tirou (bancada na conferência + pedido com a NF) —
+  // o vendedor vê no card/ficha (João, 2026-11-17: "disponibilizar pra equipe de vendas").
+  fotos?: { url: string; tipo: 'conferencia' | 'nf'; data: string }[]
 }
 
 // Empresas onde o vendedor agenda a coleta pelo card (não o estoque).
@@ -188,6 +191,15 @@ async function jornadaPorCodigos(
   const nomes = new Map(ids.length ? (await db.select({ id: expedicaoColaboradores.id, nome: expedicaoColaboradores.nome }).from(expedicaoColaboradores).where(inArray(expedicaoColaboradores.id, ids))).map((c) => [c.id, c.nome]) : [])
   const nome = (id: number | null) => (id ? nomes.get(id) ?? '' : '')
   const agendamentos = await agendamentosPorCard(exp.map((p) => p.id))
+  const fotosPorCard = new Map<number, NonNullable<PassoJornada['fotos']>>()
+  if (exp.length) {
+    const fotos = await db
+      .select({ expedicaoId: expedicaoFotos.expedicaoId, url: expedicaoFotos.url, tipo: expedicaoFotos.tipo, data: expedicaoFotos.createdAt })
+      .from(expedicaoFotos)
+      .where(inArray(expedicaoFotos.expedicaoId, exp.map((p) => p.id)))
+      .orderBy(asc(expedicaoFotos.id))
+    for (const f of fotos) fotosPorCard.set(f.expedicaoId, [...(fotosPorCard.get(f.expedicaoId) ?? []), { url: f.url, tipo: f.tipo, data: f.data }])
+  }
   const empresasVendedorAgenda = new Set(
     (await db.select({ id: empresas.id }).from(empresas).where(inArray(empresas.slug, EMPRESAS_VENDEDOR_AGENDA))).map((e) => e.id)
   )
@@ -244,6 +256,7 @@ async function jornadaPorCodigos(
       packs: p.packs,
       sacos: p.sacos,
       caixas: p.caixas,
+      fotos: fotosPorCard.get(p.id) ?? [],
     }
     for (const k of chaves) add(k, passo)
   }
@@ -526,7 +539,13 @@ export const expedicaoRouter = router({
       columns: { codigo: true, codigoAntigo: true, vendedorAtualId: true },
     })
     if (!c) throw new TRPCError({ code: 'NOT_FOUND', message: 'Cliente não encontrado' })
-    if (ctx.user.role !== 'admin' && c.vendedorAtualId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' })
+    // Vendedor: dono do cadastro OU quem tem venda/card nele (a venda do SAP vai
+    // pra quem fez o pedido, às vezes no cadastro de outra vendedora).
+    if (ctx.user.role !== 'admin' && c.vendedorAtualId !== ctx.user.id) {
+      const [venda] = await db.select({ id: vendas.id }).from(vendas).where(and(eq(vendas.clienteId, input.clienteId), eq(vendas.vendedorId, ctx.user.id), isNull(vendas.deletedAt))).limit(1)
+      const [card] = venda ? [venda] : await db.select({ id: funilMensal.id }).from(funilMensal).where(and(eq(funilMensal.clienteId, input.clienteId), eq(funilMensal.vendedorId, ctx.user.id), isNull(funilMensal.deletedAt))).limit(1)
+      if (!card) throw new TRPCError({ code: 'FORBIDDEN', message: 'Acesso negado' })
+    }
     const codigos = [c.codigo, c.codigoAntigo].filter((x): x is string => !!x)
     // + os pedidos do SAP das vendas do cliente (aparecem sempre — ver jornadaPorCodigos).
     const doCliente = await entriesDasVendas([input.clienteId])
@@ -577,7 +596,7 @@ export const expedicaoRouter = router({
       // Odin Tubos: pedido esperando o vendedor agendar a coleta vem antes de tudo.
       const p = passos.find((x) => x.podeAgendar && x.etapa !== 'coleta') ?? passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
       if (!p) return []
-      const { agendamentos: _lista, ...etiqueta } = p
+      const { agendamentos: _lista, fotos: _fotos, ...etiqueta } = p
       return [{ clienteId: c.id, total: passos.length, ...etiqueta }]
     })
   }),
