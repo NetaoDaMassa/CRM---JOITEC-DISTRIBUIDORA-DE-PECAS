@@ -16,7 +16,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarSincronizacaoSap, rodarVendasSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap } from './sapAgendado.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
@@ -266,6 +266,10 @@ export function startScheduler() {
   cron.schedule('47 * * * *', () => {
     rodarCatalogoSap().catch((err) => console.error('[sap-catalogo] erro no agendador:', err))
   })
+  // Isento pela regra do SAP (fora SC) — todo dia às 6h37.
+  cron.schedule('37 6 * * *', () => {
+    rodarIsentosSap().catch((err) => console.error('[sap-isentos] erro no agendador:', err))
+  }, { timezone: 'America/Sao_Paulo' })
   // Cadastro novo do SAP vira cliente no CRM — de 10 em 10 minutos.
   cron.schedule('3-59/10 * * * *', () => {
     rodarClientesSap().catch((err) => console.error('[sap-clientes] erro no agendador:', err))

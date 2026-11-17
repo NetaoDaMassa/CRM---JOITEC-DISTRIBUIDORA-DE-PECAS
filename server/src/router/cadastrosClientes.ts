@@ -25,6 +25,7 @@ import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { formasPagamentoDaFilial } from '../lib/sapCotacoesEscrita.js'
 import { vendedoresLigados, vendedoresSap } from '../lib/sapClientes.js'
 import { comSessaoSap, sapConfigurado } from '../lib/sapServiceLayer.js'
+import { atualizarIsentoDoCliente } from '../lib/sapIsentos.js'
 import {
   FILIAIS_SAP,
   GRUPOS_CLIENTE,
@@ -625,6 +626,8 @@ export const cadastrosClientesRouter = router({
         })
         .where(eq(cadastrosClientesSap.id, l.id))
       if (l.clienteId) await db.update(clientes).set({ statusFiscal: statusFiscalDe(novos), updatedAt: agoraSqlite() }).where(eq(clientes.id, l.clienteId))
+      // Isento quem decide é o SAP (regra Grupo ISENTO + não contribuinte + consumidor final, fora SC).
+      await atualizarIsentoDoCliente(l.cardCode, ctx.user.id).catch((e) => console.error('[sap-isentos] cadastro aprovado:', e instanceof Error ? e.message : e))
       if (l.vendedorId) await avisar(l.vendedorId, l.clienteId, 'Cadastro aprovado ✅', `${d.nome.toUpperCase()} (${l.cardCode}) foi aprovado por ${ctx.user.name} — já pode vender.`)
       return { ok: true }
     }),

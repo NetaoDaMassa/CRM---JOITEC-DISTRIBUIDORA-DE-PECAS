@@ -15,6 +15,7 @@ import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
 import { sincronizarEstoqueSap } from './sapEstoque.js'
 import { sincronizarCatalogoSap } from './sapCatalogo.js'
 import { sincronizarNfRapida } from './sapNfRapida.js'
+import { sincronizarIsentosSap } from './sapIsentos.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -179,5 +180,20 @@ export async function rodarCatalogoSap(): Promise<void> {
     console.error('[sap-catalogo] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoCatalogo = false
+  }
+}
+
+// Isento pela regra do SAP (lib/sapIsentos.ts) — uma vez por dia, de manhã.
+let rodandoIsentos = false
+export async function rodarIsentosSap(): Promise<void> {
+  if (rodandoIsentos || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoIsentos = true
+  try {
+    const r = await sincronizarIsentosSap()
+    if (r) console.log(`[sap-isentos] ${r.conferidos} cliente(s) conferido(s): ${r.viraramIsento} viraram isento, ${r.deixaramDeSer} deixaram de ser — ${r.isentosAgora} isento(s) agora`)
+  } catch (err) {
+    console.error('[sap-isentos] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoIsentos = false
   }
 }
