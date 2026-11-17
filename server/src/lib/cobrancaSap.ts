@@ -84,16 +84,21 @@ async function atualizar() {
         vencimento: t.vencimento!.slice(0, 10),
         valor: t.valorAberto,
         vendedorSap: t.vendedorSap,
+        formaPagamento: t.formaPagamento,
+        formaPagamentoDesc: t.formaPagamentoDesc,
+        cnpjCliente: t.cnpjCliente,
       })
       novos++
     } else {
       // Voltou a aparecer em aberto depois de "pago automático" = baixa
       // estornada no SAP: volta pra cobrança.
       const reabrir = e.status === 'pago' && e.pagoAuto
-      if (reabrir || e.valor !== t.valorAberto || e.nomeCliente !== t.nomeCliente)
+      // Banco e CNPJ: atualiza também os títulos que já estavam na cobrança.
+      const mudouBanco = (t.formaPagamento ?? null) !== (e.formaPagamento ?? null) || (t.formaPagamentoDesc ?? null) !== (e.formaPagamentoDesc ?? null) || (t.cnpjCliente ?? null) !== (e.cnpjCliente ?? null)
+      if (reabrir || mudouBanco || e.valor !== t.valorAberto || e.nomeCliente !== t.nomeCliente)
         await db
           .update(cobrancaTitulos)
-          .set({ valor: t.valorAberto, nomeCliente: t.nomeCliente, atualizadoEm: agoraSqlite(), ...(reabrir ? { status: e.rcEm ? 'rc' : e.cartorioEm ? 'cartorio' : 'cobrar', pagoEm: null, pagoAuto: false } : {}) })
+          .set({ valor: t.valorAberto, nomeCliente: t.nomeCliente, formaPagamento: t.formaPagamento, formaPagamentoDesc: t.formaPagamentoDesc, cnpjCliente: t.cnpjCliente, atualizadoEm: agoraSqlite(), ...(reabrir ? { status: e.rcEm ? 'rc' : e.cartorioEm ? 'cartorio' : 'cobrar', pagoEm: null, pagoAuto: false } : {}) })
           .where(eq(cobrancaTitulos.id, e.id))
     }
   }

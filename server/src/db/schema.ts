@@ -4382,6 +4382,9 @@ export const sapTitulosAbertos = sqliteTable(
     filialSap: integer('filial_sap'),
     empresaSlug: text('empresa_slug'),
     vendedorSap: text('vendedor_sap'),
+    formaPagamento: text('forma_pagamento'),
+    formaPagamentoDesc: text('forma_pagamento_desc'),
+    cnpjCliente: text('cnpj_cliente'),
     atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
   },
   (t) => ({
@@ -5512,6 +5515,10 @@ export const cobrancaTitulos = sqliteTable(
     documento: text('documento').notNull(),
     parcela: text('parcela'),
     emissao: text('emissao'),
+    // Banco (forma de pagamento da nota no SAP) e CNPJ/CPF — 2026-11-17.
+    formaPagamento: text('forma_pagamento'),
+    formaPagamentoDesc: text('forma_pagamento_desc'),
+    cnpjCliente: text('cnpj_cliente'),
     vencimento: text('vencimento').notNull(),
     valor: real('valor').notNull(),
     vendedorSap: text('vendedor_sap'),

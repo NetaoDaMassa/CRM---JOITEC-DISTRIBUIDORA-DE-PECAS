@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Mail, MessageCircle, Phone, RefreshCw } from 'lucide-react'
+import { Copy, Mail, MessageCircle, Phone, RefreshCw } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import GravacaoLigacao from '../../components/ui/GravacaoLigacao'
@@ -27,6 +27,13 @@ function montarMensagem(modelo: string, g: Grupo) {
     .map((t) => `• ${t.tipo === 'nota' ? 'NF' : 'Título'} ${t.documento}${t.parcela ? `/${t.parcela}` : ''} — venc. ${dataBr(t.vencimento)} — ${formatarMoeda(t.valor)}`)
     .join('\n')
   return modelo.replaceAll('{cliente}', g.contato?.nomeContato || g.nomeCliente || '').replaceAll('{titulos}', titulos).replaceAll('{total}', formatarMoeda(g.total))
+}
+
+function formatarDoc(d: string) {
+  const n = d.replace(/\D/g, '')
+  if (n.length === 14) return n.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')
+  if (n.length === 11) return n.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4')
+  return d
 }
 
 function telefoneWa(tel: string | null | undefined) {
@@ -65,18 +72,26 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
   const discar = trpc.pabx.discar.useMutation({ onError: erro })
   const [historico, setHistorico] = useState(false)
   const [obs, setObs] = useState('')
+  // Depois de abrir WhatsApp / e-mail / telefone, a cobrança só fica
+  // registrada quando a pessoa confirma (João, 2026-11-17).
+  const [aConfirmar, setAConfirmar] = useState<null | 'whatsapp' | 'ligacao' | 'email'>(null)
+  const documento = g.titulos.find((t) => t.cnpjCliente)?.cnpjCliente ?? g.contato?.documento ?? null
 
   const ids = g.titulos.map((t) => t.id)
   const tipoContato = aba === 'cartorio' ? ('aviso_cartorio' as const) : ('cobranca' as const)
   const modelo = aba === 'cartorio' ? msgs?.cartorio : msgs?.cobranca
   const texto = modelo ? montarMensagem(modelo, g) : ''
   const wa = telefoneWa(g.contato?.telefone)
-  const reg = (canal: 'whatsapp' | 'ligacao' | 'email' | 'outro') => registrar.mutate({ tituloIds: ids, canal, tipo: tipoContato, observacao: obs || undefined })
+  const reg = (canal: 'whatsapp' | 'ligacao' | 'email' | 'outro', observacao?: string) =>
+    registrar.mutate(
+      { tituloIds: ids, canal, tipo: tipoContato, observacao: observacao || undefined },
+      { onSuccess: () => (setAConfirmar(null), setObs('')) }
+    )
 
   const whatsapp = () => {
     if (!wa) return toast.error('Cliente sem celular no cadastro do CRM')
     window.open(`https://wa.me/${wa}?text=${encodeURIComponent(texto)}`, '_blank')
-    reg('whatsapp')
+    setAConfirmar('whatsapp')
   }
   const ligar = () => {
     const tel = g.contato?.telefone
@@ -87,14 +102,14 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
       discar.mutate({ numero: tel }, { onSuccess: () => toast.success('Ligando pelo PABX — atenda o seu ramal. A ligação entra sozinha no histórico.') })
     else {
       window.location.href = `tel:${tel.replace(/\D/g, '')}`
-      reg('ligacao')
+      setAConfirmar('ligacao')
     }
   }
   const email = () => {
     if (!g.contato?.email) return toast.error('Cliente sem e-mail no cadastro do CRM')
     const assunto = aba === 'cartorio' ? 'Aviso: título encaminhado ao cartório' : 'Títulos em aberto'
     window.location.href = `mailto:${g.contato.email}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`
-    reg('email')
+    setAConfirmar('email')
   }
 
   const avisado = g.titulos.every((t) => t.cartorioAvisoEm)
@@ -106,6 +121,19 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
           <p className="text-sm font-semibold text-dark-100">
             {g.nomeCliente} <span className="text-xs font-normal text-dark-500">{g.codigoCliente}</span>
           </p>
+          {documento && (
+            <p className="text-xs text-dark-200">
+              {documento.replace(/\D/g, '').length === 11 ? 'CPF' : 'CNPJ'} <b>{formatarDoc(documento)}</b>
+              <button
+                type="button"
+                title="Copiar"
+                className="ml-1 align-middle text-dark-400 hover:text-gold-300"
+                onClick={() => navigator.clipboard.writeText(documento.replace(/\D/g, '')).then(() => toast.success('Copiado'))}
+              >
+                <Copy size={12} />
+              </button>
+            </p>
+          )}
           <p className="text-xs text-dark-400">
             {EMPRESA_LABEL[g.empresaSlug ?? ''] ?? g.empresaSlug}
             {g.contato?.vendedor && ` · 👤 ${g.contato.vendedor}`}
@@ -128,6 +156,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
             <tr className="text-left">
               <th className="py-1 pr-2 font-medium">Documento</th>
               <th className="py-1 pr-2 font-medium">Vencimento</th>
+              <th className="py-1 pr-2 font-medium">Banco / forma de pgto</th>
               <th className="py-1 pr-2 font-medium text-right">Valor</th>
               <th className="py-1 font-medium">{aba === 'cobrar' ? 'Régua' : aba === 'cartorio' ? 'Cartório' : aba === 'rc' ? 'RC' : 'Pago'}</th>
             </tr>
@@ -141,6 +170,16 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                 </td>
                 <td className="py-1 pr-2 text-dark-300">
                   {dataBr(t.vencimento)} <span className="text-dark-500">({t.diasVencido}d)</span>
+                </td>
+                <td className="py-1 pr-2 text-dark-200">
+                  {t.formaPagamento ? (
+                    <>
+                      <b>{t.formaPagamento}</b>
+                      {t.formaPagamentoDesc && <span className="block text-[10px] text-dark-400">{t.formaPagamentoDesc}</span>}
+                    </>
+                  ) : (
+                    <span className="text-dark-500">—</span>
+                  )}
                 </td>
                 <td className="py-1 pr-2 text-right text-dark-100">{formatarMoeda(t.valor)}</td>
                 <td className="py-1">
@@ -191,6 +230,32 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
               onChange={(e) => setObs(e.target.value)}
             />
           </div>
+          {aConfirmar && (
+            <div className="rounded-lg border border-amber-500/70 bg-amber-900/20 p-2 space-y-2">
+              <p className="text-xs font-semibold text-amber-100">
+                Você abriu o {aConfirmar === 'whatsapp' ? 'WhatsApp' : aConfirmar === 'email' ? 'e-mail' : 'telefone'}. Conseguiu{' '}
+                {aba === 'cartorio' ? 'avisar o cliente' : 'cobrar'}? Confirme para ficar no histórico.
+              </p>
+              <input
+                className="w-full rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-100"
+                placeholder="O que o cliente disse (opcional)"
+                value={obs}
+                onChange={(e) => setObs(e.target.value)}
+                autoFocus
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" onClick={() => reg(aConfirmar, obs)} loading={registrar.isPending}>
+                  ✓ Confirmar {aba === 'cartorio' ? 'aviso' : 'cobrança'}
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => reg(aConfirmar, `Sem resposta${obs ? ` — ${obs}` : ''}`)} disabled={registrar.isPending}>
+                  📵 Não respondeu / não atendeu
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setAConfirmar(null)}>
+                  Cancelar
+                </Button>
+              </div>
+            </div>
+          )}
           <div className="flex flex-wrap gap-2">
             {aba === 'cartorio' && (
               <>
@@ -234,15 +299,14 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
         </button>
       )}
 
-      {g.titulos.some((t) => t.contatos.length) && (
-        <div>
-          <button className="text-[11px] text-gold-400 hover:underline" onClick={() => setHistorico(!historico)}>
-            {historico ? '▾ esconder histórico' : `▸ histórico (${new Set(g.titulos.flatMap((t) => t.contatos.map((c) => c.createdAt + c.canal + c.tipo))).size})`}
-          </button>
-          {historico && (
+      {(() => {
+        const todos = [...new Map(g.titulos.flatMap((t) => t.contatos).map((c) => [c.createdAt + c.canal + c.tipo, c])).values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        if (!todos.length) return <p className="text-[11px] text-dark-500">Histórico da cobrança: nenhuma ação ainda.</p>
+        return (
+        <div className="rounded-lg bg-dark-900/50 p-2">
+          <p className="text-[11px] font-semibold text-dark-300">Histórico da cobrança ({todos.length})</p>
             <ul className="mt-1 space-y-0.5 text-[11px] text-dark-400">
-              {[...new Map(g.titulos.flatMap((t) => t.contatos).map((c) => [c.createdAt + c.canal + c.tipo, c])).values()]
-                .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+              {(historico ? todos : todos.slice(0, 4))
                 .map((c) => (
                   <li key={c.id}>
                     {formatDateTime(c.createdAt)} · {TIPO_LABEL[c.tipo]} por {CANAL_LABEL[c.canal]}
@@ -257,9 +321,14 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                   </li>
                 ))}
             </ul>
+          {todos.length > 4 && (
+            <button className="mt-1 text-[11px] text-gold-400 hover:underline" onClick={() => setHistorico(!historico)}>
+              {historico ? '▾ mostrar só as últimas' : `▸ ver todas (${todos.length})`}
+            </button>
           )}
         </div>
-      )}
+        )
+      })()}
     </div>
   )
 }

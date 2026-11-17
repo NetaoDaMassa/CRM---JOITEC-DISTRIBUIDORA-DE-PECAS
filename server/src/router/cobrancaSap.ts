@@ -67,7 +67,7 @@ export const cobrancaSapRouter = router({
       const codigos = [...new Set(titulos.map((t) => t.codigoCliente))]
       const cads = codigos.length
         ? await db
-            .select({ codigo: clientes.codigo, codigoAntigo: clientes.codigoAntigo, empresaSlug: empresas.slug, telefone: clientes.telefoneWhatsapp, email: clientes.email, nomeContato: clientes.nomeContato, vendedor: users.name })
+            .select({ codigo: clientes.codigo, codigoAntigo: clientes.codigoAntigo, empresaSlug: empresas.slug, telefone: clientes.telefoneWhatsapp, email: clientes.email, nomeContato: clientes.nomeContato, vendedor: users.name, cnpj: clientes.cnpj, cpf: clientes.cpf })
             .from(clientes)
             .innerJoin(empresas, eq(empresas.id, clientes.empresaId))
             .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
@@ -76,7 +76,7 @@ export const cobrancaSapRouter = router({
       const contatoDe = (codigo: string, slug: string | null) => {
         const doCodigo = cads.filter((c) => c.codigo === codigo || c.codigoAntigo === codigo)
         const melhor = doCodigo.find((c) => c.empresaSlug === slug && (c.telefone || c.email)) ?? doCodigo.find((c) => c.telefone || c.email) ?? doCodigo[0]
-        return melhor ? { telefone: melhor.telefone, email: melhor.email, nomeContato: melhor.nomeContato, vendedor: melhor.vendedor } : null
+        return melhor ? { telefone: melhor.telefone, email: melhor.email, nomeContato: melhor.nomeContato, vendedor: melhor.vendedor, documento: melhor.cnpj || melhor.cpf || null } : null
       }
 
       const grupos = new Map<string, { chave: string; codigoCliente: string; nomeCliente: string | null; empresaSlug: string | null; contato: ReturnType<typeof contatoDe>; titulos: unknown[]; total: number; cobradoHoje: boolean; retornoVencido: boolean; maiorDia: number }>()

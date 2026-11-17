@@ -42,6 +42,11 @@ interface Titulo {
   filialSap: number | null
   empresaSlug: string | null
   vendedorSap: string | null
+  // Cobrança (João, 2026-11-17): forma de pagamento da nota no SAP (ex.:
+  // BOL_SAF_582532 = boleto do banco) e CNPJ/CPF do cliente.
+  formaPagamento?: string | null
+  formaPagamentoDesc?: string | null
+  cnpjCliente?: string | null
 }
 
 export interface SyncReceberResultado {
@@ -134,11 +139,32 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
       saldos.map((s) => s.CardCode),
       new Map(saldos.map((s) => [s.CardCode, (s.BPFiscalTaxIDCollection ?? []).flatMap((t) => [t.TaxId0 ?? '', t.TaxId4 ?? ''])]))
     )
-    return { vendedores, saldos, notas, devolucoes, adiantamentos, lancamentos, recebimentos, compressores }
+    // Forma de pagamento (banco) de cada nota aberta — pedido à parte e com
+    // try/catch: se o SAP recusar, a sincronização continua sem o banco.
+    const formaPorNota = new Map<number, string>()
+    try {
+      for (const f of await sap.getTodos<{ DocNum: number; PaymentMethod: string | null }>(
+        "/Invoices?$filter=DocumentStatus eq 'bost_Open' and Cancelled eq 'tNO'&$select=DocNum,PaymentMethod"
+      ))
+        if (f.PaymentMethod) formaPorNota.set(f.DocNum, f.PaymentMethod)
+    } catch (e) {
+      console.warn('[sap-receber] forma de pagamento das notas não veio:', e instanceof Error ? e.message : e)
+    }
+    const descForma = new Map<string, string>()
+    try {
+      for (const w of await sap.getTodos<{ PaymentMethodCode: string; Description: string | null }>('/WizardPaymentMethods?$select=PaymentMethodCode,Description'))
+        if (w.Description) descForma.set(w.PaymentMethodCode, w.Description)
+    } catch (e) {
+      console.warn('[sap-receber] descrição das formas de pagamento não veio:', e instanceof Error ? e.message : e)
+    }
+    return { vendedores, saldos, notas, devolucoes, adiantamentos, lancamentos, recebimentos, compressores, formaPorNota, descForma }
   })
 
   const nomeVendedor = new Map(dados.vendedores.map((v) => [v.SalesEmployeeCode, v.SalesEmployeeName]))
   const nomeCliente = new Map(dados.saldos.map((s) => [s.CardCode, s.CardName]))
+  const docCliente = new Map(
+    dados.saldos.map((s) => [s.CardCode, (s.BPFiscalTaxIDCollection ?? []).map((t) => (t.TaxId0 || t.TaxId4 || '').trim()).find(Boolean) ?? null])
+  )
   const titulos: Titulo[] = []
 
   for (const n of dados.notas) {
@@ -158,6 +184,8 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
         filialSap: n.BPL_IDAssignedToInvoice,
         empresaSlug: slugDe(n.BPL_IDAssignedToInvoice, n.SalesPersonCode),
         vendedorSap: nomeVendedor.get(n.SalesPersonCode) ?? null,
+        formaPagamento: dados.formaPorNota.get(n.DocNum) ?? null,
+        formaPagamentoDesc: dados.descForma.get(dados.formaPorNota.get(n.DocNum) ?? '') ?? null,
       })
     }
   }
@@ -244,7 +272,7 @@ export async function sincronizarContasReceberSap(): Promise<SyncReceberResultad
   }
   for (const lista of debitos.values()) for (const { chave: _chave, ...t } of lista) titulos.push(t)
 
-  const validos = titulos.filter((t) => !ignorar.has(t.codigoCliente.toUpperCase()))
+  const validos = titulos.filter((t) => !ignorar.has(t.codigoCliente.toUpperCase())).map((t) => ({ ...t, cnpjCliente: docCliente.get(t.codigoCliente) ?? null }))
   const calculado = new Map<string, number>()
   for (const t of validos) calculado.set(t.codigoCliente, (calculado.get(t.codigoCliente) ?? 0) + t.valorAberto)
   const saldos = dados.saldos

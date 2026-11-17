@@ -1198,6 +1198,13 @@
       "when": 1795100200000,
       "tag": "0170_propostas_cnpj",
       "breakpoints": true
+    },
+    {
+      "idx": 171,
+      "version": "6",
+      "when": 1795100300000,
+      "tag": "0171_cobranca_banco_cnpj",
+      "breakpoints": true
     }
   ]
 }
