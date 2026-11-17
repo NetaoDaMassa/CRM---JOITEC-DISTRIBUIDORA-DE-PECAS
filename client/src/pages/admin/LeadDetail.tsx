@@ -403,10 +403,10 @@ export default function LeadDetail() {
               <ShieldAlert size={14} /> Reabrir
             </Button>
           )}
-          {/* Editar o cadastro do lead: sempre liberado pro admin. Na Odin
-              Compressores o vendedor dono do lead também edita — pedido do
-              João, 2026-09-08 (o backend leads.update já autoriza o dono). */}
-          {(podeGerenciarTudo || (empresaSlug === 'odin-compressores' && isOwner)) && (
+          {/* Editar o cadastro do lead: admin e o vendedor dono do lead, em
+              todas as empresas (antes o dono só na Odin Compressores) —
+              João, 2026-11-17: nome/telefone certos pra ligação achar o lead. */}
+          {(podeGerenciarTudo || isOwner) && (
             <Button size="sm" variant="secondary" onClick={() => setEditarInfoOpen(true)}>
               <Pencil size={14} /> Editar informações
             </Button>
@@ -881,8 +881,9 @@ function EditarInfoModal({ lead, open, onClose }: { lead: any; open: boolean; on
         <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
         <div className="grid grid-cols-[80px_1fr] gap-3">
           <Input label="DDD" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />
-          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98888-7777" />
         </div>
+        <p className="-mt-2 text-[11px] text-dark-500">Pode colar o número inteiro com DDD (ex: (11) 98888-7777) — o CRM separa sozinho. É por ele que a central telefônica acha este lead.</p>
         <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />

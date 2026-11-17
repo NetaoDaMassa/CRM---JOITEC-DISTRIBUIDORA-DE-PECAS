@@ -665,6 +665,30 @@ export const leadsRouter = router({
       if ((ctx.user.role === 'vendor' || ctx.user.role === 'gestor') && existing.vendorId !== ctx.user.id && !(await temFeature(ctx.user.id, 'leads_gerenciar_todos'))) throw new Error('Acesso negado')
 
       const updates: Record<string, unknown> = { ...rest }
+      // Telefone (João, 2026-11-17): a central telefônica acha o lead por
+      // DDD + telefone. Aceita o número colado de qualquer jeito ("(11)
+      // 98888-7777", "+55 11 9...") e guarda no padrão do sistema: DDD no
+      // campo próprio e só os 8/9 dígitos locais em phone.
+      if (rest.phone !== undefined && !rest.phone.trim() && !existing.phone) {
+        // Lead sem telefone (e-mail marketing) e o campo continuou vazio.
+        delete updates.phone
+        delete updates.ddd
+      } else if (rest.phone !== undefined) {
+        let d = rest.phone.replace(/\D/g, '')
+        if (d.length >= 12 && d.startsWith('55')) d = d.slice(2)
+        if (d.startsWith('0')) d = d.slice(1)
+        let ddd = rest.ddd ?? existing.ddd ?? null
+        if (d.length === 10 || d.length === 11) {
+          ddd = Number(d.slice(0, 2))
+          d = d.slice(2)
+        }
+        if (d.length !== 8 && d.length !== 9) throw new Error('Telefone inválido — use DDD + número (ex: 11 98888-7777)')
+        if (!ddd || ddd < 11 || ddd > 99) throw new Error('Informe o DDD do telefone')
+        updates.phone = d
+        updates.ddd = ddd
+        if (ddd !== existing.ddd) updates.regionId = await getRegionIdByDDD(ddd, existing.empresaId)
+      }
+      if (rest.name !== undefined) updates.name = rest.name.trim()
       if (nextContactAt !== undefined) {
         if (nextContactAt === null && !isTerminalStatus(existing.status)) {
           throw new Error('Todo lead ativo precisa manter uma data de próximo contato agendada')
