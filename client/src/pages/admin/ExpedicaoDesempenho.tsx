@@ -17,6 +17,7 @@ function hojeBr(): string {
 const CARGO: Record<string, string> = { separador: 'Separador', conferente: 'Conferente', embalador: 'Embalador', conferente_embalador: 'Confere e embala', expedicao: 'Expedição', geral: 'Faz tudo' }
 const pct = (v: number) => `${(v * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`
 const num = (n: number) => n.toLocaleString('pt-BR')
+const traco = (n: number) => (n ? num(n) : <span className="text-dark-500">—</span>)
 
 export default function ExpedicaoDesempenho() {
   const hoje = hojeBr()
@@ -129,12 +130,20 @@ export default function ExpedicaoDesempenho() {
                     <th className="py-2 pr-3 font-medium text-right">Pedidos separados</th>
                     <th className="py-2 pr-3 font-medium text-right">Pedidos conferidos</th>
                     <th className="py-2 pr-3 font-medium text-right">Pedidos embalados</th>
+                    <th className="py-2 pr-3 font-medium text-right border-l border-dark-700 pl-3">Peças separadas</th>
+                    <th className="py-2 pr-3 font-medium text-right">Peças conferidas</th>
+                    <th className="py-2 pr-3 font-medium text-right">Peças embaladas</th>
+                    <th className="py-2 pr-3 font-medium text-right border-l border-dark-700 pl-3">Erros de separação</th>
+                    <th className="py-2 pr-3 font-medium text-right">Erros de conferência</th>
+                    <th className="py-2 pr-3 font-medium text-right">Erros de embalagem</th>
                   </>
                 ) : (
-                  <th className="py-2 pr-3 font-medium text-right">Pedidos</th>
+                  <>
+                    <th className="py-2 pr-3 font-medium text-right">Pedidos</th>
+                    <th className="py-2 pr-3 font-medium text-right">Peças</th>
+                    <th className="py-2 pr-3 font-medium text-right">Erros</th>
+                  </>
                 )}
-                <th className="py-2 pr-3 font-medium text-right">Peças</th>
-                <th className="py-2 pr-3 font-medium text-right">Erros</th>
                 <th className="py-2 pr-3 font-medium text-right">Taxa de erro</th>
                 <th className="py-2 pr-3 font-medium text-right">Limite</th>
                 <th className="py-2 pr-3 font-medium text-right">Volumes</th>
@@ -158,12 +167,20 @@ export default function ExpedicaoDesempenho() {
                       <td className="py-2 pr-3 text-right font-mono">{l.separados ? num(l.separados) : <span className="text-dark-500">—</span>}</td>
                       <td className="py-2 pr-3 text-right font-mono">{l.conferidos ? num(l.conferidos) : <span className="text-dark-500">—</span>}</td>
                       <td className="py-2 pr-3 text-right font-mono">{l.embalados ? num(l.embalados) : <span className="text-dark-500">—</span>}</td>
+                      <td className="py-2 pr-3 text-right font-mono border-l border-dark-700 pl-3">{traco(l.pecasSeparadas)}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{traco(l.pecasConferidas)}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{traco(l.pecasEmbaladas)}</td>
+                      <td className={`py-2 pr-3 text-right font-mono border-l border-dark-700 pl-3 ${l.errosSeparacao ? 'text-red-300' : ''}`}>{traco(l.errosSeparacao)}</td>
+                      <td className={`py-2 pr-3 text-right font-mono ${l.errosConferencia ? 'text-red-300' : ''}`}>{traco(l.errosConferencia)}</td>
+                      <td className={`py-2 pr-3 text-right font-mono ${l.errosEmbalagem ? 'text-red-300' : ''}`}>{traco(l.errosEmbalagem)}</td>
                     </>
                   ) : (
-                    <td className="py-2 pr-3 text-right font-mono">{num(l.pedidos)}</td>
+                    <>
+                      <td className="py-2 pr-3 text-right font-mono">{num(l.pedidos)}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{num(l.pecas)}</td>
+                      <td className="py-2 pr-3 text-right font-mono">{num(l.erros)}</td>
+                    </>
                   )}
-                  <td className="py-2 pr-3 text-right font-mono">{num(l.pecas)}</td>
-                  <td className="py-2 pr-3 text-right font-mono">{num(l.erros)}</td>
                   <td className={`py-2 pr-3 text-right font-mono ${l.pedidos && l.limiteErrosQtd == null && l.taxaErro > l.limiteErro ? 'text-red-300' : ''}`}>{l.pedidos ? pct(l.taxaErro) : '—'}</td>
                   <td className={`py-2 pr-3 text-right font-mono ${l.limiteErrosQtd != null && l.erros > l.limiteErrosQtd ? 'text-red-300' : 'text-dark-400'}`}>
                     {l.limiteErrosQtd != null ? `${num(l.erros)} de ${num(l.limiteErrosQtd)} erros` : pct(l.limiteErro)}

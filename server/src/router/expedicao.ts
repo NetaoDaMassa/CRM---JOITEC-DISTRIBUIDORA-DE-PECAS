@@ -1607,12 +1607,22 @@ export const expedicaoRouter = router({
           )
         )
       const erros = await db
-        .select({ responsavelId: expedicaoErros.responsavelId, n: sql<number>`count(*)` })
+        .select({ responsavelId: expedicaoErros.responsavelId, etapa: expedicaoErros.etapa, n: sql<number>`count(*)` })
         .from(expedicaoErros)
         .innerJoin(expedicaoPedidos, eq(expedicaoPedidos.id, expedicaoErros.expedicaoId))
         .where(and(eq(expedicaoPedidos.empresaId, ctx.empresaId), gte(expedicaoErros.createdAt, deUtc), lte(expedicaoErros.createdAt, ateUtc)))
-        .groupBy(expedicaoErros.responsavelId)
-      const errosPor = new Map(erros.map((e) => [e.responsavelId, Number(e.n)]))
+        .groupBy(expedicaoErros.responsavelId, expedicaoErros.etapa)
+      const errosPor = new Map<number | null, number>()
+      // Erro por etapa do trabalho que errou (Joitec, 2026-11-17): achado na
+      // conferência = erro de separação; na embalagem = de conferência; na
+      // expedição = de embalagem (mesma regra do ETAPA_ANTERIOR).
+      const errosEtapaPor = new Map<number | null, Record<EtapaPessoa, number>>()
+      for (const e of erros) {
+        errosPor.set(e.responsavelId, (errosPor.get(e.responsavelId) ?? 0) + Number(e.n))
+        const r = errosEtapaPor.get(e.responsavelId) ?? { separacao: 0, conferencia: 0, embalagem: 0 }
+        r[ETAPA_ANTERIOR[e.etapa]] += Number(e.n)
+        errosEtapaPor.set(e.responsavelId, r)
+      }
       const dentro = (s: string | null) => !!s && s >= deUtc && s <= ateUtc
 
       const linhas = pessoas.map((c) => {
@@ -1626,12 +1636,14 @@ export const expedicaoRouter = router({
         // Pedidos por etapa (Joitec, João 2026-11-16: "separar Pedidos em
         // Separados / Conferidos / Embalados") — a soma das 3 = `pedidos`.
         const porEtapa: Record<EtapaPessoa, number> = { separacao: 0, conferencia: 0, embalagem: 0 }
+        const pecasEtapa: Record<EtapaPessoa, number> = { separacao: 0, conferencia: 0, embalagem: 0 }
         for (const p of pedidos) {
           for (const etapa of ETAPAS_COM_PESSOA) {
             const f = campos[etapa]
             if (p[f.pessoa] !== c.id || !dentro(p[f.fim])) continue
             qtd++
             porEtapa[etapa]++
+            pecasEtapa[etapa] += p.pecas
             pecas += p.pecas
             itens += p.itens
             minutos += (ms(p[f.fim]) - ms(p[f.inicio])) / 60_000
@@ -1643,6 +1655,7 @@ export const expedicaoRouter = router({
           }
         }
         const nErros = errosPor.get(c.id) ?? 0
+        const errosEtapa = errosEtapaPor.get(c.id) ?? { separacao: 0, conferencia: 0, embalagem: 0 }
         const taxa = qtd ? nErros / qtd : 0
         return {
           id: c.id,
@@ -1653,6 +1666,12 @@ export const expedicaoRouter = router({
           separados: porEtapa.separacao,
           conferidos: porEtapa.conferencia,
           embalados: porEtapa.embalagem,
+          pecasSeparadas: pecasEtapa.separacao,
+          pecasConferidas: pecasEtapa.conferencia,
+          pecasEmbaladas: pecasEtapa.embalagem,
+          errosSeparacao: errosEtapa.separacao,
+          errosConferencia: errosEtapa.conferencia,
+          errosEmbalagem: errosEtapa.embalagem,
           itens,
           pecas,
           erros: nErros,
