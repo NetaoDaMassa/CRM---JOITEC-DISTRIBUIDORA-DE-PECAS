@@ -21,6 +21,7 @@ import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
 import { registrarLigacoesCobranca } from './cobrancaLigacoes.js'
+import { avisarMensagensSemResposta } from './chatSemResposta.js'
 
 // Reescrito parcialmente nos blocos 6 (reset mensal), 8 (notificações), 13
 // (backup) e 14 (resumo diário).
@@ -298,6 +299,10 @@ export function startScheduler() {
   // Carrinhos abandonados da loja online (Compretec Loja Física) captados
   // pelo plugin Recarto no WordPress — sem credencial configurada, sai
   // calado (ver woocommerceCarrinhoAbandonadoPoller.ts).
+  // Chat interno: mensagem sem resposta há 30 min úteis → sininho (João, 2026-11-17).
+  cron.schedule('2-59/5 * * * *', () => {
+    avisarMensagensSemResposta().catch((err) => console.error('[chat-sem-resposta] erro:', err))
+  })
   cron.schedule('*/5 * * * *', () => {
     sincronizarCarrinhosAbandonadosCompretec().catch((err) => console.error('[woocommerce-carrinho] erro ao sincronizar:', err))
   })

@@ -4,6 +4,7 @@ import { router, chatProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito, empresas } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
+import { atrasada, limparAvisosSemResposta, pendenciaDe } from '../lib/chatSemResposta.js'
 import { emitirNovaMensagem, emitirParaUsuario, emitirParaConversa } from '../lib/chatSocket.js'
 import { cardsDoPedidoSap, contasDoEstoque, podeConversarSobrePedido, processoDoPedido, vendedorDonoDoPedido } from '../lib/expedicaoChat.js'
 
@@ -438,6 +439,13 @@ export const chatRouter = router({
       for (const m of ultimasMensagens) {
         if (!ultimaPorConversa.has(m.conversaId)) ultimaPorConversa.set(m.conversaId, m)
       }
+      const msgsPorConversa = new Map<number, (typeof ultimasMensagens)[number][]>()
+      for (const m of ultimasMensagens) {
+        const l = msgsPorConversa.get(m.conversaId) ?? []
+        if (l.length < 30) l.push(m)
+        msgsPorConversa.set(m.conversaId, l)
+      }
+      const agoraIso = new Date().toISOString()
       const naoLidasPorConversa = new Map<number, number>()
       for (const m of ultimasMensagens) {
         if (m.autorId === ctx.user.id) continue
@@ -453,7 +461,15 @@ export const chatRouter = router({
           .map((id) => userPorId.get(id))
           .filter((u): u is NonNullable<typeof u> => !!u)
         const ultima = ultimaPorConversa.get(c.id)
+        const pend = pendenciaDe(msgsPorConversa.get(c.id) ?? [])
+        const autorPend = pend && pend.autorId !== ctx.user.id ? userPorId.get(pend.autorId) : undefined
         return {
+          // "Falta responder" (João, 2026-11-17): eu devo resposta / espero resposta.
+          faltaResponder: !!pend && pend.autorId !== ctx.user.id,
+          aguardandoResposta: !!pend && pend.autorId === ctx.user.id,
+          semRespostaDesde: pend?.desde ?? null,
+          semRespostaAtrasada: !!pend && atrasada(pend.desde, agoraIso),
+          semRespostaAutor: autorPend ? { id: autorPend.id, name: autorPend.name, fotoUrl: autorPend.fotoUrl } : null,
           id: c.id,
           tipoOrigem: c.tipoOrigem,
           idOrigem: c.idOrigem,
@@ -530,6 +546,7 @@ export const chatRouter = router({
           createdAt: agora,
         })
         await db.update(chatConversas).set({ ultimaMensagemEm: agora }).where(eq(chatConversas.id, input.conversaId))
+        await limparAvisosSemResposta(input.conversaId)
         // Marca como lida pra quem acabou de mandar — senão a própria
         // mensagem aparece como "não lida" pro autor.
         await db

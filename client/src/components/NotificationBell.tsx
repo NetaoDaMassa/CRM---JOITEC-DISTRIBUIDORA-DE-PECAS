@@ -1,3 +1,4 @@
+import { useChat } from '../contexts/ChatContext'
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Bell } from 'lucide-react'
@@ -25,6 +26,7 @@ function playBeep() {
 
 function rotuloDoTipo(tipo: string, titulo: string): string {
   const t = tipo.toLowerCase()
+  if (t === 'chat_sem_resposta') return 'Chat sem resposta'
   if (t.includes('sem_contato') || t.includes('contato')) return 'Clientes sem contato'
   if (t.includes('lead')) return 'Leads'
   if (t.includes('demanda')) return 'Demandas'
@@ -38,6 +40,7 @@ function rotuloDoTipo(tipo: string, titulo: string): string {
 
 function iconeDoTipo(tipo: string, titulo: string): string {
   const t = `${tipo} ${titulo}`.toLowerCase()
+  if (tipo === 'chat_sem_resposta') return '💬'
   if (t.includes('lead')) return '🧲'
   if (t.includes('demanda')) return '📌'
   if (t.includes('contato')) return '⏰'
@@ -52,6 +55,7 @@ function iconeDoTipo(tipo: string, titulo: string): string {
 export default function NotificationBell() {
   const { user } = useAuth()
   const navigate = useNavigate()
+  const { abrirConversaNoPopup } = useChat()
   const utils = trpc.useUtils()
   const [open, setOpen] = useState(false)
   const seenIds = useRef<Set<number> | null>(null)
@@ -99,7 +103,8 @@ export default function NotificationBell() {
             desktopNotification.onclick = () => {
               window.focus()
               const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
-              if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
+              if (n.conversaId) abrirConversaNoPopup(n.conversaId)
+              else if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
               else if (n.leadId) navigate(`${basePath}/leads/${n.leadId}`)
               desktopNotification.close()
             }
@@ -117,11 +122,12 @@ export default function NotificationBell() {
     onSuccess: () => utils.notifications.list.invalidate(),
   })
 
-  function handleNotificationClick(n: { id: number; read: boolean; clienteId: number | null; leadId: number | null }) {
+  function handleNotificationClick(n: { id: number; read: boolean; clienteId: number | null; leadId: number | null; conversaId: number | null }) {
     if (!n.read) markReadMut.mutate({ id: n.id })
     setOpen(false)
     const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
-    if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
+    if (n.conversaId) abrirConversaNoPopup(n.conversaId)
+    else if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
     else if (n.leadId) navigate(`${basePath}/leads/${n.leadId}`)
   }
 

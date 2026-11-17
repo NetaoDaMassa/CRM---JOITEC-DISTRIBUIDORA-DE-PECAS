@@ -10,6 +10,7 @@ import ChatJanela from '../components/chat/ChatJanela'
 import PessoaPicker from '../components/chat/PessoaPicker'
 import NovoGrupoView from '../components/chat/NovoGrupoView'
 import Avatar from '../components/chat/Avatar'
+import { SeloSemResposta } from '../components/chat/SemResposta'
 
 const TIPO_ORIGEM_LABEL: Record<string, string> = {
   lead: '🎯 Lead',
@@ -217,6 +218,7 @@ export default function Chat() {
                       {TIPO_ORIGEM_LABEL[c.tipoOrigem]} {c.ultimaMensagem?.texto ?? (c.ultimaMensagem ? 'Anexo' : 'Sem mensagens ainda')}
                     </p>
                     {c.ultimaMensagemEm && <p className="text-[10px] text-dark-600 mt-0.5">{timeAgo(c.ultimaMensagemEm)}</p>}
+<SeloSemResposta c={c} />
                   </div>
                 </button>
               )

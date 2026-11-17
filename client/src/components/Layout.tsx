@@ -5,6 +5,7 @@ import Sidebar from './Sidebar'
 import NotificationBell from './NotificationBell'
 import ChatPopup from './ChatPopup'
 import ChatFloatingButton from './ChatFloatingButton'
+import { BolhasSemResposta } from './chat/SemResposta'
 import LembretesCompromisso from './LembretesCompromisso'
 import BuscaRapida, { BotaoBuscaRapida } from './BuscaRapida'
 import { useAuth } from '../contexts/AuthContext'
@@ -123,6 +124,7 @@ export default function Layout() {
       </main>
       <div className="contents print:hidden">
         <ChatFloatingButton />
+        <BolhasSemResposta />
         <LembretesCompromisso />
         <MenuCelular abrirMenu={() => setMenuAberto(true)} />
         <BuscaRapida />

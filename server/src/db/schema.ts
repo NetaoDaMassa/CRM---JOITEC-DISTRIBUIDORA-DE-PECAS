@@ -961,6 +961,8 @@ export const notifications = sqliteTable('notifications', {
   // preenchido junto com clienteId (são dois tipos de notificação
   // diferentes: Carteira vs. Leads/marketing).
   leadId: integer('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
+  // Aviso de mensagem do chat sem resposta (lib/chatSemResposta.ts) — clicar abre a conversa.
+  conversaId: integer('conversa_id'),
   type: text('type').notNull(),
   title: text('title').notNull(),
   message: text('message').notNull(),
@@ -4180,6 +4182,8 @@ export const chatConversas = sqliteTable(
     // toa. Conversa 'direta'/vinculada a registro não tem como excluir
     // (pedido do João, 2026-10-03: "não pode apagar, só admin mesmo").
     deletedAt: text('deleted_at'),
+    // Última mensagem que já gerou o aviso "sem resposta" (avisa uma vez por mensagem).
+    avisoSemRespostaMsgId: integer('aviso_sem_resposta_msg_id'),
   },
   (t) => ({
     origemIdx: index('chat_conversas_origem_idx').on(t.tipoOrigem, t.idOrigem),

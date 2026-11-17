@@ -10,6 +10,7 @@ import Avatar from './Avatar'
 import PessoaPicker from './PessoaPicker'
 import CameraCapture from './CameraCapture'
 import ProcessoExpedicaoChat from './ProcessoExpedicaoChat'
+import { AvisoSemResposta } from './SemResposta'
 
 // wa.me só aceita dígitos — mesmo padrão simples já usado em
 // designWhatsapp.ts/creditoWhatsapp.ts.
@@ -210,6 +211,8 @@ export default function ChatJanela({ conversaId, onExcluida }: { conversaId: num
   const enviarMut = trpc.chat.mensagens.enviar.useMutation({
     onSuccess: (msg) => {
       setMensagens((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg as Mensagem]))
+      utils.chat.conversas.listar.invalidate()
+      utils.notifications.list.invalidate()
     },
     onError: (e) => toast.error(e.message),
   })
@@ -402,6 +405,7 @@ export default function ChatJanela({ conversaId, onExcluida }: { conversaId: num
         <div ref={fimRef} />
       </div>
 
+      <AvisoSemResposta conversaId={conversaId} enviando={enviarMut.isPending} onCiente={() => enviarMut.mutate({ conversaId, tipo: 'texto', texto: '👍' })} />
       <div className="border-t border-dark-700 p-2 flex items-center gap-2 shrink-0">
         {gravando ? (
           <div className="flex-1 flex items-center gap-2 bg-dark-900/60 rounded-lg px-3 py-2">
