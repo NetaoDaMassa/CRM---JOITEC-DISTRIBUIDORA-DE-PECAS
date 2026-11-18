@@ -33,7 +33,38 @@ export function LigacaoWhatsappButton({
   )
 }
 
-function LigacaoWhatsappModal({ clienteId, leadId, onClose, onRegistrada }: { clienteId?: number; leadId?: number; onClose: () => void; onRegistrada?: () => void }) {
+// "Foi pelo WhatsApp" (João, 2026-11-18): na tela Ligações, a ligação da
+// central que não completou vira ligação de WhatsApp (mesma linha, com print).
+export function FoiPeloWhatsappButton({ ligacaoId }: { ligacaoId: number }) {
+  const [aberto, setAberto] = useState(false)
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        title="A ligação pela central não completou e a conversa foi pelo WhatsApp"
+        className="text-[11px] text-green-300 hover:text-green-200 underline"
+      >
+        📱 Foi pelo WhatsApp
+      </button>
+      {aberto && <LigacaoWhatsappModal ligacaoId={ligacaoId} onClose={() => setAberto(false)} />}
+    </>
+  )
+}
+
+function LigacaoWhatsappModal({
+  clienteId,
+  leadId,
+  ligacaoId,
+  onClose,
+  onRegistrada,
+}: {
+  clienteId?: number
+  leadId?: number
+  ligacaoId?: number
+  onClose: () => void
+  onRegistrada?: () => void
+}) {
   const utils = trpc.useUtils()
   const [minutos, setMinutos] = useState('')
   const [segundos, setSegundos] = useState('')
@@ -51,6 +82,7 @@ function LigacaoWhatsappModal({ clienteId, leadId, onClose, onRegistrada }: { cl
   }
 
   const mut = trpc.pabx.registrarWhatsapp.useMutation()
+  const converter = trpc.pabx.converterWhatsapp.useMutation()
 
   async function salvar(e: React.FormEvent) {
     e.preventDefault()
@@ -64,13 +96,10 @@ function LigacaoWhatsappModal({ clienteId, leadId, onClose, onRegistrada }: { cl
       const res = await fetch('/upload/lead-attachment', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
       if (!res.ok) throw new Error('Não consegui enviar o print')
       const up = await res.json()
-      const r = await mut.mutateAsync({
-        clienteId,
-        leadId,
-        duracaoSegundos: total,
-        print: { filename: up.path, originalName: up.originalName, mimeType: up.mimeType, size: up.size },
-        observacao: observacao.trim() || undefined,
-      })
+      const printInfo = { filename: up.path, originalName: up.originalName, mimeType: up.mimeType, size: up.size }
+      const r = ligacaoId
+        ? await converter.mutateAsync({ id: ligacaoId, duracaoSegundos: total, print: printInfo, observacao: observacao.trim() || undefined })
+        : await mut.mutateAsync({ clienteId, leadId, duracaoSegundos: total, print: printInfo, observacao: observacao.trim() || undefined })
       toast.success(r.efetiva ? 'Ligação registrada — contou como efetiva' : `Ligação registrada — abaixo de ${r.minimo}s, não conta como efetiva`)
       utils.invalidate()
       onRegistrada?.()

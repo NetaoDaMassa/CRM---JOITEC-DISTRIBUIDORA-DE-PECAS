@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { PhoneCall, PhoneIncoming, PhoneOutgoing, Settings2, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import GravacaoLigacao from '../../components/ui/GravacaoLigacao'
-import { NaoFoiConversaButton } from '../../components/LigacaoWhatsapp'
+import { FoiPeloWhatsappButton, NaoFoiConversaButton } from '../../components/LigacaoWhatsapp'
 import { useAuth } from '../../contexts/AuthContext'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
@@ -474,7 +474,7 @@ export default function LigacoesPabx() {
                     <tbody>
                       {chamadas.map((c) => {
                         const st = c.tipo === 'colega' ? { label: 'Interna', classe: 'bg-dark-700 text-dark-300 border-dark-600' } : STATUS[c.status ?? ''] ?? { label: c.efetiva ? 'Efetiva' : 'Tentativa', classe: 'bg-dark-700 text-dark-300 border-dark-600' }
-                        const temDetalhe = !!(c.resumo || c.transcricao || c.linkGravacao || c.motivo || c.anexoPrint || c.efetiva || c.naoEfetivaPorId)
+                        const temDetalhe = !!(c.resumo || c.transcricao || c.linkGravacao || c.motivo || c.anexoPrint || c.efetiva || c.naoEfetivaPorId || (c.fonte !== 'whatsapp' && c.tipo !== 'colega' && c.direcao !== 'INBOUND'))
                         return (
                           <Fragment key={c.id}>
                             <tr className={`border-t border-dark-700/70 ${temDetalhe ? 'cursor-pointer hover:bg-dark-700/30' : ''}`} onClick={() => temDetalhe && setAberta(aberta === c.id ? null : c.id)}>
@@ -510,8 +510,9 @@ export default function LigacoesPabx() {
                                       <img src={c.anexoPrint} alt="print da ligação pelo WhatsApp" className="h-24 rounded border border-dark-600" />
                                     </a>
                                   )}
-                                  <div onClick={(e) => e.stopPropagation()}>
+                                  <div onClick={(e) => e.stopPropagation()} className="flex flex-wrap items-center gap-3">
                                     <NaoFoiConversaButton ligacaoId={c.id} efetiva={!!c.efetiva} tiradaPeloBotao={!!c.naoEfetivaPorId} />
+                                    {c.fonte !== 'whatsapp' && c.tipo !== 'colega' && c.direcao !== 'INBOUND' && <FoiPeloWhatsappButton ligacaoId={c.id} />}
                                   </div>
                                   {c.resumo && (
                                     <p>

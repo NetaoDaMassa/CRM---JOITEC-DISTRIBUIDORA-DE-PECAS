@@ -158,3 +158,56 @@ export async function marcarNaoEfetiva(p: { ligacaoId: number; porUserId: number
     await db.update(registroContato).set({ efetiva: true, resultado: 'respondeu' }).where(eq(registroContato.id, l.registroContatoId))
   }
 }
+
+// 3. "Foi pelo WhatsApp" (João, 2026-11-18): a ligação saiu pela central mas
+//    não completou (sem áudio — "PABXONE360 não devolveu o áudio") e a
+//    conversa foi pelo WhatsApp. A MESMA linha vira ligação de WhatsApp, com
+//    print e o tempo da ligação — não cria outra, pra não contar duas vezes.
+export async function converterParaWhatsapp(p: {
+  ligacaoId: number
+  porUserId: number
+  podeQualquer: boolean
+  meusIds: number[]
+  duracaoSegundos: number
+  printArquivo: { filename: string; originalName: string; mimeType: string; size: number }
+  observacao?: string
+}): Promise<{ efetiva: boolean; minimo: number }> {
+  const l = await db.query.pabxLigacoesProcessadas.findFirst({ where: eq(pabxLigacoesProcessadas.id, p.ligacaoId) })
+  if (!l) throw new Error('Ligação não encontrada')
+  if (!p.podeQualquer && !(l.userId && p.meusIds.includes(l.userId))) throw new Error('Só quem fez a ligação (ou o gestor) pode mudar isso')
+  if (l.fonte === 'whatsapp') throw new Error('Essa ligação já está como WhatsApp')
+  const minimo = await segundosMinimosEfetiva()
+  const efetiva = p.duracaoSegundos >= minimo
+  const urlPrint = `/uploads/${p.printArquivo.filename}`
+  const extra = p.observacao?.trim() ? `\n${p.observacao.trim()}` : ''
+  const texto = `📱 Ligação pelo WhatsApp — ${formatar(p.duracaoSegundos)}${efetiva ? ' (print da ligação anexado)' : `, abaixo de ${minimo}s: não conta como efetiva`}. A central não completou a ligação.${extra}`
+
+  await db
+    .update(pabxLigacoesProcessadas)
+    .set({
+      fonte: 'whatsapp',
+      anexoPrint: urlPrint,
+      duracaoSegundos: p.duracaoSegundos,
+      efetiva,
+      statusChamada: efetiva ? 'atendida' : 'curta',
+      linkGravacao: null,
+      naoEfetivaPorId: null,
+      naoEfetivaEm: null,
+    })
+    .where(eq(pabxLigacoesProcessadas.id, l.id))
+  if (l.registroContatoId) {
+    await db
+      .update(registroContato)
+      .set({ duracaoSegundos: p.duracaoSegundos, efetiva, resultado: efetiva ? 'respondeu' : 'nao_respondeu', observacao: texto })
+      .where(eq(registroContato.id, l.registroContatoId))
+  }
+  if (l.leadId) {
+    const lead = await db.query.leads.findFirst({ where: and(eq(leads.id, l.leadId), isNull(leads.deletedAt)) })
+    if (lead) {
+      await db.insert(leadAttachments).values({ leadId: lead.id, userId: p.porUserId, ...p.printArquivo })
+      if (efetiva && !l.efetiva) await registrarLigacaoEfetivaNoLead(lead.id, l.userId ?? p.porUserId, l.dataHora ?? agoraSqlite(), texto)
+      else await db.insert(leadHistory).values({ empresaId: lead.empresaId, leadId: lead.id, userId: p.porUserId, action: efetiva ? 'tentativa_contato' : 'ligacao_nao_atendida', details: texto })
+    }
+  }
+  return { efetiva, minimo }
+}

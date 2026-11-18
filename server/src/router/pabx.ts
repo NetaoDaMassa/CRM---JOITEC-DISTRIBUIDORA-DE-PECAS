@@ -15,7 +15,7 @@ import {
 } from '../lib/pabxone360.js'
 import { acompanharLigacao } from '../lib/pabxAcompanhamento.js'
 import { chaveMeta, idsDaPessoa, metaDaPessoa, metaEfetivasHoje, metasPorEmpresa } from '../lib/metaLigacoes.js'
-import { marcarNaoEfetiva, registrarLigacaoWhatsapp, segundosMinimosEfetiva } from '../lib/ligacaoWhatsapp.js'
+import { converterParaWhatsapp, marcarNaoEfetiva, registrarLigacaoWhatsapp, segundosMinimosEfetiva } from '../lib/ligacaoWhatsapp.js'
 
 // Telefonia PABXONE360 das 3 empresas Odin (uma conta só) — ver o cabeçalho
 // de lib/pabxone360.ts. Configuração e ramais: só superAdmin (o token nunca
@@ -387,6 +387,32 @@ export const pabxRouter = router({
         userId: ctx.user.id,
         clienteId: input.clienteId,
         leadId: input.leadId,
+        duracaoSegundos: input.duracaoSegundos,
+        printArquivo: input.print,
+        observacao: input.observacao,
+      })
+    }),
+
+  // "Foi pelo WhatsApp": a ligação da central não completou e a conversa foi
+  // pelo WhatsApp — a mesma linha vira WhatsApp, com print e tempo (João, 2026-11-18).
+  converterWhatsapp: protectedProcedure
+    .input(
+      z.object({
+        id: z.number(),
+        duracaoSegundos: z.number().int().min(1).max(4 * 3600),
+        print: z.object({ filename: z.string().min(1).max(300), originalName: z.string().max(300), mimeType: z.string().max(100), size: z.number().int().min(1) }),
+        observacao: z.string().max(2000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (!input.print.mimeType.startsWith('image/')) throw new Error('O print precisa ser uma imagem')
+      if (/[\\/]/.test(input.print.filename)) throw new Error('Arquivo inválido')
+      const podeQualquer = ctx.user.superAdmin || (ctx.user.role !== 'vendor' && (await temFeature(ctx.user.id, FEATURE_RELATORIO)))
+      return converterParaWhatsapp({
+        ligacaoId: input.id,
+        porUserId: ctx.user.id,
+        podeQualquer,
+        meusIds: await idsDaPessoa(ctx.user.id),
         duracaoSegundos: input.duracaoSegundos,
         printArquivo: input.print,
         observacao: input.observacao,
