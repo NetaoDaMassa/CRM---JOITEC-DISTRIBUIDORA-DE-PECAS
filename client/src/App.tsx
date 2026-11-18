@@ -94,6 +94,8 @@ import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
 import PainelTvMarketing from './pages/PainelTvMarketing'
+import PainelEcommerce from './pages/PainelEcommerce'
+import PainelEcommerceConfig from './pages/admin/PainelEcommerceConfig'
 import PainelTvLogistica from './pages/PainelTvLogistica'
 import Devolucoes from './pages/Devolucoes'
 import MarketingArquivos from './pages/MarketingArquivos'
@@ -283,6 +285,18 @@ export default function App() {
           }
         />
         <Route
+          path="/painel-ecommerce"
+          element={
+            <AuthGuard>
+              <AdminGuard>
+                <FeatureGuard feature="painel_ecommerce">
+                  <PainelEcommerce />
+                </FeatureGuard>
+              </AdminGuard>
+            </AuthGuard>
+          }
+        />
+        <Route
           path="/painel-tv-marketing"
           element={
             <AuthGuard>
@@ -366,6 +380,7 @@ export default function App() {
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
           <Route path="admin/controle-suframa" element={<AdminGuard><FeatureGuard feature="controle_suframa"><ControleSuframa /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao" element={<AdminGuard><FeatureGuard feature="controle_estoque"><Expedicao /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/painel-ecommerce" element={<AdminGuard><FeatureGuard feature="painel_ecommerce_config"><PainelEcommerceConfig /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao-desempenho" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoDesempenho /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao-equipe" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoEquipe /></FeatureGuard></AdminGuard>} />
           <Route path="admin/loja-rastreamento" element={<AdminGuard><FeatureGuard feature="loja_rastreamento"><LojaRastreamento /></FeatureGuard></AdminGuard>} />

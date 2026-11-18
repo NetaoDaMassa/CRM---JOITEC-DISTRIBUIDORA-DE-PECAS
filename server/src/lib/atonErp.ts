@@ -12,7 +12,7 @@ const ATON_LIMIT = 50
 // ecommerce apontou faturamento errado (antes só EMITIDO ficava de fora
 // pedido já concluído mas registrado como FECHADO). PENDENTE/ABERTA ficam
 // fora (pedido ainda em andamento, pode nem virar venda).
-const POSICOES_VENDA_VALIDA = ['EMITIDO', 'FECHADO'] as const
+export const POSICOES_VENDA_VALIDA = ['EMITIDO', 'FECHADO'] as const
 
 // `posicao` e `status` do pedido são campos INDEPENDENTES — um pedido
 // cancelado no marketplace depois de ter nota emitida continua com
@@ -20,16 +20,28 @@ const POSICOES_VENDA_VALIDA = ['EMITIDO', 'FECHADO'] as const
 // MARKETPLACE", "AGUARDANDO DATA FATURAMENTO"). Sem checar `status`, pedido
 // cancelado/pendente entrava na soma de faturamento igual venda de
 // verdade — só "NORMAL" conta.
-const STATUS_VENDA_VALIDA = 'NORMAL'
+export const STATUS_VENDA_VALIDA = 'NORMAL'
 
-type AtonPedido = { pedido: number; total_pedido: number; status: string }
+// Campos que a gente usa (a Aton manda muito mais — inclusive dados do
+// cliente; não guardar/expor). `origem_nome` = conta do marketplace
+// ("ML COMPREFER", "SHOPEE JT"…), `id_empresa_pedido` 1-4 = Compretec/
+// Hidroplac/Comprefer/JT — o token do e-commerce traz as 4 (visto 2026-11-13).
+export type AtonPedido = {
+  pedido: number
+  total_pedido: number
+  status: string
+  posicao?: string
+  origem_nome?: string
+  id_empresa_pedido?: number
+  data_pedido?: string
+}
 type AtonRespostaPedidos = {
   status: string
   mensagem: string
   resultado?: { total: number; offset: number; limit: number; pedidos: AtonPedido[] }
 }
 
-function paraFormatoBr(dataIso: string): string {
+export function paraFormatoBr(dataIso: string): string {
   const [ano, mes, dia] = dataIso.slice(0, 10).split('-')
   return `${dia}/${mes}/${ano}`
 }
@@ -90,7 +102,7 @@ async function buscarPaginaComRetry(
 // painel que atualiza a cada 30s.
 const CONCORRENCIA_PAGINAS = 5
 
-async function buscarPedidosDaPosicao(
+export async function buscarPedidosDaPosicao(
   token: string,
   dataInicialBr: string,
   dataFinalBr: string,

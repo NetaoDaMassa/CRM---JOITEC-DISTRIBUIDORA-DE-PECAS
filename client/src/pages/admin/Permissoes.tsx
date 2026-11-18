@@ -33,6 +33,8 @@ const FEATURES = juntarRepetidas([
   { feature: 'painel_tv', label: 'Painel de TV' },
   { feature: 'painel_tv_odin', label: 'Painel de TV Odin Compressores' },
   { feature: 'painel_tv_marketing', label: 'Painel de TV Marketing' },
+  { feature: 'painel_ecommerce', label: 'Painel de TV E-commerce' },
+  { feature: 'painel_ecommerce_config', label: 'Painel E-commerce — metas e contas' },
   { feature: 'funil_excluir_card', label: 'Excluir card do Kanban' },
   // Poder dentro da Expedição (não é item de menu) — só admin descarta
   // pedido que voltou. Pedido do João, 2026-10-29.

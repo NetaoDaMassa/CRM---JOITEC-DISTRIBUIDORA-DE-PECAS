@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck, MousePointerClick,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
-  Sun, Moon, Target, Settings, Tv, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
+  Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
 } from 'lucide-react'
@@ -190,6 +190,9 @@ export const ADMIN_LINKS = [
   // nasce do picking do SAP, desempenho da equipe e cadastro da equipe. Cada
   // empresa tem o próprio estoque; Odin Compressores usa Ordens.
   { to: '/admin/expedicao', label: 'Expedição', icon: PackageCheck, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
+  // Painel E-commerce (João, 2026-11-18): metas das vendedoras do e-commerce,
+  // vendas puxadas da Aton — aqui a gestora configura metas/contas/fotos.
+  { to: '/admin/painel-ecommerce', label: 'Metas do E-commerce', icon: Goal, feature: 'painel_ecommerce_config' },
   { to: '/admin/expedicao-desempenho', label: 'Desempenho do estoque', icon: Medal, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
   { to: '/admin/expedicao-equipe', label: 'Equipe do estoque', icon: UsersRound, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'controle_estoque' },
   // Loja virtual nova (Compretec): o que os visitantes fazem na loja —
@@ -554,6 +557,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     // Painel de TV "Controle Logístico" (Expedição das 3 empresas) — pro
     // Financeiro, TV de 75". Pedido do João, 2026-10-29.
+    { to: '/painel-ecommerce', label: 'Painel de TV E-commerce', icon: MonitorSmartphone, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_ecommerce')) },
     { to: '/painel-tv-logistica', label: 'Painel Controle Logístico', icon: Truck, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_logistica')) },
     {
       // Sem trava de empresa aqui de propósito — a permissão concedida em

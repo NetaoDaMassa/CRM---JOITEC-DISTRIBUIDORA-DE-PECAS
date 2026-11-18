@@ -57,6 +57,7 @@ import { leadsRouter } from './leads.js'
 import { leadsRelatoriosRouter } from './leadsRelatorios.js'
 import { marketingGeralRouter } from './marketingGeral.js'
 import { painelMarketingRouter } from './painelMarketing.js'
+import { painelEcommerceRouter } from './painelEcommerce.js'
 import { exportacaoRouter } from './exportacao.js'
 import { googleDriveRouter } from './googleDrive.js'
 import { leadsRegioesRouter } from './leadsRegioes.js'
@@ -156,6 +157,7 @@ export const appRouter = router({
   leadsRelatorios: leadsRelatoriosRouter,
   marketingGeral: marketingGeralRouter,
   painelMarketing: painelMarketingRouter,
+  painelEcommerce: painelEcommerceRouter,
   exportacao: exportacaoRouter,
   googleDrive: googleDriveRouter,
   leadsRegioes: leadsRegioesRouter,

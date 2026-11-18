@@ -65,6 +65,10 @@ export const FEATURES_ADMIN = [
   // Painel de TV só de Marketing/Leads (telão de 75") — mesmo padrão dos
   // outros painéis de TV, rota própria fora da sidebar normal.
   'painel_tv_marketing',
+  // Painel de TV do E-commerce (metas das vendedoras, dados da Aton) + a
+  // tela onde a gestora configura metas/contas. João, 2026-11-18.
+  'painel_ecommerce',
+  'painel_ecommerce_config',
   // Financeiro/Cobrança (planilhas), pedido do João — admin-only de
   // propósito, não existe em FEATURES_VENDEDOR. Concedido manualmente em
   // Permissões pra quem cuida disso (não libera pra todo mundo por padrão,

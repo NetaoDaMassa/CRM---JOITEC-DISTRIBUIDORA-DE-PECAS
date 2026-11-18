@@ -151,6 +151,7 @@ export const CATALOGO: ItemCatalogo[] = [
   { id: 'painel_tv_odin', area: 'Painéis de TV', nome: 'Painel de TV Odin Compressores', empresas: ODIN, niveis: { 1: ['painel_tv_odin'] } },
   { id: 'painel_tv_marketing', area: 'Painéis de TV', nome: 'Painel de TV Marketing', niveis: { 1: ['painel_tv_marketing'] } },
   { id: 'painel_logistica', area: 'Painéis de TV', nome: 'Painel Controle Logístico', niveis: { 1: ['painel_logistica'] } },
+  { id: 'painel_ecommerce', area: 'Painéis de TV', nome: 'Painel de TV E-commerce', dica: 'Gerencia = muda as metas, as fotos e de quem é cada conta', niveis: { 1: ['painel_ecommerce'], 3: ['painel_ecommerce_config'] } },
 
   // Configurações
   { id: 'usuarios', area: 'Configurações', nome: 'Vendedores (usuários da empresa)', niveis: { 3: ['usuarios'] } },
