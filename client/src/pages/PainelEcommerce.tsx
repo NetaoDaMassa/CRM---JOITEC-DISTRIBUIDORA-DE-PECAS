@@ -297,6 +297,11 @@ export default function PainelEcommerce() {
             <span className="w-[1vh] h-[1vh] rounded-full bg-green-400 animate-pulse" />
             ao vivo da Aton{lido ? ` · lido às ${lido}` : ''}
           </span>
+          {data && (
+            <span className="text-[1.6vh] text-dark-400 bg-dark-800 px-[1.2vh] py-[0.5vh] rounded-full">
+              {data.base === 'liquido' ? 'valor recebido estimado' : 'valor bruto (nota)'}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-[1.6vh]">
           <div className="text-right">

@@ -35,6 +35,9 @@ export default function PainelEcommerceConfig() {
   const [metas, setMetas] = useState<Record<string, [string, string, string]>>({})
   const [metaGeral, setMetaGeral] = useState('')
   const [contas, setContas] = useState<Record<string, string>>({})
+  const [descontos, setDescontos] = useState<Record<string, string>>({})
+  const [base, setBase] = useState<'bruto' | 'liquido'>('bruto')
+  const [todas, setTodas] = useState('')
   const [novaNome, setNovaNome] = useState('')
   const [enviandoFoto, setEnviandoFoto] = useState<string | null>(null)
 
@@ -44,6 +47,8 @@ export default function PainelEcommerceConfig() {
     setMetas(Object.fromEntries(data.vendedoras.map((v) => [v.id, v.metas.map(mostrarValor) as [string, string, string]])))
     setMetaGeral(mostrarValor(data.metaGeral))
     setContas(Object.fromEntries(data.contasAton.map((c) => [c.conta, c.dona])))
+    setDescontos(Object.fromEntries(data.contasAton.map((c) => [c.conta, data.descontos[c.conta] != null ? mostrarValor(data.descontos[c.conta]) : ''])))
+    setBase(data.base)
   }, [data])
 
   if (isLoading) return <div className="h-40 animate-pulse" />
@@ -88,8 +93,13 @@ export default function PainelEcommerceConfig() {
       metaGeral: lerValor(metaGeral),
       vendedoras: vend.map((v) => ({ ...v, metas: (metas[v.id] ?? ['', '', '']).map(lerValor) as [number, number, number] })),
       contas,
+      descontos: Object.fromEntries(Object.entries(descontos).filter(([, v]) => v.trim() !== '').map(([k, v]) => [k, Math.min(Math.max(lerValor(v), 0), 100)])),
+      base,
     })
   }
+  const pctDe = (conta: string) => Math.min(Math.max(lerValor(descontos[conta] ?? ''), 0), 100)
+  const brutoTotal = data?.contasAton.filter((c) => (contas[c.conta] ?? '') !== 'fora').reduce((s, c) => s + c.brutoMes, 0) ?? 0
+  const liquidoTotal = data?.contasAton.filter((c) => (contas[c.conta] ?? '') !== 'fora').reduce((s, c) => s + c.brutoMes * (1 - pctDe(c.conta) / 100), 0) ?? 0
 
   const opcoes = [...vend.map((v) => ({ v: v.id, l: v.nome })), { v: '', l: 'Só soma no total geral' }, { v: 'fora', l: 'Fora do painel' }]
 
@@ -194,7 +204,37 @@ export default function PainelEcommerceConfig() {
 
       <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
         <div>
-          <h2 className="font-semibold text-dark-100">Contas da Aton → vendedora</h2>
+          <h2 className="font-semibold text-dark-100">O que conta nas metas</h2>
+          <p className="text-xs text-dark-400">
+            A Aton só manda o valor bruto (igual à nota). Pra chegar perto do "Vlr. Recebido" da Conciliação de Pedidos, ponha o % de desconto de cada conta na tabela abaixo (comissão + frete + taxa do marketplace) e vá ajustando comparando com a tela do Aton no mesmo período.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {([
+            ['bruto', 'Valor bruto (igual à nota)'],
+            ['liquido', 'Valor recebido estimado (bruto − % de desconto)'],
+          ] as const).map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setBase(v)}
+              className={`text-sm rounded-lg px-3 py-2 border ${base === v ? 'border-gold-600 text-gold-300 bg-gold-900/10' : 'border-dark-600 text-dark-300 hover:bg-dark-700'}`}
+            >
+              {base === v ? '● ' : '○ '}
+              {l}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-dark-400">
+          No mês até hoje (contas que entram no painel): bruto <b className="font-mono text-dark-200">R$ {mostrarValor(Math.round(brutoTotal))}</b> → recebido estimado{' '}
+          <b className="font-mono text-dark-200">R$ {mostrarValor(Math.round(liquidoTotal))}</b>
+          {brutoTotal > 0 && <> ({mostrarValor(Math.round((1 - liquidoTotal / brutoTotal) * 1000) / 10)}% de desconto médio)</>}
+        </p>
+      </section>
+
+      <section className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
+        <div>
+          <h2 className="font-semibold text-dark-100">Contas da Aton → vendedora e % de desconto</h2>
           <p className="text-xs text-dark-400">Conta nova que aparecer na Aton entra aqui sozinha (e, até alguém escolher, soma só no total geral).</p>
         </div>
         <div className="overflow-x-auto">
@@ -203,7 +243,10 @@ export default function PainelEcommerceConfig() {
               <tr className="text-xs text-dark-400 text-left">
                 <th className="py-2 pr-3 font-medium">Conta (como vem da Aton)</th>
                 <th className="py-2 pr-3 font-medium text-right">Vendas no mês</th>
-                <th className="py-2 font-medium">De quem é</th>
+                <th className="py-2 pr-3 font-medium">De quem é</th>
+                <th className="py-2 pr-3 font-medium text-right">Bruto no mês</th>
+                <th className="py-2 pr-3 font-medium text-right">% desconto</th>
+                <th className="py-2 font-medium text-right">Recebido estimado</th>
               </tr>
             </thead>
             <tbody>
@@ -214,7 +257,7 @@ export default function PainelEcommerceConfig() {
                     {!c.pedidosMes && <span className="ml-2 text-xs rounded px-1.5 py-0.5 bg-red-900/30 text-red-300">sem pedidos este mês</span>}
                   </td>
                   <td className="py-2 pr-3 text-right font-mono text-dark-300">{c.pedidosMes.toLocaleString('pt-BR')}</td>
-                  <td className="py-2">
+                  <td className="py-2 pr-3">
                     <select
                       id={`dona-${c.conta.replace(/\W/g, '')}`}
                       className="w-56 bg-dark-900 border border-dark-600 rounded-lg px-2 py-1.5 text-dark-100"
@@ -228,13 +271,35 @@ export default function PainelEcommerceConfig() {
                       ))}
                     </select>
                   </td>
+                  <td className="py-2 pr-3 text-right font-mono text-dark-300">R$ {mostrarValor(Math.round(c.brutoMes))}</td>
+                  <td className="py-2 pr-3 text-right">
+                    <input
+                      id={`desc-${c.conta.replace(/\W/g, '')}`}
+                      inputMode="decimal"
+                      placeholder="0"
+                      className="w-20 bg-dark-900 border border-dark-600 rounded-lg px-2 py-1.5 text-right font-mono text-dark-100"
+                      value={descontos[c.conta] ?? ''}
+                      onChange={(e) => setDescontos((m) => ({ ...m, [c.conta]: e.target.value }))}
+                    />
+                    <span className="ml-1 text-dark-500">%</span>
+                  </td>
+                  <td className="py-2 text-right font-mono text-dark-200">R$ {mostrarValor(Math.round(c.brutoMes * (1 - pctDe(c.conta) / 100)))}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div>
+            <label htmlFor="desc-todas" className="block text-xs text-dark-400 mb-1">Mesmo % pra todas as contas</label>
+            <input id="desc-todas" inputMode="decimal" placeholder="ex.: 20" className="w-24 bg-dark-900 border border-dark-600 rounded-lg px-2 py-1.5 text-right font-mono text-dark-100" value={todas} onChange={(e) => setTodas(e.target.value)} />
+          </div>
+          <Button size="sm" variant="secondary" onClick={() => todas.trim() && setDescontos(Object.fromEntries((data?.contasAton ?? []).map((c) => [c.conta, todas])))}>
+            Aplicar em todas
+          </Button>
+        </div>
         <p className="text-xs text-dark-500">
-          Valor usado: valor bruto do pedido (igual à nota), só pedidos faturados ou fechados com situação normal. Cancelados e aguardando faturar aparecem separados no telão. O "Vlr. Recebido" da Conciliação ainda não vem pela integração da Aton.
+          Contam só pedidos faturados ou fechados com situação normal. Cancelados e aguardando faturar aparecem separados no telão. O "Vlr. Recebido" de verdade ainda não vem pela integração da Aton — quando vier, o % deixa de ser preciso.
         </p>
       </section>
 

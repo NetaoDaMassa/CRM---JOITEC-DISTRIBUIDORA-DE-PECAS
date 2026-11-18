@@ -14,7 +14,16 @@ const CHAVE_TOKEN = 'aton_token_compretec-ecommerce'
 
 export type VendedoraEcommerce = { id: string; nome: string; metas: [number, number, number]; fotoPath: string | null }
 // dona de cada conta: id da vendedora · '' = só soma no total geral · 'fora' = não entra
-export type ConfigEcommerce = { metaGeral: number; vendedoras: VendedoraEcommerce[]; contas: Record<string, string> }
+// descontos: % por conta pra estimar o "Vlr. Recebido" (comissão/frete/taxa
+// do marketplace) enquanto a Aton não manda o valor real; base decide o que
+// conta nas metas — 'bruto' (total_pedido) ou 'liquido' (bruto − desconto).
+export type ConfigEcommerce = {
+  metaGeral: number
+  vendedoras: VendedoraEcommerce[]
+  contas: Record<string, string>
+  descontos: Record<string, number>
+  base: 'bruto' | 'liquido'
+}
 
 // Começa com o que o João passou em 2026-11-13.
 const PADRAO: ConfigEcommerce = {
@@ -38,6 +47,8 @@ const PADRAO: ConfigEcommerce = {
     'VENDA MANUAL': 'fora',
     'SITE COMPRETEC': 'fora',
   },
+  descontos: {},
+  base: 'bruto',
 }
 
 export async function lerConfigEcommerce(): Promise<ConfigEcommerce> {
@@ -45,7 +56,13 @@ export async function lerConfigEcommerce(): Promise<ConfigEcommerce> {
   if (!txt) return structuredClone(PADRAO)
   try {
     const c = JSON.parse(txt) as Partial<ConfigEcommerce>
-    return { metaGeral: c.metaGeral ?? PADRAO.metaGeral, vendedoras: c.vendedoras ?? PADRAO.vendedoras, contas: c.contas ?? PADRAO.contas }
+    return {
+      metaGeral: c.metaGeral ?? PADRAO.metaGeral,
+      vendedoras: c.vendedoras ?? PADRAO.vendedoras,
+      contas: c.contas ?? PADRAO.contas,
+      descontos: c.descontos ?? {},
+      base: c.base === 'liquido' ? 'liquido' : 'bruto',
+    }
   } catch {
     return structuredClone(PADRAO)
   }

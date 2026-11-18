@@ -11,14 +11,17 @@ const FEATURE_CONFIG = 'painel_ecommerce_config'
 
 type Soma = { qtd: number; valor: number; hojeQtd: number; hojeValor: number; cancQtd: number; cancValor: number; aguardQtd: number; aguardValor: number }
 const vazio = (): Soma => ({ qtd: 0, valor: 0, hojeQtd: 0, hojeValor: 0, cancQtd: 0, cancValor: 0, aguardQtd: 0, aguardValor: 0 })
-function somar(s: Soma, p: PedidoEcommerce, hoje: string) {
+function somar(s: Soma, p: PedidoEcommerce, valor: number, hoje: string) {
   if (p.situacao === 'venda') {
     s.qtd++
-    s.valor += p.valor
-    if (p.dia === hoje) (s.hojeQtd++, (s.hojeValor += p.valor))
-  } else if (p.situacao === 'cancelado') (s.cancQtd++, (s.cancValor += p.valor))
-  else (s.aguardQtd++, (s.aguardValor += p.valor))
+    s.valor += valor
+    if (p.dia === hoje) (s.hojeQtd++, (s.hojeValor += valor))
+  } else if (p.situacao === 'cancelado') (s.cancQtd++, (s.cancValor += valor))
+  else (s.aguardQtd++, (s.aguardValor += valor))
 }
+// Valor que conta no painel: bruto, ou bruto − % de desconto da conta.
+const fatorDe = (config: { base: string; descontos: Record<string, number> }, conta: string) =>
+  config.base === 'liquido' ? 1 - Math.min(Math.max(config.descontos[conta] ?? 0, 0), 100) / 100 : 1
 const r2 = (n: number) => Math.round(n * 100) / 100
 const arred = (s: Soma): Soma => Object.fromEntries(Object.entries(s).map(([k, v]) => [k, r2(v)])) as Soma
 
@@ -35,12 +38,13 @@ export const painelEcommerceRouter = router({
     // Contas configuradas sempre aparecem (ex.: Magalu sem pedido no mês).
     for (const conta of Object.keys(config.contas)) porConta.set(conta, vazio())
     for (const p of leitura.pedidos) {
+      const valor = p.valor * fatorDe(config, p.conta)
       const s = porConta.get(p.conta) ?? vazio()
-      somar(s, p, hoje)
+      somar(s, p, valor, hoje)
       porConta.set(p.conta, s)
       const dona = config.contas[p.conta] ?? ''
       if (p.situacao === 'venda' && dona !== 'fora') {
-        dias.set(p.dia, (dias.get(p.dia) ?? 0) + p.valor)
+        dias.set(p.dia, (dias.get(p.dia) ?? 0) + valor)
         if (p.hora != null) horas[p.hora]++
       }
     }
@@ -73,6 +77,7 @@ export const painelEcommerceRouter = router({
       diaHoje,
       diasNoMes, // marketplace vende todo dia — ritmo/falta por dia corrido
       metaGeral: config.metaGeral,
+      base: config.base,
       total: arred(total),
       vendedoras,
       contas: contas.sort((a, b) => b.valor - a.valor),
@@ -84,11 +89,18 @@ export const painelEcommerceRouter = router({
   config: featureProcedure(FEATURE_CONFIG).query(async () => {
     const hoje = hojeBrString()
     const [config, leitura] = await Promise.all([lerConfigEcommerce(), pedidosDoMes(`${hoje.slice(0, 8)}01`, hoje).catch(() => null)])
-    // Toda conta que apareceu na Aton no mês entra na lista pra gestora escolher a dona.
+    // Toda conta que apareceu na Aton no mês entra na lista pra gestora escolher
+    // a dona. Bruto do mês por conta = pra conferir o % com a tela de
+    // Conciliação de Pedidos do Aton (mesmo período).
     const qtd = new Map<string, number>()
-    for (const p of leitura?.pedidos ?? []) if (p.situacao === 'venda') qtd.set(p.conta, (qtd.get(p.conta) ?? 0) + 1)
+    const bruto = new Map<string, number>()
+    for (const p of leitura?.pedidos ?? [])
+      if (p.situacao === 'venda') (qtd.set(p.conta, (qtd.get(p.conta) ?? 0) + 1), bruto.set(p.conta, (bruto.get(p.conta) ?? 0) + p.valor))
     const nomes = [...new Set([...Object.keys(config.contas), ...qtd.keys()])].sort()
-    return { ...config, contasAton: nomes.map((conta) => ({ conta, pedidosMes: qtd.get(conta) ?? 0, dona: config.contas[conta] ?? '' })) }
+    return {
+      ...config,
+      contasAton: nomes.map((conta) => ({ conta, pedidosMes: qtd.get(conta) ?? 0, brutoMes: r2(bruto.get(conta) ?? 0), dona: config.contas[conta] ?? '' })),
+    }
   }),
 
   salvarConfig: featureProcedure(FEATURE_CONFIG)
@@ -106,6 +118,8 @@ export const painelEcommerceRouter = router({
           )
           .max(20),
         contas: z.record(z.string().max(80), z.string().max(40)),
+        descontos: z.record(z.string().max(80), z.number().min(0).max(100)),
+        base: z.enum(['bruto', 'liquido']),
       })
     )
     .mutation(async ({ input }) => {
