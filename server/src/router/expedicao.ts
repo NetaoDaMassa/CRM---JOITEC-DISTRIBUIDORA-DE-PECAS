@@ -123,6 +123,10 @@ function volumesTexto(p: { volumes: number | null; packs: number | null; sacos: 
 // dias, finalizado como "já expedido" (histórico) ou com o cliente
 // cadastrado com outro código —, porque é o processo da venda fechada.
 async function jornadaPorCodigos(
+  // Empresa do cadastro: o mesmo código do SAP existe na Joitec, Odin Tubos e
+  // Odin Automação — pelo código só entra pedido DESSA empresa (João,
+  // 2026-11-18: pedido da Odin TC aparecendo no cliente da Joitec).
+  empresaId: number,
   codigos: string[],
   porEntry: Map<number, string> = new Map(),
   // Pedido ainda sem picking (sap_pedidos_pendentes só tem o nº): nº do pedido da venda → chave.
@@ -131,12 +135,14 @@ async function jornadaPorCodigos(
   const mapa = new Map<string, PassoJornada[]>()
   if (!codigos.length && !porEntry.size) return mapa
   const add = (codigo: string, p: PassoJornada) => mapa.set(codigo, [...(mapa.get(codigo) ?? []), p])
+  const slugEmpresa = (await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } }))?.slug ?? null
   const pendentes = await db
     .select()
     .from(sapPedidosPendentes)
     .where(or(codigos.length ? inArray(sapPedidosPendentes.codigoCliente, codigos) : undefined, porNumero.size ? inArray(sapPedidosPendentes.numero, [...porNumero.keys()]) : undefined))
   for (const p of pendentes) {
-    const chaves = [...new Set([codigos.includes(p.codigoCliente) ? p.codigoCliente : null, porNumero.get(p.numero) ?? null].filter((x): x is string => !!x))]
+    const daEmpresa = !p.empresaSlug || p.empresaSlug === slugEmpresa
+    const chaves = [...new Set([daEmpresa && codigos.includes(p.codigoCliente) ? p.codigoCliente : null, porNumero.get(p.numero) ?? null].filter((x): x is string => !!x))]
     for (const chave of chaves) add(chave, {
       pedido: p.numero,
       empresaSlug: p.empresaSlug,
@@ -155,6 +161,7 @@ async function jornadaPorCodigos(
         .where(
           and(
             inArray(expedicaoPedidos.clienteCodigo, codigos),
+            eq(expedicaoPedidos.empresaId, empresaId),
             eq(expedicaoPedidos.historico, false),
             notInArray(expedicaoPedidos.etapa, ['cancelado', 'descartado']),
             or(ne(expedicaoPedidos.etapa, 'coletado'), gte(expedicaoPedidos.coletadoEm, tresDias))
@@ -234,7 +241,7 @@ async function jornadaPorCodigos(
     // Entra no cadastro do código do pedido E no da venda (o mesmo cliente às
     // vezes tem 2 cadastros: card Fechado num, código do SAP no outro).
     const codigoDoPedido = p.clienteCodigo ?? ''
-    const chaves = [...new Set([codigos.includes(codigoDoPedido) ? codigoDoPedido : null, chaveExtra.get(p.id) ?? null].filter((x): x is string => !!x))]
+    const chaves = [...new Set([p.empresaId === empresaId && codigos.includes(codigoDoPedido) ? codigoDoPedido : null, chaveExtra.get(p.id) ?? null].filter((x): x is string => !!x))]
     if (!chaves.length) chaves.push(codigoDoPedido)
     const passo: PassoJornada = {
       pedido: p.pedidosSap,
@@ -570,7 +577,7 @@ export const expedicaoRouter = router({
     const chave = codigos[0] ?? `cliente-${input.clienteId}`
     const porEntry = new Map(doCliente.map((v) => [v.entry, chave]))
     const porNumero = new Map(doCliente.filter((v) => v.numero).map((v) => [v.numero!, chave]))
-    const mapa = await jornadaPorCodigos(codigos, porEntry, porNumero)
+    const mapa = await jornadaPorCodigos(ctx.empresaId, codigos, porEntry, porNumero)
     const chaves = codigos.length ? codigos : [`cliente-${input.clienteId}`]
     return chaves.flatMap((k) => mapa.get(k) ?? [])
   }),
@@ -604,6 +611,7 @@ export const expedicaoRouter = router({
     const porEntry = new Map(vendasSap.filter((v) => chavePorId.has(v.clienteId)).map((v) => [v.entry, chavePorId.get(v.clienteId)!]))
     const porNumero = new Map(vendasSap.filter((v) => v.numero && chavePorId.has(v.clienteId)).map((v) => [v.numero!, chavePorId.get(v.clienteId)!]))
     const mapa = await jornadaPorCodigos(
+      ctx.empresaId,
       lista.map((c) => c.codigo).filter((x): x is string => !!x && codigos.includes(x)),
       porEntry,
       porNumero
