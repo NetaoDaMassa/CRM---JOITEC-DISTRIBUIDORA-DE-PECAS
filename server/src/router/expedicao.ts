@@ -6,7 +6,7 @@ import { db } from '../db/client.js'
 import { clientes, empresas, expedicaoAgendamentos, funilMensal, expedicaoColaboradores, expedicaoErros, expedicaoFotos, expedicaoItens, expedicaoKits, expedicaoPausas, expedicaoPedidos, sapCatalogoItens, sapEstoqueItens, sapPedidosPendentes, users, vendas } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { sincronizarExpedicaoSap } from '../lib/sapExpedicao.js'
-import { gerarPickingSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
+import { gerarPickingSap, posicoesParaConferenciaSap, registrarConferenciaSap } from '../lib/sapExpedicaoEscrita.js'
 import { filialDaEmpresa } from '../lib/sapEstoque.js'
 import { slugDoPedidoSap, vendedoresOdinTubosSap } from '../lib/sapVendasAuto.js'
 import { vendedoresAutomacaoSap } from '../lib/sapSyncItens.js'
@@ -1174,14 +1174,25 @@ export const expedicaoRouter = router({
     }),
 
   // Depois da conferência no CRM: marca o picking como separado no SAP.
-  registrarConferenciaSap: featureProcedure(FEATURE)
+  posicoesConferenciaSap: featureProcedure(FEATURE)
     .input(z.object({ id: z.number().int() }))
+    .query(async ({ ctx, input }) => {
+      const p = await acharPedido(ctx.empresaId, input.id)
+      try {
+        return await posicoesParaConferenciaSap(p.id)
+      } catch (e) {
+        throw new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
+      }
+    }),
+
+  registrarConferenciaSap: featureProcedure(FEATURE)
+    .input(z.object({ id: z.number().int(), bins: z.record(z.string(), z.string()).optional() }))
     .mutation(async ({ ctx, input }) => {
       const p = await acharPedido(ctx.empresaId, input.id)
       if (!p.conferenciaFim) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Termine a conferência no CRM antes' })
       let r
       try {
-        r = await registrarConferenciaSap(p.id, p.pickListSap)
+        r = await registrarConferenciaSap(p.id, p.pickListSap, input.bins ?? {})
       } catch (e) {
         throw new TRPCError({ code: 'BAD_REQUEST', message: `SAP: ${(e as Error).message}` })
       }
