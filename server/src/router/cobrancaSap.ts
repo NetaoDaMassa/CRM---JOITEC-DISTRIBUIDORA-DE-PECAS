@@ -149,11 +149,13 @@ export const cobrancaSapRouter = router({
       z.object({
         tituloIds: z.array(z.number()).min(1).max(200),
         canal: z.enum(['whatsapp', 'ligacao', 'email', 'outro']),
-        tipo: z.enum(['cobranca', 'aviso_cartorio', 'retorno']).default('cobranca'),
+        tipo: z.enum(['cobranca', 'aviso_cartorio', 'retorno', 'observacao']).default('cobranca'),
         observacao: z.string().trim().max(1000).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Só observação (sem ter cobrado): vai pro histórico, não conta na régua.
+      if (input.tipo === 'observacao' && !input.observacao) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escreva a observação' })
       const hoje = hojeBrString()
       const ts = await db.select().from(cobrancaTitulos).where(inArray(cobrancaTitulos.id, input.tituloIds))
       for (const t of ts) {

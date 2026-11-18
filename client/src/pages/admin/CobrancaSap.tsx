@@ -18,7 +18,7 @@ type Aba = 'cobrar' | 'cartorio' | 'rc' | 'pago' | 'mensagens'
 
 const EMPRESA_LABEL: Record<string, string> = { joitec: 'Joitec', 'odin-tubos': 'Odin Tubos', 'joitec-automacao': 'Odin Automação' }
 const CANAL_LABEL: Record<string, string> = { whatsapp: 'WhatsApp', ligacao: 'Ligação', email: 'E-mail', outro: 'Registro' }
-const TIPO_LABEL: Record<string, string> = { cobranca: 'Cobrança', aviso_cartorio: 'Aviso de cartório', retorno: 'Retorno do cartório' }
+const TIPO_LABEL: Record<string, string> = { cobranca: 'Cobrança', aviso_cartorio: 'Aviso de cartório', retorno: 'Retorno do cartório', observacao: 'Observação' }
 
 const dataBr = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split('-').reverse().join('/') : '—')
 
@@ -65,6 +65,8 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
   const recarregar = () => (utils.cobrancaSap.listar.invalidate(), utils.cobrancaSap.resumo.invalidate())
   const erro = (e: { message: string }) => toast.error(e.message)
   const registrar = trpc.cobrancaSap.registrarContato.useMutation({ onSuccess: () => (toast.success('Cobrança registrada'), recarregar()), onError: erro })
+  const anotar = trpc.cobrancaSap.registrarContato.useMutation({ onSuccess: () => (toast.success('Observação salva'), setObs(''), recarregar()), onError: erro })
+  const salvarObs = () => obs.trim() && anotar.mutate({ tituloIds: ids, canal: 'outro', tipo: 'observacao', observacao: obs.trim() })
   const pago = trpc.cobrancaSap.marcarPago.useMutation({ onSuccess: () => (toast.success('Marcado como pago'), recarregar()), onError: erro })
   const mover = trpc.cobrancaSap.mover.useMutation({ onSuccess: () => (toast.success('Movido'), recarregar()), onError: erro })
   const retorno = trpc.cobrancaSap.verificarRetorno.useMutation({ onSuccess: () => (toast.success('Registrado'), recarregar()), onError: erro })
@@ -228,7 +230,12 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
               placeholder="Observação (o que o cliente disse) — opcional"
               value={obs}
               onChange={(e) => setObs(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && !aConfirmar && salvarObs()}
             />
+            {/* Só anotar, sem cobrar (João 2026-11-18): vai pro histórico, não conta na régua. */}
+            <Button size="sm" variant="secondary" onClick={salvarObs} disabled={!obs.trim() || !!aConfirmar} loading={anotar.isPending}>
+              💬 Salvar observação
+            </Button>
           </div>
           {aConfirmar && (
             <div className="rounded-lg border border-amber-500/70 bg-amber-900/20 p-2 space-y-2">
@@ -309,7 +316,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
               {(historico ? todos : todos.slice(0, 4))
                 .map((c) => (
                   <li key={c.id}>
-                    {formatDateTime(c.createdAt)} · {TIPO_LABEL[c.tipo]} por {CANAL_LABEL[c.canal]}
+                    {formatDateTime(c.createdAt)} · {c.tipo === 'observacao' ? '💬 Observação' : `${TIPO_LABEL[c.tipo]} por ${CANAL_LABEL[c.canal]}`}
                     {c.diaRegua ? ` (dia ${c.diaRegua})` : ''} · {c.quem ?? '—'}
                     {c.observacao ? ` — ${c.observacao}` : ''}
                     {c.ligacaoId && c.ligacaoPartes > 0 && (

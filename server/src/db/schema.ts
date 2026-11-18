@@ -5560,7 +5560,8 @@ export const cobrancaContatos = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }),
     tituloId: integer('titulo_id').notNull().references(() => cobrancaTitulos.id, { onDelete: 'cascade' }),
     canal: text('canal', { enum: ['whatsapp', 'ligacao', 'email', 'outro'] }).notNull(),
-    tipo: text('tipo', { enum: ['cobranca', 'aviso_cartorio', 'retorno'] }).notNull().default('cobranca'),
+    // 'observacao' = só anotação (João 2026-11-18), não conta na régua.
+    tipo: text('tipo', { enum: ['cobranca', 'aviso_cartorio', 'retorno', 'observacao'] }).notNull().default('cobranca'),
     diaRegua: integer('dia_regua'),
     observacao: text('observacao'),
     userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
