@@ -506,7 +506,32 @@ export async function sincronizarVendasSap(
       r.faturadas++
     }
   }
+  await concluirProspectsComVenda()
   return r
+}
+
+// Prospect que já tem venda (depois de entrar na prospecção) e continua
+// "em prospecção": sai pra carteira. Acontecia quando a venda caía num card
+// que já existia (o concluirProspeccaoPorVenda acima só roda quando cria o
+// card) — o cliente ficava com venda no Kanban e sumia da lista de Clientes
+// / Transferir (caso C000930 BRÁULIO FREITAS MENDONÇA, pedido 9511, João 2026-11-18).
+export async function concluirProspectsComVenda(): Promise<number> {
+  const presos = await db
+    .select({ id: clientes.id })
+    .from(clientes)
+    .where(
+      and(
+        eq(clientes.emProspeccao, true),
+        sql`${clientes.prospeccaoOrigem} IS NOT NULL`,
+        sql`${clientes.vendedorAtualId} IS NOT NULL`,
+        isNull(clientes.deletedAt),
+        sql`exists (select 1 from vendas v where v.cliente_id = ${clientes.id} and v.deleted_at is null
+              and v.data_fechamento >= coalesce(${clientes.prospeccaoDesde}, '0000'))`
+      )
+    )
+  for (const c of presos) await concluirProspeccaoPorVenda(c.id).catch((e) => console.error('[sap-vendas] prospect com venda', c.id, e))
+  if (presos.length) console.log(`[sap-vendas] ${presos.length} prospect(s) com venda enviados pra carteira`)
+  return presos.length
 }
 
 // Venda da Bruna que já virou Pedido (ordem): o valor do Pedido acompanha o
