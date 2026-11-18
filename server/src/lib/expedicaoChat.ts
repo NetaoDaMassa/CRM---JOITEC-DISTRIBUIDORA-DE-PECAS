@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoPedidos, permissoesAdmin, users } from '../db/schema.js'
+import { clientes, empresas, expedicaoColaboradores, expedicaoErros, expedicaoPedidos, permissoesAdmin, users, vendas } from '../db/schema.js'
 import { prazoLimiteExpedicao } from './expedicaoPrazo.js'
 import { agendamentosPorCard } from './expedicaoAgendamentos.js'
 
@@ -20,29 +20,57 @@ export async function cardsDoPedidoSap(entry: number) {
 
 type Card = Awaited<ReturnType<typeof cardsDoPedidoSap>>[number]
 
-// O vendedor pode ter o cliente em outra empresa do grupo: o código do SAP é
-// o mesmo entre elas (mesma regra da jornada do pedido na ficha do cliente).
-async function clientesDosCards(cards: Card[]) {
-  const codigos = [...new Set(cards.map((c) => c.clienteCodigo).filter((c): c is string => !!c))]
-  if (!codigos.length) return []
-  return db
-    .select({ empresaId: clientes.empresaId, vendedorAtualId: clientes.vendedorAtualId })
-    .from(clientes)
-    .where(and(isNull(clientes.deletedAt), or(inArray(clientes.codigo, codigos), inArray(clientes.codigoAntigo, codigos))))
+// Dono do pedido = SÓ da empresa do pedido (João, 2026-11-18: pedido 9638 da
+// Evelin/Joitec abriu a conversa com a Karinna, que tem o MESMO código do SAP
+// num cadastro da Odin Tubos — "o mesmo cliente compra nas 4 empresas e não
+// pode haver esse tipo de coisa"). Antes buscava o código em todas as
+// empresas e, como o cadastro da Joitec tinha espaço no fim do código
+// ("C011515 "), caía no da Odin Tubos.
+//   1. quem tem a VENDA ligada ao pedido no CRM (a venda do SAP já vai pra
+//      quem fez o pedido — inclusive Automação pela filial Joitec);
+//   2. senão, o dono do cadastro com esse código NA EMPRESA DO CARD.
+// Código comparado sem espaços e sem diferença de maiúsculas.
+function entriesDosCards(cards: Card[]): number[] {
+  return [...new Set(cards.flatMap((c) => c.orderEntriesSap.split(',').map(Number)).filter((n) => Number.isFinite(n) && n > 0))]
 }
 
-// Quem pode perguntar: o vendedor dono do cliente, gestores/admins (inclui as
+async function donosDoPedido(cards: Card[]): Promise<number[]> {
+  if (!cards.length) return []
+  const entries = entriesDosCards(cards)
+  const daVenda = entries.length
+    ? await db
+        .select({ vendedorId: vendas.vendedorId })
+        .from(vendas)
+        .where(and(inArray(vendas.pedidoSapEntry, entries), isNull(vendas.deletedAt)))
+    : []
+  if (daVenda.length) return [...new Set(daVenda.map((v) => v.vendedorId))]
+  const codigos = [...new Set(cards.map((c) => c.clienteCodigo?.trim().toUpperCase()).filter((c): c is string => !!c))]
+  if (!codigos.length) return []
+  const empresasDosCards = [...new Set(cards.map((c) => c.empresaId))]
+  const cads = await db
+    .select({ vendedorAtualId: clientes.vendedorAtualId })
+    .from(clientes)
+    .where(
+      and(
+        isNull(clientes.deletedAt),
+        inArray(clientes.empresaId, empresasDosCards),
+        or(inArray(sql`upper(trim(${clientes.codigo}))`, codigos), inArray(sql`upper(trim(${clientes.codigoAntigo}))`, codigos))
+      )
+    )
+  return [...new Set(cads.map((c) => c.vendedorAtualId).filter((x): x is number => !!x))]
+}
+
+// Quem pode perguntar: o vendedor dono do pedido, gestores/admins (inclui as
 // contas do estoque). Outro vendedor não abre conversa de pedido que não é dele.
 export async function podeConversarSobrePedido(user: Usuario, cards: Card[]): Promise<boolean> {
   if (user.superAdmin || user.role !== 'vendor') return true
-  return (await clientesDosCards(cards)).some((c) => c.vendedorAtualId === user.id)
+  return (await donosDoPedido(cards)).includes(user.id)
 }
 
 export async function vendedorDonoDoPedido(cards: Card[]): Promise<{ id: number; nome: string } | null> {
-  const lista = await clientesDosCards(cards)
-  const dono = lista.find((c) => c.empresaId === cards[0]?.empresaId && c.vendedorAtualId) ?? lista.find((c) => c.vendedorAtualId)
-  if (!dono?.vendedorAtualId) return null
-  const u = await db.query.users.findFirst({ where: eq(users.id, dono.vendedorAtualId), columns: { id: true, name: true } })
+  const [id] = await donosDoPedido(cards)
+  if (!id) return null
+  const u = await db.query.users.findFirst({ where: eq(users.id, id), columns: { id: true, name: true } })
   return u ? { id: u.id, nome: u.name } : null
 }
 
