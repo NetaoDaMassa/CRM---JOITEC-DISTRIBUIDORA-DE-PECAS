@@ -52,6 +52,7 @@ export const cobrancaSapRouter = router({
               ligacaoId: cobrancaContatos.pabxLigacaoId,
               ligacaoEfetiva: pabxLigacoesProcessadas.efetiva,
               ligacaoGravacao: pabxLigacoesProcessadas.linkGravacao,
+              printPath: cobrancaContatos.printPath,
             })
             .from(cobrancaContatos)
             .leftJoin(users, eq(users.id, cobrancaContatos.userId))
@@ -167,6 +168,41 @@ export const cobrancaSapRouter = router({
           diaRegua: input.tipo === 'cobranca' && dia >= 1 && dia <= 5 ? dia : null,
           observacao: input.observacao || null,
           userId: ctx.user.id,
+        })
+        if (input.tipo === 'aviso_cartorio' && !t.cartorioAvisoEm) await db.update(cobrancaTitulos).set({ cartorioAvisoEm: agoraSqlite() }).where(eq(cobrancaTitulos.id, t.id))
+      }
+      return { ok: true, registrados: ts.length }
+    }),
+
+  // Ligação pelo WhatsApp (João, 2026-11-18): só o print é obrigatório —
+  // tempo e o que foi conversado são opcionais. Conta como cobrança do dia.
+  registrarLigacaoWhatsapp: featureProcedure(FEATURE)
+    .input(
+      z.object({
+        tituloIds: z.array(z.number()).min(1).max(200),
+        tipo: z.enum(['cobranca', 'aviso_cartorio']).default('cobranca'),
+        printPath: z.string().regex(/^\/uploads\/[^/\\]+$/, 'Anexe o print da ligação'),
+        atendeu: z.boolean().default(true),
+        duracaoSegundos: z.number().int().min(1).max(4 * 3600).optional(),
+        observacao: z.string().trim().max(1000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const s = input.duracaoSegundos
+      const tempo = s ? `, ${Math.floor(s / 60) ? `${Math.floor(s / 60)}min ` : ''}${s % 60}s` : ''
+      const texto = `📱 Ligação pelo WhatsApp: ${input.atendeu ? `atendida${tempo}` : 'não atendida'} (print anexado)${input.observacao ? ` — ${input.observacao}` : ''}`
+      const hoje = hojeBrString()
+      const ts = await db.select().from(cobrancaTitulos).where(inArray(cobrancaTitulos.id, input.tituloIds))
+      for (const t of ts) {
+        const dia = diasUteisAposVencimento(t.vencimento, hoje)
+        await db.insert(cobrancaContatos).values({
+          tituloId: t.id,
+          canal: 'ligacao',
+          tipo: input.tipo,
+          diaRegua: input.tipo === 'cobranca' && dia >= 1 && dia <= 5 ? dia : null,
+          observacao: texto,
+          userId: ctx.user.id,
+          printPath: input.printPath,
         })
         if (input.tipo === 'aviso_cartorio' && !t.cartorioAvisoEm) await db.update(cobrancaTitulos).set({ cartorioAvisoEm: agoraSqlite() }).where(eq(cobrancaTitulos.id, t.id))
       }

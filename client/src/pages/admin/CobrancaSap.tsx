@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Copy, Mail, MessageCircle, Phone, RefreshCw } from 'lucide-react'
+import { Copy, ImagePlus, Mail, MessageCircle, Phone, RefreshCw, X } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import GravacaoLigacao from '../../components/ui/GravacaoLigacao'
@@ -60,6 +60,97 @@ function Bolinhas({ dias, atual }: { dias: number[]; atual: number }) {
   )
 }
 
+// Ligação pelo WhatsApp na Cobrança (João, 2026-11-18): só o print é
+// obrigatório — tempo e o que foi conversado são opcionais.
+function LigacaoWhatsappCobranca({ ids, tipo, onFechar, onRegistrada }: { ids: number[]; tipo: 'cobranca' | 'aviso_cartorio'; onFechar: () => void; onRegistrada: () => void }) {
+  const [print, setPrint] = useState<File | null>(null)
+  const [previa, setPrevia] = useState<string | null>(null)
+  const [minutos, setMinutos] = useState('')
+  const [segundos, setSegundos] = useState('')
+  const [obs, setObs] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const mut = trpc.cobrancaSap.registrarLigacaoWhatsapp.useMutation()
+  useEffect(() => () => void (previa && URL.revokeObjectURL(previa)), [previa])
+
+  const escolher = (f: File | undefined | null) => {
+    if (!f) return
+    if (!f.type.startsWith('image/')) return toast.error('O print precisa ser uma imagem')
+    setPrint(f)
+    setPrevia(URL.createObjectURL(f))
+  }
+  const salvar = async (atendeu: boolean) => {
+    if (!print) return toast.error('Anexe o print da ligação')
+    setEnviando(true)
+    try {
+      const form = new FormData()
+      form.append('file', print, print.name || 'print-ligacao-whatsapp.jpg')
+      const res = await fetch('/upload/comprovante-exclusao', { method: 'POST', headers: { Authorization: `Bearer ${localStorage.getItem('odin_token')}` }, body: form })
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Não consegui enviar o print')
+      const { path } = await res.json()
+      const total = (Number(minutos) || 0) * 60 + (Number(segundos) || 0)
+      await mut.mutateAsync({ tituloIds: ids, tipo, printPath: path, atendeu, duracaoSegundos: total > 0 ? total : undefined, observacao: obs.trim() || undefined })
+      toast.success('Ligação pelo WhatsApp registrada')
+      onRegistrada()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Erro ao registrar')
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div
+      className="rounded-lg border border-green-600/60 bg-green-900/15 p-2 space-y-2"
+      onPaste={(e) => {
+        const f = Array.from(e.clipboardData.files ?? []).find((x) => x.type.startsWith('image/'))
+        if (f) (e.preventDefault(), escolher(f))
+      }}
+    >
+      <p className="text-xs font-semibold text-green-100">📱 Ligação pelo WhatsApp — anexe o print da tela da ligação (obrigatório). O resto é opcional.</p>
+      <div
+        className="rounded-lg border-2 border-dashed border-dark-600 bg-dark-900/60 p-2 text-center"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => (e.preventDefault(), escolher(e.dataTransfer.files?.[0]))}
+      >
+        {previa ? (
+          <div className="relative inline-block">
+            <img src={previa} alt="print da ligação" className="max-h-40 rounded border border-dark-600" />
+            <button type="button" onClick={() => (setPrint(null), setPrevia(null))} className="absolute -top-2 -right-2 rounded-full border border-dark-600 bg-dark-900 p-0.5 text-dark-300 hover:text-red-400">
+              <X size={13} />
+            </button>
+          </div>
+        ) : (
+          <label className="flex cursor-pointer flex-col items-center gap-1 text-xs text-dark-300">
+            <ImagePlus size={18} className="text-green-400" />
+            <span>
+              <b>Ctrl+V</b> pra colar o print, arraste aqui ou <span className="text-gold-400 underline">escolha o arquivo</span> *
+            </span>
+            <input type="file" accept="image/*" className="hidden" onChange={(e) => escolher(e.target.files?.[0])} />
+          </label>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-[11px] text-dark-400">Tempo (opcional):</span>
+        <input className="w-14 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-100" placeholder="min" inputMode="numeric" value={minutos} onChange={(e) => setMinutos(e.target.value.replace(/\D/g, '').slice(0, 3))} />
+        <input className="w-14 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-100" placeholder="seg" inputMode="numeric" value={segundos} onChange={(e) => setSegundos(e.target.value.replace(/\D/g, '').slice(0, 2))} />
+        <input className="min-w-[160px] flex-1 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-100" placeholder="O que o cliente disse (opcional)" value={obs} onChange={(e) => setObs(e.target.value)} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => salvar(true)} disabled={!print} loading={enviando}>
+          ✓ Atendeu
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => salvar(false)} disabled={!print || enviando}>
+          📵 Não atendeu
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onFechar}>
+          Cancelar
+        </Button>
+        {!print && <span className="self-center text-[11px] text-amber-300">anexe o print para registrar</span>}
+      </div>
+    </div>
+  )
+}
+
 function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca: string; cartorio: string } | undefined }) {
   const utils = trpc.useUtils()
   const recarregar = () => (utils.cobrancaSap.listar.invalidate(), utils.cobrancaSap.resumo.invalidate())
@@ -77,6 +168,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
   // Depois de abrir WhatsApp / e-mail / telefone, a cobrança só fica
   // registrada quando a pessoa confirma (João, 2026-11-17).
   const [aConfirmar, setAConfirmar] = useState<null | 'whatsapp' | 'ligacao' | 'email'>(null)
+  const [ligacaoWa, setLigacaoWa] = useState(false)
   const documento = g.titulos.find((t) => t.cnpjCliente)?.cnpjCliente ?? g.contato?.documento ?? null
 
   const ids = g.titulos.map((t) => t.id)
@@ -93,6 +185,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
   const whatsapp = () => {
     if (!wa) return toast.error('Cliente sem celular no cadastro do CRM')
     window.open(`https://wa.me/${wa}?text=${encodeURIComponent(texto)}`, '_blank')
+    setLigacaoWa(false)
     setAConfirmar('whatsapp')
   }
   const ligar = () => {
@@ -222,6 +315,9 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                 <Phone size={13} className="mr-1 text-sky-400" /> Ligar{ramal?.click2call ? ' (PABX)' : ''}
               </Button>
             )}
+            <Button size="sm" variant="secondary" onClick={() => (setAConfirmar(null), setLigacaoWa(true))} disabled={registrar.isPending}>
+              📱 Ligação pelo WhatsApp
+            </Button>
             <Button size="sm" variant="secondary" onClick={email} disabled={registrar.isPending}>
               <Mail size={13} className="mr-1 text-amber-300" /> E-mail
             </Button>
@@ -237,6 +333,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
               💬 Salvar observação
             </Button>
           </div>
+          {ligacaoWa && <LigacaoWhatsappCobranca ids={ids} tipo={tipoContato} onFechar={() => setLigacaoWa(false)} onRegistrada={() => (setLigacaoWa(false), recarregar())} />}
           {aConfirmar && (
             <div className="rounded-lg border border-amber-500/70 bg-amber-900/20 p-2 space-y-2">
               <p className="text-xs font-semibold text-amber-100">
@@ -319,6 +416,11 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                     {formatDateTime(c.createdAt)} · {c.tipo === 'observacao' ? '💬 Observação' : `${TIPO_LABEL[c.tipo]} por ${CANAL_LABEL[c.canal]}`}
                     {c.diaRegua ? ` (dia ${c.diaRegua})` : ''} · {c.quem ?? '—'}
                     {c.observacao ? ` — ${c.observacao}` : ''}
+                    {c.printPath && (
+                      <a href={c.printPath} target="_blank" rel="noreferrer" className="ml-1 text-gold-400 underline">
+                        🖼 ver print
+                      </a>
+                    )}
                     {c.ligacaoId && c.ligacaoPartes > 0 && (
                       <div className="mt-1 mb-1.5">
                         <GravacaoLigacao ligacaoId={c.ligacaoId} partes={c.ligacaoPartes} />

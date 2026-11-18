@@ -1219,6 +1219,13 @@
       "when": 1795100500000,
       "tag": "0173_chat_sem_resposta",
       "breakpoints": true
+    },
+    {
+      "idx": 174,
+      "version": "6",
+      "when": 1795100600000,
+      "tag": "0174_cobranca_print_whatsapp",
+      "breakpoints": true
     }
   ]
 }

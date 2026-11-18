@@ -5569,6 +5569,9 @@ export const cobrancaContatos = sqliteTable(
     // Ligação do PABX/GoTo que virou este contato (registro automático +
     // gravação) — lib/cobrancaLigacoes.ts, 2026-11-17.
     pabxLigacaoId: integer('pabx_ligacao_id').references(() => pabxLigacoesProcessadas.id, { onDelete: 'set null' }),
+    // Ligação pelo WhatsApp: o print da tela é a prova (obrigatório; tempo e
+    // texto opcionais) — João, 2026-11-18.
+    printPath: text('print_path'),
   },
   (t) => ({
     tituloIdx: index('idx_cobranca_contatos_titulo').on(t.tituloId),
