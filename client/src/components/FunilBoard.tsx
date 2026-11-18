@@ -202,6 +202,14 @@ export function EtiquetaChegada({ chegada }: { chegada: NonNullable<Card['chegou
   )
 }
 
+// Coleta que a vendedora precisa agendar (2) atrasada / (1) NF saiu sem agendamento.
+// Só vem `podeAgendar` onde quem agenda é o vendedor (hoje Odin Tubos).
+function pesoColeta(j: { podeAgendar?: boolean; etapa: string; coletaAgendada?: string | null } | undefined): number {
+  if (!j?.podeAgendar) return 0
+  if (j.etapa !== 'coleta') return 1
+  return j.coletaAgendada && Date.parse(`${j.coletaAgendada}:00-03:00`) < Date.now() ? 2 : 0
+}
+
 function pesoPix(card: Card): number {
   if (card.vendas.some((v) => v.pix?.status === 'aguardando')) return 2
   if (card.vendas.some((v) => v.pix)) return 1
@@ -712,6 +720,37 @@ export default function FunilBoard({
         <VendaRapidaModal open={vendaRapidaAberta} onClose={() => setVendaRapidaAberta(false)} vendedorId={vendedorIdVendaRapida} />
       )}
 
+      {(() => {
+        // Quadro no topo do Kanban (Odin Tubos): pedidos esperando a vendedora agendar/reagendar a coleta.
+        const pend = cards
+          .filter((c) => pesoColeta(jornadaPor.get(c.clienteId)))
+          .filter((c, i, l) => l.findIndex((x) => x.clienteId === c.clienteId) === i)
+          .sort((a, b) => pesoColeta(jornadaPor.get(b.clienteId)) - pesoColeta(jornadaPor.get(a.clienteId)))
+        if (!pend.length) return null
+        return (
+          <div className="mb-3 rounded-2xl border-2 border-red-500 bg-red-900/25 p-3 space-y-2">
+            <p className="text-sm font-extrabold text-red-100 animate-pulse">
+              🚚 {pend.length === 1 ? '1 pedido esperando você agendar a coleta' : `${pend.length} pedidos esperando você agendar a coleta`}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {pend.map((c) => {
+                const j = jornadaPor.get(c.clienteId)!
+                return (
+                  <button
+                    key={c.funilMensalId}
+                    type="button"
+                    onClick={() => setCardAbertoId(c.funilMensalId)}
+                    className="text-left text-xs rounded-lg border border-red-500/70 bg-dark-900/70 px-3 py-1.5 hover:border-red-300"
+                  >
+                    <b className="text-dark-100">Pedido {j.pedido}</b> <span className="text-dark-300">{c.razaoSocial.slice(0, 30)}</span>
+                    <span className="block font-bold text-red-300">{pesoColeta(j) === 2 ? '⏰ coleta atrasada — reagendar' : '📅 agendar coleta'}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
       <div ref={topScrollRef} onScroll={sincronizarDoTopo} className="overflow-x-auto overflow-y-hidden h-4 mb-1">
         <div style={{ width: boardWidth, height: 1 }} />
       </div>
@@ -788,6 +827,8 @@ export default function FunilBoard({
           // Cliente que acabou de chegar na carteira e ainda não teve contato sobe pro topo.
           if (ordenacao === 'padrao') colCards.sort((a, b) => pesoChegada(b) - pesoChegada(a))
           if (etapa.value === 'fechado') colCards.sort((a, b) => pesoPix(b) - pesoPix(a))
+          // Coleta pra agendar/reagendar vai pro topo sempre, em qualquer ordenação (João, 2026-11-18).
+          colCards.sort((a, b) => pesoColeta(jornadaPor.get(b.clienteId)) - pesoColeta(jornadaPor.get(a.clienteId)))
           const resumoDia = new Map<string, { qtd: number; total: number }>()
           if (ehBalcao) {
             for (const c of colCards) {
@@ -854,8 +895,10 @@ export default function FunilBoard({
                     )}
                     <div
                       onClick={() => setCardAbertoId(card.funilMensalId)}
-                      className="bg-dark-800 border border-dark-600 border-l-4 rounded-xl p-3 cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 transition-all"
-                      style={{ borderLeftColor: ehBalcao ? (COR_ETAPA[ETAPA_VENDA_BALCAO] ?? '#22d3ee') : corFaixaUrgencia(card.diasSemContato) }}
+                      className={`bg-dark-800 border border-l-4 rounded-xl p-3 cursor-pointer hover:border-gold-600/50 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/25 transition-all ${
+                        pesoColeta(jornadaPor.get(card.clienteId)) ? 'border-red-500 ring-2 ring-red-500/60' : 'border-dark-600'
+                      }`}
+                      style={{ borderLeftColor: pesoColeta(jornadaPor.get(card.clienteId)) ? '#ef4444' : ehBalcao ? (COR_ETAPA[ETAPA_VENDA_BALCAO] ?? '#22d3ee') : corFaixaUrgencia(card.diasSemContato) }}
                       title={ehBalcao ? undefined : textoFaixaUrgencia(card.diasSemContato)}
                     >
                       <div className="flex items-start gap-2 mb-1">
@@ -907,14 +950,15 @@ export default function FunilBoard({
                       )}
                       {jornadaPor.has(card.clienteId) && (() => {
                         const j = jornadaPor.get(card.clienteId)!
-                        // Odin Tubos: NF saiu e falta o vendedor agendar a coleta (João 2026-11-12).
-                        if (j.podeAgendar && j.etapa !== 'coleta')
+                        // Odin Tubos: NF saiu e falta o vendedor agendar a coleta (João 2026-11-12),
+                        // ou a coleta agendada passou da hora — faixa vermelha (2026-11-18).
+                        if (pesoColeta(j))
                           return (
                             <p
-                              className="text-xs font-bold rounded-lg px-2 py-1 mb-2 border text-amber-200 bg-amber-900/30 border-amber-500/70 animate-pulse"
-                              title="A NF saiu — abra o card e agende a coleta"
+                              className="mb-2 rounded-lg bg-red-600 text-white text-xs font-extrabold tracking-wide text-center px-2 py-1.5 animate-pulse shadow-lg shadow-red-900/40"
+                              title={pesoColeta(j) === 2 ? 'A coleta agendada passou da hora — abra o card e reagende' : 'A NF saiu — abra o card e agende a coleta'}
                             >
-                              📅 AGENDAR COLETA · pedido {j.pedido}
+                              {pesoColeta(j) === 2 ? `⏰ COLETA ATRASADA — REAGENDAR · pedido ${j.pedido}` : `📅 AGENDAR COLETA AGORA · pedido ${j.pedido}`}
                               {j.total > 1 ? ` (+${j.total - 1})` : ''}
                             </p>
                           )

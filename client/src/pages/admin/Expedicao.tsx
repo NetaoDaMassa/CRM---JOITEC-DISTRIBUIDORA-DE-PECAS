@@ -94,7 +94,8 @@ function coletaAtrasada(p: Pedido): boolean {
 // Odin Tubos (João, 2026-11-16): pedido com NF emitida esperando agendar a
 // coleta, ou com a coleta agendada que já passou da hora, sobe pro topo da
 // coluna, ganha faixa piscando e abre um aviso na tela até alguém agendar.
-const SLUGS_ALERTA_COLETA = ['odin-tubos']
+// 2026-11-18: vale também pra Joitec e Odin Automação (slug joitec-automacao).
+const SLUGS_ALERTA_COLETA = ['odin-tubos', 'joitec', 'joitec-automacao']
 type AlertaColeta = 'agendar' | 'atrasada'
 function alertaColeta(p: Pedido): AlertaColeta | null {
   if (p.pausadoEm) return null

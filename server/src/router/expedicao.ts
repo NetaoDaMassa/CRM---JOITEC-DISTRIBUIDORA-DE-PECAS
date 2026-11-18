@@ -612,7 +612,10 @@ export const expedicaoRouter = router({
       const passos = mapa.get(chaveDe(c)) ?? []
       // O que está em andamento primeiro; coletado só se não tiver outro.
       // Odin Tubos: pedido esperando o vendedor agendar a coleta vem antes de tudo.
-      const p = passos.find((x) => x.podeAgendar && x.etapa !== 'coleta') ?? passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
+      // Depois, coleta agendada que passou da hora (reagendar) — 2026-11-18.
+      const coletaVencida = (x: PassoJornada) => x.podeAgendar && x.etapa === 'coleta' && !!x.coletaAgendada && Date.parse(`${x.coletaAgendada}:00-03:00`) < Date.now()
+      const p =
+        passos.find((x) => x.podeAgendar && x.etapa !== 'coleta') ?? passos.find(coletaVencida) ?? passos.find((x) => x.etapa !== 'coletado') ?? passos[0]
       if (!p) return []
       const { agendamentos: _lista, fotos: _fotos, ...etiqueta } = p
       return [{ clienteId: c.id, total: passos.length, ...etiqueta }]
