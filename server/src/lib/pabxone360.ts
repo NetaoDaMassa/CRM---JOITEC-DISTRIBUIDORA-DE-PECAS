@@ -586,6 +586,14 @@ export async function registrarChamadasNoCrm(
       if (!funil) {
         // Prospect (Prospecção nova, 2026-11-05) não tem card no Kanban — a
         // ligação vai pro histórico dele em vez de ser ignorada.
+        // Prospect de OUTRA empresa (quem ligou não tem conta lá): não entra.
+        // A mesma prospecção pode estar em 2 empresas com vendedores
+        // diferentes — a ligação da Odin Tubos não pode mexer na prospecção
+        // da Automação (João, 2026-11-18).
+        if (!daPessoa(cliente.empresaId)) {
+          await finalizar({ empresaId: cliente.empresaId, clienteId: cliente.id, motivoNaoRegistrado: 'prospect_de_outra_empresa' })
+          continue
+        }
         const quem = contaNaEmpresa(cliente.empresaId) ?? cliente.vendedorAtualId ?? 0
         const obsProspect = chamada.efetiva
           ? `Ligação ${detalhe} — atendida, ${formatarDuracao(chamada.duracaoSegundos)} (${fonte}).${chamada.resumo ? `\nResumo: ${chamada.resumo}` : ''}`
