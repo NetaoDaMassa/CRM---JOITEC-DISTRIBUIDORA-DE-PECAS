@@ -195,7 +195,7 @@ export function EtiquetaChegada({ chegada }: { chegada: NonNullable<Card['chegou
   return (
     <p
       className={`text-[11px] font-bold rounded-lg px-2 py-1 mb-2 border text-fuchsia-100 bg-fuchsia-900/40 border-fuchsia-500/80 ${chegada.contatado ? '' : 'animate-pulse'}`}
-      title={`${r.titulo} em ${dia}.${chegada.contatado ? ' Já teve contato.' : ' Ainda sem contato — fica no topo até o primeiro contato.'} A etiqueta fica 30 dias.`}
+      title={`${r.titulo} em ${dia}. Ainda sem contato — fica no topo e a etiqueta sai sozinha no primeiro contato.`}
     >
       {r.texto} · {dia}
     </p>

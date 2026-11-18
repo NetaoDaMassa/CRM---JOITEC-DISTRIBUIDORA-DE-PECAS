@@ -315,9 +315,8 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     chegouNaCarteira: (() => {
       const c = chegadas.get(`${f.clienteId}:${f.vendedorId}`)
       if (!c) return null
-      // "contatado" = o vendedor já registrou contato neste card depois que o cliente chegou.
-      const contatado = (contatosPorFunil.get(f.id) ?? []).some((x) => String(x.dataHora).replace('T', ' ') >= c.em)
-      return { ...c, contatado }
+      // Com contato depois da chegada a etiqueta já sai em chegadasNaCarteira.
+      return { ...c, contatado: false }
     })(),
     classificacaoComercial: f.cliente.classificacaoComercial,
     pedidoPendente: pedidoPorCliente.get(f.cliente.id) ?? null,

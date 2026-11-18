@@ -1,6 +1,6 @@
-import { and, desc, eq, gte, inArray } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { cadastrosClientesSap, carteiraHistorico, clientes } from '../db/schema.js'
+import { cadastrosClientesSap, carteiraHistorico, clientes, funilMensal, pabxLigacoesProcessadas, registroContato } from '../db/schema.js'
 
 // Etiqueta "chegou na carteira" no card do Kanban (João, 2026-11-17): cliente
 // que entrou na carteira do vendedor nos últimos DIAS dias — transferido pra
@@ -64,6 +64,30 @@ export async function chegadasNaCarteira(pares: { clienteId: number; vendedorId:
     // Banco de clientes: cliente antigo sem vendedor antes (ou marcado com o banco de origem) que o gestor passou pra carteira.
     const motivo: MotivoChegada = aprovadoEm.has(h.clienteId) ? 'aprovado' : novo && !anteriorDeOutro ? 'novo' : doBanco.has(h.clienteId) || !anteriorDeOutro ? 'banco' : 'transferido'
     out.set(chave, { motivo, em: h.createdAt })
+  }
+  // Contato feito → a etiqueta sai (João, 2026-11-18: "tira a etiqueta quando
+  // fizer o contato"). Vale contato do vendedor com o cliente em qualquer card
+  // (de qualquer mês) depois da chegada; ligação marcada como não efetiva não conta.
+  const idsComChegada = [...new Set([...out.keys()].map((k) => Number(k.split(':')[0])))]
+  for (let i = 0; i < idsComChegada.length; i += 500) {
+    const rows = await db
+      .select({ id: registroContato.id, clienteId: funilMensal.clienteId, vendedorId: registroContato.vendedorId, dataHora: registroContato.dataHora })
+      .from(registroContato)
+      .innerJoin(funilMensal, eq(funilMensal.id, registroContato.funilMensalId))
+      .where(and(inArray(funilMensal.clienteId, idsComChegada.slice(i, i + 500)), isNull(registroContato.deletedAt), gte(registroContato.dataHora, desde.slice(0, 10))))
+    const naoEfetiva = new Set<number>()
+    const ids = rows.map((r) => r.id)
+    for (let j = 0; j < ids.length; j += 500)
+      for (const l of await db
+        .select({ rid: pabxLigacoesProcessadas.registroContatoId, efetiva: pabxLigacoesProcessadas.efetiva })
+        .from(pabxLigacoesProcessadas)
+        .where(inArray(pabxLigacoesProcessadas.registroContatoId, ids.slice(j, j + 500))))
+        if (l.rid && !l.efetiva) naoEfetiva.add(l.rid)
+    for (const r of rows) {
+      const chave = `${r.clienteId}:${r.vendedorId}`
+      const c = out.get(chave)
+      if (c && !naoEfetiva.has(r.id) && String(r.dataHora).replace('T', ' ') >= c.em) out.delete(chave)
+    }
   }
   return out
 }
