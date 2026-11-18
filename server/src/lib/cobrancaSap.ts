@@ -39,7 +39,7 @@ export function somarDias(dataIso: string, dias: number): string {
   return d.toISOString().slice(0, 10)
 }
 
-function chaveDe(t: { empresaSlug: string | null; codigoCliente: string; tipo: string; documento: string; parcela: string | null }) {
+export function chaveDe(t: { empresaSlug: string | null; codigoCliente: string; tipo: string; documento: string; parcela: string | null }) {
   return [t.empresaSlug ?? '', t.codigoCliente, t.tipo, t.documento, t.parcela ?? ''].join('|')
 }
 

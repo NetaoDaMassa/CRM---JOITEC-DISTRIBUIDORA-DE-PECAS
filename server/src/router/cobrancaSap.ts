@@ -1,15 +1,16 @@
 import { z } from 'zod'
-import { and, desc, eq, inArray, isNull, or } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, cobrancaContatos, cobrancaTitulos, empresas, pabxLigacoesProcessadas, sapTitulosAbertos, users } from '../db/schema.js'
 import { registrarLigacoesCobranca } from '../lib/cobrancaLigacoes.js'
+import { contatosSap } from '../lib/cobrancaContatoSap.js'
 import { segundosMinimosEfetiva } from '../lib/ligacaoWhatsapp.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { setConfig } from '../lib/configuracoes.js'
 import { diaUtilApos } from '../lib/reguaCobranca.js'
-import { DIA_UTIL_CARTORIO, EMPRESAS_COBRANCA, MSG_PADRAO, atualizarCobrancas, diasUteisAposVencimento, mensagensCobranca, regrasCobranca, somarDias } from '../lib/cobrancaSap.js'
+import { DIA_UTIL_CARTORIO, EMPRESAS_COBRANCA, chaveDe, MSG_PADRAO, atualizarCobrancas, diasUteisAposVencimento, mensagensCobranca, regrasCobranca, somarDias } from '../lib/cobrancaSap.js'
 
 // Cobrança (financeiro, 2026-11-13) — contas a receber do SAP → régua →
 // cartório → RC. Cross-empresa (Joitec, Odin Tubos, Odin Automação).
@@ -75,11 +76,48 @@ export const cobrancaSapRouter = router({
             .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
             .where(and(isNull(clientes.deletedAt), or(inArray(clientes.codigo, codigos), inArray(clientes.codigoAntigo, codigos))))
         : []
+      // + contato do SAP (João, 2026-11-18): telefones/e-mails do cadastro do
+      // CRM (o que o vendedor pôs) e do SAP, sem repetir — CRM primeiro.
+      const sap = await contatosSap(codigos).catch(() => new Map<string, null>())
+      const soDig = (s: string) => s.replace(/\D/g, '')
       const contatoDe = (codigo: string, slug: string | null) => {
         const doCodigo = cads.filter((c) => c.codigo === codigo || c.codigoAntigo === codigo)
         const melhor = doCodigo.find((c) => c.empresaSlug === slug && (c.telefone || c.email)) ?? doCodigo.find((c) => c.telefone || c.email) ?? doCodigo[0]
-        return melhor ? { telefone: melhor.telefone, email: melhor.email, nomeContato: melhor.nomeContato, vendedor: melhor.vendedor, documento: melhor.cnpj || melhor.cpf || null } : null
+        const s = sap.get(codigo) ?? null
+        const telefones: { numero: string; origem: 'CRM' | 'SAP' }[] = []
+        const add = (numero: string | null | undefined, origem: 'CRM' | 'SAP') => {
+          const d = soDig(numero ?? '')
+          if (d.length < 8) return
+          // mesmo número com/sem 55 ou DDD conta como repetido
+          if (telefones.some((t) => soDig(t.numero).endsWith(d.slice(-8)) && soDig(t.numero).slice(-8) === d.slice(-8))) return
+          telefones.push({ numero: numero!.trim(), origem })
+        }
+        add(melhor?.telefone, 'CRM')
+        for (const t of s?.telefones ?? []) add(t, 'SAP')
+        const emails: { email: string; origem: 'CRM' | 'SAP' }[] = []
+        for (const [e, origem] of [[melhor?.email, 'CRM'], ...(s?.emails ?? []).map((x) => [x, 'SAP'])] as [string | null | undefined, 'CRM' | 'SAP'][]) {
+          const v = e?.trim()
+          if (v && !emails.some((x) => x.email.toLowerCase() === v.toLowerCase())) emails.push({ email: v, origem })
+        }
+        if (!melhor && !telefones.length && !emails.length) return null
+        return {
+          telefone: telefones[0]?.numero ?? null,
+          email: emails[0]?.email ?? null,
+          telefones,
+          emails,
+          temCadastroCrm: !!melhor,
+          nomeContato: melhor?.nomeContato ?? s?.contato ?? null,
+          contatoSap: s?.contato ?? null,
+          vendedor: melhor?.vendedor ?? null,
+          documento: melhor ? melhor.cnpj || melhor.cpf || null : null,
+        }
       }
+
+      // Aba Pagos: o título ainda está em aberto no SAP? (pra desfazer baixa errada)
+      const abertasNoSap =
+        input.aba === 'pago'
+          ? new Set((await db.select().from(sapTitulosAbertos).where(gt(sapTitulosAbertos.valorAberto, 0))).map((t) => chaveDe(t)))
+          : null
 
       const grupos = new Map<string, { chave: string; codigoCliente: string; nomeCliente: string | null; empresaSlug: string | null; contato: ReturnType<typeof contatoDe>; titulos: unknown[]; total: number; cobradoHoje: boolean; retornoVencido: boolean; maiorDia: number }>()
       for (const t of titulos) {
@@ -96,6 +134,7 @@ export const cobrancaSapRouter = router({
           diasVencido: Math.round((Date.parse(hoje) - Date.parse(t.vencimento)) / 86400000),
           retornoVencido: t.status === 'cartorio' && !!t.retornoEm && t.retornoEm <= hoje,
           contatos: cs,
+          abertoNoSap: abertasNoSap ? abertasNoSap.has(t.chave) : null,
           diasCobrados: [...new Set(cs.filter((c) => c.tipo === 'cobranca' && c.diaRegua).map((c) => c.diaRegua!))].sort((a, b) => a - b),
         }
         g.titulos.push(item)
@@ -125,6 +164,7 @@ export const cobrancaSapRouter = router({
           diasVencido: number
           retornoVencido: boolean
           contatos: typeof contatos
+          abertoNoSap: boolean | null
           diasCobrados: number[]
         })[]
       }[]
@@ -273,6 +313,33 @@ export const cobrancaSapRouter = router({
         )
         .where(inArray(cobrancaTitulos.id, input.tituloIds))
       return { ok: true }
+    }),
+
+  // Baixa errada (João, 2026-11-18): volta o título pra etapa em que estava
+  // (RC > cartório > cobrar, pelas datas já gravadas) e fica no histórico.
+  // Se no SAP ele continua baixado, a próxima atualização marca pago de novo —
+  // nesse caso o certo é estornar a baixa no SAP (aí volta sozinho).
+  desfazerBaixa: featureProcedure(FEATURE)
+    .input(z.object({ tituloIds: z.array(z.number()).min(1).max(200), motivo: z.string().trim().max(500).optional() }))
+    .mutation(async ({ ctx, input }) => {
+      const ts = await db.select().from(cobrancaTitulos).where(and(inArray(cobrancaTitulos.id, input.tituloIds), eq(cobrancaTitulos.status, 'pago')))
+      if (!ts.length) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Nenhum título baixado pra voltar.' })
+      const abertas = new Set((await db.select().from(sapTitulosAbertos).where(gt(sapTitulosAbertos.valorAberto, 0))).map((t) => chaveDe(t)))
+      // Baixado no SAP: voltar aqui não adianta (a atualização marca pago de
+      // novo na hora) — o certo é estornar no SAP; aí volta sozinho.
+      const baixadosNoSap = ts.filter((t) => !abertas.has(t.chave)).length
+      for (const t of ts.filter((x) => abertas.has(x.chave))) {
+        const para = t.rcEm ? 'rc' : t.cartorioEm ? 'cartorio' : 'cobrar'
+        await db.update(cobrancaTitulos).set({ status: para, pagoEm: null, pagoAuto: false, atualizadoEm: agoraSqlite() }).where(eq(cobrancaTitulos.id, t.id))
+        await db.insert(cobrancaContatos).values({
+          tituloId: t.id,
+          canal: 'outro',
+          tipo: 'observacao',
+          observacao: `↩ Baixa desfeita (estava ${t.pagoAuto ? 'pago pelo SAP' : 'marcado como pago'} em ${t.pagoEm ?? '—'}) → volta pra ${para === 'rc' ? 'RC' : para === 'cartorio' ? 'cartório' : 'cobrança'}${input.motivo ? ` — ${input.motivo}` : ''}`,
+          userId: ctx.user.id,
+        })
+      }
+      return { ok: true, voltaram: ts.length - baixadosNoSap, baixadosNoSap }
     }),
 
   mover: featureProcedure(FEATURE)

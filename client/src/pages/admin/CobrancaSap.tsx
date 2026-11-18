@@ -169,13 +169,32 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
   // registrada quando a pessoa confirma (João, 2026-11-17).
   const [aConfirmar, setAConfirmar] = useState<null | 'whatsapp' | 'ligacao' | 'email'>(null)
   const [ligacaoWa, setLigacaoWa] = useState(false)
+  // Telefones/e-mails do cadastro do CRM + do SAP (João, 2026-11-18) — escolhe qual usar.
+  const telefones = g.contato?.telefones ?? []
+  const emails = g.contato?.emails ?? []
+  const [telEscolhido, setTelEscolhido] = useState(0)
+  const [emailEscolhido, setEmailEscolhido] = useState(0)
+  const telAtual = telefones[telEscolhido]?.numero ?? g.contato?.telefone ?? null
+  const emailAtual = emails[emailEscolhido]?.email ?? g.contato?.email ?? null
+  const [desfazendo, setDesfazendo] = useState(false)
+  const [motivoBaixa, setMotivoBaixa] = useState('')
+  const desfazer = trpc.cobrancaSap.desfazerBaixa.useMutation({
+    onSuccess: (r) => {
+      if (r.voltaram) toast.success(`${r.voltaram} título(s) voltaram pra cobrança`)
+      if (r.baixadosNoSap) toast.error(`${r.baixadosNoSap} título(s) estão baixados no SAP — estorne a baixa no SAP que eles voltam sozinhos`, { duration: 8000 })
+      setDesfazendo(false)
+      setMotivoBaixa('')
+      recarregar()
+    },
+    onError: erro,
+  })
   const documento = g.titulos.find((t) => t.cnpjCliente)?.cnpjCliente ?? g.contato?.documento ?? null
 
   const ids = g.titulos.map((t) => t.id)
   const tipoContato = aba === 'cartorio' ? ('aviso_cartorio' as const) : ('cobranca' as const)
   const modelo = aba === 'cartorio' ? msgs?.cartorio : msgs?.cobranca
   const texto = modelo ? montarMensagem(modelo, g) : ''
-  const wa = telefoneWa(g.contato?.telefone)
+  const wa = telefoneWa(telAtual)
   const reg = (canal: 'whatsapp' | 'ligacao' | 'email' | 'outro', observacao?: string) =>
     registrar.mutate(
       { tituloIds: ids, canal, tipo: tipoContato, observacao: observacao || undefined },
@@ -183,14 +202,14 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
     )
 
   const whatsapp = () => {
-    if (!wa) return toast.error('Cliente sem celular no cadastro do CRM')
+    if (!wa) return toast.error('Cliente sem celular (nem no CRM nem no SAP)')
     window.open(`https://wa.me/${wa}?text=${encodeURIComponent(texto)}`, '_blank')
     setLigacaoWa(false)
     setAConfirmar('whatsapp')
   }
   const ligar = () => {
-    const tel = g.contato?.telefone
-    if (!tel) return toast.error('Cliente sem telefone no cadastro do CRM')
+    const tel = telAtual
+    if (!tel) return toast.error('Cliente sem telefone (nem no CRM nem no SAP)')
     // Pelo PABX a ligação entra sozinha no histórico (atendida ou não, com a
     // gravação) — lib/cobrancaLigacoes.ts. Sem PABX, registra no clique.
     if (ramal?.click2call)
@@ -201,9 +220,9 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
     }
   }
   const email = () => {
-    if (!g.contato?.email) return toast.error('Cliente sem e-mail no cadastro do CRM')
+    if (!emailAtual) return toast.error('Cliente sem e-mail (nem no CRM nem no SAP)')
     const assunto = aba === 'cartorio' ? 'Aviso: título encaminhado ao cartório' : 'Títulos em aberto'
-    window.location.href = `mailto:${g.contato.email}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`
+    window.location.href = `mailto:${emailAtual}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(texto)}`
     setAConfirmar('email')
   }
 
@@ -232,10 +251,36 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
           <p className="text-xs text-dark-400">
             {EMPRESA_LABEL[g.empresaSlug ?? ''] ?? g.empresaSlug}
             {g.contato?.vendedor && ` · 👤 ${g.contato.vendedor}`}
-            {g.contato?.telefone && ` · 📱 ${g.contato.telefone}`}
-            {g.contato?.email && ` · ✉ ${g.contato.email}`}
-            {!g.contato && ' · sem cadastro no CRM (sem telefone/e-mail)'}
+            {g.contato?.nomeContato && ` · contato: ${g.contato.nomeContato}`}
+            {!g.contato && ' · sem telefone/e-mail (nem no CRM nem no SAP)'}
+            {g.contato && !g.contato.temCadastroCrm && ' · sem cadastro no CRM (contato do SAP)'}
           </p>
+          {(telefones.length > 0 || emails.length > 0) && (
+            <div className="mt-1 flex flex-wrap items-center gap-1">
+              {telefones.map((t, i) => (
+                <button
+                  key={`t${i}`}
+                  type="button"
+                  onClick={() => setTelEscolhido(i)}
+                  title={telefones.length > 1 ? 'Usar este número no WhatsApp / ligação' : undefined}
+                  className={`text-[11px] rounded-md border px-1.5 py-0.5 ${i === telEscolhido ? 'border-gold-600 text-gold-200 bg-gold-900/10' : 'border-dark-600 text-dark-300 hover:bg-dark-700'}`}
+                >
+                  📱 {t.numero} <span className={t.origem === 'SAP' ? 'text-sky-300' : 'text-emerald-300'}>{t.origem}</span>
+                </button>
+              ))}
+              {emails.map((e, i) => (
+                <button
+                  key={`e${i}`}
+                  type="button"
+                  onClick={() => setEmailEscolhido(i)}
+                  className={`text-[11px] rounded-md border px-1.5 py-0.5 ${i === emailEscolhido ? 'border-gold-600 text-gold-200 bg-gold-900/10' : 'border-dark-600 text-dark-300 hover:bg-dark-700'}`}
+                >
+                  ✉ {e.email} <span className={e.origem === 'SAP' ? 'text-sky-300' : 'text-emerald-300'}>{e.origem}</span>
+                </button>
+              ))}
+              {telefones.length > 1 && <span className="text-[10px] text-dark-500">clique no número que vai usar</span>}
+            </div>
+          )}
         </div>
         <div className="text-right">
           <p className="text-sm font-bold text-red-300">{formatarMoeda(g.total)}</p>
@@ -294,6 +339,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                   {aba === 'pago' && (
                     <span className="text-green-400">
                       {dataBr(t.pagoEm)} {t.pagoAuto ? '(baixa no SAP)' : '(marcado no CRM)'}
+                      {t.abertoNoSap === true && <span className="ml-1 text-amber-300">· ⚠ ainda em aberto no SAP</span>}
                     </span>
                   )}
                 </td>
@@ -397,11 +443,47 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
           </Button>
         </div>
       )}
-      {aba === 'pago' && (
-        <button className="text-xs text-dark-500 hover:text-dark-200" onClick={() => mover.mutate({ tituloIds: ids, para: 'cobrar' })}>
-          voltar para cobrança
-        </button>
-      )}
+      {aba === 'pago' &&
+        (() => {
+          const podeVoltar = g.titulos.filter((t) => t.abertoNoSap)
+          const soNoSap = g.titulos.filter((t) => t.abertoNoSap === false)
+          return (
+            <div className="space-y-1.5">
+              {!desfazendo ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  {podeVoltar.length > 0 && (
+                    <Button size="sm" variant="secondary" onClick={() => setDesfazendo(true)}>
+                      ↩ Desfazer baixa (baixa errada)
+                    </Button>
+                  )}
+                  {soNoSap.length > 0 && (
+                    <span className="text-[11px] text-dark-500">
+                      {soNoSap.length === g.titulos.length ? 'Baixado' : `${soNoSap.length} título(s) baixado(s)`} também no SAP — se a baixa foi errada, estorne no SAP que volta sozinho pra cobrança (o SAP é lido de hora em hora).
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border border-amber-600/50 bg-amber-900/10 p-2">
+                  <span className="text-xs text-amber-200">
+                    Voltar {podeVoltar.length} título(s) pra etapa em que estava{podeVoltar.some((t) => t.rcEm) ? ' (RC)' : podeVoltar.some((t) => t.cartorioEm) ? ' (cartório)' : ' (cobrança)'}?
+                  </span>
+                  <input
+                    className="min-w-[180px] flex-1 rounded-lg border border-dark-600 bg-dark-900 px-2 py-1 text-xs text-dark-100"
+                    placeholder="Motivo (opcional) — ex.: baixa no cliente errado"
+                    value={motivoBaixa}
+                    onChange={(e) => setMotivoBaixa(e.target.value)}
+                  />
+                  <Button size="sm" onClick={() => desfazer.mutate({ tituloIds: podeVoltar.map((t) => t.id), motivo: motivoBaixa.trim() || undefined })} loading={desfazer.isPending}>
+                    Sim, voltar
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setDesfazendo(false)}>
+                    Cancelar
+                  </Button>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
       {(() => {
         const todos = [...new Map(g.titulos.flatMap((t) => t.contatos).map((c) => [c.createdAt + c.canal + c.tipo, c])).values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
