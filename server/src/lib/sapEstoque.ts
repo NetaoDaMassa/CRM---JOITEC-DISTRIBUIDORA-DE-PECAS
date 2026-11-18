@@ -495,3 +495,53 @@ export async function menosVendidosDaFilial(filial: number, de: string, ate: str
     }
   })
 }
+
+export interface ItemFaturamentoMes {
+  codigo: string
+  codigoAntigo: string | null
+  descricao: string
+  estoque: number
+  // mês "YYYY-MM" → vendido − devolvido no mês (pode ser negativo se só
+  // houve devolução).
+  meses: Record<string, { quantidade: number; valor: number; notas: number }>
+}
+
+// Faturamento de cada item por mês, direto das notas do SAP da filial (todos
+// os clientes, inclusive os que não estão no CRM), já descontadas as
+// devoluções — aba "Faturam pouco" (João, 2026-11-18: vendedor diz que não
+// bate meta porque falta tal item, e o item fatura R$ 500 no mês). Só itens
+// que tiveram nota no período; componentes de montagem e o que não é
+// mercadoria de revenda ficam de fora, como nas outras abas.
+export async function faturamentoMensalDaFilial(filial: number, mesInicio: string, mesFim: string): Promise<ItemFaturamentoMes[]> {
+  const mes = sql<string>`substr(${sapItemMovimentos.dia}, 1, 7)`
+  const [linhas, estoque, nomes, componentes] = await Promise.all([
+    db
+      .select({
+        item: sapItemMovimentos.itemCodigo,
+        mes,
+        quantidade: sql<number>`sum(${sapItemMovimentos.quantidade})`.mapWith(Number),
+        valor: sql<number>`sum(${sapItemMovimentos.valor})`.mapWith(Number),
+        notas: sql<number>`count(distinct case when ${sapItemMovimentos.origem} = 'nota' then ${sapItemMovimentos.docEntry} end)`.mapWith(Number),
+      })
+      .from(sapItemMovimentos)
+      .where(and(eq(sapItemMovimentos.filial, filial), eq(sapItemMovimentos.tipo, 'venda'), between(sapItemMovimentos.dia, `${mesInicio}-01`, `${mesFim}-31`)))
+      .groupBy(sapItemMovimentos.itemCodigo, mes),
+    db.select().from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, filial)),
+    nomesDosItens(filial),
+    componentesGravados(),
+  ])
+  const est = new Map(estoque.map((e) => [e.itemCodigo, e]))
+  const itens = new Map<string, ItemFaturamentoMes>()
+  for (const l of linhas) {
+    if (componentes.has(l.item)) continue
+    let it = itens.get(l.item)
+    if (!it) {
+      const e = est.get(l.item)
+      it = { codigo: l.item, codigoAntigo: e?.codigoAntigo ?? null, descricao: e?.itemNome ?? nomes.get(l.item) ?? l.item, estoque: e?.quantidade ?? 0, meses: {} }
+      itens.set(l.item, it)
+    }
+    it.meses[l.mes] = { quantidade: l.quantidade, valor: Math.round(l.valor * 100) / 100, notas: l.notas }
+  }
+  // Item que no período só teve devolução não entra.
+  return [...itens.values()].filter((it) => Object.values(it.meses).some((m) => m.notas > 0))
+}

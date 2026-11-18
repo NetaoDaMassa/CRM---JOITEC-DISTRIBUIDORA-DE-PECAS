@@ -28,7 +28,7 @@ const diasEntre = (de: string, ate: string) => Math.round((Date.parse(`${ate}T12
 
 type Situacao = { historicoAte: string | null; completo: boolean; fotoEm: string | null; inicioSap: string; temFilial: boolean }
 
-function AvisoDados({ s }: { s: Situacao | undefined }) {
+export function AvisoDados({ s }: { s: Situacao | undefined }) {
   if (!s) return null
   if (!s.temFilial) return <p className="text-sm text-dark-400 bg-dark-800 border border-dark-600 rounded-2xl p-4">Esta empresa não tem estoque próprio no SAP.</p>
   if (!s.fotoEm)
@@ -43,7 +43,7 @@ function AvisoDados({ s }: { s: Situacao | undefined }) {
   return null
 }
 
-function Rodape({ s, extra }: { s: Situacao | undefined; extra: string }) {
+export function Rodape({ s, extra }: { s: Situacao | undefined; extra: string }) {
   const foto = s?.fotoEm ? new Date(`${s.fotoEm.replace(' ', 'T')}Z`).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : null
   return (
     <p className="text-xs text-dark-500">

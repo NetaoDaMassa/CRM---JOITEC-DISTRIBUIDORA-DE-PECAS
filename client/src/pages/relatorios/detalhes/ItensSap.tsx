@@ -11,6 +11,7 @@ import type { Coluna } from '../../../components/relatorios/TabelaDados'
 import Modal from '../../../components/ui/Modal'
 import type { PropsDetalhe } from './tipos'
 import { EstoqueSemVenda, MenosVendidos, TempoEstoque } from './ItensSapEstoque'
+import { FaturamPouco } from './ItensSapFaturamento'
 
 // Itens do SAP mês a mês — pedido do diretor via João, 2026-10-30: "item
 // que em um mês vendeu 1000 e em novembro vendeu 600". Tabela com um mês
@@ -46,7 +47,7 @@ const PERIODOS = [
 
 // Abas (João, 2026-11-10): mês a mês (o relatório do diretor) + três de
 // estoque, que vêm do SAP de hora em hora (ItensSapEstoque.tsx).
-type AbaItens = 'mes' | 'menos' | 'sem_venda' | 'tempo'
+type AbaItens = 'mes' | 'pouco' | 'menos' | 'sem_venda' | 'tempo'
 
 export function ItensSap(props: PropsDetalhe) {
   const [aba, setAba] = usePersistedState<AbaItens>('rel:itensSap:aba', 'mes')
@@ -57,12 +58,14 @@ export function ItensSap(props: PropsDetalhe) {
         onChange={setAba}
         opcoes={[
           { valor: 'mes', rotulo: 'Mês a mês' },
+          { valor: 'pouco', rotulo: 'Faturam pouco' },
           { valor: 'menos', rotulo: 'Menos vendidos' },
           { valor: 'sem_venda', rotulo: 'Estoque sem venda' },
           { valor: 'tempo', rotulo: 'Tempo de estoque' },
         ]}
       />
       {aba === 'mes' && <ItensMesAMes {...props} />}
+      {aba === 'pouco' && <FaturamPouco simples={props.simples} mostrarResumo={props.mostrarResumo} />}
       {aba === 'menos' && <MenosVendidos simples={props.simples} mostrarResumo={props.mostrarResumo} />}
       {aba === 'sem_venda' && <EstoqueSemVenda simples={props.simples} mostrarResumo={props.mostrarResumo} />}
       {aba === 'tempo' && <TempoEstoque simples={props.simples} mostrarResumo={props.mostrarResumo} />}

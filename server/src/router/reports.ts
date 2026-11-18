@@ -26,7 +26,7 @@ import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
-import { SAP_INICIO, estoqueDaFilial, filialDaEmpresa, menosVendidosDaFilial, situacaoHistoricoEstoque } from '../lib/sapEstoque.js'
+import { SAP_INICIO, estoqueDaFilial, faturamentoMensalDaFilial, filialDaEmpresa, menosVendidosDaFilial, situacaoHistoricoEstoque } from '../lib/sapEstoque.js'
 
 // Desde quando o cliente está com o vendedor atual — pedido do João,
 // 2026-10-21: nos "Clientes parados", um cliente passado pro vendedor há 3
@@ -1962,6 +1962,18 @@ export const reportsRouter = router({
       const filial = empresa ? filialDaEmpresa(empresa.slug) : null
       const situacao = await situacaoHistoricoEstoque()
       return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: filial === null ? [] : await menosVendidosDaFilial(filial, input.de, input.ate) }
+    }),
+
+  // Aba "Faturam pouco" (João, 2026-11-18): faturamento de cada item por
+  // mês direto das notas do SAP da filial, pra comparar com o que o vendedor
+  // diz que falta pra bater meta. O corte (R$ X por mês) é feito na tela.
+  itensSapFaturamentoMensal: protectedProcedure
+    .input(z.object({ mesInicio: z.string().regex(/^\d{4}-\d{2}$/), mesFim: z.string().regex(/^\d{4}-\d{2}$/) }))
+    .query(async ({ ctx, input }) => {
+      const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+      const filial = empresa ? filialDaEmpresa(empresa.slug) : null
+      const situacao = await situacaoHistoricoEstoque()
+      return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: filial === null ? [] : await faturamentoMensalDaFilial(filial, input.mesInicio, input.mesFim) }
     }),
 
   // Um item do relatório acima: quem comprou em cada mês.
