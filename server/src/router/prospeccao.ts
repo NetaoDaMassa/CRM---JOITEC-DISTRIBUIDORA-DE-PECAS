@@ -16,6 +16,7 @@ import {
   enviarProspectParaCarteira,
   filtrarSugestoes,
   limparCacheSugestoes,
+  mesmoClienteNaEmpresa,
   registrarEntrada,
 } from '../lib/prospeccaoNova.js'
 
@@ -33,58 +34,6 @@ const dataYmd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida')
 const SEM_ORIGEM = 'Sem origem definida'
 const ORIGEM_BANCO_SUGESTAO = 'Sugestões do grupo (prospecção)'
 const soDig = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '')
-
-const normNome = (t: string | null | undefined) =>
-  (t ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim()
-const ehCodigoSap = (c: string | null | undefined) => /^C\d{5,}$/.test((c ?? '').trim().toUpperCase())
-
-// Mesmo cliente NESTA empresa, mesmo sem CNPJ no cadastro (João, 2026-11-18:
-// Genilton C002133 — o prospect da tatiane veio do SAP sem CNPJ e a Luana
-// cadastrou de novo pelo CNPJ). Acha por: CNPJ/CPF; código SAP de qualquer
-// cadastro do grupo com esse CNPJ (o código é o mesmo nas 3 empresas); nome igual.
-async function mesmoClienteNaEmpresa(empresaId: number, doc: string, nomes: string[]) {
-  const porDoc = doc
-    ? await db.query.clientes.findMany({
-        where: and(
-          isNull(clientes.deletedAt),
-          or(
-            sql`replace(replace(replace(replace(coalesce(${clientes.cnpj}, ''), '.', ''), '/', ''), '-', ''), ' ', '') = ${doc}`,
-            sql`replace(replace(replace(coalesce(${clientes.cpf}, ''), '.', ''), '-', ''), ' ', '') = ${doc}`
-          )
-        ),
-        columns: { id: true, empresaId: true, codigo: true, razaoSocial: true },
-      })
-    : []
-  const codigos = [...new Set(porDoc.map((c) => c.codigo.trim().toUpperCase()).filter(ehCodigoSap))]
-  const nomesN = [...new Set([...nomes, ...porDoc.map((c) => c.razaoSocial)].map(normNome).filter((n) => n.length >= 5))]
-  const ids = new Set(porDoc.filter((c) => c.empresaId === empresaId).map((c) => c.id))
-  if (codigos.length)
-    for (const c of await db.query.clientes.findMany({
-      where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt), inArray(sql`upper(trim(${clientes.codigo}))`, codigos)),
-      columns: { id: true },
-    }))
-      ids.add(c.id)
-  if (nomesN.length) {
-    // Pré-filtro pela 1ª palavra no SQL, comparação exata (sem acento/pontuação) no JS.
-    const primeiras = [...new Set(nomesN.map((n) => n.split(' ')[0]))]
-    for (const c of await db.query.clientes.findMany({
-      where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt), or(...primeiras.map((w) => sql`upper(${clientes.razaoSocial}) like ${w + '%'}`))),
-      columns: { id: true, razaoSocial: true },
-    }))
-      if (nomesN.includes(normNome(c.razaoSocial))) ids.add(c.id)
-  }
-  if (!ids.size) return []
-  return db.query.clientes.findMany({
-    where: inArray(clientes.id, [...ids]),
-    columns: { id: true, empresaId: true, razaoSocial: true, codigo: true, vendedorAtualId: true, emProspeccao: true, prospeccaoOrigem: true, bancoDesqualificado: true },
-    with: { vendedorAtual: { columns: { name: true } } },
-  })
-}
 
 // Prospect da tela nova = emProspeccao + origem preenchida (origem nula =
 // balcão ou prospect da Bruna; ver lib/prospeccaoNova.ts).
@@ -502,6 +451,9 @@ export const prospeccaoRouter = router({
     const s = [...grupo, ...parou].find((x) => x.chave === input.chave)
     if (!s) throw new Error('Essa sugestão não está mais disponível — atualize a tela.')
     const vendedorId = ctx.user.id
+    // Trava final: o mesmo cliente já com vendedor aqui (CNPJ, código SAP ou nome).
+    const comDono = (await mesmoClienteNaEmpresa(ctx.empresaId, soDig(s.documento), [s.razaoSocial])).find((c) => c.vendedorAtualId && c.id !== s.clienteDestinoId)
+    if (comDono) throw new Error(`Esse cliente já é de ${comDono.vendedorAtual?.name ?? 'outro vendedor'} nesta empresa (${comDono.razaoSocial} ${comDono.codigo}).`)
     let clienteId = s.clienteDestinoId
     if (clienteId) {
       const ok = await assumirParaProspeccao({

@@ -8,7 +8,7 @@
 // prospeccaoOrigem preenchida. Origem nula = cliente de balcão (a venda
 // rápida também nasce com emProspeccao, 18f0d6e) ou prospect antigo da
 // Bruna — nunca aparece aqui.
-import { and, eq, isNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { carteiraHistorico, clientes, funilMensal, prospeccaoRegistros } from '../db/schema.js'
 import { agoraSqlite, hojeBrString, mesReferenciaAtual } from './dataBr.js'
@@ -145,13 +145,18 @@ const soDig = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '')
 // Automação). Tem que comparar pelas duas — achado no teste: o cadastro da
 // Joitec sem CNPJ (só código) não batia com o da Odin Tubos com CNPJ, e o
 // cliente que já era da Karinna aparecia como sugestão.
-function chavesCliente(c: { cnpj: string | null; cpf: string | null; codigo: string; codigoAntigo?: string | null }): string[] {
+function chavesCliente(c: { cnpj: string | null; cpf: string | null; codigo: string; codigoAntigo?: string | null; razaoSocial?: string | null }): string[] {
   const k: string[] = []
   for (const doc of [soDig(c.cnpj), soDig(c.cpf)]) if (doc.length === 14 || doc.length === 11) k.push(`d${doc}`)
   for (const cod of [c.codigo, c.codigoAntigo ?? '']) {
     const v = cod.trim().toUpperCase()
     if (/^C\d{5,}$/.test(v)) k.push(`c${v}`)
   }
+  // + nome (sem acento/pontuação): cadastro antigo sem CNPJ e sem código C
+  // (importação da Odin Tubos de 02/09) não batia e o cliente de outra
+  // vendedora virava sugestão (AIR CONTROL, João 2026-11-18).
+  const n = normNome(c.razaoSocial)
+  if (n.length >= 8) k.push(`n${n}`)
   return [...new Set(k)]
 }
 const fmtR$ = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
@@ -405,5 +410,57 @@ export async function assumirParaProspeccao(p: {
 // Entrada na prospecção — fica no log pro relatório (de onde vieram, por vendedor).
 export async function registrarEntrada(clienteId: number, origem: OrigemProspeccao, vendedorId: number, alteradoPor: number) {
   await registrarAuditoria({ tabela: 'clientes', registroId: clienteId, acao: 'editar', campo: 'prospeccao_entrada', valorNovo: `${origem}|${vendedorId}`, alteradoPor })
+}
+
+export const normNome = (t: string | null | undefined) =>
+  (t ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim()
+export const ehCodigoSap = (c: string | null | undefined) => /^C\d{5,}$/.test((c ?? '').trim().toUpperCase())
+
+// Mesmo cliente NESTA empresa, mesmo sem CNPJ no cadastro (João, 2026-11-18:
+// Genilton C002133 — o prospect da tatiane veio do SAP sem CNPJ e a Luana
+// cadastrou de novo pelo CNPJ). Acha por: CNPJ/CPF; código SAP de qualquer
+// cadastro do grupo com esse CNPJ (o código é o mesmo nas 3 empresas); nome igual.
+export async function mesmoClienteNaEmpresa(empresaId: number, doc: string, nomes: string[]) {
+  const porDoc = doc
+    ? await db.query.clientes.findMany({
+        where: and(
+          isNull(clientes.deletedAt),
+          or(
+            sql`replace(replace(replace(replace(coalesce(${clientes.cnpj}, ''), '.', ''), '/', ''), '-', ''), ' ', '') = ${doc}`,
+            sql`replace(replace(replace(coalesce(${clientes.cpf}, ''), '.', ''), '-', ''), ' ', '') = ${doc}`
+          )
+        ),
+        columns: { id: true, empresaId: true, codigo: true, razaoSocial: true },
+      })
+    : []
+  const codigos = [...new Set(porDoc.map((c) => c.codigo.trim().toUpperCase()).filter(ehCodigoSap))]
+  const nomesN = [...new Set([...nomes, ...porDoc.map((c) => c.razaoSocial)].map(normNome).filter((n) => n.length >= 5))]
+  const ids = new Set(porDoc.filter((c) => c.empresaId === empresaId).map((c) => c.id))
+  if (codigos.length)
+    for (const c of await db.query.clientes.findMany({
+      where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt), inArray(sql`upper(trim(${clientes.codigo}))`, codigos)),
+      columns: { id: true },
+    }))
+      ids.add(c.id)
+  if (nomesN.length) {
+    // Pré-filtro pela 1ª palavra no SQL, comparação exata (sem acento/pontuação) no JS.
+    const primeiras = [...new Set(nomesN.map((n) => n.split(' ')[0]))]
+    for (const c of await db.query.clientes.findMany({
+      where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt), or(...primeiras.map((w) => sql`upper(${clientes.razaoSocial}) like ${w + '%'}`))),
+      columns: { id: true, razaoSocial: true },
+    }))
+      if (nomesN.includes(normNome(c.razaoSocial))) ids.add(c.id)
+  }
+  if (!ids.size) return []
+  return db.query.clientes.findMany({
+    where: inArray(clientes.id, [...ids]),
+    columns: { id: true, empresaId: true, razaoSocial: true, codigo: true, vendedorAtualId: true, emProspeccao: true, prospeccaoOrigem: true, bancoDesqualificado: true },
+    with: { vendedorAtual: { columns: { name: true } } },
+  })
 }
 

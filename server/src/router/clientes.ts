@@ -12,7 +12,7 @@ import { regiaoPorUf, REGIAO_VALUES } from '../lib/regiao.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { transferirCliente, validarVendedorDaEmpresa } from './carteira.js'
-import { assumirParaProspeccao } from '../lib/prospeccaoNova.js'
+import { assumirParaProspeccao, mesmoClienteNaEmpresa } from '../lib/prospeccaoNova.js'
 
 const PAGE_SIZE = 20
 // Rótulo pra cliente sem vendedor que não veio de nenhuma importação com
@@ -765,6 +765,13 @@ export const clientesRouter = router({
     if (origensLiberadas !== null && !origensLiberadas.includes(cliente.origemBanco ?? SEM_ORIGEM)) {
       throw new Error('Esse banco de clientes não está liberado pra você')
     }
+
+    // Mesmo cliente já com vendedor nesta empresa (cadastro duplicado no banco,
+    // ex.: importação de 02/09 da Odin Tubos) → não deixa pegar (João, 2026-11-18).
+    const comDono = (await mesmoClienteNaEmpresa(ctx.empresaId, (cliente.cnpj ?? cliente.cpf ?? '').replace(/\D/g, ''), [cliente.razaoSocial])).find(
+      (c) => c.id !== cliente.id && c.vendedorAtualId
+    )
+    if (comDono) throw new Error(`Esse cliente já é de ${comDono.vendedorAtual?.name ?? 'outro vendedor'} (cadastro ${comDono.codigo}) — é um cadastro duplicado no banco.`)
 
     // Prospecção nova (João, 2026-11-05): fora da Odin Compressores, o
     // "Pegar cliente" do vendedor manda pra PROSPECÇÃO dele (etapa Novo,
