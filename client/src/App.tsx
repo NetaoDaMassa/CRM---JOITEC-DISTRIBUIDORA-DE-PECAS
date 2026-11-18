@@ -425,6 +425,7 @@ export default function App() {
           <Route path="vendedor/fila-hoje" element={<FilaHoje />} />
           <Route path="vendedor/pos-venda" element={<FilaPosVenda />} />
           <Route path="vendedor/kanban" element={<VendorKanban />} />
+          <Route path="vendedor/ligacoes" element={<LigacoesPabx />} />
           <Route path="vendedor/demandas" element={<Demandas />} />
           <Route path="vendedor/clientes" element={<Clientes />} />
           <Route path="vendedor/boletos-carteira" element={<BoletosCarteira />} />

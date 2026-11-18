@@ -305,8 +305,8 @@ export default function LigacoesPabx() {
             <PhoneCall size={20} className="text-gold-300" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-dark-100">Ligações (PABX)</h1>
-            <p className="text-sm text-dark-400">Tentativas × ligações efetivas por vendedor · PABXONE360</p>
+            <h1 className="text-xl font-bold text-dark-100">{data && !data.veTudo ? 'Minhas ligações' : 'Ligações (PABX)'}</h1>
+            <p className="text-sm text-dark-400">{data && !data.veTudo ? 'Todas as suas ligações — central e WhatsApp · tentativas × efetivas' : 'Tentativas × ligações efetivas por vendedor · PABXONE360'}</p>
           </div>
         </div>
         {superAdmin && (
@@ -483,7 +483,13 @@ export default function LigacoesPabx() {
                               </td>
                               <td className="py-1.5 pr-3 whitespace-nowrap">
                                 <span className="inline-flex items-center gap-1">
-                                  {c.direcao === 'INBOUND' ? <PhoneIncoming size={13} className="text-sky-300" /> : <PhoneOutgoing size={13} className="text-gold-300" />}
+                                  {c.fonte === 'whatsapp' ? (
+                                    <span title="Ligação pelo WhatsApp" className="text-[13px] leading-none">📱</span>
+                                  ) : c.direcao === 'INBOUND' ? (
+                                    <PhoneIncoming size={13} className="text-sky-300" />
+                                  ) : (
+                                    <PhoneOutgoing size={13} className="text-gold-300" />
+                                  )}
                                   {dataHoraBr(c.dataHora)}
                                 </span>
                               </td>
@@ -497,6 +503,7 @@ export default function LigacoesPabx() {
                               </td>
                               <td className="py-1.5 pr-3 whitespace-nowrap">
                                 <span className={`text-xs rounded-full border px-2 py-0.5 ${st.classe}`}>{st.label}</span>
+                                {c.fonte === 'whatsapp' && <span className="ml-1 text-xs rounded-full border border-green-500/40 bg-green-500/15 text-green-300 px-2 py-0.5">WhatsApp</span>}
                               </td>
                               <td className="py-1.5 text-right font-mono whitespace-nowrap">{duracao(c.duracao)}</td>
                             </tr>

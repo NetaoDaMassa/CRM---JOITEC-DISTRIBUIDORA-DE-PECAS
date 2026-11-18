@@ -85,9 +85,13 @@ export default function MetaLigacoesHoje() {
                   ))}
                 </div>
               )}
-              {user?.role === 'admin' && (
+              {user?.role === 'admin' ? (
                 <Link to="/admin/ligacoes" onClick={() => setAberto(false)} className="inline-block text-xs text-gold-400 underline">
                   Abrir relatório completo de ligações
+                </Link>
+              ) : (
+                <Link to="/vendedor/ligacoes" onClick={() => setAberto(false)} className="inline-block text-xs text-gold-400 underline">
+                  Ver todas as minhas ligações
                 </Link>
               )}
             </div>
