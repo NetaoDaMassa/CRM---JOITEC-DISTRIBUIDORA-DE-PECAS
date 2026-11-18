@@ -5,6 +5,7 @@ import { router, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { clientes, cobrancaContatos, cobrancaTitulos, empresas, pabxLigacoesProcessadas, sapTitulosAbertos, users } from '../db/schema.js'
 import { registrarLigacoesCobranca } from '../lib/cobrancaLigacoes.js'
+import { segundosMinimosEfetiva } from '../lib/ligacaoWhatsapp.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { setConfig } from '../lib/configuracoes.js'
 import { diaUtilApos } from '../lib/reguaCobranca.js'
@@ -190,9 +191,43 @@ export const cobrancaSapRouter = router({
     .mutation(async ({ ctx, input }) => {
       const s = input.duracaoSegundos
       const tempo = s ? `, ${Math.floor(s / 60) ? `${Math.floor(s / 60)}min ` : ''}${s % 60}s` : ''
-      const texto = `📱 Ligação pelo WhatsApp: ${input.atendeu ? `atendida${tempo}` : 'não atendida'} (print anexado)${input.observacao ? ` — ${input.observacao}` : ''}`
+      // Conta na meta de ligações igual ao ramal (João, 2026-11-18: "somente
+      // as ligações do zap, contato não"). Atendida = efetiva; se a pessoa
+      // escreveu um tempo abaixo do mínimo (30s), não é efetiva.
+      const minimo = await segundosMinimosEfetiva()
+      const efetiva = input.atendeu && (!s || s >= minimo)
+      const curta = input.atendeu && !efetiva ? `, abaixo de ${minimo}s: não conta como efetiva` : ''
+      const texto = `📱 Ligação pelo WhatsApp: ${input.atendeu ? `atendida${tempo}${curta}` : 'não atendida'} (print anexado)${input.observacao ? ` — ${input.observacao}` : ''}`
       const hoje = hojeBrString()
       const ts = await db.select().from(cobrancaTitulos).where(inArray(cobrancaTitulos.id, input.tituloIds))
+      if (!ts.length) throw new TRPCError({ code: 'NOT_FOUND', message: 'Título não encontrado' })
+      // Cliente e empresa do título (todos do mesmo cartão = mesmo cliente).
+      const t0 = ts[0]
+      const emp = await db.query.empresas.findFirst({ where: eq(empresas.slug, t0.empresaSlug ?? '') })
+      const cli = emp
+        ? await db.query.clientes.findFirst({
+            where: and(eq(clientes.empresaId, emp.id), isNull(clientes.deletedAt), or(eq(clientes.codigo, t0.codigoCliente), eq(clientes.codigoAntigo, t0.codigoCliente))),
+          })
+        : undefined
+      const agora = agoraSqlite()
+      const [lig] = await db
+        .insert(pabxLigacoesProcessadas)
+        .values({
+          chamadaId: `whatsapp:${ctx.user.id}:${Date.now()}`,
+          direcao: 'OUTBOUND',
+          // O contador só soma ligação com número externo.
+          numeroExterno: cli?.telefoneWhatsapp?.replace(/\D/g, '') || 'whatsapp',
+          duracaoSegundos: s ?? null,
+          clienteId: cli?.id ?? null,
+          empresaId: emp?.id ?? ctx.empresaId,
+          userId: ctx.user.id,
+          dataHora: agora,
+          efetiva,
+          statusChamada: efetiva ? 'atendida' : input.atendeu ? 'curta' : 'nao_atendida',
+          fonte: 'whatsapp',
+          anexoPrint: input.printPath,
+        })
+        .returning({ id: pabxLigacoesProcessadas.id })
       for (const t of ts) {
         const dia = diasUteisAposVencimento(t.vencimento, hoje)
         await db.insert(cobrancaContatos).values({
@@ -203,10 +238,11 @@ export const cobrancaSapRouter = router({
           observacao: texto,
           userId: ctx.user.id,
           printPath: input.printPath,
+          pabxLigacaoId: lig?.id ?? null,
         })
         if (input.tipo === 'aviso_cartorio' && !t.cartorioAvisoEm) await db.update(cobrancaTitulos).set({ cartorioAvisoEm: agoraSqlite() }).where(eq(cobrancaTitulos.id, t.id))
       }
-      return { ok: true, registrados: ts.length }
+      return { ok: true, registrados: ts.length, efetiva }
     }),
 
   marcarPago: featureProcedure(FEATURE)

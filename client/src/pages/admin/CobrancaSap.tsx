@@ -88,8 +88,8 @@ function LigacaoWhatsappCobranca({ ids, tipo, onFechar, onRegistrada }: { ids: n
       if (!res.ok) throw new Error((await res.json().catch(() => null))?.error ?? 'Não consegui enviar o print')
       const { path } = await res.json()
       const total = (Number(minutos) || 0) * 60 + (Number(segundos) || 0)
-      await mut.mutateAsync({ tituloIds: ids, tipo, printPath: path, atendeu, duracaoSegundos: total > 0 ? total : undefined, observacao: obs.trim() || undefined })
-      toast.success('Ligação pelo WhatsApp registrada')
+      const r = await mut.mutateAsync({ tituloIds: ids, tipo, printPath: path, atendeu, duracaoSegundos: total > 0 ? total : undefined, observacao: obs.trim() || undefined })
+      toast.success(r.efetiva ? 'Ligação registrada — contou como efetiva na meta' : 'Ligação registrada — conta como tentativa na meta')
       onRegistrada()
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Erro ao registrar')
@@ -426,7 +426,7 @@ function CartaoCliente({ g, aba, msgs }: { g: Grupo; aba: Aba; msgs: { cobranca:
                         <GravacaoLigacao ligacaoId={c.ligacaoId} partes={c.ligacaoPartes} />
                       </div>
                     )}
-                    {c.ligacaoId && !c.ligacaoPartes && c.ligacaoEfetiva && <span className="text-dark-500"> · 🎧 a gravação aparece aqui alguns minutos depois</span>}
+                    {c.ligacaoId && !c.ligacaoPartes && c.ligacaoEfetiva && !c.printPath && <span className="text-dark-500"> · 🎧 a gravação aparece aqui alguns minutos depois</span>}
                   </li>
                 ))}
             </ul>
