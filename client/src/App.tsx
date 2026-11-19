@@ -288,12 +288,12 @@ export default function App() {
         <Route
           path="/painel-ecommerce"
           element={
+            // Sem AdminGuard: as vendedoras do e-commerce (vendor) com a
+            // permissão também abrem — o servidor confere (adminOrFeatureProcedure).
             <AuthGuard>
-              <AdminGuard>
-                <FeatureGuard feature="painel_ecommerce">
-                  <PainelEcommerce />
-                </FeatureGuard>
-              </AdminGuard>
+              <FeatureGuard feature="painel_ecommerce">
+                <PainelEcommerce />
+              </FeatureGuard>
             </AuthGuard>
           }
         />

@@ -563,7 +563,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     { to: '/painel-financeiro', label: 'Painel Financeiro', icon: Wallet, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_financeiro')) },
     // Painel de TV "Controle Logístico" (Expedição das 3 empresas) — pro
     // Financeiro, TV de 75". Pedido do João, 2026-10-29.
-    { to: '/painel-ecommerce', label: 'Painel de TV E-commerce', icon: MonitorSmartphone, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_ecommerce')) },
+    // Vendedoras do e-commerce (role vendor) também veem quando liberado (João, 2026-11-19).
+    { to: '/painel-ecommerce', label: 'Painel de TV E-commerce', icon: MonitorSmartphone, external: true, visivel: !!user && (user.role === 'admin' || user.role === 'vendor') && !!(user.superAdmin || minhasFeatures?.includes('painel_ecommerce')) },
     { to: '/painel-tv-logistica', label: 'Painel Controle Logístico', icon: Truck, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_logistica')) },
     {
       // Sem trava de empresa aqui de propósito — a permissão concedida em
