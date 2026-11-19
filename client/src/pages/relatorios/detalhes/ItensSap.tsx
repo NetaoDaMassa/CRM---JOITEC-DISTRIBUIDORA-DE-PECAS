@@ -303,7 +303,7 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
         vazio="Nenhum item do SAP nesse período."
       />
       <p className="text-xs text-dark-500">
-        Itens das notas de venda do SAP dos clientes cadastrados no CRM (na Odin Compressores, só a carteira da Bruna), já descontadas as devoluções no mês em que o cliente devolveu; nota cancelada no SAP sai na próxima atualização. Venda de cliente que não está no CRM não aparece aqui — a aba "Faturam pouco" conta todas as notas da filial, por isso os números podem ser diferentes. O cliente conta pro vendedor que tem ele na carteira hoje. Clique no nome do item pra ver o gráfico e quem comprou.
+        Itens das notas de venda do SAP dos clientes cadastrados no CRM (na Odin Compressores, só a carteira da Bruna), já descontadas as devoluções no mês em que o cliente devolveu; nota cancelada no SAP sai na próxima atualização. Venda de cliente que não está no CRM não aparece aqui — a aba "Faturam pouco" conta todas as notas da filial, por isso os números podem ser diferentes. Tubos e conexões (grupos PPR e ODIN TUBOS do SAP) são da Odin Tubos: saem da Joitec e, quando a nota saiu pela filial da Joitec para cliente de fora, aparecem na Odin Tubos (venda da Joitec para a própria Odin Tubos não conta, é abastecimento). O cliente conta pro vendedor que tem ele na carteira hoje. Clique no nome do item pra ver o gráfico e quem comprou.
       </p>
 
       {aberto && <DetalheItem item={aberto} entrada={entrada} meses={meses} medida={medida} fmt={fmt} destaque={[a, b]} clientesBase={clientesBase} onClose={() => setAberto(null)} />}
@@ -335,10 +335,10 @@ function DetalheItem({
 
   const { serie, clientes } = useMemo(() => {
     const porMes = new Map<string, number>()
-    const porCliente = new Map<number, { clienteId: number; razaoSocial: string; codigo: string | null; excluido: boolean; vendedorNome: string | null; meses: Record<string, number> }>()
+    const porCliente = new Map<number, { clienteId: number; razaoSocial: string; codigo: string | null; excluido: boolean; soNaJoitec: boolean; vendedorNome: string | null; meses: Record<string, number> }>()
     for (const l of data ?? []) {
       porMes.set(l.mes, (porMes.get(l.mes) ?? 0) + l[medida])
-      const c = porCliente.get(l.clienteId) ?? { clienteId: l.clienteId, razaoSocial: l.razaoSocial, codigo: l.codigo, excluido: l.excluido, vendedorNome: l.vendedorNome, meses: {} }
+      const c = porCliente.get(l.clienteId) ?? { clienteId: l.clienteId, razaoSocial: l.razaoSocial, codigo: l.codigo, excluido: l.excluido, soNaJoitec: l.soNaJoitec, vendedorNome: l.vendedorNome, meses: {} }
       c.meses[l.mes] = (c.meses[l.mes] ?? 0) + l[medida]
       porCliente.set(l.clienteId, c)
     }
@@ -349,7 +349,7 @@ function DetalheItem({
   }, [data, meses, medida, mesA, mesB])
   type C = (typeof clientes)[number]
   const colunas: Coluna<C>[] = [
-    { id: 'cliente', rotulo: 'Cliente', quebrar: true, valor: (c) => c.razaoSocial, render: (c) => (c.excluido ? <span className="font-medium text-dark-300">{c.razaoSocial} <span className="text-[11px] text-dark-500">(cliente excluído)</span></span> : <Link to={`${clientesBase}/${c.clienteId}`} className="font-medium text-dark-50 hover:text-gold-400">{c.razaoSocial}</Link>) },
+    { id: 'cliente', rotulo: 'Cliente', quebrar: true, valor: (c) => c.razaoSocial, render: (c) => (c.excluido || c.soNaJoitec ? <span className="font-medium text-dark-300">{c.razaoSocial} <span className="text-[11px] text-dark-500">{c.excluido ? '(cliente excluído)' : '(cadastro só na Joitec)'}</span></span> : <Link to={`${clientesBase}/${c.clienteId}`} className="font-medium text-dark-50 hover:text-gold-400">{c.razaoSocial}</Link>) },
     { id: 'vendedor', rotulo: 'Vendedor', valor: (c) => c.vendedorNome ?? '—' },
     ...meses.map((m): Coluna<C> => ({ id: `m-${m}`, rotulo: rotuloMes(m), valor: (c) => c.meses[m] ?? 0, formato: medida === 'valor' ? 'moeda' : 'numero', somar: true, render: (c) => <span className={m === mesA || m === mesB ? 'font-semibold text-dark-50' : 'text-dark-300'}>{c.meses[m] ? fmt(c.meses[m]) : '—'}</span> })),
     {

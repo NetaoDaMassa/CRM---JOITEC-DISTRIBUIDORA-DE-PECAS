@@ -27,6 +27,8 @@ import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
+import { alias } from 'drizzle-orm/sqlite-core'
+import { SLUGS_JOITEC, codigosItensOdinTubos, ehClienteOdinTubos, sqlCodigoNaLista } from '../lib/itensOdinTubos.js'
 import { SAP_INICIO, estoqueDaFilial, faturamentoMensalDaFilial, filialDaEmpresa, menosVendidosDaFilial, situacaoHistoricoEstoque } from '../lib/sapEstoque.js'
 
 // Desde quando o cliente está com o vendedor atual — pedido do João,
@@ -280,14 +282,96 @@ function limitesDia(input: { dataInicio: string; dataFim: string }) {
   return { inicio: `${input.dataInicio} 00:00:00`, fim: `${input.dataFim} 23:59:59` }
 }
 
-// Itens do SAP mês a mês: PPR é produto da Odin Tubos. Nota de PPR emitida
-// pela Joitec (inclusive venda pra própria Odin Tubos) não entra no relatório
-// da Joitec — "cada uma tem que ficar com seus itens" (João, 2026-11-17).
-// A nota continua guardada; só sai da conta.
-async function filtroItensDeOutraEmpresa(empresaId: number, coluna: any = sapItensHistorico.descricao) {
+// Itens do SAP: tubos e conexões (PPR) são da Odin Tubos. Nota de PPR
+// emitida pela filial da Joitec não entra no relatório da Joitec nem da
+// Automação — "cada uma tem que ficar com seus itens" (João, 2026-11-17);
+// regra pelo grupo do item no SAP desde 2026-11-19 (lib/itensOdinTubos.ts).
+// A venda pra cliente de fora aparece na Odin Tubos (tubosVendidosPelaJoitec).
+async function filtroItensDeOutraEmpresa(empresaId: number, coluna: any = sapItensHistorico.codigoItem) {
   const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
-  if (emp?.slug !== 'joitec') return null
-  return sql`upper(${coluna}) not like '%PPR%'`
+  if (!emp || !SLUGS_JOITEC.includes(emp.slug)) return null
+  return sql`not (${sqlCodigoNaLista(coluna, await codigosItensOdinTubos())})`
+}
+
+// Abas que leem a filial inteira (estoque, menos vendidos, faturam pouco): na
+// Joitec/Automação tiram os tubos e conexões, que são da Odin Tubos.
+async function itensDeOutraEmpresaNaFilial(slug: string | undefined): Promise<Set<string>> {
+  return slug && SLUGS_JOITEC.includes(slug) ? codigosItensOdinTubos() : new Set()
+}
+
+// Odin Tubos: tubos/conexões vendidos pela filial da Joitec para clientes de
+// fora (antes da Odin Tubos ter filial própria no SAP quase tudo saía assim
+// — abr/mai/26 ~R$ 450 mil por mês). O cliente é o cadastro da Odin Tubos com
+// o mesmo código (vendedor e região de lá); sem cadastro na Odin Tubos
+// aparece com o nome da Joitec e só sem filtro de vendedor. Venda para a
+// própria Odin Tubos fica de fora (é abastecimento). `chave` = um item só.
+async function tubosVendidosPelaJoitec(
+  ctx: { empresaId: number; user: { role: 'admin' | 'vendor' | 'gestor'; id: number } },
+  input: { mesInicio: string; mesFim: string; vendedorId?: number; regiao?: string; chave?: string }
+) {
+  const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+  if (emp?.slug !== 'odin-tubos') return null
+  const idsJoitec = (await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_JOITEC), columns: { id: true } })).map((e) => e.id)
+  const codigos = await codigosItensOdinTubos()
+  if (!idsJoitec.length || !codigos.size) return null
+  const cj = alias(clientes, 'cj')
+  const ct = alias(clientes, 'ct')
+  const juntarCt = and(eq(ct.empresaId, ctx.empresaId), isNull(ct.deletedAt), eq(ct.codigo, cj.codigo))
+  const filtrosComuns = (codCol: any) => {
+    const f = [sqlCodigoNaLista(codCol, codigos), sql`not ${ehClienteOdinTubos(cj.razaoSocial)}`]
+    const fv = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, ct.vendedorAtualId)
+    if (fv) f.push(fv)
+    if (input.regiao) f.push(sql`coalesce(${ct.regiao}, ${cj.regiao}) = ${input.regiao}`)
+    if (input.chave) f.push(eq(codCol, input.chave))
+    return f
+  }
+  const mesV = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
+  const vendas = await db
+    .select({
+      chave: sql<string>`${sapItensHistorico.codigoItem}`,
+      mes: mesV,
+      clienteId: sql<number>`coalesce(${ct.id}, ${cj.id})`.mapWith(Number),
+      soNaJoitec: sql<number>`${ct.id} is null`.mapWith(Boolean),
+      razaoSocial: sql<string>`coalesce(${ct.razaoSocial}, ${cj.razaoSocial})`,
+      codigo: cj.codigo,
+      vendedorId: ct.vendedorAtualId,
+      descricao: sql<string>`max(${sapItensHistorico.descricao})`,
+      quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
+      valor: sql<number>`coalesce(sum(${sapItensHistorico.valorTotal}), 0)`.mapWith(Number),
+    })
+    .from(sapItensHistorico)
+    .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+    .innerJoin(cj, eq(cj.id, sapItensHistorico.clienteId))
+    .leftJoin(ct, juntarCt)
+    .where(
+      and(
+        inArray(sapItensHistorico.empresaId, idsJoitec),
+        eq(sapImportacoes.ativo, true),
+        between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
+        ...filtrosComuns(sapItensHistorico.codigoItem)
+      )
+    )
+    .groupBy(sapItensHistorico.codigoItem, mesV, cj.id)
+  const mesD = sql<string>`substr(${sapItensDevolucoes.data}, 1, 7)`
+  const devolucoes = await db
+    .select({
+      chave: sapItensDevolucoes.codigoItem,
+      mes: mesD,
+      clienteId: sql<number>`coalesce(${ct.id}, ${cj.id})`.mapWith(Number),
+      soNaJoitec: sql<number>`${ct.id} is null`.mapWith(Boolean),
+      razaoSocial: sql<string>`coalesce(${ct.razaoSocial}, ${cj.razaoSocial})`,
+      codigo: cj.codigo,
+      vendedorId: ct.vendedorAtualId,
+      descricao: sql<string>`max(${sapItensDevolucoes.descricao})`,
+      quantidade: sql<number>`coalesce(sum(${sapItensDevolucoes.quantidade}), 0)`.mapWith(Number),
+      valor: sql<number>`coalesce(sum(${sapItensDevolucoes.valor}), 0)`.mapWith(Number),
+    })
+    .from(sapItensDevolucoes)
+    .innerJoin(cj, eq(cj.id, sapItensDevolucoes.clienteId))
+    .leftJoin(ct, juntarCt)
+    .where(and(inArray(sapItensDevolucoes.empresaId, idsJoitec), between(sapItensDevolucoes.data, `${input.mesInicio}-01`, `${input.mesFim}-31`), ...filtrosComuns(sapItensDevolucoes.codigoItem)))
+    .groupBy(sapItensDevolucoes.codigoItem, mesD, cj.id)
+  return { vendas, devolucoes }
 }
 
 // Devoluções (notas de crédito) dos clientes do CRM por item e mês, com os
@@ -299,7 +383,7 @@ async function devolucoesItensSap(ctx: { empresaId: number; user: { role: 'admin
   if (filtroVend) filtros.push(filtroVend)
   const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
   if (filtroReg) filtros.push(filtroReg)
-  const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId, sapItensDevolucoes.descricao)
+  const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId, sapItensDevolucoes.codigoItem)
   if (filtroOutra) filtros.push(filtroOutra)
   if (input.chave) filtros.push(eq(sapItensDevolucoes.codigoItem, input.chave))
   const mes = sql<string>`substr(${sapItensDevolucoes.data}, 1, 7)`
@@ -1959,8 +2043,27 @@ export const reportsRouter = router({
         it.valor += l.valor
         itens.set(l.chave, it)
       }
+      // Odin Tubos: + tubos/conexões vendidos pela filial da Joitec.
+      const tubos = await tubosVendidosPelaJoitec(ctx, input)
+      if (tubos) {
+        const clientesPorMes = new Map<string, Set<number>>()
+        for (const v of tubos.vendas) {
+          const it = itens.get(v.chave) ?? { chave: v.chave, codigo: v.chave, descricao: v.descricao.trim(), meses: {}, quantidade: 0, valor: 0, devolvidoValor: 0 }
+          const m = (it.meses[v.mes] ??= { quantidade: 0, valor: 0, clientes: 0, devolvidoQtd: 0, devolvidoValor: 0 })
+          m.quantidade += v.quantidade
+          m.valor += v.valor
+          const k = `${v.chave}|${v.mes}`
+          const set = clientesPorMes.get(k) ?? new Set<number>()
+          if (!set.has(v.clienteId)) m.clientes += 1
+          set.add(v.clienteId)
+          clientesPorMes.set(k, set)
+          it.quantidade += v.quantidade
+          it.valor += v.valor
+          itens.set(v.chave, it)
+        }
+      }
       // Vendido − devolvido no mês da devolução.
-      for (const d of await devolucoesItensSap(ctx, input)) {
+      for (const d of [...(await devolucoesItensSap(ctx, input)), ...(tubos?.devolucoes ?? [])]) {
         const it = itens.get(d.chave) ?? { chave: d.chave, codigo: d.chave, descricao: d.descricao.trim(), meses: {}, quantidade: 0, valor: 0, devolvidoValor: 0 }
         const m = (it.meses[d.mes] ??= { quantidade: 0, valor: 0, clientes: 0, devolvidoQtd: 0, devolvidoValor: 0 })
         m.quantidade -= d.quantidade
@@ -1996,7 +2099,8 @@ export const reportsRouter = router({
     const filial = empresa ? filialDaEmpresa(empresa.slug) : null
     const situacao = await situacaoHistoricoEstoque()
     const verValor = ctx.user.role === 'admin'
-    return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, verValor, itens: filial === null ? [] : await estoqueDaFilial(filial, verValor) }
+    const excluir = await itensDeOutraEmpresaNaFilial(empresa?.slug)
+    return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, verValor, itens: filial === null ? [] : await estoqueDaFilial(filial, verValor, excluir) }
   }),
 
   itensSapMenosVendidos: protectedProcedure
@@ -2005,7 +2109,7 @@ export const reportsRouter = router({
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
       const filial = empresa ? filialDaEmpresa(empresa.slug) : null
       const situacao = await situacaoHistoricoEstoque()
-      return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: filial === null ? [] : await menosVendidosDaFilial(filial, input.de, input.ate) }
+      return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: filial === null ? [] : await menosVendidosDaFilial(filial, input.de, input.ate, await itensDeOutraEmpresaNaFilial(empresa?.slug)) }
     }),
 
   // Aba "Faturam pouco" (João, 2026-11-18): faturamento de cada item por
@@ -2017,7 +2121,29 @@ export const reportsRouter = router({
       const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
       const filial = empresa ? filialDaEmpresa(empresa.slug) : null
       const situacao = await situacaoHistoricoEstoque()
-      return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: filial === null ? [] : await faturamentoMensalDaFilial(filial, input.mesInicio, input.mesFim) }
+      const itens = filial === null ? [] : await faturamentoMensalDaFilial(filial, input.mesInicio, input.mesFim, await itensDeOutraEmpresaNaFilial(empresa?.slug))
+      // Odin Tubos: + tubos/conexões vendidos pela filial da Joitec pra
+      // cliente de fora (empresa inteira, sem filtro de vendedor).
+      const tubos = await tubosVendidosPelaJoitec({ empresaId: ctx.empresaId, user: { role: 'admin', id: ctx.user.id } }, input)
+      if (tubos) {
+        const porCodigo = new Map(itens.map((it) => [it.codigo, it]))
+        for (const [lista, sinal] of [[tubos.vendas, 1], [tubos.devolucoes, -1]] as const) {
+          for (const t of lista) {
+            let it = porCodigo.get(t.chave)
+            if (!it) {
+              it = { codigo: t.chave, codigoAntigo: null, descricao: t.descricao.trim(), estoque: 0, meses: {} }
+              porCodigo.set(t.chave, it)
+              itens.push(it)
+            }
+            const m = (it.meses[t.mes] ??= { quantidade: 0, valor: 0, notas: 0 })
+            m.quantidade += sinal * t.quantidade
+            m.valor = Math.round((m.valor + sinal * t.valor) * 100) / 100
+            // "notas" aqui = compras de clientes (a consulta agrupa por cliente).
+            if (sinal > 0) m.notas += 1
+          }
+        }
+      }
+      return { ...situacao, inicioSap: SAP_INICIO, temFilial: filial !== null, itens: itens.filter((it) => Object.values(it.meses).some((m) => m.notas > 0)) }
     }),
 
   // Um item do relatório acima: quem comprou em cada mês.
@@ -2044,6 +2170,7 @@ export const reportsRouter = router({
           razaoSocial: clientes.razaoSocial,
           codigo: clientes.codigo,
           excluido: sql<number>`${clientes.deletedAt} is not null`.mapWith(Boolean),
+          soNaJoitec: sql<number>`0`.mapWith(Boolean),
           vendedorNome: users.name,
           mes,
           quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
@@ -2055,6 +2182,27 @@ export const reportsRouter = router({
         .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
         .where(and(...filtros))
         .groupBy(clientes.id, mes)
+      // Odin Tubos: + tubos/conexões vendidos pela filial da Joitec.
+      const tubos = await tubosVendidosPelaJoitec(ctx, input)
+      if (tubos) {
+        const ids = [...new Set([...tubos.vendas, ...tubos.devolucoes].map((v) => v.vendedorId).filter((x): x is number => !!x))]
+        const nomes = new Map(ids.length ? (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, ids))).map((u) => [u.id, u.name]) : [])
+        const juntos = new Map<string, (typeof vendas)[number]>()
+        for (const v of vendas) juntos.set(`${v.clienteId}|${v.mes}`, v)
+        for (const [lista, sinal] of [[tubos.vendas, 1], [tubos.devolucoes, -1]] as const) {
+          for (const t of lista) {
+            const k = `${t.clienteId}|${t.mes}`
+            let v = juntos.get(k)
+            if (!v) {
+              v = { clienteId: t.clienteId, razaoSocial: t.razaoSocial, codigo: t.codigo, excluido: false, soNaJoitec: t.soNaJoitec, vendedorNome: t.vendedorId ? nomes.get(t.vendedorId) ?? null : null, mes: t.mes, quantidade: 0, valor: 0 }
+              juntos.set(k, v)
+              vendas.push(v)
+            }
+            v.quantidade += sinal * t.quantidade
+            v.valor += sinal * t.valor
+          }
+        }
+      }
       // Devoluções do item: descontam do cliente no mês da devolução.
       const devs = await devolucoesItensSap(ctx, input)
       if (!devs.length) return vendas
@@ -2074,7 +2222,7 @@ export const reportsRouter = router({
         if (!v) {
           const c = info.get(d.clienteId)
           if (!c) continue
-          v = { clienteId: c.id, razaoSocial: c.razaoSocial, codigo: c.codigo, excluido: !!c.deletedAt, vendedorNome: c.vendedorNome, mes: d.mes, quantidade: 0, valor: 0 }
+          v = { clienteId: c.id, razaoSocial: c.razaoSocial, codigo: c.codigo, excluido: !!c.deletedAt, soNaJoitec: false, vendedorNome: c.vendedorNome, mes: d.mes, quantidade: 0, valor: 0 }
           porChave.set(k, v)
           vendas.push(v)
         }

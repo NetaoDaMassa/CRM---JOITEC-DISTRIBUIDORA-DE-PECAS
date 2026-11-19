@@ -389,7 +389,9 @@ async function nomesDosItens(filial: number): Promise<Map<string, string>> {
   return new Map(linhas.filter((l) => l.nome).map((l) => [l.item, l.nome!]))
 }
 
-export async function estoqueDaFilial(filial: number, verValor: boolean): Promise<ItemEstoque[]> {
+// `excluir`: itens que são de outra empresa (tubos/conexões da Odin Tubos na
+// filial da Joitec — lib/itensOdinTubos.ts).
+export async function estoqueDaFilial(filial: number, verValor: boolean, excluir: Set<string> = new Set()): Promise<ItemEstoque[]> {
   const hoje = hojeBrString()
   const desde90 = somarDias(hoje, -90)
   const [estoqueTodo, ultimas, entradas, vendas90, fora] = await Promise.all([
@@ -411,7 +413,7 @@ export async function estoqueDaFilial(filial: number, verValor: boolean): Promis
       .groupBy(sapItemMovimentos.itemCodigo),
     componentesGravados(),
   ])
-  const estoque = estoqueTodo.filter((e) => !fora.has(e.itemCodigo))
+  const estoque = estoqueTodo.filter((e) => !fora.has(e.itemCodigo) && !excluir.has(e.itemCodigo))
   // Última venda = última nota de saída (devolução não conta como venda).
   const ultimaVenda = new Map(ultimas.filter((u) => u.origem === 'nota').map((u) => [u.item, u.ultimo]))
   const ultimaEntrada = new Map<string, string>()
@@ -468,7 +470,7 @@ export interface ItemMenosVendido {
 
 // Todos os itens que têm estoque de Revenda hoje ou que venderam alguma vez
 // desde a implantação, com o que venderam no período (zero entra).
-export async function menosVendidosDaFilial(filial: number, de: string, ate: string): Promise<ItemMenosVendido[]> {
+export async function menosVendidosDaFilial(filial: number, de: string, ate: string, excluir: Set<string> = new Set()): Promise<ItemMenosVendido[]> {
   const [estoque, periodo, ultimas, nomes, componentes] = await Promise.all([
     db.select().from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, filial)),
     db
@@ -492,7 +494,7 @@ export async function menosVendidosDaFilial(filial: number, de: string, ate: str
   const est = new Map(estoque.map((e) => [e.itemCodigo, e]))
   const per = new Map(periodo.map((p) => [p.item, p]))
   const ult = new Map(ultimas.map((u) => [u.item, u.ultimo]))
-  const codigos = new Set([...est.keys(), ...ult.keys()].filter((c) => !componentes.has(c)))
+  const codigos = new Set([...est.keys(), ...ult.keys()].filter((c) => !componentes.has(c) && !excluir.has(c)))
   return [...codigos].map((codigo) => {
     const e = est.get(codigo)
     const p = per.get(codigo)
@@ -526,7 +528,7 @@ export interface ItemFaturamentoMes {
 // bate meta porque falta tal item, e o item fatura R$ 500 no mês). Só itens
 // que tiveram nota no período; componentes de montagem e o que não é
 // mercadoria de revenda ficam de fora, como nas outras abas.
-export async function faturamentoMensalDaFilial(filial: number, mesInicio: string, mesFim: string): Promise<ItemFaturamentoMes[]> {
+export async function faturamentoMensalDaFilial(filial: number, mesInicio: string, mesFim: string, excluir: Set<string> = new Set()): Promise<ItemFaturamentoMes[]> {
   const mes = sql<string>`substr(${sapItemMovimentos.dia}, 1, 7)`
   const [linhas, estoque, nomes, componentes] = await Promise.all([
     db
@@ -547,7 +549,7 @@ export async function faturamentoMensalDaFilial(filial: number, mesInicio: strin
   const est = new Map(estoque.map((e) => [e.itemCodigo, e]))
   const itens = new Map<string, ItemFaturamentoMes>()
   for (const l of linhas) {
-    if (componentes.has(l.item)) continue
+    if (componentes.has(l.item) || excluir.has(l.item)) continue
     let it = itens.get(l.item)
     if (!it) {
       const e = est.get(l.item)
