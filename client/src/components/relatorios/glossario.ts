@@ -159,12 +159,11 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
     { termo: 'Quantidade por cliente', texto: 'Unidades vendidas ÷ clientes que compraram.' },
   ],
   'itens-sap': [
-    { termo: 'De onde vêm os itens', texto: 'Das notas de venda do SAP, puxadas sozinhas pela integração (Joitec, Odin Tubos e Odin Automação). Notas canceladas e devoluções ficam de fora. A Odin Compressores ainda não entra.' },
-    { termo: 'Meses', texto: 'Cada coluna é um mês inteiro, pela data da nota. O mês atual vai só até hoje, então ele só fica completo no fim do mês.' },
-    { termo: 'Comparar', texto: 'Escolha os dois meses que quer comparar. A coluna de variação mostra quanto mudou do primeiro pro segundo: vermelho caiu, verde subiu.' },
-    { termo: 'Parou', texto: 'Item que vendeu no primeiro mês e não vendeu nada no segundo.' },
-    { termo: 'Novo', texto: 'Item que não vendeu no primeiro mês e vendeu no segundo.' },
-    { termo: 'Vendedor', texto: 'O cliente conta pro vendedor que tem ele na carteira hoje, como no resto dos dados do SAP.' },
+    { termo: 'De onde vêm os números', texto: 'Das notas de venda do SAP, puxadas sozinhas pela integração. Devoluções já vêm descontadas e nota cancelada sai na próxima atualização. Valores sem impostos, como nas linhas da nota.' },
+    { termo: 'Como os itens estão indo', texto: 'Compara dois meses (por padrão os dois últimos meses fechados): quanto cada item faturou em um e no outro. "Caíram" inclui os que pararam de vender; "Subiram" inclui os novos. Conta só clientes cadastrados no CRM, e o cliente conta pro vendedor que tem ele na carteira hoje.' },
+    { termo: 'Itens que vendem pouco', texto: 'Itens cuja média de faturamento por mês fica abaixo do valor escolhido, nos últimos 3, 6 ou 12 meses fechados. Conta todas as notas da filial, até de cliente fora do CRM — por isso os totais podem ser um pouco maiores que na outra aba.' },
+    { termo: 'Estoque parado', texto: 'Itens com estoque de revenda hoje e há quantos dias não vendem. "Estoque dá para" = estoque ÷ média vendida por mês nos últimos 90 dias.' },
+    { termo: 'Tubos e conexões (PPR)', texto: 'Itens dos grupos PPR e ODIN TUBOS do SAP são da Odin Tubos: não aparecem na Joitec nem na Automação, e aparecem na Odin Tubos mesmo quando a nota saiu pela filial da Joitec para cliente de fora. Venda da Joitec para a própria Odin Tubos não conta (é abastecimento). Espiral PU fica na Joitec.' },
   ],
   contatos: [
     { termo: 'Contatos registrados', texto: 'Todos os contatos lançados no período (ligação, WhatsApp, e-mail e visita). O mesmo cliente pode ter vários.' },
