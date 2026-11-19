@@ -13,6 +13,7 @@ import type { PropsDetalhe } from './tipos'
 import { EstoqueParado } from './ItensSapEstoque'
 import { ComoCalcula, Pergunta, classeCampo, eixoY, estiloTooltip, mesLongo, mesesAtras, moedaCurta, rotuloMes, tick } from './itensSapComum'
 import { VendemPouco } from './ItensSapFaturamento'
+import { VisaoDiretoria } from './ItensSapDiretoria'
 
 // Itens do SAP — redesenho pedido pelo João em 2026-11-19 ("muito
 // complicado, difícil de entender; precisa ficar visível pra diretoria"):
@@ -24,21 +25,23 @@ import { VendemPouco } from './ItensSapFaturamento'
 //   2. Itens que vendem pouco — faturam pouco + os que não venderam nada.
 //   3. Estoque parado — sem venda + pra quantos meses o estoque dá.
 
-type AbaItens = 'evolucao' | 'pouco' | 'parado'
+type AbaItens = 'diretoria' | 'evolucao' | 'pouco' | 'parado'
 
 export function ItensSap(props: PropsDetalhe) {
-  const [aba, setAba] = usePersistedState<AbaItens>('rel:itensSap:aba3', 'evolucao')
+  const [aba, setAba] = usePersistedState<AbaItens>('rel:itensSap:aba4', 'diretoria')
   return (
     <div className="space-y-6">
       <Abas<AbaItens>
         valor={aba}
         onChange={setAba}
         opcoes={[
+          { valor: 'diretoria', rotulo: 'Visão da diretoria' },
           { valor: 'evolucao', rotulo: 'Como os itens estão indo' },
           { valor: 'pouco', rotulo: 'Itens que vendem pouco' },
           { valor: 'parado', rotulo: 'Estoque parado' },
         ]}
       />
+      {aba === 'diretoria' && <VisaoDiretoria f={props.f} mostrarResumo={props.mostrarResumo} irPara={setAba} />}
       {aba === 'evolucao' && <ItensMesAMes {...props} />}
       {aba === 'pouco' && <VendemPouco simples={props.simples} mostrarResumo={props.mostrarResumo} />}
       {aba === 'parado' && <EstoqueParado simples={props.simples} mostrarResumo={props.mostrarResumo} />}
