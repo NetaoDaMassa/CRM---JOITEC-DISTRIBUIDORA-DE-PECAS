@@ -1,6 +1,6 @@
 import { and, between, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { sapEstoqueItens, sapItemMovimentos, sapItensDevolucoes, sapItensHistorico } from '../db/schema.js'
+import { sapCatalogoItens, sapEstoqueItens, sapItemMovimentos, sapItensDevolucoes, sapItensHistorico } from '../db/schema.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
 import { comSessaoSap, dataSap, type SapSessao } from './sapServiceLayer.js'
@@ -527,10 +527,12 @@ export interface ItemFaturamentoMes {
 // devoluções — aba "Faturam pouco" (João, 2026-11-18: vendedor diz que não
 // bate meta porque falta tal item, e o item fatura R$ 500 no mês). Só itens
 // que tiveram nota no período; componentes de montagem e o que não é
-// mercadoria de revenda ficam de fora, como nas outras abas.
+// mercadoria de revenda NÃO ficam de fora aqui (diferente das abas de
+// estoque): os tubos PPR estão como "Embalagem" no SAP e sumiam (revisão
+// 2026-11-19). Só os grupos ATIVO e CONSUMO saem.
 export async function faturamentoMensalDaFilial(filial: number, mesInicio: string, mesFim: string, excluir: Set<string> = new Set()): Promise<ItemFaturamentoMes[]> {
   const mes = sql<string>`substr(${sapItemMovimentos.dia}, 1, 7)`
-  const [linhas, estoque, nomes, componentes] = await Promise.all([
+  const [linhas, estoque, nomes, foraDoFaturamento] = await Promise.all([
     db
       .select({
         item: sapItemMovimentos.itemCodigo,
@@ -544,12 +546,16 @@ export async function faturamentoMensalDaFilial(filial: number, mesInicio: strin
       .groupBy(sapItemMovimentos.itemCodigo, mes),
     db.select().from(sapEstoqueItens).where(eq(sapEstoqueItens.filial, filial)),
     nomesDosItens(filial),
-    componentesGravados(),
+    db
+      .select({ c: sapCatalogoItens.itemCodigo })
+      .from(sapCatalogoItens)
+      .where(inArray(sapCatalogoItens.grupo, ['ATIVO', 'CONSUMO']))
+      .then((r) => new Set(r.map((x) => x.c))),
   ])
   const est = new Map(estoque.map((e) => [e.itemCodigo, e]))
   const itens = new Map<string, ItemFaturamentoMes>()
   for (const l of linhas) {
-    if (componentes.has(l.item) || excluir.has(l.item)) continue
+    if (foraDoFaturamento.has(l.item) || excluir.has(l.item)) continue
     let it = itens.get(l.item)
     if (!it) {
       const e = est.get(l.item)

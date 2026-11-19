@@ -14,7 +14,9 @@ export const SLUGS_JOITEC = ['joitec', 'joitec-automacao']
 // Venda da filial Joitec PARA a própria Odin Tubos é abastecimento (ela
 // revende depois pela filial dela) — não conta como venda de item de
 // ninguém, senão contaria duas vezes.
-export const ehClienteOdinTubos = (razaoCol: unknown) => sql`upper(${razaoCol}) like '%ODIN TUBOS%'`
+// Cadastro C003770 / CNPJ 54.774.805/0001-11 (ou o nome, pra outro código).
+export const ehClienteOdinTubos = (razaoCol: unknown, codigoCol: unknown, cnpjCol: unknown) =>
+  sql`(upper(${razaoCol}) like '%ODIN TUBOS%' or upper(trim(coalesce(${codigoCol}, ''))) = 'C003770' or replace(replace(replace(coalesce(${cnpjCol}, ''), '.', ''), '/', ''), '-', '') = '54774805000111')`
 
 // `coluna` (código do item) está na lista acima. Lista vazia = nada.
 export function sqlCodigoNaLista(coluna: unknown, codigos: Set<string>): SQL {

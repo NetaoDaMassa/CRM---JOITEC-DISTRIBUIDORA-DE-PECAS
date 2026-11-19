@@ -388,7 +388,9 @@ export async function sincronizarDevolucoesItens(opts: { de?: string; ate?: stri
   const vendedoresBruna = await vendedoresSapCompressores()
   const clientesPorSlug = new Map<string, { exato: Map<string, number>; semZero: Map<string, number> }>()
   for (const e of listaEmpresas) {
-    const lista = await db.query.clientes.findMany({ where: and(eq(clientes.empresaId, e.id), isNull(clientes.deletedAt)), columns: { id: true, codigo: true, codigoAntigo: true } })
+    // Inclui cliente excluído: a venda dele continua contando no relatório,
+    // então a devolução também precisa descontar (ativos têm preferência).
+    const lista = (await db.query.clientes.findMany({ where: eq(clientes.empresaId, e.id), columns: { id: true, codigo: true, codigoAntigo: true, deletedAt: true } })).sort((x, y) => Number(!!x.deletedAt) - Number(!!y.deletedAt))
     const exato = new Map<string, number>()
     const semZero = new Map<string, number>()
     for (const c of lista) {

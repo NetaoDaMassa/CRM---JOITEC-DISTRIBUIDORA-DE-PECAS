@@ -27,7 +27,6 @@ import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
 import { toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
 import { coberturaContatosVendedor } from '../lib/coberturaContatos.js'
 import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
-import { alias } from 'drizzle-orm/sqlite-core'
 import { SLUGS_JOITEC, codigosItensOdinTubos, ehClienteOdinTubos, sqlCodigoNaLista } from '../lib/itensOdinTubos.js'
 import { SAP_INICIO, estoqueDaFilial, faturamentoMensalDaFilial, filialDaEmpresa, menosVendidosDaFilial, situacaoHistoricoEstoque } from '../lib/sapEstoque.js'
 
@@ -314,63 +313,75 @@ async function tubosVendidosPelaJoitec(
   const idsJoitec = (await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_JOITEC), columns: { id: true } })).map((e) => e.id)
   const codigos = await codigosItensOdinTubos()
   if (!idsJoitec.length || !codigos.size) return null
-  const cj = alias(clientes, 'cj')
-  const ct = alias(clientes, 'ct')
-  const juntarCt = and(eq(ct.empresaId, ctx.empresaId), isNull(ct.deletedAt), eq(ct.codigo, cj.codigo))
+  // Cadastro da Odin Tubos pelo código (sem espaço/maiúscula), ligado em
+  // memória — o join com upper(trim()) não usa índice e levava 20 s.
+  const norm = (c: string | null) => (c ?? '').trim().toUpperCase()
+  const cadastrosTubos = await db
+    .select({ id: clientes.id, codigo: clientes.codigo, razaoSocial: clientes.razaoSocial, vendedorAtualId: clientes.vendedorAtualId, regiao: clientes.regiao })
+    .from(clientes)
+    .where(and(eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)))
+  const porCodigo = new Map<string, (typeof cadastrosTubos)[number]>()
+  for (const c of cadastrosTubos) if (norm(c.codigo) && !porCodigo.has(norm(c.codigo))) porCodigo.set(norm(c.codigo), c)
+  const vendedorFiltro = ctx.user.role === 'admin' ? input.vendedorId : ctx.user.id
+  type Linha = { chave: string; mes: string; clienteJoitecId: number; codigo: string | null; razaoJoitec: string; regiaoJoitec: string | null; descricao: string; quantidade: number; valor: number }
+  const ligar = (linhas: Linha[]) =>
+    linhas.flatMap((l) => {
+      const ct = porCodigo.get(norm(l.codigo))
+      if (vendedorFiltro && ct?.vendedorAtualId !== vendedorFiltro) return []
+      if (input.regiao && (ct?.regiao ?? l.regiaoJoitec) !== input.regiao) return []
+      return [{ chave: l.chave, mes: l.mes, clienteId: ct?.id ?? l.clienteJoitecId, soNaJoitec: !ct, razaoSocial: ct?.razaoSocial ?? l.razaoJoitec, codigo: l.codigo, vendedorId: ct?.vendedorAtualId ?? null, descricao: l.descricao, quantidade: l.quantidade, valor: l.valor }]
+    })
   const filtrosComuns = (codCol: any) => {
-    const f = [sqlCodigoNaLista(codCol, codigos), sql`not ${ehClienteOdinTubos(cj.razaoSocial)}`]
-    const fv = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, ct.vendedorAtualId)
-    if (fv) f.push(fv)
-    if (input.regiao) f.push(sql`coalesce(${ct.regiao}, ${cj.regiao}) = ${input.regiao}`)
+    const f = [sqlCodigoNaLista(codCol, codigos), sql`not ${ehClienteOdinTubos(clientes.razaoSocial, clientes.codigo, clientes.cnpj)}`]
     if (input.chave) f.push(eq(codCol, input.chave))
     return f
   }
   const mesV = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
-  const vendas = await db
-    .select({
-      chave: sql<string>`${sapItensHistorico.codigoItem}`,
-      mes: mesV,
-      clienteId: sql<number>`coalesce(${ct.id}, ${cj.id})`.mapWith(Number),
-      soNaJoitec: sql<number>`${ct.id} is null`.mapWith(Boolean),
-      razaoSocial: sql<string>`coalesce(${ct.razaoSocial}, ${cj.razaoSocial})`,
-      codigo: cj.codigo,
-      vendedorId: ct.vendedorAtualId,
-      descricao: sql<string>`max(${sapItensHistorico.descricao})`,
-      quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
-      valor: sql<number>`coalesce(sum(${sapItensHistorico.valorTotal}), 0)`.mapWith(Number),
-    })
-    .from(sapItensHistorico)
-    .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
-    .innerJoin(cj, eq(cj.id, sapItensHistorico.clienteId))
-    .leftJoin(ct, juntarCt)
-    .where(
-      and(
-        inArray(sapItensHistorico.empresaId, idsJoitec),
-        eq(sapImportacoes.ativo, true),
-        between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
-        ...filtrosComuns(sapItensHistorico.codigoItem)
+  const vendas = ligar(
+    await db
+      .select({
+        chave: sql<string>`${sapItensHistorico.codigoItem}`,
+        mes: mesV,
+        clienteJoitecId: clientes.id,
+        codigo: clientes.codigo,
+        razaoJoitec: clientes.razaoSocial,
+        regiaoJoitec: sql<string | null>`${clientes.regiao}`,
+        descricao: sql<string>`max(${sapItensHistorico.descricao})`,
+        quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
+        valor: sql<number>`coalesce(sum(${sapItensHistorico.valorTotal}), 0)`.mapWith(Number),
+      })
+      .from(sapItensHistorico)
+      .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+      .innerJoin(clientes, eq(clientes.id, sapItensHistorico.clienteId))
+      .where(
+        and(
+          inArray(sapItensHistorico.empresaId, idsJoitec),
+          eq(sapImportacoes.ativo, true),
+          between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
+          ...filtrosComuns(sapItensHistorico.codigoItem)
+        )
       )
-    )
-    .groupBy(sapItensHistorico.codigoItem, mesV, cj.id)
+      .groupBy(sapItensHistorico.codigoItem, mesV, clientes.id)
+  )
   const mesD = sql<string>`substr(${sapItensDevolucoes.data}, 1, 7)`
-  const devolucoes = await db
-    .select({
-      chave: sapItensDevolucoes.codigoItem,
-      mes: mesD,
-      clienteId: sql<number>`coalesce(${ct.id}, ${cj.id})`.mapWith(Number),
-      soNaJoitec: sql<number>`${ct.id} is null`.mapWith(Boolean),
-      razaoSocial: sql<string>`coalesce(${ct.razaoSocial}, ${cj.razaoSocial})`,
-      codigo: cj.codigo,
-      vendedorId: ct.vendedorAtualId,
-      descricao: sql<string>`max(${sapItensDevolucoes.descricao})`,
-      quantidade: sql<number>`coalesce(sum(${sapItensDevolucoes.quantidade}), 0)`.mapWith(Number),
-      valor: sql<number>`coalesce(sum(${sapItensDevolucoes.valor}), 0)`.mapWith(Number),
-    })
-    .from(sapItensDevolucoes)
-    .innerJoin(cj, eq(cj.id, sapItensDevolucoes.clienteId))
-    .leftJoin(ct, juntarCt)
-    .where(and(inArray(sapItensDevolucoes.empresaId, idsJoitec), between(sapItensDevolucoes.data, `${input.mesInicio}-01`, `${input.mesFim}-31`), ...filtrosComuns(sapItensDevolucoes.codigoItem)))
-    .groupBy(sapItensDevolucoes.codigoItem, mesD, cj.id)
+  const devolucoes = ligar(
+    await db
+      .select({
+        chave: sapItensDevolucoes.codigoItem,
+        mes: mesD,
+        clienteJoitecId: clientes.id,
+        codigo: clientes.codigo,
+        razaoJoitec: clientes.razaoSocial,
+        regiaoJoitec: sql<string | null>`${clientes.regiao}`,
+        descricao: sql<string>`max(${sapItensDevolucoes.descricao})`,
+        quantidade: sql<number>`coalesce(sum(${sapItensDevolucoes.quantidade}), 0)`.mapWith(Number),
+        valor: sql<number>`coalesce(sum(${sapItensDevolucoes.valor}), 0)`.mapWith(Number),
+      })
+      .from(sapItensDevolucoes)
+      .innerJoin(clientes, eq(clientes.id, sapItensDevolucoes.clienteId))
+      .where(and(inArray(sapItensDevolucoes.empresaId, idsJoitec), between(sapItensDevolucoes.data, `${input.mesInicio}-01`, `${input.mesFim}-31`), ...filtrosComuns(sapItensDevolucoes.codigoItem)))
+      .groupBy(sapItensDevolucoes.codigoItem, mesD, clientes.id)
+  )
   return { vendas, devolucoes }
 }
 
@@ -2046,7 +2057,20 @@ export const reportsRouter = router({
       // Odin Tubos: + tubos/conexões vendidos pela filial da Joitec.
       const tubos = await tubosVendidosPelaJoitec(ctx, input)
       if (tubos) {
+        // Clientes distintos: os da própria Odin Tubos + os da filial da
+        // Joitec, sem contar duas vezes quem comprou pelos dois lados.
+        const mesC = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
+        const proprios = await db
+          .selectDistinct({ chave, mes: mesC, clienteId: sapItensHistorico.clienteId })
+          .from(sapItensHistorico)
+          .innerJoin(sapImportacoes, eq(sapImportacoes.id, sapItensHistorico.importacaoId))
+          .innerJoin(clientes, eq(clientes.id, sapItensHistorico.clienteId))
+          .where(and(...filtros))
         const clientesPorMes = new Map<string, Set<number>>()
+        for (const p of proprios) {
+          const k = `${p.chave}|${p.mes}`
+          clientesPorMes.set(k, (clientesPorMes.get(k) ?? new Set<number>()).add(p.clienteId))
+        }
         for (const v of tubos.vendas) {
           const it = itens.get(v.chave) ?? { chave: v.chave, codigo: v.chave, descricao: v.descricao.trim(), meses: {}, quantidade: 0, valor: 0, devolvidoValor: 0 }
           const m = (it.meses[v.mes] ??= { quantidade: 0, valor: 0, clientes: 0, devolvidoQtd: 0, devolvidoValor: 0 })
@@ -2194,7 +2218,7 @@ export const reportsRouter = router({
             const k = `${t.clienteId}|${t.mes}`
             let v = juntos.get(k)
             if (!v) {
-              v = { clienteId: t.clienteId, razaoSocial: t.razaoSocial, codigo: t.codigo, excluido: false, soNaJoitec: t.soNaJoitec, vendedorNome: t.vendedorId ? nomes.get(t.vendedorId) ?? null : null, mes: t.mes, quantidade: 0, valor: 0 }
+              v = { clienteId: t.clienteId, razaoSocial: t.razaoSocial, codigo: t.codigo ?? "", excluido: false, soNaJoitec: t.soNaJoitec, vendedorNome: t.vendedorId ? nomes.get(t.vendedorId) ?? null : null, mes: t.mes, quantidade: 0, valor: 0 }
               juntos.set(k, v)
               vendas.push(v)
             }

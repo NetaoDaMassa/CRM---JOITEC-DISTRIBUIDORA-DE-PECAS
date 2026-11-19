@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Coins, PackageSearch, Percent } from 'lucide-react'
 import { trpc } from '../../../lib/trpc'
 import { hojeBrString } from '../../../lib/utils'
+import { parseValorBr } from '../../../lib/valorBr'
 import { usePersistedState } from '../../../lib/usePersistedState'
 import { Abas, KpiCard, moeda, numero, pct } from '../../../components/relatorios/blocos'
 import TabelaDados from '../../../components/relatorios/TabelaDados'
@@ -49,7 +50,7 @@ export function FaturamPouco({ simples, mostrarResumo }: Props) {
   const [comMesAtual, setComMesAtual] = usePersistedState<boolean>('rel:itensSap:pouco:mesAtual', false)
   const [mostrar, setMostrar] = useState<Mostrar>('abaixo')
 
-  const limite = Math.max(0, Number(String(limiteTexto).replace(/\./g, '').replace(',', '.')) || 0)
+  const limite = Math.max(0, parseValorBr(String(limiteTexto)) || 0)
   const n = Number(periodo)
   const mesFim = comMesAtual ? mesAtual : somarMeses(mesAtual, -1)
   const mesInicio = somarMeses(mesFim, -(n - 1))
@@ -167,7 +168,7 @@ export function FaturamPouco({ simples, mostrarResumo }: Props) {
         <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
           <KpiCard titulo={`Itens abaixo de ${moeda(limite)}/mês`} icone={PackageSearch} cor="#e5534b" valor={numero(abaixo.length)} detalhe={`de ${numero(todas.length)} itens que venderam de ${rotuloMes(mesInicio)} a ${rotuloMes(mesFim)}`} />
           <KpiCard titulo="Quanto esses itens faturam juntos" icone={Coins} cor="#f97316" valor={moeda(totalAbaixo / meses.length)} detalhe={`por mês, em média (${moeda(totalAbaixo)} no período)`} />
-          <KpiCard titulo="Parte do faturamento" icone={Percent} cor="#a855f7" valor={pct(totalGeral > 0 ? totalAbaixo / totalGeral : 0)} detalhe={`de ${moeda(totalGeral / meses.length)}/mês de todos os itens`} />
+          <KpiCard titulo="Parte do faturamento" icone={Percent} cor="#a855f7" valor={pct(totalGeral > 0 ? (totalAbaixo / totalGeral) * 100 : 0)} detalhe={`de ${moeda(totalGeral / meses.length)}/mês de todos os itens`} />
         </div>
       )}
       <Abas<Mostrar>

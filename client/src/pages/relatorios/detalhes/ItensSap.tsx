@@ -205,7 +205,7 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
         />
         <label className="flex items-center gap-1.5 text-sm text-dark-300">
           Comparar
-          <select value={a} onChange={(e) => setMesA(e.target.value)} className={classeCampo}>
+          <select value={a} onChange={(e) => (setMesA(e.target.value), setMesB(b))} className={classeCampo}>
             {meses.map((m) => (
               <option key={m} value={m}>
                 {nomeMes(m)}
@@ -213,7 +213,7 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
             ))}
           </select>
           com
-          <select value={b} onChange={(e) => setMesB(e.target.value)} className={classeCampo}>
+          <select value={b} onChange={(e) => (setMesB(e.target.value), setMesA(a))} className={classeCampo}>
             {meses.map((m) => (
               <option key={m} value={m}>
                 {nomeMes(m)}
