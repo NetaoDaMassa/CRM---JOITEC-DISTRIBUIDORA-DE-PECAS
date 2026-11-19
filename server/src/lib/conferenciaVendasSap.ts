@@ -404,3 +404,38 @@ export async function trazerPedidoParaEmpresa(docEntry: number, empresaId: numbe
   cache.clear()
   return { docNum: p.DocNum, criada: r.criadas > 0 }
 }
+
+// "Mover para o cadastro certo" (Pedidos trocados, João 2026-11-19: "você
+// não consegue mover para o certo?"): a venda está num cliente que não é o
+// do pedido no SAP. Refaz pela regra da venda automática (que já não junta
+// pelo código antigo de outra empresa) e, só se a nova entrou em OUTRO
+// cliente, tira a errada (auditoria + caixa + card volta pra etapa de antes).
+export async function moverVendaParaCadastroCerto(vendaId: number, usuarioId: number) {
+  const venda = await db.query.vendas.findFirst({ where: eq(vendas.id, vendaId) })
+  if (!venda || venda.deletedAt) throw new Error('Venda não encontrada (talvez já tenha sido movida).')
+  if (!venda.pedidoSapEntry) throw new Error('Essa venda não está ligada a um pedido do SAP.')
+  const p = await pedidoSap(venda.pedidoSapEntry)
+  if (p.Cancelled === 'tYES') throw new Error(`O pedido ${p.DocNum} está cancelado no SAP.`)
+  const r = await sincronizarVendasSap({ desde: dataSap(p.DocDate), docEntries: [venda.pedidoSapEntry], ignorarVendaId: venda.id })
+  const [nova] = await db
+    .select({ id: vendas.id, clienteId: vendas.clienteId, razaoSocial: clientes.razaoSocial, funilMensalId: vendas.funilMensalId })
+    .from(vendas)
+    .innerJoin(clientes, eq(clientes.id, vendas.clienteId))
+    .where(and(eq(vendas.pedidoSapEntry, venda.pedidoSapEntry), isNull(vendas.deletedAt), sql`${vendas.id} <> ${venda.id}`))
+    .limit(1)
+  if (!nova) {
+    if (r?.semCliente.length) throw new Error(`O cliente ${r.semCliente[0].codigo} ${r.semCliente[0].nome} não está cadastrado na ${r.semCliente[0].empresa} — cadastre primeiro.`)
+    if (r?.semVendedor.length) throw new Error(`O cliente ${r.semVendedor[0].cliente} está sem vendedor na carteira — defina o vendedor primeiro.`)
+    throw new Error('Não deu pra mover — nada foi mudado.')
+  }
+  if (nova.clienteId === venda.clienteId) {
+    // Caiu no mesmo cliente errado: desfaz a nova e não mexe em nada.
+    await db.update(vendas).set({ deletedAt: agoraSqlite() }).where(eq(vendas.id, nova.id))
+    if (nova.funilMensalId !== venda.funilMensalId) await voltarCardSeVazio(nova.funilMensalId, usuarioId)
+    throw new Error('O CRM não achou outro cadastro pra esse pedido — nada foi mudado. Confira o cadastro do cliente do SAP.')
+  }
+  await marcarExcluida(venda.id, `pedido ${p.DocNum} é de ${p.CardCode} ${p.CardName} — movido para ${nova.razaoSocial} (pedidos trocados)`, usuarioId)
+  const cardVoltouPara = await voltarCardSeVazio(venda.funilMensalId, usuarioId)
+  cache.clear()
+  return { docNum: p.DocNum, para: nova.razaoSocial, novaVendaId: nova.id, cardVoltouPara }
+}

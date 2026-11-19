@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Shuffle, RefreshCw, Check, Undo2, ArrowRight, Package } from 'lucide-react'
+import { Shuffle, RefreshCw, Check, Undo2, ArrowRight, Package, MoveRight } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { formatarMoeda } from '../lib/moeda'
@@ -38,6 +38,7 @@ export default function PedidosTrocados() {
   const [empresa, setEmpresa] = useState('')
   const [verCertos, setVerCertos] = useState(false)
   const [marcar, setMarcar] = useState<{ chave: string; titulo: string } | null>(null)
+  const [mover, setMover] = useState<{ chave: string; vendaId: number; pedido: string | null; de: string; para: string } | null>(null)
   const [motivo, setMotivo] = useState('')
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
 
@@ -62,6 +63,20 @@ export default function PedidosTrocados() {
     onError: deuErro,
   })
   const desfazer = trpc.pedidosTrocados.desfazerCerto.useMutation({ onSuccess: () => recarregar(), onError: deuErro })
+  const moverMut = trpc.pedidosTrocados.moverParaCerto.useMutation({
+    onSuccess: (r) => {
+      setAviso({
+        ok: true,
+        texto: `Pedido ${r.docNum} movido para ${r.para}.${r.cardVoltouPara === 'card removido' ? ' O card errado (criado pelo SAP) saiu.' : r.cardVoltouPara ? ` O card errado voltou para "${r.cardVoltouPara}".` : ''}`,
+      })
+      setMover(null)
+      recarregar()
+    },
+    onError: (e) => {
+      setMover(null)
+      deuErro(e)
+    },
+  })
 
   const todos = data?.itens ?? []
   const empresas = [...new Map(todos.map((i) => [i.empresaId, i.empresa])).entries()]
@@ -117,7 +132,7 @@ export default function PedidosTrocados() {
           <>Cada linha mostra <b>como está no CRM</b> e <b>como está no SAP</b>. Se os dois clientes são diferentes, o pedido está no lugar errado.</>,
           <>Quando o CRM acha o <b>cadastro certo</b> (o do código do SAP), ele aparece embaixo — é pra lá que a venda deveria ir.</>,
           <>Se na verdade está certo (ex.: o mesmo cliente com dois nomes), clique em <b>Está certo</b> e escreva o porquê — sai da lista.</>,
-          <>Esta tela só mostra; ela não muda nada sozinha.</>,
+          <>Venda no cliente errado com o cadastro certo achado: clique em <b>Mover para o cadastro certo</b>. Nada muda sozinho — só quando alguém clica.</>,
         ]}
       />
 
@@ -212,9 +227,16 @@ export default function PedidosTrocados() {
                         </Button>
                       </>
                     ) : (
-                      <Button size="sm" variant="ghost" onClick={() => setMarcar({ chave: i.chave, titulo: `Pedido ${i.pedido ?? ''} — está certo?` })}>
-                        <Check size={14} /> Está certo
-                      </Button>
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => setMarcar({ chave: i.chave, titulo: `Pedido ${i.pedido ?? ''} — está certo?` })}>
+                          <Check size={14} /> Está certo
+                        </Button>
+                        {i.tipo === 'venda_outro_cliente' && i.vendaId && i.certoId && (
+                          <Button size="sm" onClick={() => setMover({ chave: i.chave, vendaId: i.vendaId!, pedido: i.pedido, de: i.clienteNome, para: i.certoNome ?? i.sapNome })}>
+                            <MoveRight size={14} /> Mover para o cadastro certo
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -223,6 +245,24 @@ export default function PedidosTrocados() {
           )}
         </>
       )}
+
+      <Modal open={!!mover} onClose={() => setMover(null)} title={`Mover o pedido ${mover?.pedido ?? ''}`} size="md">
+        <div className="space-y-3 text-sm text-dark-300">
+          <p>
+            A venda sai de <b className="text-red-200">{mover?.de}</b> e entra em <b className="text-emerald-200">{mover?.para}</b>, no card do mês de quem fez o
+            pedido (ou do dono do cliente), igual à venda automática.
+          </p>
+          <p>O card errado volta para a etapa de antes do Fechado (ou some, se foi criado só pra essa venda). Fica tudo no histórico.</p>
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setMover(null)}>
+              Cancelar
+            </Button>
+            <Button loading={moverMut.isPending} onClick={() => mover && moverMut.mutate({ chave: mover.chave, vendaId: mover.vendaId })}>
+              Mover
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal open={!!marcar} onClose={() => setMarcar(null)} title={marcar?.titulo ?? ''} size="md">
         <div className="space-y-3">

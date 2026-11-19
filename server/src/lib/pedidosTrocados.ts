@@ -376,3 +376,10 @@ export async function rodarRevisaoTrocados(): Promise<void> {
   }
 }
 
+
+// Depois de mover a venda: sai da lista já (a próxima revisão confirma).
+export async function tirarDoResultado(chave: string): Promise<void> {
+  const r = await ultimoResultado()
+  if (!r) return
+  await setConfig(CHAVE_RESULTADO, JSON.stringify({ ...r, itens: r.itens.filter((i) => i.chave !== chave) }))
+}
