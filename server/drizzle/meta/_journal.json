@@ -1226,6 +1226,13 @@
       "when": 1795100600000,
       "tag": "0174_cobranca_print_whatsapp",
       "breakpoints": true
+    },
+    {
+      "idx": 175,
+      "version": "6",
+      "when": 1795100700000,
+      "tag": "0175_sap_itens_devolucoes",
+      "breakpoints": true
     }
   ]
 }

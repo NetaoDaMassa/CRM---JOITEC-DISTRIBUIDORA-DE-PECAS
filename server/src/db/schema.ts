@@ -5160,6 +5160,33 @@ export const sapEstoqueItens = sqliteTable(
   (t) => ({ pk: primaryKey({ columns: [t.filial, t.itemCodigo] }) })
 )
 
+// Devoluções (notas de crédito do SAP) por cliente do CRM e item — descontam
+// do "Itens do SAP mês a mês" no mês da devolução (revisão 2026-11-18: o
+// mês a mês contava devolvido como vendido; as abas de estoque já
+// descontavam). Mesma regra de empresa/cliente da sincronização de itens
+// (sapSyncItens.ts). Quantidade e valor POSITIVOS (o relatório subtrai).
+export const sapItensDevolucoes = sqliteTable(
+  'sap_itens_devolucoes',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    codigoCliente: text('codigo_cliente'),
+    docEntry: integer('doc_entry').notNull(),
+    numeroDoc: text('numero_doc').notNull(),
+    // YYYY-MM-DD
+    data: text('data').notNull(),
+    codigoItem: text('codigo_item').notNull(),
+    descricao: text('descricao').notNull(),
+    quantidade: real('quantidade').notNull(),
+    valor: real('valor').notNull(),
+  },
+  (t) => ({
+    empresaDataIdx: index('idx_sap_itens_devolucoes_empresa_data').on(t.empresaId, t.data),
+    docIdx: index('idx_sap_itens_devolucoes_doc').on(t.docEntry),
+  })
+)
+
 // Vendas e entradas de cada item por documento do SAP, para TODOS os
 // clientes (sap_itens_historico só guarda nota de cliente do CRM).
 // tipo 'venda' (origem 'nota' = nota de saída) ou 'entrada' (origem 'compra'

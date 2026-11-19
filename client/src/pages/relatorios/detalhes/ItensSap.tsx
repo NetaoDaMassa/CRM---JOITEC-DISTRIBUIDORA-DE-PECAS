@@ -82,11 +82,19 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
   const { data, isLoading } = trpc.reports.itensSapPorMes.useQuery(entrada)
   const meses = data?.meses ?? []
 
-  // Comparação: por padrão o mês passado × o atual; dá pra trocar.
+  // Comparação: por padrão os dois últimos meses FECHADOS (revisão
+  // 2026-11-18: mês passado × mês atual pela metade fazia quase tudo
+  // aparecer como "caiu"). Dá pra trocar; o mais antigo fica sempre em A.
   const [mesA, setMesA] = useState<string | null>(null)
   const [mesB, setMesB] = useState<string | null>(null)
-  const a = mesA && meses.includes(mesA) ? mesA : meses[meses.length - 2] ?? mesAtual
-  const b = mesB && meses.includes(mesB) ? mesB : meses[meses.length - 1] ?? mesAtual
+  const fechados = meses.filter((m) => m < mesAtual)
+  const padraoA = fechados[fechados.length - 2] ?? meses[meses.length - 2] ?? mesAtual
+  const padraoB = fechados[fechados.length - 1] ?? meses[meses.length - 1] ?? mesAtual
+  const escolhaA = mesA && meses.includes(mesA) ? mesA : padraoA
+  const escolhaB = mesB && meses.includes(mesB) ? mesB : padraoB
+  const [a, b] = escolhaA <= escolhaB ? [escolhaA, escolhaB] : [escolhaB, escolhaA]
+  const bParcial = b === mesAtual
+  const diaHoje = Number(hojeBrString().slice(8, 10))
   const [situacao, setSituacao] = useState<Situacao | null>(null)
   const [aberto, setAberto] = useState<{ chave: string; descricao: string; codigo: string | null } | null>(null)
 
@@ -108,9 +116,11 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
   )
   const contar = (s: Situacao) => linhas.filter((l) => l.situacao === s || (s === 'caiu' && l.situacao === 'parou')).length
   const filtradas = situacao ? linhas.filter((l) => l.situacao === situacao || (situacao === 'caiu' && l.situacao === 'parou')) : linhas
-  const totalA = linhas.reduce((s, l) => s + l.va, 0)
-  const totalB = linhas.reduce((s, l) => s + l.vb, 0)
-  const serieTotal = meses.map((m) => ({ mes: rotuloMes(m), valor: linhas.reduce((s, l) => s + (l.meses[m]?.[medida] ?? 0), 0) }))
+  // Totais sempre em R$: somar quantidade de itens diferentes (peça, rolo de
+  // fita, pacote) não dá um número que signifique alguma coisa.
+  const totalA = linhas.reduce((s, l) => s + (l.meses[a]?.valor ?? 0), 0)
+  const totalB = linhas.reduce((s, l) => s + (l.meses[b]?.valor ?? 0), 0)
+  const serieTotal = meses.map((m) => ({ mes: rotuloMes(m), valor: linhas.reduce((s, l) => s + (l.meses[m]?.valor ?? 0), 0) }))
   const maioresQuedas = linhas.filter((l) => l.variacao < 0).sort((x, y) => x.variacao - y.variacao).slice(0, 8)
 
   type L = (typeof linhas)[number]
@@ -131,10 +141,10 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
     ...meses.map(
       (m): Coluna<L> => ({
         id: `m-${m}`,
-        rotulo: rotuloMes(m),
+        rotulo: `${rotuloMes(m)}${m === mesAtual ? ' (até hoje)' : ''}`,
         valor: (l) => l.meses[m]?.[medida] ?? 0,
         formato: ehValor ? 'moeda' : 'numero',
-        somar: true,
+        somar: ehValor,
         render: (l) => {
           const v = l.meses[m]?.[medida] ?? 0
           return <span className={m === a || m === b ? 'font-semibold text-dark-50' : 'text-dark-300'}>{v ? fmt(v) : '—'}</span>
@@ -146,13 +156,13 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
       rotulo: `${rotuloMes(a)} → ${rotuloMes(b)}`,
       valor: (l) => l.variacao,
       formato: ehValor ? 'moeda' : 'numero',
-      somar: true,
+      somar: ehValor,
       render: (l) => <span className={`font-semibold ${l.variacao < 0 ? 'text-red-500' : l.variacao > 0 ? 'text-emerald-500' : 'text-dark-400'}`}>{l.variacao > 0 ? '+' : ''}{fmt(l.variacao)}</span>,
     },
     {
       id: 'variacaoPct',
       rotulo: 'Variação %',
-      valor: (l) => l.variacaoPct,
+      valor: (l) => (l.variacaoPct === null ? null : Math.round(l.variacaoPct * 1000) / 10),
       formato: 'pct',
       render: (l) =>
         l.variacaoPct === null ? (
@@ -164,7 +174,19 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
           </span>
         ),
     },
-    { id: 'total', rotulo: 'Total no período', valor: (l) => l.total, formato: ehValor ? 'moeda' : 'numero', somar: true, oculta: meses.length > 6 },
+    { id: 'total', rotulo: 'Total no período', valor: (l) => l.total, formato: ehValor ? 'moeda' : 'numero', somar: ehValor, oculta: meses.length > 6 },
+    {
+      id: 'devolvido',
+      rotulo: 'Devolvido no período',
+      valor: (l) => Math.round(meses.reduce((s, m) => s + ((ehValor ? l.meses[m]?.devolvidoValor : l.meses[m]?.devolvidoQtd) ?? 0), 0) * 100) / 100,
+      formato: ehValor ? 'moeda' : 'numero',
+      somar: ehValor,
+      oculta: simples,
+      render: (l) => {
+        const v = meses.reduce((s, m) => s + ((ehValor ? l.meses[m]?.devolvidoValor : l.meses[m]?.devolvidoQtd) ?? 0), 0)
+        return v ? <span className="text-orange-400">{fmt(v)}</span> : <span className="text-dark-600">—</span>
+      },
+    },
   ]
 
   const classeCampo = 'h-9 bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-2.5 focus:outline-none focus:border-gold-500'
@@ -201,15 +223,20 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
         </label>
       </div>
 
+      {bParcial && (
+        <p className="text-sm text-amber-200 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2">
+          ⚠️ {rotuloMes(b)} ainda está no dia {diaHoje}: comparar com {rotuloMes(a)} inteiro faz quase todo item parecer que caiu. Para comparar de verdade, escolha dois meses fechados.
+        </p>
+      )}
       {mostrarResumo && (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <KpiCard
-              titulo={`Total ${rotuloMes(b)}`}
+              titulo={`Faturado ${nomeMes(b)}`}
               icone={Package}
               cor="#0ea5a4"
-              valor={fmt(totalB)}
-              detalhe={`${rotuloMes(a)}: ${fmt(totalA)}${totalA ? ` (${totalB >= totalA ? '+' : ''}${pct(((totalB - totalA) / totalA) * 100)})` : ''}`}
+              valor={moeda(totalB)}
+              detalhe={`${rotuloMes(a)}: ${moeda(totalA)}${totalA ? ` (${totalB >= totalA ? '+' : ''}${pct(((totalB - totalA) / totalA) * 100)})` : ''}`}
               destaque={totalB < totalA ? 'ruim' : totalB > totalA ? 'bom' : undefined}
             />
             <KpiCard titulo="Itens que caíram" icone={TrendingDown} cor="#e5534b" valor={numero(contar('caiu'))} detalhe={`Inclui os que pararam`} />
@@ -217,20 +244,20 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
             <KpiCard titulo="Itens que subiram" icone={TrendingUp} cor="#22a861" valor={numero(contar('subiu') + contar('novo'))} detalhe={`Inclui ${numero(contar('novo'))} novo(s)`} />
           </div>
           <div className="grid lg:grid-cols-2 gap-4">
-            <Secao titulo={ehValor ? 'Valor vendido por mês' : 'Quantidade vendida por mês'} subtitulo="Todos os itens somados">
+            <Secao titulo="Faturado por mês (R$)" subtitulo={`Todos os itens somados, já descontadas as devoluções${meses.includes(mesAtual) ? ` · ${rotuloMes(mesAtual)} até hoje` : ''}`}>
               <div className="h-56">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={serieTotal} margin={{ top: 18, right: 8, left: 0, bottom: 0 }}>
                     <CartesianGrid vertical={false} stroke="var(--color-dark-700)" />
                     <XAxis dataKey="mes" tick={tick} axisLine={false} tickLine={false} />
                     <YAxis tick={tick} axisLine={false} tickLine={false} tickFormatter={eixoY} width={40} />
-                    <Tooltip contentStyle={estiloTooltip} cursor={{ fill: 'var(--color-dark-700)', opacity: 0.4 }} formatter={(v) => [fmt(Number(v)), ehValor ? 'Valor' : 'Quantidade']} />
+                    <Tooltip contentStyle={estiloTooltip} cursor={{ fill: 'var(--color-dark-700)', opacity: 0.4 }} formatter={(v) => [moeda(Number(v)), 'Faturado']} />
                     <Bar dataKey="valor" fill="#0ea5a4" radius={[4, 4, 0, 0]} maxBarSize={48} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </Secao>
-            <Secao titulo="Maiores quedas" subtitulo={`${rotuloMes(a)} → ${rotuloMes(b)} — clique pra ver o gráfico do item`}>
+            <Secao titulo="Maiores quedas" subtitulo={`${rotuloMes(a)} → ${nomeMes(b)} — clique pra ver o gráfico do item`}>
               {maioresQuedas.length ? (
                 <ul className="space-y-1.5">
                   {maioresQuedas.map((l) => (
@@ -273,10 +300,10 @@ function ItensMesAMes({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe)
         ordemInicial={{ coluna: 'variacao', direcao: 'asc' }}
         simples={simples}
         carregando={isLoading}
-        vazio="Nenhum item do SAP nesse período (a Odin Compressores ainda não puxa itens do SAP)."
+        vazio="Nenhum item do SAP nesse período."
       />
       <p className="text-xs text-dark-500">
-        Itens das notas de venda do SAP (sem devoluções e sem notas canceladas). O cliente conta pro vendedor que tem ele na carteira hoje. Clique no nome do item pra ver o gráfico e quem comprou.
+        Itens das notas de venda do SAP dos clientes cadastrados no CRM (na Odin Compressores, só a carteira da Bruna), já descontadas as devoluções no mês em que o cliente devolveu; nota cancelada no SAP sai na próxima atualização. Venda de cliente que não está no CRM não aparece aqui — a aba "Faturam pouco" conta todas as notas da filial, por isso os números podem ser diferentes. O cliente conta pro vendedor que tem ele na carteira hoje. Clique no nome do item pra ver o gráfico e quem comprou.
       </p>
 
       {aberto && <DetalheItem item={aberto} entrada={entrada} meses={meses} medida={medida} fmt={fmt} destaque={[a, b]} clientesBase={clientesBase} onClose={() => setAberto(null)} />}
@@ -308,10 +335,10 @@ function DetalheItem({
 
   const { serie, clientes } = useMemo(() => {
     const porMes = new Map<string, number>()
-    const porCliente = new Map<number, { clienteId: number; razaoSocial: string; codigo: string | null; vendedorNome: string | null; meses: Record<string, number> }>()
+    const porCliente = new Map<number, { clienteId: number; razaoSocial: string; codigo: string | null; excluido: boolean; vendedorNome: string | null; meses: Record<string, number> }>()
     for (const l of data ?? []) {
       porMes.set(l.mes, (porMes.get(l.mes) ?? 0) + l[medida])
-      const c = porCliente.get(l.clienteId) ?? { clienteId: l.clienteId, razaoSocial: l.razaoSocial, codigo: l.codigo, vendedorNome: l.vendedorNome, meses: {} }
+      const c = porCliente.get(l.clienteId) ?? { clienteId: l.clienteId, razaoSocial: l.razaoSocial, codigo: l.codigo, excluido: l.excluido, vendedorNome: l.vendedorNome, meses: {} }
       c.meses[l.mes] = (c.meses[l.mes] ?? 0) + l[medida]
       porCliente.set(l.clienteId, c)
     }
@@ -322,7 +349,7 @@ function DetalheItem({
   }, [data, meses, medida, mesA, mesB])
   type C = (typeof clientes)[number]
   const colunas: Coluna<C>[] = [
-    { id: 'cliente', rotulo: 'Cliente', quebrar: true, valor: (c) => c.razaoSocial, render: (c) => <Link to={`${clientesBase}/${c.clienteId}`} className="font-medium text-dark-50 hover:text-gold-400">{c.razaoSocial}</Link> },
+    { id: 'cliente', rotulo: 'Cliente', quebrar: true, valor: (c) => c.razaoSocial, render: (c) => (c.excluido ? <span className="font-medium text-dark-300">{c.razaoSocial} <span className="text-[11px] text-dark-500">(cliente excluído)</span></span> : <Link to={`${clientesBase}/${c.clienteId}`} className="font-medium text-dark-50 hover:text-gold-400">{c.razaoSocial}</Link>) },
     { id: 'vendedor', rotulo: 'Vendedor', valor: (c) => c.vendedorNome ?? '—' },
     ...meses.map((m): Coluna<C> => ({ id: `m-${m}`, rotulo: rotuloMes(m), valor: (c) => c.meses[m] ?? 0, formato: medida === 'valor' ? 'moeda' : 'numero', somar: true, render: (c) => <span className={m === mesA || m === mesB ? 'font-semibold text-dark-50' : 'text-dark-300'}>{c.meses[m] ? fmt(c.meses[m]) : '—'}</span> })),
     {

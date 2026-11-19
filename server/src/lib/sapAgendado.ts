@@ -4,7 +4,7 @@ import { db } from '../db/client.js'
 import { users } from '../db/schema.js'
 import { getConfigBool } from './configuracoes.js'
 import { sapConfigurado } from './sapServiceLayer.js'
-import { sincronizarItensSap } from './sapSyncItens.js'
+import { sincronizarDevolucoesItens, sincronizarItensSap } from './sapSyncItens.js'
 import { sincronizarContasReceberSap } from './sapContasReceber.js'
 import { sincronizarVendasSap } from './sapVendasAuto.js'
 import { sincronizarCotacoesSap } from './sapCotacoesAuto.js'
@@ -33,6 +33,9 @@ export async function rodarSincronizacaoSap(): Promise<void> {
       const itens = await sincronizarItensSap({ confirmar: true, usuarioId: autor.id })
       const novas = Object.values(itens.porEmpresa).reduce((s, e) => s + e.notas, 0)
       console.log(`[sap] itens: ${novas} nota(s) nova(s) (${itens.periodo.de} a ${itens.periodo.ate}), ${itens.naoEncontradas.length} de cliente fora do CRM`)
+      // Devoluções por cliente pro mês a mês (erro aqui não segura o resto).
+      const dev = await sincronizarDevolucoesItens().catch((e) => (console.error('[sap] erro nas devoluções:', e instanceof Error ? e.message : e), null))
+      if (dev && dev.documentos) console.log(`[sap] devoluções: ${dev.documentos} nota(s) de crédito (${dev.de} a ${dev.ate})`)
     }
     const receber = await sincronizarContasReceberSap()
     console.log(`[sap] contas a receber: ${receber.titulos} títulos, ${receber.conferem}/${receber.clientesComSaldo} clientes batem com o saldo do SAP (${receber.segundos}s)`)

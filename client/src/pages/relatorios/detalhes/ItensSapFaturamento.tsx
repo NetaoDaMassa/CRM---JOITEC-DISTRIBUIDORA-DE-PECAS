@@ -193,7 +193,7 @@ export function FaturamPouco({ simples, mostrarResumo }: Props) {
       />
       <Rodape
         s={data}
-        extra={`Faturamento = valor das notas de saída do SAP (sem impostos, como no SAP), menos as devoluções. "Pela média do mês" = faturado no período ÷ ${meses.length} meses (mês sem venda conta como zero). "Em todos os meses" = nenhum mês chegou a ${moeda(limite)}. Só entram itens que tiveram nota no período; os que não venderam nada estão na aba Menos vendidos.`}
+        extra={`Faturamento = valor das notas de saída do SAP (sem impostos, como no SAP), menos as devoluções. "Pela média do mês" = faturado no período ÷ ${meses.length} meses (mês sem venda conta como zero). "Em todos os meses" = nenhum mês chegou a ${moeda(limite)}. Só entram itens que tiveram nota no período; os que não venderam nada estão na aba Menos vendidos. Aqui entram TODAS as notas da filial no SAP (inclusive cliente que não está no CRM e venda para as empresas do grupo); o Mês a mês conta só os clientes do CRM, por isso os números podem ser diferentes.`}
       />
     </div>
   )

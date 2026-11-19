@@ -1,6 +1,6 @@
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
+import { and, between, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { clientes, empresas, sapImportacoes, sapItensHistorico } from '../db/schema.js'
+import { clientes, empresas, sapImportacoes, sapItensDevolucoes, sapItensHistorico } from '../db/schema.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
@@ -346,4 +346,116 @@ async function dataInicialPadrao(empresaIds: number[]): Promise<string> {
   const d = new Date(`${base}T12:00:00Z`)
   d.setUTCDate(d.getUTCDate() - DIAS_SOBREPOSICAO)
   return d.toISOString().slice(0, 10)
+}
+
+// ── Devoluções por cliente (revisão 2026-11-18) ─────────────────────────────
+// Notas de crédito do SAP com a MESMA regra das notas de venda acima: filial
+// → empresa, vendedor da Automação, carteira da Bruna na Odin Compressores,
+// cliente pelo código. Grava em sap_itens_devolucoes trocando tudo do
+// período (devolução cancelada dentro da janela some sozinha; cancelada
+// depois sai em sapEstoque.tirarCanceladas). Na 1ª vez carrega desde a
+// implantação do SAP; depois, os últimos dias.
+const CHAVE_DEVOLUCOES_ITENS = 'sap_itens_devolucoes_desde'
+const DEVOLUCOES_INICIO = '2026-03-31'
+const DIAS_DEVOLUCOES_RECENTES = 7
+
+interface DevolucaoSap {
+  DocEntry: number
+  DocNum: number
+  DocDate: string
+  CardCode: string
+  SalesPersonCode: number
+  BPL_IDAssignedToInvoice: number
+  Cancelled?: string
+  CancelStatus?: string
+  DocumentLines: { ItemCode: string | null; ItemDescription: string | null; Quantity: number; LineTotal: number }[]
+}
+
+export async function sincronizarDevolucoesItens(opts: { de?: string; ate?: string } = {}): Promise<{ de: string; ate: string; documentos: number; linhas: number; semCliente: number }> {
+  const ate = opts.ate ?? hojeBrString()
+  const carregado = await getConfigTexto(CHAVE_DEVOLUCOES_ITENS)
+  let de = opts.de ?? DEVOLUCOES_INICIO
+  if (!opts.de && carregado) {
+    const d = new Date(`${ate}T12:00:00Z`)
+    d.setUTCDate(d.getUTCDate() - DIAS_DEVOLUCOES_RECENTES)
+    de = d.toISOString().slice(0, 10)
+  }
+
+  const slugs = [...Object.values(SLUG_POR_FILIAL), SLUG_AUTOMACAO, SLUG_COMPRESSORES]
+  const listaEmpresas = await db.query.empresas.findMany({ where: inArray(empresas.slug, slugs) })
+  const empresaPorSlug = new Map(listaEmpresas.map((e) => [e.slug, e]))
+  const codigosAutomacao = await vendedoresAutomacaoSap()
+  const vendedoresBruna = await vendedoresSapCompressores()
+  const clientesPorSlug = new Map<string, { exato: Map<string, number>; semZero: Map<string, number> }>()
+  for (const e of listaEmpresas) {
+    const lista = await db.query.clientes.findMany({ where: and(eq(clientes.empresaId, e.id), isNull(clientes.deletedAt)), columns: { id: true, codigo: true, codigoAntigo: true } })
+    const exato = new Map<string, number>()
+    const semZero = new Map<string, number>()
+    for (const c of lista) {
+      for (const cod of [c.codigo, c.codigoAntigo]) {
+        if (!cod) continue
+        const limpo = limparCodigo(cod)
+        if (!exato.has(limpo)) exato.set(limpo, c.id)
+        const sz = semZerosEsquerda(limpo)
+        if (!semZero.has(sz)) semZero.set(sz, c.id)
+      }
+    }
+    clientesPorSlug.set(e.slug, { exato, semZero })
+  }
+
+  const { docs, compressores } = await comSessaoSap(async (sap) => {
+    const docs = await sap.getTodos<DevolucaoSap>(
+      `/CreditNotes?$select=DocEntry,DocNum,DocDate,CardCode,SalesPersonCode,BPL_IDAssignedToInvoice,Cancelled,CancelStatus,DocumentLines&$filter=DocDate ge '${de}' and DocDate le '${ate}'&$orderby=DocEntry`,
+      200
+    )
+    const compressores = empresaPorSlug.has(SLUG_COMPRESSORES)
+      ? await clientesCompressoresPorCodigoSap(
+          sap,
+          docs.filter((d) => d.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && vendedoresBruna.has(d.SalesPersonCode)).map((d) => d.CardCode)
+        )
+      : new Map()
+    return { docs, compressores }
+  })
+
+  const linhas: (typeof sapItensDevolucoes.$inferInsert)[] = []
+  let semCliente = 0
+  for (const d of docs) {
+    if (d.Cancelled === 'tYES' || d.CancelStatus === 'csCancellation') continue
+    const daCarteira = d.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && vendedoresBruna.has(d.SalesPersonCode) ? compressores.get(d.CardCode) : undefined
+    if (d.BPL_IDAssignedToInvoice === FILIAL_COMPRESSORES && !daCarteira) continue
+    const slugFilial = daCarteira ? SLUG_COMPRESSORES : SLUG_POR_FILIAL[d.BPL_IDAssignedToInvoice]
+    if (!slugFilial) continue
+    const slug = slugFilial === 'joitec' && codigosAutomacao.has(d.SalesPersonCode) ? SLUG_AUTOMACAO : slugFilial
+    const empresa = empresaPorSlug.get(slug)
+    if (!empresa) continue
+    const codigo = limparCodigo(d.CardCode ?? '')
+    const mapa = clientesPorSlug.get(slug)!
+    const clienteId = daCarteira?.id ?? mapa.exato.get(codigo) ?? mapa.semZero.get(semZerosEsquerda(codigo))
+    if (!clienteId) {
+      semCliente++
+      continue
+    }
+    for (const l of d.DocumentLines) {
+      if (!l.ItemCode) continue
+      linhas.push({
+        empresaId: empresa.id,
+        clienteId,
+        codigoCliente: codigo,
+        docEntry: d.DocEntry,
+        numeroDoc: String(d.DocNum),
+        data: dataSap(d.DocDate),
+        codigoItem: l.ItemCode.trim(),
+        descricao: (l.ItemDescription ?? '').trim() || l.ItemCode,
+        quantidade: l.Quantity ?? 0,
+        valor: l.LineTotal ?? 0,
+      })
+    }
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.delete(sapItensDevolucoes).where(between(sapItensDevolucoes.data, de, ate))
+    for (let i = 0; i < linhas.length; i += 500) await tx.insert(sapItensDevolucoes).values(linhas.slice(i, i + 500))
+  })
+  if (!opts.de && !carregado) await setConfig(CHAVE_DEVOLUCOES_ITENS, ate)
+  return { de, ate, documentos: new Set(linhas.map((l) => l.docEntry)).size, linhas: linhas.length, semCliente }
 }

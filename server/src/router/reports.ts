@@ -20,6 +20,7 @@ import {
   sapVendasHistorico,
   sapCotacoesHistorico,
   sapItensHistorico,
+  sapItensDevolucoes,
   sapCotacoesItens,
 } from '../db/schema.js'
 import { diasDesde, mesReferenciaAtual } from '../lib/dataBr.js'
@@ -283,10 +284,38 @@ function limitesDia(input: { dataInicio: string; dataFim: string }) {
 // pela Joitec (inclusive venda pra própria Odin Tubos) não entra no relatório
 // da Joitec — "cada uma tem que ficar com seus itens" (João, 2026-11-17).
 // A nota continua guardada; só sai da conta.
-async function filtroItensDeOutraEmpresa(empresaId: number) {
+async function filtroItensDeOutraEmpresa(empresaId: number, coluna: any = sapItensHistorico.descricao) {
   const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
   if (emp?.slug !== 'joitec') return null
-  return sql`upper(${sapItensHistorico.descricao}) not like '%PPR%'`
+  return sql`upper(${coluna}) not like '%PPR%'`
+}
+
+// Devoluções (notas de crédito) dos clientes do CRM por item e mês, com os
+// mesmos filtros do mês a mês — o relatório desconta no mês da devolução
+// (revisão 2026-11-18). Ver sapSyncItens.sincronizarDevolucoesItens.
+async function devolucoesItensSap(ctx: { empresaId: number; user: { role: 'admin' | 'vendor' | 'gestor'; id: number } }, input: { mesInicio: string; mesFim: string; vendedorId?: number; regiao?: string; chave?: string }) {
+  const filtros = [eq(sapItensDevolucoes.empresaId, ctx.empresaId), between(sapItensDevolucoes.data, `${input.mesInicio}-01`, `${input.mesFim}-31`)]
+  const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
+  if (filtroVend) filtros.push(filtroVend)
+  const filtroReg = filtroRegiao(input.regiao, clientes.regiao)
+  if (filtroReg) filtros.push(filtroReg)
+  const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId, sapItensDevolucoes.descricao)
+  if (filtroOutra) filtros.push(filtroOutra)
+  if (input.chave) filtros.push(eq(sapItensDevolucoes.codigoItem, input.chave))
+  const mes = sql<string>`substr(${sapItensDevolucoes.data}, 1, 7)`
+  return db
+    .select({
+      chave: sapItensDevolucoes.codigoItem,
+      clienteId: sapItensDevolucoes.clienteId,
+      mes,
+      descricao: sql<string>`max(${sapItensDevolucoes.descricao})`,
+      quantidade: sql<number>`coalesce(sum(${sapItensDevolucoes.quantidade}), 0)`.mapWith(Number),
+      valor: sql<number>`coalesce(sum(${sapItensDevolucoes.valor}), 0)`.mapWith(Number),
+    })
+    .from(sapItensDevolucoes)
+    .innerJoin(clientes, eq(clientes.id, sapItensDevolucoes.clienteId))
+    .where(and(...filtros))
+    .groupBy(sapItensDevolucoes.codigoItem, sapItensDevolucoes.clienteId, mes)
 }
 
 export const reportsRouter = router({
@@ -1890,7 +1919,8 @@ export const reportsRouter = router({
         eq(sapItensHistorico.empresaId, ctx.empresaId),
         eq(sapImportacoes.ativo, true),
         between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
-        isNull(clientes.deletedAt),
+        // Cliente excluído continua contando: a venda aconteceu (revisão
+        // 2026-11-18 — excluir um cliente mudava meses passados).
         // Linha de nota sem código de item não é produto (nota de serviço
         // lançada em conta, ex.: "Banco Itaú … Conta Intermediária" — João,
         // 2026-11-12).
@@ -1919,14 +1949,28 @@ export const reportsRouter = router({
         .where(and(...filtros))
         .groupBy(chave, mes)
 
-      const itens = new Map<string, { chave: string; codigo: string | null; descricao: string; meses: Record<string, { quantidade: number; valor: number; clientes: number }>; quantidade: number; valor: number }>()
+      type Mes = { quantidade: number; valor: number; clientes: number; devolvidoQtd: number; devolvidoValor: number }
+      const itens = new Map<string, { chave: string; codigo: string | null; descricao: string; meses: Record<string, Mes>; quantidade: number; valor: number; devolvidoValor: number }>()
       for (const l of linhas) {
         const ehCodigo = !!l.chave && l.chave !== l.descricao.trim().toUpperCase()
-        const it = itens.get(l.chave) ?? { chave: l.chave, codigo: ehCodigo ? l.chave : null, descricao: l.descricao.trim(), meses: {}, quantidade: 0, valor: 0 }
-        it.meses[l.mes] = { quantidade: l.quantidade, valor: l.valor, clientes: l.clientes }
+        const it = itens.get(l.chave) ?? { chave: l.chave, codigo: ehCodigo ? l.chave : null, descricao: l.descricao.trim(), meses: {}, quantidade: 0, valor: 0, devolvidoValor: 0 }
+        it.meses[l.mes] = { quantidade: l.quantidade, valor: l.valor, clientes: l.clientes, devolvidoQtd: 0, devolvidoValor: 0 }
         it.quantidade += l.quantidade
         it.valor += l.valor
         itens.set(l.chave, it)
+      }
+      // Vendido − devolvido no mês da devolução.
+      for (const d of await devolucoesItensSap(ctx, input)) {
+        const it = itens.get(d.chave) ?? { chave: d.chave, codigo: d.chave, descricao: d.descricao.trim(), meses: {}, quantidade: 0, valor: 0, devolvidoValor: 0 }
+        const m = (it.meses[d.mes] ??= { quantidade: 0, valor: 0, clientes: 0, devolvidoQtd: 0, devolvidoValor: 0 })
+        m.quantidade -= d.quantidade
+        m.valor -= d.valor
+        m.devolvidoQtd += d.quantidade
+        m.devolvidoValor += d.valor
+        it.quantidade -= d.quantidade
+        it.valor -= d.valor
+        it.devolvidoValor += d.valor
+        itens.set(d.chave, it)
       }
       const meses: string[] = []
       let [ano, mesNum] = input.mesInicio.split('-').map(Number)
@@ -1985,7 +2029,6 @@ export const reportsRouter = router({
         eq(sapItensHistorico.empresaId, ctx.empresaId),
         eq(sapImportacoes.ativo, true),
         between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
-        isNull(clientes.deletedAt),
         sql`${chave} = ${input.chave}`,
       ]
       const filtroVend = filtroVendedor(ctx.user.role, ctx.user.id, input.vendedorId, clientes.vendedorAtualId)
@@ -1995,11 +2038,12 @@ export const reportsRouter = router({
       const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId)
       if (filtroOutra) filtros.push(filtroOutra)
       const mes = sql<string>`substr(${sapItensHistorico.dataNota}, 1, 7)`
-      return db
+      const vendas = await db
         .select({
           clienteId: clientes.id,
           razaoSocial: clientes.razaoSocial,
           codigo: clientes.codigo,
+          excluido: sql<number>`${clientes.deletedAt} is not null`.mapWith(Boolean),
           vendedorNome: users.name,
           mes,
           quantidade: sql<number>`coalesce(sum(${sapItensHistorico.quantidade}), 0)`.mapWith(Number),
@@ -2011,5 +2055,32 @@ export const reportsRouter = router({
         .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
         .where(and(...filtros))
         .groupBy(clientes.id, mes)
+      // Devoluções do item: descontam do cliente no mês da devolução.
+      const devs = await devolucoesItensSap(ctx, input)
+      if (!devs.length) return vendas
+      const porChave = new Map(vendas.map((v) => [`${v.clienteId}|${v.mes}`, v]))
+      const faltam = devs.filter((d) => !porChave.has(`${d.clienteId}|${d.mes}`)).map((d) => d.clienteId)
+      const extras = faltam.length
+        ? await db
+            .select({ id: clientes.id, razaoSocial: clientes.razaoSocial, codigo: clientes.codigo, deletedAt: clientes.deletedAt, vendedorNome: users.name })
+            .from(clientes)
+            .leftJoin(users, eq(users.id, clientes.vendedorAtualId))
+            .where(inArray(clientes.id, faltam))
+        : []
+      const info = new Map(extras.map((c) => [c.id, c]))
+      for (const d of devs) {
+        const k = `${d.clienteId}|${d.mes}`
+        let v = porChave.get(k)
+        if (!v) {
+          const c = info.get(d.clienteId)
+          if (!c) continue
+          v = { clienteId: c.id, razaoSocial: c.razaoSocial, codigo: c.codigo, excluido: !!c.deletedAt, vendedorNome: c.vendedorNome, mes: d.mes, quantidade: 0, valor: 0 }
+          porChave.set(k, v)
+          vendas.push(v)
+        }
+        v.quantidade -= d.quantidade
+        v.valor -= d.valor
+      }
+      return vendas
     }),
 })

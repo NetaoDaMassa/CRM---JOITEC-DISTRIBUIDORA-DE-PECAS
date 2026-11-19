@@ -1,6 +1,6 @@
 import { and, between, eq, gte, inArray, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { sapEstoqueItens, sapItemMovimentos } from '../db/schema.js'
+import { sapEstoqueItens, sapItemMovimentos, sapItensDevolucoes, sapItensHistorico } from '../db/schema.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
 import { comSessaoSap, dataSap, type SapSessao } from './sapServiceLayer.js'
@@ -163,11 +163,25 @@ async function tirarCanceladas(sap: SapSessao): Promise<number> {
     ['PurchaseInvoices', 'compra'],
     ['InventoryGenEntries', 'entrada'],
   ] as const) {
-    const canceladas = await sap.getTodos<{ DocEntry: number }>(`/${entidade}?$select=DocEntry&$filter=Cancelled eq 'tYES' and DocDate ge '${SAP_INICIO}'`, 500)
+    const canceladas = await sap.getTodos<{ DocEntry: number; DocNum: number }>(`/${entidade}?$select=DocEntry,DocNum&$filter=Cancelled eq 'tYES' and DocDate ge '${SAP_INICIO}'`, 500)
     const ids = canceladas.map((c) => c.DocEntry)
     for (let i = 0; i < ids.length; i += 500) {
       const r = await db.delete(sapItemMovimentos).where(and(eq(sapItemMovimentos.origem, origem), inArray(sapItemMovimentos.docEntry, ids.slice(i, i + 500))))
       tiradas += r.rowsAffected ?? 0
+    }
+    // Revisão 2026-11-18: o "Itens do SAP mês a mês" só tirava a nota
+    // cancelada até 3 dias depois da data dela (sapSyncItens.ts). Aqui sai de
+    // qualquer lote de itens (planilha ou automático — o nº da nota da
+    // planilha é o DocNum do SAP, sequência única pras filiais).
+    if (entidade === 'Invoices') {
+      const nums = canceladas.map((c) => String(c.DocNum))
+      for (let i = 0; i < nums.length; i += 500) {
+        const r = await db.delete(sapItensHistorico).where(inArray(sapItensHistorico.numeroNota, nums.slice(i, i + 500)))
+        if (r.rowsAffected) console.log(`[sap-estoque] ${r.rowsAffected} linha(s) de nota cancelada tiradas do Itens do SAP`)
+      }
+    }
+    if (entidade === 'CreditNotes') {
+      for (let i = 0; i < ids.length; i += 500) await db.delete(sapItensDevolucoes).where(inArray(sapItensDevolucoes.docEntry, ids.slice(i, i + 500)))
     }
   }
   return tiradas
