@@ -72,6 +72,8 @@ export const ordensCoreRouter = router({
         preparacao: { columns: { aprovadoGestor: true, operadorFinalizou: true } },
         coleta: { columns: { confirmado: true } },
         rastreio: { columns: { transportadora: true, codigoRastreio: true } },
+        // "Aguardando financeiro faturar" / NF no card (João, 2026-11-19).
+        faturamento: { columns: { numeroNotaFiscal: true } },
       },
       orderBy: (o, { desc }) => [desc(o.updatedAt)],
     })

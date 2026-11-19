@@ -46,6 +46,8 @@ export type OrdemCard = {
   rastreio: { transportadora: string | null; codigoRastreio: string | null } | null
   // Aviso "NF solicitada — faturamento antecipado" (core.marcarNfSolicitada)
   nfSolicitada?: { por: string; em: string } | null
+  // NF (digitada ou puxada do SAP — server/src/lib/sapNfOrdensOdin.ts)
+  faturamento?: { numeroNotaFiscal: string | null } | null
 }
 
 // Alerta visual quando o pedido demora demais numa etapa — mesmos limites
@@ -190,6 +192,20 @@ export default function OrdensBoard({ ordens, orderType, basePath }: { ordens: O
                           )}
                         </div>
                       )}
+
+                      {/* Etapa Faturamento: sem NF = aguardando o financeiro; com NF
+                          (digitada ou puxada do SAP) = faturado. João, 2026-11-19. */}
+                      {stage === 'faturamento' && (ordem.faturamento?.numeroNotaFiscal?.trim() ? (
+                        <div className="mb-2 flex items-center gap-2 rounded-lg border border-emerald-700/50 bg-emerald-900/30 px-2.5 py-1.5">
+                          <CheckCircle2 size={15} className="text-emerald-300 shrink-0" />
+                          <p className="text-[11px] font-bold text-emerald-200 leading-tight">FATURADO · NF {ordem.faturamento.numeroNotaFiscal}</p>
+                        </div>
+                      ) : (
+                        <div className="mb-2 flex items-center gap-2 rounded-lg border border-purple-600/50 bg-purple-900/30 px-2.5 py-1.5">
+                          <Clock size={15} className="text-purple-300 shrink-0" />
+                          <p className="text-[11px] font-extrabold tracking-wide text-purple-200 leading-tight">AGUARDANDO FINANCEIRO FATURAR</p>
+                        </div>
+                      ))}
 
                       {ordem.cliente && (
                         <div className="flex items-center gap-2 text-xs text-dark-300 mb-1.5">

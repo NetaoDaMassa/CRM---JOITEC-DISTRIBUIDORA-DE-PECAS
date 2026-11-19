@@ -123,6 +123,11 @@ function NotaDoSap({ ordemId, nfDigitada }: { ordemId: number; nfDigitada: strin
   if (data.nfs.length === 0) {
     return (
       <div className="rounded-xl border border-dark-600 bg-dark-800/60 p-3 text-xs text-dark-400">
+        {digitadas.length === 0 && (
+          <p className="mb-1.5 inline-flex items-center gap-1.5 rounded-md border border-purple-600/50 bg-purple-900/30 px-2 py-1 text-[11px] font-extrabold tracking-wide text-purple-200">
+            AGUARDANDO FINANCEIRO FATURAR
+          </p>
+        )}
         {data.vinculo
           ? 'Nota do SAP: assim que a NF sair no SAP, ela aparece aqui sozinha (em até 1 minuto).'
           : 'Nota do SAP: este pedido não está ligado a um pedido do SAP. Preencha o "Número do pedido" (o nº do pedido no SAP) na etapa Pedido ou Frete Finalizado que a NF passa a vir sozinha.'}
