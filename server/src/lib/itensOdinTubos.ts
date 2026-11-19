@@ -11,6 +11,9 @@ import { sapCatalogoItens, sapItemMovimentos } from '../db/schema.js'
 // Antes era só "PPR" na descrição de cada linha de nota.
 export const GRUPOS_ODIN_TUBOS = ['PPR', 'ODIN TUBOS']
 export const SLUGS_JOITEC = ['joitec', 'joitec-automacao']
+// Exceção: espiral PU está no grupo PPR do SAP mas é da Joitec (João,
+// 2026-11-19: "fica para Joitec").
+const FICA_NA_JOITEC = /ESPIRAL PU/i
 // Venda da filial Joitec PARA a própria Odin Tubos é abastecimento (ela
 // revende depois pela filial dela) — não conta como venda de item de
 // ninguém, senão contaria duas vezes.
@@ -36,7 +39,9 @@ export async function codigosItensOdinTubos(): Promise<Set<string>> {
       .where(sql`upper(coalesce(${sapItemMovimentos.itemNome}, '')) like '%PPR%'`),
   ])
   const s = new Set<string>()
+  const ficaNaJoitec = new Set(cat.filter((r) => FICA_NA_JOITEC.test(r.n)).map((r) => r.c))
   for (const r of cat) if (GRUPOS_ODIN_TUBOS.includes(r.g ?? '') || /PPR/i.test(r.n)) s.add(r.c)
   for (const r of nomes) s.add(r.c)
+  for (const c of ficaNaJoitec) s.delete(c)
   return s
 }

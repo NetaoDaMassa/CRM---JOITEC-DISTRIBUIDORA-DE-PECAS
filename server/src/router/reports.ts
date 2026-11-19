@@ -289,7 +289,7 @@ function limitesDia(input: { dataInicio: string; dataFim: string }) {
 async function filtroItensDeOutraEmpresa(empresaId: number, coluna: any = sapItensHistorico.codigoItem) {
   const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId), columns: { slug: true } })
   if (!emp || !SLUGS_JOITEC.includes(emp.slug)) return null
-  return sql`not (${sqlCodigoNaLista(coluna, await codigosItensOdinTubos())})`
+  return sql`not (${sqlCodigoNaLista(sql`coalesce(${coluna}, '')`, await codigosItensOdinTubos())})`
 }
 
 // Abas que leem a filial inteira (estoque, menos vendidos, faturam pouco): na
@@ -306,10 +306,13 @@ async function itensDeOutraEmpresaNaFilial(slug: string | undefined): Promise<Se
 // própria Odin Tubos fica de fora (é abastecimento). `chave` = um item só.
 async function tubosVendidosPelaJoitec(
   ctx: { empresaId: number; user: { role: 'admin' | 'vendor' | 'gestor'; id: number } },
-  input: { mesInicio: string; mesFim: string; vendedorId?: number; regiao?: string; chave?: string }
+  input: { mesInicio: string; mesFim: string; vendedorId?: number; regiao?: string; chave?: string; de?: string; ate?: string }
 ) {
   const emp = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
   if (emp?.slug !== 'odin-tubos') return null
+  // Período em dias (Itens mais comprados) ou em meses inteiros.
+  const de = input.de ?? `${input.mesInicio}-01`
+  const ate = input.ate ?? `${input.mesFim}-31`
   const idsJoitec = (await db.query.empresas.findMany({ where: inArray(empresas.slug, SLUGS_JOITEC), columns: { id: true } })).map((e) => e.id)
   const codigos = await codigosItensOdinTubos()
   if (!idsJoitec.length || !codigos.size) return null
@@ -357,7 +360,7 @@ async function tubosVendidosPelaJoitec(
         and(
           inArray(sapItensHistorico.empresaId, idsJoitec),
           eq(sapImportacoes.ativo, true),
-          between(sapItensHistorico.dataNota, `${input.mesInicio}-01`, `${input.mesFim}-31`),
+          between(sapItensHistorico.dataNota, de, ate),
           ...filtrosComuns(sapItensHistorico.codigoItem)
         )
       )
@@ -379,7 +382,7 @@ async function tubosVendidosPelaJoitec(
       })
       .from(sapItensDevolucoes)
       .innerJoin(clientes, eq(clientes.id, sapItensDevolucoes.clienteId))
-      .where(and(inArray(sapItensDevolucoes.empresaId, idsJoitec), between(sapItensDevolucoes.data, `${input.mesInicio}-01`, `${input.mesFim}-31`), ...filtrosComuns(sapItensDevolucoes.codigoItem)))
+      .where(and(inArray(sapItensDevolucoes.empresaId, idsJoitec), between(sapItensDevolucoes.data, de, ate), ...filtrosComuns(sapItensDevolucoes.codigoItem)))
       .groupBy(sapItensDevolucoes.codigoItem, mesD, clientes.id)
   )
   return { vendas, devolucoes }
@@ -1182,6 +1185,11 @@ export const reportsRouter = router({
       .innerJoin(clientes, eq(clientes.id, itensPedido.clienteId))
       .where(and(...filtros))
 
+    // Mesma regra do Itens do SAP (João, 2026-11-19): tubos e conexões são da
+    // Odin Tubos. Item de pedido do CRM (lido do PDF) não tem código: na
+    // Joitec/Automação sai pelo "PPR" na descrição.
+    const ehJoitec = SLUGS_JOITEC.includes((await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } }))?.slug ?? '')
+    const filtroOutra = await filtroItensDeOutraEmpresa(ctx.empresaId)
     const filtrosSap = [
       eq(sapItensHistorico.empresaId, ctx.empresaId),
       eq(sapImportacoes.ativo, true),
@@ -1190,6 +1198,7 @@ export const reportsRouter = router({
     ]
     if (filtroVend) filtrosSap.push(filtroVend)
     if (filtroReg) filtrosSap.push(filtroReg)
+    if (filtroOutra) filtrosSap.push(filtroOutra)
     const sap = await db
       .select({
         descricao: sapItensHistorico.descricao,
@@ -1209,8 +1218,12 @@ export const reportsRouter = router({
       g.valorTotal += valor
       grupos.set(chaveItem(descricao), g)
     }
-    for (const i of crm) if (!dentroDaCobertura(cobertura, i.criadoEm, i.clienteId)) somar(i.descricao, i.quantidade ?? 0, i.valorTotal ?? 0)
+    for (const i of crm) if (!dentroDaCobertura(cobertura, i.criadoEm, i.clienteId) && !(ehJoitec && /PPR/i.test(i.descricao))) somar(i.descricao, i.quantidade ?? 0, i.valorTotal ?? 0)
     for (const i of sap) somar(i.descricao, i.quantidadeTotal ?? 0, i.valorTotal ?? 0)
+    // Odin Tubos: + tubos/conexões vendidos pela filial da Joitec.
+    const tubos = await tubosVendidosPelaJoitec(ctx, { mesInicio: '', mesFim: '', vendedorId: input.vendedorId, regiao: input.regiao, de: input.dataInicio.slice(0, 10), ate: input.dataFim.slice(0, 10) })
+    // (Este relatório não desconta devolução — igual às notas da própria empresa.)
+    if (tubos) for (const t of tubos.vendas) somar(t.descricao, t.quantidade, t.valor)
     return [...grupos.values()].sort((a, b) => b.quantidadeTotal - a.quantidadeTotal).slice(0, 50)
   }),
 
