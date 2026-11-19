@@ -7,6 +7,7 @@ import {
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
+  Shuffle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -92,6 +93,8 @@ export const ADMIN_LINKS = [
   { to: '/admin/clientes', label: 'Clientes', icon: BookUser, feature: 'clientes' },
   { to: '/admin/boletos-carteira', label: 'Boletos da carteira', icon: FileClock, somenteEmpresas: ['joitec', 'odin-tubos', 'odin-compressores'], feature: 'boletos_carteira' },
   { to: '/admin/conferencia-sap', label: 'Conferência SAP × CRM', icon: Scale, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'conferencia_sap' },
+  // Revisão de pedidos × clientes trocados (SAP × CRM), grupo todo — João 2026-11-19.
+  { to: '/admin/pedidos-trocados', label: 'Pedidos trocados (SAP × CRM)', icon: Shuffle, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'pedidos_trocados' },
   // Cotações no CRM (troca do Portal One) — em teste, liberado por pessoa em Permissões.
   { to: '/admin/cotacoes', label: 'Cotações', icon: ShoppingCart, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cotacoes' },
   { to: '/admin/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cadastro_cliente_sap' },

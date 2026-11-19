@@ -9,6 +9,7 @@ import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { nomeParecido } from './nomeParecido.js'
 import { criarOrdemPecaSeOdinCompressores } from './vendaParaOrdemPeca.js'
 import { montarVendedorDoPedido } from './vendedorDoPedidoSap.js'
 import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
@@ -220,9 +221,16 @@ export async function sincronizarVendasSap(
   const equivalentes = (empresaId: number, codigo: string, nome: string): Cli[] => {
     const m = porEmpresa.get(empresaId)
     if (!m) return []
-    const chaves = new Set([codigo, semZerosEsquerda(codigo), ...(antigosDoSap.get(codigo) ?? [])])
+    const diretas = new Set([codigo, semZerosEsquerda(codigo)])
     const achados = new Map<number, Cli>()
-    for (const k of chaves) for (const c of m.cod.get(k) ?? []) achados.set(c.id, c)
+    for (const k of diretas) for (const c of m.cod.get(k) ?? []) achados.set(c.id, c)
+    // Pelo código ANTIGO que outro cadastro liga a esse código do SAP: só se
+    // o nome também for parecido. O código antigo da Joitec (sistema velho)
+    // não é o da planilha da Odin Tubos — 622 = JR Manutenção (C002798) na
+    // Joitec e 622 = Planalto Compressores na Odin Tubos: o pedido 8970 da JR
+    // caiu na Planalto (João, 2026-11-19, "pedidos trocados").
+    for (const k of antigosDoSap.get(codigo) ?? [])
+      for (const c of m.cod.get(k) ?? []) if (!diretas.has(k) && nomeParecido(c.razaoSocial, nome)) achados.set(c.id, c)
     // Mesmo nome só junta se o outro cadastro não for OUTRO cliente do SAP:
     // a Confiança Pneumática tem C001306 (Santarém-PA) e C001307 (Várzea
     // Grande-MT) com a mesma razão social, e o pedido 9282 do MT caiu no card

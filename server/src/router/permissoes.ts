@@ -180,6 +180,8 @@ export const FEATURES_ADMIN = [
   // Controle do Estoque / Expedição (fila do SAP, separação → conferência →
   // embalagem → coleta, desempenho da equipe). Pedido do João, 2026-10-29.
   'controle_estoque',
+  // Pedidos × clientes trocados (SAP × CRM) — revisão, João 2026-11-19.
+  'pedidos_trocados',
   // Descartar pedido da Expedição (o pedido voltou / o SAP mudou o picking)
   // — só admin, pedido do João, 2026-10-29.
   'expedicao_descartar',
