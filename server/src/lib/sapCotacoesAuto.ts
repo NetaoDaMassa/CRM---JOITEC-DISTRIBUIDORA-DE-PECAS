@@ -6,6 +6,7 @@ import { agoraSqlite, hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { codigoSap, codigosSapDoCadastro } from './codigoSap.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
 import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
@@ -127,13 +128,8 @@ export async function sincronizarCotacoesSap(opts: { desde?: string } = {}): Pro
     if (e.slug === SLUG_COMPRESSORES) continue
     const m = new Map<string, number>()
     const lista = await db.query.clientes.findMany({ where: and(eq(clientes.empresaId, e.id), isNull(clientes.deletedAt)), columns: { id: true, codigo: true, codigoAntigo: true } })
-    for (const c of lista)
-      for (const cod of [c.codigo, c.codigoAntigo]) {
-        if (!cod) continue
-        const limpo = limparCodigo(cod)
-        if (!m.has(limpo)) m.set(limpo, c.id)
-        if (!m.has(semZerosEsquerda(limpo))) m.set(semZerosEsquerda(limpo), c.id)
-      }
+    // Só o código do SAP, exato (regra única — lib/codigoSap.ts).
+    for (const c of lista) for (const k of codigosSapDoCadastro(c)) if (!m.has(k)) m.set(k, c.id)
     porCodigo.set(e.id, m)
   }
 
@@ -214,7 +210,7 @@ export async function sincronizarCotacoesSap(opts: { desde?: string } = {}): Pro
         if (slug === 'joitec' && linhas.some((l) => ehPpr(l.ItemDescription ?? ''))) slug = 'odin-tubos'
         const empresa = slug ? empresaPorSlug.get(slug) : undefined
         const codigo = limparCodigo(q.CardCode)
-        clienteId = empresa ? (porCodigo.get(empresa.id)?.get(codigo) ?? porCodigo.get(empresa.id)?.get(semZerosEsquerda(codigo))) : undefined
+        clienteId = empresa ? porCodigo.get(empresa.id)?.get(codigoSap(codigo) ?? '') : undefined
       }
       const empresa = slug ? empresaPorSlug.get(slug) : undefined
       if (!empresa || !clienteId) {

@@ -7,6 +7,7 @@ import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { codigoSap } from './codigoSap.js'
 import { sincronizarVendasSap, slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
 
 // Conferência SAP × CRM (pedido do João, 2026-10-30). Depois da venda
@@ -63,12 +64,10 @@ async function pedidosDoSap(mes: string, atualizar: boolean) {
   return novo
 }
 
-// Código do SAP ("C002472") e código antigo do sistema anterior ("2472") são
-// numerações diferentes — não tira o "C" pra comparar.
+// Só o código do SAP, exato (regra única — lib/codigoSap.ts).
 const chaves = (cod: string | null | undefined): string[] => {
-  if (!cod) return []
-  const k = limparCodigo(cod)
-  return [k, semZerosEsquerda(k)]
+  const k = codigoSap(cod)
+  return k ? [k] : []
 }
 
 export async function conferenciaVendasSap(empresaId: number, mes: string, opts: { vendedorId?: number; atualizar?: boolean } = {}) {

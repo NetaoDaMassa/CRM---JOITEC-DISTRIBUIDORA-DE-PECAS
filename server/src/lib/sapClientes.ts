@@ -1,15 +1,17 @@
-import { and, eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { carteiraHistorico, clientes, empresas, funilMensal, users } from '../db/schema.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { codigoSap, codigosSapDoCadastro } from './codigoSap.js'
 import { hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { regiaoPorUf } from './regiao.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import type { SapSessao } from './sapServiceLayer.js'
 import { sincronizarItensSap, vendedoresAutomacaoSap } from './sapSyncItens.js'
-import { sincronizarVendasSap } from './sapVendasAuto.js'
+import { sincronizarVendasSap, slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
+import { nomeParecido, normalizarNome } from './nomeParecido.js'
 
 // Clientes do SAP → CRM — pedido do João, 2026-11-01:
 //   1. "têm venda no SAP e não estão no CRM": cliente com nota de venda
@@ -131,26 +133,36 @@ async function lerCadastros(sap: SapSessao, codigos: string[]): Promise<Map<stri
 async function indiceClientes(empresaId: number) {
   const lista = await db.query.clientes.findMany({
     where: eq(clientes.empresaId, empresaId),
-    columns: { id: true, codigo: true, codigoAntigo: true, cnpj: true, cpf: true, razaoSocial: true, deletedAt: true },
+    columns: { id: true, codigo: true, codigoAntigo: true, cnpj: true, cpf: true, razaoSocial: true, deletedAt: true, vendedorAtualId: true },
   })
   const porCodigo = new Map<string, (typeof lista)[number]>()
   const porDoc = new Map<string, (typeof lista)[number]>()
   for (const c of lista) {
-    for (const cod of [c.codigo, c.codigoAntigo]) {
-      if (!cod) continue
-      const l = limparCodigo(cod)
-      if (!porCodigo.has(l)) porCodigo.set(l, c)
-      const sz = semZerosEsquerda(l)
-      if (!porCodigo.has(sz)) porCodigo.set(sz, c)
-    }
+    // Só o código do SAP, exato (regra única — lib/codigoSap.ts): cadastro
+    // antigo sem o código do SAP aparece na lista pra "Ligar código".
+    for (const k of codigosSapDoCadastro(c)) if (!porCodigo.has(k)) porCodigo.set(k, c)
     for (const d of [c.cnpj, c.cpf]) {
       const dd = soDigitos(d)
       if (dd && !porDoc.has(dd)) porDoc.set(dd, c)
     }
   }
   return {
-    porCodigo: (codigo: string) => porCodigo.get(limparCodigo(codigo)) ?? porCodigo.get(semZerosEsquerda(limparCodigo(codigo))),
+    porCodigo: (codigo: string) => porCodigo.get(codigoSap(codigo) ?? ''),
     porDoc: (cad: { cnpj: string | null; cpf: string | null }) => (cad.cnpj ? porDoc.get(cad.cnpj) : undefined) ?? (cad.cpf ? porDoc.get(cad.cpf) : undefined),
+    // Sugestão pra "Ligar código" (só sugestão — quem confirma é a pessoa):
+    // mesmo CNPJ/CPF; senão cadastro SEM código do SAP com o mesmo nome; senão
+    // nome parecido (de preferência com vendedor).
+    sugestao(cad: { cnpj: string | null; cpf: string | null } | null, nome: string) {
+      const doc = cad ? ((cad.cnpj ? porDoc.get(cad.cnpj) : undefined) ?? (cad.cpf ? porDoc.get(cad.cpf) : undefined)) : undefined
+      if (doc) return { ...doc, motivo: 'cnpj' as const }
+      const semSap = lista.filter((c) => !c.deletedAt && !codigoSap(c.codigo))
+      const n = normalizarNome(nome).replace(/[^A-Z0-9]/g, '')
+      const igual = semSap.find((c) => normalizarNome(c.razaoSocial).replace(/[^A-Z0-9]/g, '') === n)
+      if (igual) return { ...igual, motivo: 'nome' as const }
+      const parecidos = semSap.filter((c) => nomeParecido(c.razaoSocial, nome))
+      const p = parecidos.find((c) => c.vendedorAtualId) ?? parecidos[0]
+      return p ? { ...p, motivo: 'nome' as const } : undefined
+    },
   }
 }
 
@@ -200,6 +212,8 @@ interface NotaCab {
   BPL_IDAssignedToInvoice: number
 }
 let cacheNotas: { em: number; notas: NotaCab[] } | null = null
+let cachePedidos: { em: number; pedidos: (NotaCab & { Cancelled: string })[] } | null = null
+const DIAS_PEDIDOS = 45
 
 // Mesma regra de empresa dos itens das notas (lib/sapSyncItens.ts): a
 // filial decide; na filial Joitec, vendedor da Automação vai pra Automação.
@@ -213,7 +227,7 @@ export async function clientesComVendaFora(empresaId: number, atualizar = false)
   const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, empresaId) })
   if (!empresa || !(SLUGS as readonly string[]).includes(empresa.slug)) return { suportada: false as const, lista: [] }
 
-  const { notas, vendedores } = await comSessaoSap(async (sap) => {
+  const { notas, pedidos, vendedores } = await comSessaoSap(async (sap) => {
     if (atualizar || !cacheNotas || Date.now() - cacheNotas.em > 10 * 60_000) {
       const notas = await sap.getTodos<NotaCab>(
         `/Invoices?$filter=DocDate ge '${NOTAS_DESDE}' and Cancelled eq 'tNO' and (BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4)&$select=DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice`,
@@ -221,25 +235,52 @@ export async function clientesComVendaFora(empresaId: number, atualizar = false)
       )
       cacheNotas = { em: Date.now(), notas }
     }
-    return { notas: cacheNotas.notas, vendedores: await vendedoresSap(sap) }
+    // + pedidos dos últimos dias (regra única do vínculo pelo código do SAP,
+    // 2026-11-19): pedido de cliente sem cadastro com o código não vira
+    // venda — tem que aparecer aqui pra Cadastrar ou Ligar código.
+    if (atualizar || !cachePedidos || Date.now() - cachePedidos.em > 10 * 60_000) {
+      const desde = new Date(Date.now() - DIAS_PEDIDOS * 86400_000).toISOString().slice(0, 10)
+      const pedidos = await sap.getTodos<NotaCab & { Cancelled: string }>(
+        `/Orders?$filter=DocDate ge '${desde}' and (BPL_IDAssignedToInvoice eq 3 or BPL_IDAssignedToInvoice eq 4)&$select=DocNum,DocDate,CardCode,CardName,DocTotal,SalesPersonCode,BPL_IDAssignedToInvoice,Cancelled`,
+        500
+      )
+      cachePedidos = { em: Date.now(), pedidos }
+    }
+    return { notas: cacheNotas.notas, pedidos: cachePedidos.pedidos, vendedores: await vendedoresSap(sap) }
   })
 
   const automacao = await vendedoresAutomacaoSap()
   const grupo = new Set(((await getConfigTexto('sap_receber_ignorar_clientes')) ?? GRUPO_PADRAO).split(',').map((s) => limparCodigo(s)))
   const fora = await ignorados(empresaId)
   const indice = await indiceClientes(empresaId)
-  const porCliente = new Map<string, { codigo: string; nome: string; notas: number; valor: number; ultima: string; vendedorUltima: number }>()
+  const porCliente = new Map<string, { codigo: string; nome: string; notas: number; valor: number; ultima: string; vendedorUltima: number; pedidos: string[] }>()
   for (const n of notas) {
     if (slugDaNota(n, automacao) !== empresa.slug) continue
     const codigo = limparCodigo(n.CardCode)
     if (grupo.has(codigo) || indice.porCodigo(codigo)) continue
     const data = dataSap(n.DocDate)
-    const c = porCliente.get(codigo) ?? { codigo, nome: n.CardName.trim(), notas: 0, valor: 0, ultima: '', vendedorUltima: n.SalesPersonCode }
+    const c = porCliente.get(codigo) ?? { codigo, nome: n.CardName.trim(), notas: 0, valor: 0, ultima: '', vendedorUltima: n.SalesPersonCode, pedidos: [] }
     c.notas++
     c.valor += n.DocTotal ?? 0
     if (data >= c.ultima) {
       c.ultima = data
       c.vendedorUltima = n.SalesPersonCode
+    }
+    porCliente.set(codigo, c)
+  }
+
+  const odinTubos = await vendedoresOdinTubosSap()
+  for (const p of pedidos) {
+    if (p.Cancelled === 'tYES' || slugDoPedidoSap(p.BPL_IDAssignedToInvoice, p.SalesPersonCode, automacao, odinTubos) !== empresa.slug) continue
+    const codigo = limparCodigo(p.CardCode)
+    if (grupo.has(codigo) || indice.porCodigo(codigo)) continue
+    const data = dataSap(p.DocDate)
+    const c = porCliente.get(codigo) ?? { codigo, nome: p.CardName.trim(), notas: 0, valor: 0, ultima: '', vendedorUltima: p.SalesPersonCode, pedidos: [] }
+    c.pedidos.push(String(p.DocNum))
+    if (!c.notas) c.valor += p.DocTotal ?? 0
+    if (data >= c.ultima) {
+      c.ultima = data
+      c.vendedorUltima = p.SalesPersonCode
     }
     porCliente.set(codigo, c)
   }
@@ -253,7 +294,7 @@ export async function clientesComVendaFora(empresaId: number, atualizar = false)
 
   const lista = [...porCliente.values()].map((c) => {
     const cad = cadastros.get(c.codigo) ?? null
-    const parecido = cad ? indice.porDoc(cad) : undefined
+    const parecido = indice.sugestao(cad, c.nome)
     // Sugestão: quem tirou a última nota (se estiver ligado a alguém desta empresa).
     const sugerido = ligados[String(c.vendedorUltima)]
     return {
@@ -263,10 +304,11 @@ export async function clientesComVendaFora(empresaId: number, atualizar = false)
       vendedorSugeridoId: sugerido && daEmpresa.has(sugerido) ? sugerido : null,
       cnpj: cad?.cnpj ?? cad?.cpf ?? null,
       cidade: cad ? [cad.cidade, cad.uf].filter(Boolean).join(' / ') || null : null,
-      pareceSer: parecido ? { id: parecido.id, razaoSocial: parecido.razaoSocial, codigo: parecido.codigo, excluido: !!parecido.deletedAt } : null,
+      pareceSer: parecido ? { id: parecido.id, razaoSocial: parecido.razaoSocial, codigo: parecido.codigo, excluido: !!parecido.deletedAt, motivo: parecido.motivo } : null,
     }
   })
-  lista.sort((a, b) => b.valor - a.valor)
+  // Pedido esperando cadastro primeiro (a venda só entra depois de ligar).
+  lista.sort((a, b) => Number(b.pedidos.length > 0) - Number(a.pedidos.length > 0) || b.valor - a.valor)
   return { suportada: true as const, lista }
 }
 
@@ -316,7 +358,7 @@ export async function cadastrosNovosPendentes(empresaId: number) {
   const lista = novos
     .filter((c) => c.ativo && !destino(c.vendedorSap) && !indice.porCodigo(c.codigo))
     .map((c) => {
-      const parecido = indice.porDoc(c)
+      const parecido = indice.sugestao(c, c.nome)
       return {
         codigo: c.codigo,
         nome: c.nome,
@@ -325,7 +367,7 @@ export async function cadastrosNovosPendentes(empresaId: number) {
         criadoEm: c.criadoEm,
         vendedorSapNome: c.vendedorSap != null ? nomeSap.get(c.vendedorSap) ?? `Código ${c.vendedorSap}` : 'Sem vendedor no SAP',
         ignorado: fora.has(c.codigo),
-        pareceSer: parecido ? { id: parecido.id, razaoSocial: parecido.razaoSocial, codigo: parecido.codigo, excluido: !!parecido.deletedAt } : null,
+        pareceSer: parecido ? { id: parecido.id, razaoSocial: parecido.razaoSocial, codigo: parecido.codigo, excluido: !!parecido.deletedAt, motivo: parecido.motivo } : null,
       }
     })
   return { ligado: true as const, desde, lista }
@@ -405,8 +447,11 @@ export async function ligarCodigoSap(clienteId: number, codigo: string, empresaI
   const cod = limparCodigo(codigo)
   const outro = (await indiceClientes(empresaId)).porCodigo(cod)
   if (outro && outro.id !== c.id) throw new Error(`O código ${cod} já é de ${outro.razaoSocial}.`)
-  const campo = c.codigo.startsWith('M') ? { codigo: cod } : !c.codigoAntigo ? { codigoAntigo: c.codigo, codigo: cod } : null
-  if (!campo) throw new Error('Esse cliente já tem dois códigos — ajuste o cadastro na mão.')
+  if (!codigoSap(cod)) throw new Error(`${cod} não é um código do SAP (C + números).`)
+  if (codigoSap(c.codigo) && codigoSap(c.codigo) !== cod) throw new Error(`Esse cadastro já tem outro código do SAP (${c.codigo}).`)
+  // O código do SAP vai pro `codigo` (é por ele que tudo do SAP entra); o
+  // antigo fica guardado em `codigoAntigo` (se já tinha um, fica na auditoria).
+  const campo = c.codigo.startsWith('M') ? { codigo: cod } : { codigo: cod, codigoAntigo: c.codigoAntigo ?? c.codigo }
   await db.update(clientes).set(campo).where(eq(clientes.id, c.id))
   await registrarAuditoria({ tabela: 'clientes', registroId: c.id, acao: 'editar', alteradoPor: autorId, campo: 'codigo', valorAnterior: c.codigo, valorNovo: cod })
   trazerHistorico(cod, autorId)
@@ -440,4 +485,19 @@ export async function sincronizarClientesNovosSap(): Promise<{ criados: number; 
     criados++
   }
   return { criados, pendentes }
+}
+
+// "Ligar a outro cadastro": busca na empresa ativa (nome, código, CNPJ).
+export async function buscarCadastros(empresaId: number, busca: string) {
+  const termo = busca.trim()
+  const dig = termo.replace(/\D/g, '')
+  const lista = await db.query.clientes.findMany({
+    where: and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt)),
+    columns: { id: true, codigo: true, codigoAntigo: true, razaoSocial: true, cnpj: true, cidade: true, estado: true },
+  })
+  const n = normalizarNome(termo)
+  return lista
+    .filter((c) => normalizarNome(c.razaoSocial).includes(n) || c.codigo.toUpperCase() === termo.toUpperCase() || (c.codigoAntigo ?? '').toUpperCase() === termo.toUpperCase() || (dig.length >= 8 && (c.cnpj ?? '').replace(/\D/g, '').includes(dig)))
+    .slice(0, 12)
+    .map((c) => ({ ...c, temCodigoSap: !!codigoSap(c.codigo) }))
 }

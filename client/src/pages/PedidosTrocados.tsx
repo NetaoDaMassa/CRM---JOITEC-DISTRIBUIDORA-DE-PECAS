@@ -132,6 +132,10 @@ export default function PedidosTrocados() {
           <>Cada linha mostra <b>como está no CRM</b> e <b>como está no SAP</b>. Se os dois clientes são diferentes, o pedido está no lugar errado.</>,
           <>Quando o CRM acha o <b>cadastro certo</b> (o do código do SAP), ele aparece embaixo — é pra lá que a venda deveria ir.</>,
           <>Se na verdade está certo (ex.: o mesmo cliente com dois nomes), clique em <b>Está certo</b> e escreva o porquê — sai da lista.</>,
+          <>
+            Regra do CRM: pedido do SAP só entra no cadastro com <b>o mesmo código do SAP</b>, na empresa da filial. Cliente sem cadastro com o código fica em{' '}
+            <Link to="/admin/clientes-sap" className="text-gold-400 hover:underline">Clientes do SAP p/ cadastrar</Link> (Cadastrar ou Ligar a um cadastro).
+          </>,
           <>Venda no cliente errado com o cadastro certo achado: clique em <b>Mover para o cadastro certo</b>. Nada muda sozinho — só quando alguém clica.</>,
         ]}
       />

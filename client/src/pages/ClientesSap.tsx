@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { UserPlus, RefreshCw, EyeOff, Undo2, Link2, Wand2, Save, Power, UserCheck } from 'lucide-react'
+import { UserPlus, RefreshCw, EyeOff, Undo2, Link2, Wand2, Save, Power, UserCheck, Search } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { formatarMoeda } from '../lib/moeda'
@@ -39,6 +39,9 @@ export default function ClientesSap() {
   const [verIgnorados, setVerIgnorados] = useState(false)
   const [escolha, setEscolha] = useState<Record<string, string>>({})
   const [aviso, setAviso] = useState<{ ok: boolean; texto: string } | null>(null)
+  // "Ligar a outro cadastro": código do SAP escolhido + texto da busca.
+  const [ligarOutro, setLigarOutro] = useState<{ codigo: string; nome: string } | null>(null)
+  const [buscaCadastro, setBuscaCadastro] = useState('')
 
   const utils = trpc.useUtils()
   const comVenda = trpc.clientesSap.comVenda.useQuery(undefined, { staleTime: 5 * 60_000, retry: false })
@@ -58,6 +61,7 @@ export default function ClientesSap() {
   const cadastrar = trpc.clientesSap.cadastrar.useMutation({ onSuccess: (r) => deuCerto(`Cliente ${r.codigo} cadastrado. As notas e vendas dele entram em alguns minutos.`), onError: deuErro })
   const ligarCodigo = trpc.clientesSap.ligarCodigo.useMutation({ onSuccess: () => deuCerto('Código do SAP ligado ao cliente do CRM. As notas dele entram em alguns minutos.'), onError: deuErro })
   const ignorar = trpc.clientesSap.ignorar.useMutation({ onSuccess: (_r, v) => deuCerto(v.ignorar ? 'Tirado da lista.' : 'Voltou para a lista.'), onError: deuErro })
+  const achados = trpc.clientesSap.buscarCadastro.useQuery({ busca: buscaCadastro }, { enabled: !!ligarOutro && buscaCadastro.trim().length >= 2, staleTime: 30_000 })
   const ocupado = cadastrar.isPending || ligarCodigo.isPending || ignorar.isPending
 
   const listaVenda = (comVenda.data?.lista ?? []).filter((c) => verIgnorados || !c.ignorado)
@@ -76,7 +80,8 @@ export default function ClientesSap() {
       cidade: string | null
       vendedorSapNome: string
       ignorado: boolean
-      pareceSer: { id: number; razaoSocial: string; codigo: string; excluido: boolean } | null
+      pareceSer: { id: number; razaoSocial: string; codigo: string; excluido: boolean; motivo?: 'cnpj' | 'nome' } | null
+      pedidos?: string[]
       vendedorSugeridoId?: number | null
       notas?: number
       valor?: number
@@ -95,9 +100,15 @@ export default function ClientesSap() {
               {c.cnpj ? ` · ${c.cnpj}` : ''}
               {c.cidade ? ` · ${c.cidade}` : ''} · vendedor no SAP: {c.vendedorSapNome}
             </p>
+            {!!c.pedidos?.length && (
+              <p className="text-xs text-amber-200 mt-0.5">
+                Pedido(s) {c.pedidos.slice(0, 6).join(', ')}
+                {c.pedidos.length > 6 ? '…' : ''} esperando: a venda só entra no CRM depois de Cadastrar ou Ligar código.
+              </p>
+            )}
             {c.notas !== undefined ? (
               <p className="text-xs text-dark-400 mt-0.5">
-                {c.notas} nota(s) desde abril · última em {dataBr(c.ultima ?? null)}
+                {c.notas} nota(s) desde abril{c.notas ? ` · última em ${dataBr(c.ultima ?? null)}` : ''}
               </p>
             ) : (
               <p className="text-xs text-dark-400 mt-0.5">Cadastrado no SAP em {dataBr(c.criadoEm ?? null)}</p>
@@ -111,7 +122,7 @@ export default function ClientesSap() {
               </Button>
             ) : (
               <>
-                {!c.pareceSer && (
+                {(!c.pareceSer || c.pareceSer.motivo === 'nome') && (
                   <>
                     <select value={valorSelect} onChange={(e) => setEscolha((s) => ({ ...s, [c.codigo]: e.target.value }))} className={classeSelect} aria-label="Vendedor">
                       <option value="">Sem vendedor (Banco de Clientes)</option>
@@ -126,6 +137,9 @@ export default function ClientesSap() {
                     </Button>
                   </>
                 )}
+                <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => { setLigarOutro({ codigo: c.codigo, nome: c.nome }); setBuscaCadastro(c.nome.split(' ').filter((p) => p.length > 3)[0] ?? '') }}>
+                  <Search size={14} /> Ligar a um cadastro
+                </Button>
                 <Button size="sm" variant="ghost" disabled={ocupado} onClick={() => ignorar.mutate({ codigo: c.codigo, ignorar: true })}>
                   <EyeOff size={14} /> Ignorar
                 </Button>
@@ -136,7 +150,7 @@ export default function ClientesSap() {
         {c.pareceSer && !c.ignorado && (
           <div className="border-t border-dark-700/70 pt-2 flex flex-wrap items-center gap-3 text-sm">
             <span className="text-dark-300">
-              Mesmo CNPJ de{' '}
+              {c.pareceSer.motivo === 'nome' ? 'Nome parecido com' : 'Mesmo CNPJ de'}{' '}
               <Link to={`/admin/clientes/${c.pareceSer.id}`} className="text-gold-400 hover:underline">
                 {c.pareceSer.razaoSocial}
               </Link>{' '}
@@ -275,6 +289,47 @@ export default function ClientesSap() {
       {aba === 'vendedoresNovos' && <VendedoresNovos verIgnorados={verIgnorados} onAviso={setAviso} />}
 
       {aba === 'vendedores' && superAdmin && <Vendedores onAviso={setAviso} />}
+      <Modal open={!!ligarOutro} onClose={() => setLigarOutro(null)} title={`Ligar ${ligarOutro?.codigo ?? ''} a um cadastro do CRM`} size="md">
+        <div className="space-y-3 text-sm">
+          <p className="text-dark-300">
+            <b>{ligarOutro?.nome}</b> já está no CRM com outro código? Procure o cadastro e clique em <b>Ligar</b>: ele passa a ter o código do SAP e tudo desse cliente (pedidos, notas, cotações, expedição) entra nele. O código antigo fica guardado.
+          </p>
+          <input
+            value={buscaCadastro}
+            onChange={(e) => setBuscaCadastro(e.target.value)}
+            placeholder="Nome, código ou CNPJ"
+            className="w-full bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-dark-100"
+            autoFocus
+          />
+          <div className="space-y-1.5 max-h-80 overflow-y-auto">
+            {(achados.data ?? []).map((a) => (
+              <div key={a.id} className="flex items-center justify-between gap-2 border border-dark-700 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-dark-100 truncate">{a.razaoSocial}</p>
+                  <p className="text-xs text-dark-500">
+                    {a.codigo}
+                    {a.codigoAntigo ? ` (antigo ${a.codigoAntigo})` : ''}
+                    {a.cnpj ? ` · ${a.cnpj}` : ''}
+                    {a.cidade ? ` · ${a.cidade}${a.estado ? `/${a.estado}` : ''}` : ''}
+                  </p>
+                </div>
+                {a.temCodigoSap ? (
+                  <span className="text-xs text-dark-500 whitespace-nowrap">já tem código do SAP</span>
+                ) : (
+                  <Button
+                    size="sm"
+                    disabled={ocupado}
+                    onClick={() => ligarOutro && ligarCodigo.mutate({ clienteId: a.id, codigo: ligarOutro.codigo }, { onSuccess: () => setLigarOutro(null) })}
+                  >
+                    <Link2 size={14} /> Ligar
+                  </Button>
+                )}
+              </div>
+            ))}
+            {buscaCadastro.trim().length >= 2 && achados.data?.length === 0 && <p className="text-dark-500">Nada achado. Se não está no CRM, feche e clique em Cadastrar.</p>}
+          </div>
+        </div>
+      </Modal>
     </div>
   )
 }

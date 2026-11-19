@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { clientes, empresas, sapImportacoes, sapItensHistorico } from '../db/schema.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { codigoSap, codigosSapDoCadastro } from './codigoSap.js'
 import { getConfigTexto, setConfig } from './configuracoes.js'
 import { hojeBrString } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
@@ -132,15 +133,8 @@ export async function sincronizarItensSap(opts: {
     })
     const exato = new Map<string, number>()
     const semZero = new Map<string, number>()
-    for (const c of lista) {
-      for (const cod of [c.codigo, c.codigoAntigo]) {
-        if (!cod) continue
-        const limpo = limparCodigo(cod)
-        if (!exato.has(limpo)) exato.set(limpo, c.id)
-        const sz = semZerosEsquerda(limpo)
-        if (!semZero.has(sz)) semZero.set(sz, c.id)
-      }
-    }
+    // Só o código do SAP, exato (regra única — lib/codigoSap.ts).
+    for (const c of lista) for (const k of codigosSapDoCadastro(c)) if (!exato.has(k)) exato.set(k, c.id)
     clientesPorSlug.set(e.slug, { exato, semZero })
   }
 
@@ -218,7 +212,7 @@ export async function sincronizarItensSap(opts: {
     const valorNota = n.DocumentLines.reduce((s, l) => s + (l.LineTotal ?? 0), 0)
     const codigo = limparCodigo(n.CardCode ?? '')
     const mapa = clientesPorSlug.get(slug)!
-    const clienteId = daCarteira?.id ?? mapa.exato.get(codigo) ?? mapa.semZero.get(semZerosEsquerda(codigo))
+    const clienteId = daCarteira?.id ?? mapa.exato.get(codigoSap(codigo) ?? '')
     if (!clienteId) {
       resultado.naoEncontradas.push({ empresa: empresa.nome, codigo, nome: n.CardName, nota, valor: valorNota })
       continue
