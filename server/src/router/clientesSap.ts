@@ -5,6 +5,7 @@ import { db } from '../db/client.js'
 import { empresas, users } from '../db/schema.js'
 import {
   autoDesde,
+  buscarCadastros,
   cadastrarClienteSap,
   cadastrosNovosPendentes,
   clientesComVendaFora,
@@ -34,6 +35,8 @@ export const clientesSapRouter = router({
   ligarCodigo: adminProcedure.input(z.object({ clienteId: z.number(), codigo: z.string().min(2) })).mutation(async ({ ctx, input }) => {
     return ligarCodigoSap(input.clienteId, input.codigo, ctx.empresaId, ctx.user.id)
   }),
+
+  buscarCadastro: adminProcedure.input(z.object({ busca: z.string().trim().min(2) })).query(async ({ ctx, input }) => buscarCadastros(ctx.empresaId, input.busca)),
 
   ignorar: adminProcedure.input(z.object({ codigo: z.string().min(2), ignorar: z.boolean() })).mutation(async ({ ctx, input }) => {
     await ignorarCodigo(ctx.empresaId, input.codigo, input.ignorar)

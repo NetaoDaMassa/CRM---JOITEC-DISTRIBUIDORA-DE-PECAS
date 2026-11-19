@@ -14,11 +14,12 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { db } from './db/client.js'
 import { and, eq, isNull, sql } from 'drizzle-orm'
 import { podeOuvirLigacao } from './router/pabx.js'
-import { contabilidadeArquivos, adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, expedicaoFotos, empresas, vendas, clientes, funilMensal, itemFotos } from './db/schema.js'
+import { contabilidadeArquivos, adminEmpresasExtras, pabxLigacoesProcessadas, marketingArquivos, propostaArquivos, instagramAccounts, googleDriveConexao, users as usersTabela, expedicaoPedidos, expedicaoFotos, empresas, vendas, clientes, funilMensal, itemFotos, ordens, ordemFaturamento } from './db/schema.js'
 import { temFeature } from './router/_base.js'
 import { podeTrocarFotoProduto } from './router/fotosProdutos.js'
 import { semearFotosCatalogo } from './lib/fotosProdutos.js'
 import { baixarArquivoNotaSap, baixarArquivoNotaDoPedidoSap, FILIAL_SAP_POR_SLUG, type ArquivoNota } from './lib/sapDanfe.js'
+import { FILIAL_ODIN_COMPRESSORES, lerNfSapOrdem, nfsDigitadas } from './lib/sapNfOrdensOdin.js'
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
@@ -766,6 +767,32 @@ app.get('/cliente-nota/:id', async (req, res) => {
   const filial = FILIAL_SAP_POR_SLUG[empresa?.slug ?? '']
   if (!filial) return res.status(404).json({ error: 'Empresa sem filial no SAP' })
   await enviarArquivoNota(res, formato, () => baixarArquivoNotaSap(filial, nf, formato))
+})
+
+// DANFE/XML da NF de um Pedido da Odin Compressores (aba Faturamento) — João,
+// 2026-11-19. Vê quem vê o pedido: admin da empresa ou o vendedor do pedido.
+// Só a NF digitada no pedido ou uma das NFs que o CRM achou no SAP pra ele
+// (lib/sapNfOrdensOdin.ts). Filial 1 (Odin Compressores).
+app.get('/ordem-nota/:id', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  const formato = req.query.formato === 'xml' ? 'xml' : 'pdf'
+  const nf = String(req.query.nf ?? '').replace(/\D/g, '').replace(/^0+/, '')
+  if (!nf) return res.status(400).json({ error: 'Número da NF não informado' })
+  const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+  const ordem = await db.query.ordens.findFirst({
+    where: and(eq(ordens.id, Number(req.params.id)), eq(ordens.empresaId, empresaId ?? -1)),
+    columns: { id: true, vendedorId: true },
+  })
+  if (!ordem) return res.status(404).json({ error: 'Pedido não encontrado' })
+  if (!user.superAdmin && user.role !== 'admin' && ordem.vendedorId !== user.id) return res.status(403).json({ error: 'Sem permissão' })
+  const [fat, guardada] = await Promise.all([
+    db.query.ordemFaturamento.findFirst({ where: eq(ordemFaturamento.ordemId, ordem.id), columns: { numeroNotaFiscal: true } }),
+    lerNfSapOrdem(ordem.id),
+  ])
+  const conhecidas = [...nfsDigitadas(fat?.numeroNotaFiscal), ...nfsDigitadas((guardada?.nfs ?? []).map((n) => n.nf).join(' '))]
+  if (!conhecidas.includes(nf)) return res.status(404).json({ error: 'Essa NF não é deste pedido' })
+  await enviarArquivoNota(res, formato, () => baixarArquivoNotaSap(FILIAL_ODIN_COMPRESSORES, nf, formato))
 })
 
 async function enviarArquivoNota(res: express.Response, formato: 'pdf' | 'xml', buscar: () => Promise<ArquivoNota | { erro: string }>) {

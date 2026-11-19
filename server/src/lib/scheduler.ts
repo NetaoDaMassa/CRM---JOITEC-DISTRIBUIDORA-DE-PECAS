@@ -16,7 +16,8 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarNfOrdensOdinSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap } from './sapAgendado.js'
+import { rodarRevisaoTrocados } from './pedidosTrocados.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
@@ -247,9 +248,22 @@ export function startScheduler() {
   cron.schedule('4-59/5 * * * *', () => {
     rodarExpedicaoSap().catch((err) => console.error('[sap-expedicao] erro no agendador:', err))
   })
+  // Pedidos × clientes trocados (SAP × CRM) — revisão automática de 30 em 30
+  // min, seg–sáb 7h–20h (Brasília); avisa no sininho quando aparece caso novo.
+  cron.schedule('17,47 7-20 * * 1-6', () => {
+    rodarRevisaoTrocados().catch((err) => console.error('[pedidos-trocados] erro no agendador:', err))
+  }, { timezone: 'America/Sao_Paulo' })
   // NF rápida: nº da NF-e no card/ficha/Expedição ~1 min depois de sair no SAP.
   cron.schedule('* * * * *', () => {
     rodarNfRapidaSap().catch((err) => console.error('[sap-nf-rapida] erro no agendador:', err))
+  })
+  // NF do SAP na aba Faturamento dos Pedidos da Odin Compressores: notas de
+  // ontem/hoje de minuto em minuto + 120 dias de meia em meia hora (:17, :47).
+  cron.schedule('* * * * *', () => {
+    rodarNfOrdensOdinSap(1).catch((err) => console.error('[sap-nf-pedidos-odin] erro no agendador:', err))
+  })
+  cron.schedule('17,47 * * * *', () => {
+    rodarNfOrdensOdinSap(120).catch((err) => console.error('[sap-nf-pedidos-odin] erro no agendador:', err))
   })
   cron.schedule('1-59/2 * * * *', () => {
     rodarCotacoesSap().catch((err) => console.error('[sap-cotacoes] erro no agendador:', err))

@@ -9,6 +9,7 @@ import { registrarAuditoria } from './auditoria.js'
 import { comSessaoSap, dataSap } from './sapServiceLayer.js'
 import { vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { limparCodigo, semZerosEsquerda } from './importSapHistorico.js'
+import { codigoSap, codigosSapDoCadastro } from './codigoSap.js'
 import { criarOrdemPecaSeOdinCompressores } from './vendaParaOrdemPeca.js'
 import { montarVendedorDoPedido } from './vendedorDoPedidoSap.js'
 import { FILIAL_COMPRESSORES, SLUG_COMPRESSORES, clientesCompressoresPorCodigoSap, vendedoresSapCompressores } from './sapCompressores.js'
@@ -189,50 +190,26 @@ export async function sincronizarVendasSap(
     : []
   const porEntry = new Map(existentes.map((v) => [v.pedidoSapEntry!, v]))
 
-  // Um mesmo cliente às vezes tem MAIS DE UM cadastro na empresa (ex.: TC
-  // Manutec na Odin Automação com o código antigo 5503 e com o C004638 do
-  // SAP — a Pamela registrou a venda no antigo). Todos os cadastros
-  // equivalentes contam: código do SAP, código antigo (inclusive o que outra
-  // empresa do CRM liga a esse código) e mesma razão social.
+  // Cadastros do cliente do pedido: SÓ pelo código do SAP, exato (regra única
+  // em lib/codigoSap.ts, João 2026-11-19). Antes também juntava pelo código
+  // antigo de qualquer empresa e pela razão social — e trocava cliente: 622 da
+  // Joitec (JR Manutenção, C002798) × 622 da planilha da Odin Tubos (Planalto)
+  // → pedido 8970 da JR caiu na Planalto. Cadastro antigo sem o código do SAP
+  // não recebe pedido até alguém "Ligar código" em Clientes do SAP p/ cadastrar.
   type Cli = { id: number; codigo: string; codigoAntigo: string | null; razaoSocial: string; vendedorAtualId: number | null }
-  const norm = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '')
   const todos = await db.query.clientes.findMany({
     where: isNull(clientes.deletedAt),
     columns: { id: true, empresaId: true, codigo: true, codigoAntigo: true, razaoSocial: true, vendedorAtualId: true },
   })
-  const antigosDoSap = new Map<string, Set<string>>()
+  const porEmpresa = new Map<number, Map<string, Cli[]>>()
   for (const c of todos) {
-    if (!c.codigoAntigo) continue
-    const k = limparCodigo(c.codigo)
-    antigosDoSap.set(k, (antigosDoSap.get(k) ?? new Set()).add(limparCodigo(c.codigoAntigo)))
-  }
-  const porEmpresa = new Map<number, { cod: Map<string, Cli[]>; nome: Map<string, Cli[]> }>()
-  for (const c of todos) {
-    const m = porEmpresa.get(c.empresaId) ?? { cod: new Map(), nome: new Map() }
-    for (const cod of [c.codigo, c.codigoAntigo]) {
-      if (!cod) continue
-      for (const k of new Set([limparCodigo(cod), semZerosEsquerda(limparCodigo(cod))])) m.cod.set(k, [...(m.cod.get(k) ?? []), c])
-    }
-    const n = norm(c.razaoSocial)
-    if (n.length >= 6) m.nome.set(n, [...(m.nome.get(n) ?? []), c])
+    const m = porEmpresa.get(c.empresaId) ?? new Map<string, Cli[]>()
+    for (const k of codigosSapDoCadastro(c)) m.set(k, [...(m.get(k) ?? []), c])
     porEmpresa.set(c.empresaId, m)
   }
-  const equivalentes = (empresaId: number, codigo: string, nome: string): Cli[] => {
-    const m = porEmpresa.get(empresaId)
-    if (!m) return []
-    const chaves = new Set([codigo, semZerosEsquerda(codigo), ...(antigosDoSap.get(codigo) ?? [])])
-    const achados = new Map<number, Cli>()
-    for (const k of chaves) for (const c of m.cod.get(k) ?? []) achados.set(c.id, c)
-    // Mesmo nome só junta se o outro cadastro não for OUTRO cliente do SAP:
-    // a Confiança Pneumática tem C001306 (Santarém-PA) e C001307 (Várzea
-    // Grande-MT) com a mesma razão social, e o pedido 9282 do MT caiu no card
-    // do PA (2026-11-12).
-    for (const c of m.nome.get(norm(nome)) ?? []) {
-      const cod = limparCodigo(c.codigo)
-      if (/^C\d{4,}$/i.test(cod) && cod !== codigo && !(antigosDoSap.get(codigo)?.has(cod))) continue
-      achados.set(c.id, c)
-    }
-    return [...achados.values()]
+  const equivalentes = (empresaId: number, codigo: string, _nome: string): Cli[] => {
+    const k = codigoSap(codigo)
+    return k ? (porEmpresa.get(empresaId)?.get(k) ?? []) : []
   }
 
   // Garantia (João, 2026-11-03): vendedor "GARANTIA…" no SAP. Não vira venda

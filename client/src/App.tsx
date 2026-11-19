@@ -11,6 +11,7 @@ import ClienteNovo from './pages/ClienteNovo'
 import ClienteDetail from './pages/ClienteDetail'
 import BoletosCarteira from './pages/BoletosCarteira'
 import ConferenciaSap from './pages/ConferenciaSap'
+import PedidosTrocados from './pages/PedidosTrocados'
 import Cotacoes from './pages/Cotacoes'
 import ClientesSap from './pages/ClientesSap'
 import Prospeccao from './pages/Prospeccao'
@@ -324,6 +325,7 @@ export default function App() {
           <Route path="admin/clientes" element={<AdminGuard><FeatureGuard feature="clientes"><Clientes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/boletos-carteira" element={<AdminGuard><BoletosCarteira /></AdminGuard>} />
           <Route path="admin/conferencia-sap" element={<AdminGuard><ConferenciaSap /></AdminGuard>} />
+          <Route path="admin/pedidos-trocados" element={<AdminGuard><FeatureGuard feature="pedidos_trocados"><PedidosTrocados /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cotacoes" element={<AdminGuard><FeatureGuard feature="cotacoes"><Cotacoes /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cadastro-clientes" element={<AdminGuard><FeatureGuard feature="cadastro_cliente_sap"><CadastroClientesSap /></FeatureGuard></AdminGuard>} />
           <Route path="admin/aprovacao-cadastros" element={<AdminGuard><FeatureGuard feature="aprovacao_cadastro_cliente"><AprovacaoCadastros /></FeatureGuard></AdminGuard>} />
