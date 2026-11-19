@@ -15,6 +15,7 @@ import { verificarVendedoresNovosSap } from './sapVendedoresNovos.js'
 import { sincronizarEstoqueSap } from './sapEstoque.js'
 import { sincronizarCatalogoSap } from './sapCatalogo.js'
 import { sincronizarNfRapida } from './sapNfRapida.js'
+import { sincronizarNfOrdensOdin } from './sapNfOrdensOdin.js'
 import { sincronizarIsentosSap } from './sapIsentos.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
@@ -80,6 +81,29 @@ export async function rodarNfRapidaSap(): Promise<void> {
     console.error('[sap-nf-rapida] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoNfRapida = false
+  }
+}
+
+// NF do SAP na aba Faturamento dos Pedidos da Odin Compressores
+// (lib/sapNfOrdensOdin.ts, João 2026-11-19): de minuto em minuto lê as notas
+// de ontem/hoje da filial 1 (mesmo horário da NF rápida); de meia em meia
+// hora, 120 dias (pega NF antiga quando o nº do pedido foi digitado depois).
+let rodandoNfOrdens = false
+
+export async function rodarNfOrdensOdinSap(dias = 1): Promise<void> {
+  if (dias <= 1) {
+    const br = new Date(Date.now() - 3 * 3600_000)
+    if (br.getUTCDay() === 0 || br.getUTCHours() < 7 || br.getUTCHours() >= 20) return
+  }
+  if (rodandoNfOrdens || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoNfOrdens = true
+  try {
+    const r = await sincronizarNfOrdensOdin(dias)
+    if (r.preenchidos) console.log(`[sap-nf-pedidos-odin] NF do SAP em ${r.preenchidos} pedido(s) da Odin Compressores`)
+  } catch (err) {
+    console.error('[sap-nf-pedidos-odin] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoNfOrdens = false
   }
 }
 

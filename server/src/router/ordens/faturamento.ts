@@ -1,8 +1,9 @@
 import { z } from 'zod'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { router, adminProcedure, adminOrFeatureProcedure } from '../_base.js'
 import { db } from '../../db/client.js'
-import { ordemFaturamento } from '../../db/schema.js'
+import { ordemDetalhes, ordemFaturamento, vendas } from '../../db/schema.js'
+import { lerNfSapOrdem, vinculoDaOrdem } from '../../lib/sapNfOrdensOdin.js'
 import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
@@ -12,6 +13,23 @@ export const ordensFaturamentoRouter = router({
     await assertEmpresaOrdens(ctx.empresaId)
     await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
     return db.query.ordemFaturamento.findFirst({ where: eq(ordemFaturamento.ordemId, input.ordemId) }) ?? null
+  }),
+
+  // NF do SAP deste pedido (lib/sapNfOrdensOdin.ts): as notas que o CRM achou
+  // no SAP + como o pedido se liga ao SAP (pra explicar quando a NF não vem).
+  obterSap: adminOrFeatureProcedure('pedidos_odin').input(z.object({ ordemId: z.number() })).query(async ({ ctx, input }) => {
+    await assertEmpresaOrdens(ctx.empresaId)
+    await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
+    const [detalhes, venda, guardada] = await Promise.all([
+      db.query.ordemDetalhes.findFirst({ where: eq(ordemDetalhes.ordemId, input.ordemId), columns: { numeroPedido: true } }),
+      db.query.vendas.findFirst({ where: and(eq(vendas.convertidoParaOrdemId, input.ordemId), isNull(vendas.deletedAt)), columns: { pedidoSapEntry: true } }),
+      lerNfSapOrdem(input.ordemId),
+    ])
+    return {
+      nfs: guardada?.nfs ?? [],
+      vinculo: vinculoDaOrdem({ numeroPedido: detalhes?.numeroPedido, vendaEntry: venda?.pedidoSapEntry }),
+      numeroPedido: detalhes?.numeroPedido ?? null,
+    }
   }),
 
   atualizar: adminProcedure
