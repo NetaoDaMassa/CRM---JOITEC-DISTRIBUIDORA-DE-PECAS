@@ -18,6 +18,7 @@ import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
 import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarNfOrdensOdinSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap } from './sapAgendado.js'
 import { rodarRevisaoTrocados } from './pedidosTrocados.js'
+import { sincronizarTodasMarcas } from './marketingMeta.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
@@ -175,6 +176,17 @@ async function iniciarAvisoLeadsNovos() {
 }
 
 export function startScheduler() {
+  // Teste local com cópia do banco de produção: DESLIGAR_AGENDADOR=1 no .env
+  // impede que rotinas (SAP, PABX, cobrança, avisos…) falem com sistemas reais.
+  if (process.env.DESLIGAR_AGENDADOR === '1') {
+    console.log('[scheduler] DESLIGADO (DESLIGAR_AGENDADOR=1)')
+    return
+  }
+  // Módulo Marketing: Instagram das marcas direto da Meta, de hora em hora
+  // (sem token configurado não faz nada).
+  cron.schedule('33 * * * *', () => {
+    sincronizarTodasMarcas().then((r) => r && console.log(`[marketing-meta] ${r}`)).catch((err) => console.error('[marketing-meta] erro:', err))
+  })
   // Roda a cada hora — idempotente (só cria o que falta), então não tem
   // problema rodar de novo sem nada ter mudado.
   cron.schedule('0 * * * *', () => {

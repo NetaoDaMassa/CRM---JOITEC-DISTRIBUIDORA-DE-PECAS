@@ -5605,3 +5605,136 @@ export const cobrancaContatos = sqliteTable(
     ligacaoIdx: index('idx_cobranca_contatos_ligacao').on(t.pabxLigacaoId),
   })
 )
+
+// ---------------------------------------------------------------------------
+// Módulo Marketing (0176) — planejamento de conteúdo, revisão por IA,
+// persona/SWOT e Instagram via Graph API. Ver router/marketingModulo.ts.
+export const mktPlanos = sqliteTable('mkt_planos', {
+  id: text('id').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  mes: text('mes').notNull(),
+  dados: text('dados').notNull().default('{}'),
+  atualizadoPor: integer('atualizado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ uqEmpresaMes: uniqueIndex('uq_mkt_planos_empresa_mes').on(t.empresaId, t.mes) }))
+
+export const mktPecas = sqliteTable('mkt_pecas', {
+  id: text('id').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  planoId: text('plano_id').notNull().references(() => mktPlanos.id, { onDelete: 'cascade' }),
+  data: text('data'),
+  hora: text('hora'),
+  tipo: text('tipo').notNull().default('Vídeo'),
+  pilar: text('pilar'),
+  titulo: text('titulo').notNull().default(''),
+  gancho: text('gancho').notNull().default(''),
+  cta: text('cta').notNull().default(''),
+  canais: text('canais').notNull().default('[]'),
+  status: text('status').notNull().default('Ideia'),
+  roteiro: text('roteiro').notNull().default(''),
+  legenda: text('legenda').notNull().default(''),
+  obs: text('obs').notNull().default(''),
+  analise: text('analise'),
+  aprovadoEm: text('aprovado_em'),
+  aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ empresaData: index('idx_mkt_pecas_empresa_data').on(t.empresaId, t.data), plano: index('idx_mkt_pecas_plano').on(t.planoId) }))
+
+export const mktIdeias = sqliteTable('mkt_ideias', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  url: text('url').notNull().default(''),
+  nota: text('nota').notNull().default(''),
+  status: text('status').notNull().default('nova'),
+  usadaEm: text('usada_em'),
+  autorId: integer('autor_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ empresa: index('idx_mkt_ideias_empresa').on(t.empresaId, t.status) }))
+
+export const mktAnalises = sqliteTable('mkt_analises', {
+  chave: text('chave').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  tipo: text('tipo').notNull(),
+  mes: text('mes'),
+  texto: text('texto').notNull().default(''),
+  dados: text('dados'),
+  autorId: integer('autor_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ empresa: index('idx_mkt_analises_empresa').on(t.empresaId, t.tipo) }))
+
+export const mktPerfis = sqliteTable('mkt_perfis', {
+  empresaId: integer('empresa_id').primaryKey().references(() => empresas.id),
+  personas: text('personas').notNull().default('[]'),
+  swot: text('swot').notNull().default('{}'),
+  concorrentes: text('concorrentes').notNull().default('[]'),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const mktIgContas = sqliteTable('mkt_ig_contas', {
+  empresaId: integer('empresa_id').primaryKey().references(() => empresas.id),
+  pageId: text('page_id').notNull(),
+  pageNome: text('page_nome'),
+  igUserId: text('ig_user_id').notNull(),
+  username: text('username'),
+  pageToken: text('page_token'),
+  ultimoSync: text('ultimo_sync'),
+  ultimoErro: text('ultimo_erro'),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const mktIgMidias = sqliteTable('mkt_ig_midias', {
+  id: text('id').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  tipo: text('tipo').notNull(),
+  mediaType: text('media_type'),
+  permalink: text('permalink'),
+  legenda: text('legenda').notNull().default(''),
+  publicadoEm: text('publicado_em').notNull(),
+  data: text('data').notNull(),
+  views: integer('views').notNull().default(0),
+  alcance: integer('alcance').notNull().default(0),
+  curtidas: integer('curtidas').notNull().default(0),
+  comentarios: integer('comentarios').notNull().default(0),
+  compartilhamentos: integer('compartilhamentos').notNull().default(0),
+  salvos: integer('salvos').notNull().default(0),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ empresaData: index('idx_mkt_ig_midias_empresa_data').on(t.empresaId, t.data) }))
+
+export const mktIgComentarios = sqliteTable('mkt_ig_comentarios', {
+  id: text('id').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  midiaId: text('midia_id').notNull(),
+  usuario: text('usuario'),
+  texto: text('texto').notNull().default(''),
+  publicadoEm: text('publicado_em').notNull(),
+  respondido: integer('respondido', { mode: 'boolean' }).notNull().default(false),
+  daMarca: integer('da_marca', { mode: 'boolean' }).notNull().default(false),
+}, (t) => ({ empresa: index('idx_mkt_ig_coment_empresa').on(t.empresaId, t.publicadoEm) }))
+
+export const mktIgConversas = sqliteTable('mkt_ig_conversas', {
+  id: text('id').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  contato: text('contato'),
+  ultimaMensagem: text('ultima_mensagem').notNull().default(''),
+  ultimaEm: text('ultima_em').notNull(),
+  ultimaDoCliente: integer('ultima_do_cliente', { mode: 'boolean' }).notNull().default(false),
+  mensagens: text('mensagens').notNull().default('[]'),
+}, (t) => ({ empresa: index('idx_mkt_ig_conversas_empresa').on(t.empresaId, t.ultimaEm) }))
+
+export const mktIgSeguidores = sqliteTable('mkt_ig_seguidores', {
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  data: text('data').notNull(),
+  seguidores: integer('seguidores').notNull(),
+}, (t) => ({ pk: primaryKey({ columns: [t.empresaId, t.data] }) }))
+
+export const mktConcorrentesFotos = sqliteTable('mkt_concorrentes_fotos', {
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  handle: text('handle').notNull(),
+  data: text('data').notNull(),
+  seguidores: integer('seguidores'),
+  posts: integer('posts'),
+  midias: text('midias').notNull().default('[]'),
+  erro: text('erro'),
+}, (t) => ({ pk: primaryKey({ columns: [t.empresaId, t.handle, t.data] }) }))

@@ -131,6 +131,7 @@ export const CATALOGO: ItemCatalogo[] = [
   // Marketing
   { id: 'solicitar_design', area: 'Marketing', nome: 'Solicitar arte', niveis: { 2: ['solicitar_design'] } },
   { id: 'marketing_analytics', area: 'Marketing', nome: 'Analytics', niveis: { 1: ['marketing_analytics'] } },
+  { id: 'marketing', area: 'Marketing', nome: 'Marketing — planejamento, roteiros e Instagram', niveis: { 2: ['marketing'] } },
   { id: 'loja_rastreamento', area: 'Marketing', nome: 'Loja virtual — visitantes', empresas: ['compretec-loja-fisica', 'compretec-ecommerce'], niveis: { 1: ['loja_rastreamento'] } },
 
   // RH

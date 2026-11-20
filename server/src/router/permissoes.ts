@@ -88,6 +88,7 @@ export const FEATURES_ADMIN = [
   // pro admin também (o link em ADMIN_LINKS + rota /admin/faturamento-geral).
   'faturamento_geral',
   'marketing_analytics',
+  'marketing',
   // "Solicitar Arte" — mesma chave/tela de FEATURES_VENDEDOR. Por padrão só
   // vendedor via essa tela (pedido pra marketing), mas admin sem carteira
   // própria (ex: função Financeiro/Compras) às vezes também precisa pedir

@@ -1233,6 +1233,13 @@
       "when": 1795100700000,
       "tag": "0175_sap_itens_devolucoes",
       "breakpoints": true
+    },
+    {
+      "idx": 176,
+      "version": "6",
+      "when": 1795100800000,
+      "tag": "0176_marketing_modulo",
+      "breakpoints": true
     }
   ]
 }

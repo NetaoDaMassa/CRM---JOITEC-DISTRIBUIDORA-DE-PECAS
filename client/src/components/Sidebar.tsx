@@ -7,7 +7,7 @@ import {
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
-  Shuffle,
+  Shuffle, Clapperboard,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -165,6 +165,7 @@ export const ADMIN_LINKS = [
   { to: '/admin/vagas', label: 'Vagas', icon: Briefcase, feature: 'vagas' },
   { to: '/admin/candidatos', label: 'Candidatos', icon: Contact, feature: 'candidatos' },
   { to: '/admin/mensagens-rh', label: 'Mensagens (RH)', icon: MessageCircle, feature: 'mensagens_rh' },
+  { to: '/admin/marketing-modulo', label: 'Marketing', icon: Clapperboard, feature: 'marketing' },
   { to: '/admin/analytics', label: 'Analytics', icon: Activity, somenteEmpresas: EMPRESAS_ANALYTICS_MARKETING, feature: 'marketing_analytics' },
   // Módulo de Leads (site) — portado do CRM-GRUPO-ODIN, fase 1 do plano em
   // .claude/plans/stateful-soaring-moore.md.

@@ -92,6 +92,7 @@ import { negociacoesRouter } from './negociacoes.js'
 import { leadCampaignsRouter } from './leadCampaigns.js'
 import { avisoLeadsRouter } from './avisoLeads.js'
 import { marketingRouter } from './marketing.js'
+import { marketingModuloRouter } from './marketingModulo.js'
 import { router } from './_base.js'
 import { cotacoesCrmRouter } from './cotacoesCrm.js'
 import { cadastrosClientesRouter } from './cadastrosClientes.js'
@@ -191,6 +192,7 @@ export const appRouter = router({
   leadCampaigns: leadCampaignsRouter,
   avisoLeads: avisoLeadsRouter,
   marketing: marketingRouter,
+  marketingModulo: marketingModuloRouter,
   brevo: brevoRouter,
   expedicao: expedicaoRouter,
   lojaRastreamento: lojaRastreamentoRouter,
