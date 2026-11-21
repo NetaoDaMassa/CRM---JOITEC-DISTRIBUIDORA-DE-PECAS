@@ -19,12 +19,22 @@ const VERSAO = process.env.META_GRAPH_VERSION || 'v23.0'
 const BASE = `https://graph.facebook.com/${VERSAO}`
 const CHAVE_TOKEN = 'mkt_meta_token'
 
-export async function tokenSistema(): Promise<string | null> {
+// Uma chave por marca (cada empresa tem o seu portfólio na Meta — João,
+// 2026-11-21): mkt_meta_token_<empresaId>; a chave geral é só reserva.
+export async function tokenSistema(empresaId?: number): Promise<string | null> {
+  if (empresaId) {
+    const t = await getConfigTexto(`${CHAVE_TOKEN}_${empresaId}`)
+    if (t && t.trim()) return t.trim()
+  }
   const t = await getConfigTexto(CHAVE_TOKEN)
   return t && t.trim() ? t.trim() : null
 }
-export async function salvarTokenSistema(token: string) {
-  await setConfig(CHAVE_TOKEN, token.trim())
+export async function salvarTokenSistema(token: string, empresaId?: number) {
+  await setConfig(empresaId ? `${CHAVE_TOKEN}_${empresaId}` : CHAVE_TOKEN, token.trim())
+}
+export async function temTokenProprio(empresaId: number): Promise<boolean> {
+  const t = await getConfigTexto(`${CHAVE_TOKEN}_${empresaId}`)
+  return !!(t && t.trim())
 }
 
 type GraphErro = { message?: string; code?: number; error_subcode?: number; type?: string }
@@ -79,8 +89,8 @@ function isoSql(d: Date) {
 export type ContaDisponivel = { pageId: string; pageNome: string; igUserId: string; username: string | null; seguidores: number | null }
 
 // Páginas que o token enxerga e que têm Instagram profissional ligado.
-export async function listarContasDoToken(): Promise<ContaDisponivel[]> {
-  const token = await tokenSistema()
+export async function listarContasDoToken(empresaId?: number): Promise<ContaDisponivel[]> {
+  const token = await tokenSistema(empresaId)
   if (!token) throw new Error('Cole primeiro o token da Meta.')
   const paginas = await todasPaginas<any>('me/accounts', { fields: 'id,name,instagram_business_account{id,username,followers_count}', limit: '100' }, token)
   return paginas
@@ -89,7 +99,7 @@ export async function listarContasDoToken(): Promise<ContaDisponivel[]> {
 }
 
 export async function vincularConta(empresaId: number, pageId: string) {
-  const token = await tokenSistema()
+  const token = await tokenSistema(empresaId)
   if (!token) throw new Error('Cole primeiro o token da Meta.')
   const paginas = await todasPaginas<any>('me/accounts', { fields: 'id,name,access_token,instagram_business_account{id,username}', limit: '100' }, token)
   const p = paginas.find((x) => x.id === pageId)
@@ -127,7 +137,7 @@ export type ResultadoSync = { empresaId: number; midias: number; comentarios: nu
 export async function sincronizarEmpresa(empresaId: number, opts: { diasMidias?: number } = {}): Promise<ResultadoSync> {
   const conta = await db.query.mktIgContas.findFirst({ where: eq(mktIgContas.empresaId, empresaId) })
   if (!conta) throw new Error('Instagram desta marca ainda não foi ligado em Marketing → Conexões.')
-  const tokenSis = await tokenSistema()
+  const tokenSis = await tokenSistema(empresaId)
   const token = conta.pageToken || tokenSis
   if (!token) throw new Error('Token da Meta não configurado.')
   const avisos: string[] = []
@@ -204,7 +214,7 @@ export async function sincronizarConcorrentes(empresaId: number, forcar = false)
   const perfil = await db.query.mktPerfis.findFirst({ where: eq(mktPerfis.empresaId, empresaId) })
   const lista: { handle: string }[] = perfil ? JSON.parse(perfil.concorrentes || '[]') : []
   if (!conta || !lista.length) return 0
-  const token = conta.pageToken || (await tokenSistema())
+  const token = conta.pageToken || (await tokenSistema(empresaId))
   if (!token) return 0
   const hoje = hojeBR()
   let n = 0
@@ -232,8 +242,8 @@ export async function sincronizarConcorrentes(empresaId: number, forcar = false)
 
 // Roda de hora em hora pelo scheduler. Sem token configurado não faz nada.
 export async function sincronizarTodasMarcas(): Promise<string> {
-  if (!(await tokenSistema())) return ''
   const contas = await db.select().from(mktIgContas)
+  if (!contas.length) return ''
   const partes: string[] = []
   for (const c of contas) {
     try {

@@ -12,7 +12,7 @@ import { db } from '../db/client.js'
 import { mktPlanos, mktPecas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mktIgMidias, mktIgComentarios, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos } from '../db/schema.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, type TipoPedido } from '../lib/marketingIa.js'
-import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
+import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, temTokenProprio, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
 
 const FEATURE = 'marketing'
 const proc = featureProcedure(FEATURE)
@@ -215,18 +215,27 @@ export const marketingModuloRouter = router({
   // ---------- conexão com a Meta (super admin) ----------
   conexoes: superAdminProcedure.query(async () => {
     const contas = await db.select().from(mktIgContas)
-    return { temToken: !!(await tokenSistema()), contas: contas.map(({ pageToken: _t, ...c }) => c), hoje: hojeBR() }
+    const tokens: Record<number, boolean> = {}
+    for (const m of MARCAS) tokens[m.empresaId] = await temTokenProprio(m.empresaId)
+    return { temToken: !!(await tokenSistema()), tokens, contas: contas.map(({ pageToken: _t, ...c }) => c), hoje: hojeBR() }
   }),
-  salvarToken: superAdminProcedure.input(z.object({ token: z.string().min(20).max(2000) })).mutation(async ({ input }) => {
-    await salvarTokenSistema(input.token)
+  // Salva a chave da marca, testa e, se ela enxerga um Instagram só, já liga.
+  salvarToken: superAdminProcedure.input(z.object({ empresaId: marcaId, token: z.string().min(20).max(2000) })).mutation(async ({ input }) => {
+    await salvarTokenSistema(input.token, input.empresaId)
     try {
-      return { contas: await listarContasDoToken() }
+      const contas = await listarContasDoToken(input.empresaId)
+      let ligada: string | null = null
+      if (contas.length === 1) {
+        await vincularConta(input.empresaId, contas[0].pageId)
+        ligada = contas[0].username
+      }
+      return { contas, ligada }
     } catch (e) {
       throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message })
     }
   }),
-  contasDisponiveis: superAdminProcedure.query(async () => {
-    try { return await listarContasDoToken() } catch (e) { throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message }) }
+  contasDisponiveis: superAdminProcedure.input(z.object({ empresaId: marcaId })).query(async ({ input }) => {
+    try { return await listarContasDoToken(input.empresaId) } catch (e) { throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message }) }
   }),
   vincular: superAdminProcedure.input(z.object({ empresaId: marcaId, pageId: z.string() })).mutation(async ({ input }) => {
     try { await vincularConta(input.empresaId, input.pageId); return { ok: true } } catch (e) { throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message }) }
