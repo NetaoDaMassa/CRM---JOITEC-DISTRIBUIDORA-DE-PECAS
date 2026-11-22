@@ -175,7 +175,41 @@ function erroAmigavel(e: unknown): Error {
 }
 export const MODELO_IA = process.env.MARKETING_IA_MODELO || 'claude-sonnet-5-5'
 
+// OpenRouter (João, 2026-11-22): conta da Anthropic sem crédito. Com
+// OPENROUTER_API_KEY no .env a IA do marketing passa por lá (Claude Sonnet,
+// trocável por OPENROUTER_MODEL_MARKETING); sem ela, segue na Anthropic.
+async function chamarOpenRouter(prompt: string): Promise<string> {
+  let res: Response
+  try {
+    res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'X-Title': 'CRM - Marketing' },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL_MARKETING || 'anthropic/claude-sonnet-5.5',
+        max_tokens: 12000,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+      signal: AbortSignal.timeout(180_000),
+    })
+  } catch (e) {
+    console.error('[marketing-ia] falha de rede no OpenRouter:', e)
+    throw new Error('Não foi possível falar com a IA agora. Tente de novo em 1 minuto, ou use o modo "Copiar pedido".')
+  }
+  if (!res.ok) {
+    console.error('[marketing-ia] OpenRouter respondeu', res.status, (await res.text().catch(() => '')).slice(0, 500))
+    if (res.status === 401) throw new Error('A chave do OpenRouter do CRM é inválida. Use o modo "Copiar pedido" enquanto isso.')
+    if (res.status === 402) throw new Error('O OpenRouter está sem crédito. Coloque crédito em openrouter.ai → Credits, ou use o modo "Copiar pedido".')
+    if (res.status === 429 || res.status >= 500) throw new Error('A IA está ocupada agora. Tente de novo em 1 minuto, ou use o modo "Copiar pedido".')
+    throw new Error('Não foi possível falar com a IA agora. Use o modo "Copiar pedido".')
+  }
+  const json = (await res.json().catch(() => null)) as { choices?: Array<{ message?: { content?: string } }> } | null
+  const texto = String(json?.choices?.[0]?.message?.content ?? '').trim()
+  if (!texto) throw new Error('O Claude não devolveu texto.')
+  return texto
+}
+
 export async function chamarClaude(prompt: string): Promise<string> {
+  if (process.env.OPENROUTER_API_KEY) return chamarOpenRouter(prompt)
   try {
     const r = await obterCliente().messages.create({ model: MODELO_IA, max_tokens: 12000, messages: [{ role: 'user', content: prompt }] })
     const texto = r.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n').trim()

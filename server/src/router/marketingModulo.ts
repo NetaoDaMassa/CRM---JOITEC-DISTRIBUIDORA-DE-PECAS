@@ -292,7 +292,7 @@ export const marketingModuloRouter = router({
   }),
 
   // ---------- IA: 2 jeitos ----------
-  iaDisponivel: proc.query(() => ({ temChave: !!process.env.ANTHROPIC_API_KEY })),
+  iaDisponivel: proc.query(() => ({ temChave: !!(process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY) })),
   iaPedido: proc.input(z.object({ tipo: tipoPedido, params: paramsPedido })).mutation(async ({ input }) => {
     try { return await montarPedido(input.tipo as TipoPedido, input.params) } catch (e) { throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message }) }
   }),
