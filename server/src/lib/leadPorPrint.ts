@@ -104,6 +104,11 @@ export async function lerLeadDoPrint(params: {
   }
   conteudo.push({ type: 'text', text: instrucoes(params.nomeEmpresa, params.campanhas) })
 
+  // OpenRouter (pedido do João, 2026-11-22): a conta da Anthropic ficou sem
+  // crédito; com OPENROUTER_API_KEY no .env a leitura passa pelo OpenRouter.
+  // Sem ela, continua indo direto na Anthropic como antes.
+  if (process.env.OPENROUTER_API_KEY) return lerViaOpenRouter(params.imagens, params.texto, instrucoes(params.nomeEmpresa, params.campanhas))
+
   let response: Awaited<ReturnType<Anthropic['messages']['parse']>>
   try {
     response = await obterCliente().messages.parse({
@@ -122,4 +127,60 @@ export async function lerLeadDoPrint(params: {
     throw new Error('Não foi possível ler esse print automaticamente — preencha manualmente.')
   }
   return response.parsed_output as LeadLido
+}
+
+// ── OpenRouter ───────────────────────────────────────────────────────────
+// API no formato "chat/completions" (padrão OpenAI) com saída em JSON
+// travada no mesmo schema. Modelo padrão: Claude Haiku (barato, ~R$0,01/print); trocável por OPENROUTER_MODEL_LEAD_PRINT.
+async function lerViaOpenRouter(imagens: ImagemPrint[], texto: string | undefined, prompt: string): Promise<LeadLido> {
+  const partes: Array<Record<string, unknown>> = []
+  imagens.forEach((img, i) => {
+    if (imagens.length > 1) partes.push({ type: 'text', text: `Print ${i + 1}:` })
+    partes.push({ type: 'image_url', image_url: { url: `data:${img.mediaType};base64,${img.base64}` } })
+  })
+  if (texto?.trim()) {
+    partes.push({ type: 'text', text: `Texto da conversa (copiado/exportado do WhatsApp):\n<conversa>\n${texto.trim()}\n</conversa>` })
+  }
+  partes.push({ type: 'text', text: prompt })
+
+  const { $schema: _ignorado, ...schema } = z.toJSONSchema(LeadLidoSchema) as Record<string, unknown>
+  let res: Response
+  try {
+    res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        'Content-Type': 'application/json',
+        'X-Title': 'CRM - Lead por print',
+      },
+      body: JSON.stringify({
+        model: process.env.OPENROUTER_MODEL_LEAD_PRINT || 'anthropic/claude-haiku-5.5',
+        max_tokens: 8000,
+        messages: [{ role: 'user', content: partes }],
+        response_format: { type: 'json_schema', json_schema: { name: 'lead', strict: true, schema } },
+      }),
+      signal: AbortSignal.timeout(120_000),
+    })
+  } catch (e) {
+    console.error('[lead-por-print] falha de rede no OpenRouter:', e)
+    throw new Error('A leitura por IA está ocupada agora — tente de novo em alguns segundos.')
+  }
+  if (!res.ok) {
+    const corpo = await res.text().catch(() => '')
+    console.error('[lead-por-print] OpenRouter respondeu', res.status, corpo.slice(0, 500))
+    if (res.status === 401) throw new Error('Leitura por IA indisponível (chave do OpenRouter inválida) — preencha manualmente.')
+    if (res.status === 402) throw new Error('Leitura por IA sem crédito no OpenRouter — preencha manualmente e avise o gestor.')
+    if (res.status === 429 || res.status >= 500) throw new Error('A leitura por IA está ocupada agora — tente de novo em alguns segundos.')
+    throw new Error('Não foi possível ler esse print automaticamente — preencha manualmente.')
+  }
+  try {
+    const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> }
+    const conteudo = json.choices?.[0]?.message?.content ?? ''
+    const inicio = conteudo.indexOf('{')
+    const fim = conteudo.lastIndexOf('}')
+    return LeadLidoSchema.parse(JSON.parse(conteudo.slice(inicio, fim + 1)))
+  } catch (e) {
+    console.error('[lead-por-print] resposta do OpenRouter fora do formato:', e)
+    throw new Error('Não foi possível ler esse print automaticamente — preencha manualmente.')
+  }
 }

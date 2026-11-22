@@ -17,6 +17,9 @@ services:
       # Opcional — extração de itens do PDF do pedido via IA. Se vazio, o recurso
       # de extração automática fica desabilitado (o resto do CRM funciona normal).
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Opcional — se preenchida, o "Lead por print" usa o OpenRouter em vez da Anthropic.
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL_LEAD_PRINT: ${OPENROUTER_MODEL_LEAD_PRINT:-}
       # SAP Business One (Service Layer, só leitura) — URL/banco/usuário/senha
       # no .env do servidor. Sem isso a integração fica desligada sozinha.
       SAP_SL_URL: ${SAP_SL_URL:-}
