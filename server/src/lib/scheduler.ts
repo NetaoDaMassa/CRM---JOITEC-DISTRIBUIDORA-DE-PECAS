@@ -19,6 +19,7 @@ import { enviarVencidasAoCartorio } from './reguaCobranca.js'
 import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarNfOrdensOdinSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap } from './sapAgendado.js'
 import { rodarRevisaoTrocados } from './pedidosTrocados.js'
 import { sincronizarTodasMarcas } from './marketingMeta.js'
+import { gerarSemanaAgendado } from './marketingFluxo.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
@@ -184,6 +185,11 @@ export function startScheduler() {
   }
   // Módulo Marketing: Instagram das marcas direto da Meta, de hora em hora
   // (sem token configurado não faz nada).
+  // Marketing: toda segunda 6h10 cria as peças que faltam para a meta da
+  // semana (3 vídeos + 2 posts por marca). Desliga na aba Metas.
+  cron.schedule('10 6 * * 1', () => {
+    gerarSemanaAgendado().then((r) => r && console.log(`[marketing-semana] ${r}`)).catch((err) => console.error('[marketing-semana] erro:', err))
+  }, { timezone: 'America/Sao_Paulo' })
   cron.schedule('33 * * * *', () => {
     sincronizarTodasMarcas().then((r) => r && console.log(`[marketing-meta] ${r}`)).catch((err) => console.error('[marketing-meta] erro:', err))
   })

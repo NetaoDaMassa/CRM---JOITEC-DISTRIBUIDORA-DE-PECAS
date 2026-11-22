@@ -23,6 +23,7 @@ import { prospeccaoRouter } from './prospeccao.js'
 import { prospeccaoOdinRouter } from './prospeccaoOdin.js'
 import { aprovacoesRouter } from './aprovacoes.js'
 import { designRouter } from './design.js'
+import { marketingFluxoRouter } from './marketingFluxo.js'
 import { requisicaoPostoRouter } from './requisicaoPosto.js'
 import { liberacaoCreditoRouter } from './liberacaoCredito.js'
 import { solicitacaoCreditoRouter } from './solicitacaoCredito.js'
@@ -126,6 +127,7 @@ export const appRouter = router({
   prospeccaoOdin: prospeccaoOdinRouter,
   aprovacoes: aprovacoesRouter,
   design: designRouter,
+  marketingFluxo: marketingFluxoRouter,
   requisicaoPosto: requisicaoPostoRouter,
   suframa: suframaRouter,
   adiantamentoPix: adiantamentoPixRouter,

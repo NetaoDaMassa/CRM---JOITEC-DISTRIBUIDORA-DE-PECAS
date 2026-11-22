@@ -4,7 +4,7 @@
 // persona/SWOT, calendário, plano do mês e brainstorm).
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Target, ClipboardCheck, Radar, Building2, CalendarDays, Map, Lightbulb, Plug } from 'lucide-react'
+import { Target, ClipboardCheck, Radar, Building2, CalendarDays, Map, Lightbulb, Plug, KanbanSquare, Inbox } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import Button from '../../components/ui/Button'
@@ -16,12 +16,16 @@ import AbaCalendario from './marketing/AbaCalendario'
 import AbaPlano from './marketing/AbaPlano'
 import AbaBrainstorm from './marketing/AbaBrainstorm'
 import AbaConexoes from './marketing/AbaConexoes'
+import AbaQuadro from './marketing/AbaQuadro'
+import AbaPedidos from './marketing/AbaPedidos'
 import PecaModal, { type Peca } from './marketing/PecaModal'
 import { mesAtual, mesLongo, mesSomar } from './marketing/comum'
 
-type Aba = 'metas' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes'
+type Aba = 'metas' | 'quadro' | 'pedidos' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes'
 const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean; soSuper?: boolean }[] = [
   { id: 'metas', rotulo: 'Metas', icone: Target },
+  { id: 'quadro', rotulo: 'Quadro', icone: KanbanSquare },
+  { id: 'pedidos', rotulo: 'Pedidos', icone: Inbox },
   { id: 'revisao', rotulo: 'Revisão', icone: ClipboardCheck },
   { id: 'radar', rotulo: 'Radar', icone: Radar, porMarca: true },
   { id: 'empresa', rotulo: 'Empresa', icone: Building2, porMarca: true },
@@ -111,6 +115,8 @@ export default function MarketingModulo() {
       )}
 
       {aba === 'metas' && <AbaMetas mes={mes} marcas={listaMarcas} pecas={(pecasMes.data || []) as Peca[]} temPlano={(id) => (planos.data || []).some((p) => p.empresaId === id && p.mes === mes)} abrirPeca={setAberta} />}
+      {aba === 'quadro' && <AbaQuadro mes={mes} marcas={listaMarcas} pecas={(pecasMes.data || []) as Peca[]} abrirPeca={setAberta} />}
+      {aba === 'pedidos' && <AbaPedidos />}
       {aba === 'revisao' && <AbaRevisao mes={mes} marcas={listaMarcas} pecas={(pecasMes.data || []) as Peca[]} abrirPeca={setAberta} />}
       {aba === 'radar' && <AbaRadar empresaId={empresaId} nomeMarca={nomeMarca} mes={mes} plano={plano} />}
       {aba === 'empresa' && <AbaEmpresa empresaId={empresaId} nomeMarca={nomeMarca} mes={mes} />}

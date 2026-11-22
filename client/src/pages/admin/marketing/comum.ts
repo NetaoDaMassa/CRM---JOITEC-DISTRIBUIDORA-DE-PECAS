@@ -111,3 +111,22 @@ export const cls = {
   rotulo: 'text-[11px] font-semibold uppercase tracking-wider text-dark-400',
   titulo: 'text-lg font-bold text-dark-100',
 }
+
+// ---- Parte 2 (quadro, pedidos, aprovação) ----
+export const STATUS_DEMANDA = ['Novo', 'Em produção', 'Aprovação', 'Entregue', 'Recusado'] as const
+const FINAL = ['Agendado na mLabs', 'Publicado']
+export function atrasada(p: { data: string | null; status: string }) {
+  return !!p.data && p.data < hojeBR() && !FINAL.includes(p.status)
+}
+// Dias sem ninguém mexer (só conta peça que ainda não foi agendada).
+export function diasParada(p: { updatedAt?: string; status: string }) {
+  if (!p.updatedAt || FINAL.includes(p.status)) return 0
+  const d = new Date(p.updatedAt.replace(' ', 'T') + 'Z').getTime()
+  return Math.floor((Date.now() - d) / 86400000)
+}
+export function iniciais(nome?: string | null) {
+  return (nome || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((x) => x[0]!.toUpperCase()).join('')
+}
+export function nomeCurtoMarca(nome: string) {
+  return nome.replace('Odin Automação Pneumática', 'Odin Automação').replace('Odin Tubos e Conexões', 'Odin Tubos').replace('Joitec Distribuidora', 'Joitec')
+}

@@ -5638,6 +5638,11 @@ export const mktPecas = sqliteTable('mkt_pecas', {
   analise: text('analise'),
   aprovadoEm: text('aprovado_em'),
   aprovadoPor: integer('aprovado_por').references(() => users.id, { onDelete: 'set null' }),
+  // 0177: quadro por etapa, peças automáticas da semana e link do arquivo final.
+  responsavelId: integer('responsavel_id').references(() => users.id, { onDelete: 'set null' }),
+  checklist: text('checklist').notNull().default('[]'),
+  origem: text('origem').notNull().default('manual'),
+  linkMidia: text('link_midia').notNull().default(''),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({ empresaData: index('idx_mkt_pecas_empresa_data').on(t.empresaId, t.data), plano: index('idx_mkt_pecas_plano').on(t.planoId) }))
@@ -5738,3 +5743,42 @@ export const mktConcorrentesFotos = sqliteTable('mkt_concorrentes_fotos', {
   midias: text('midias').notNull().default('[]'),
   erro: text('erro'),
 }, (t) => ({ pk: primaryKey({ columns: [t.empresaId, t.handle, t.data] }) }))
+
+// Marketing parte 2 (0177) — comentários/aprovações da peça, links de
+// aprovação sem login e pedidos de outros setores ao marketing.
+export const mktPecaComentarios = sqliteTable('mkt_peca_comentarios', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  pecaId: text('peca_id').notNull().references(() => mktPecas.id, { onDelete: 'cascade' }),
+  tipo: text('tipo').notNull().default('comentario'), // comentario | aprovado | ajuste
+  autorNome: text('autor_nome').notNull().default(''),
+  autorId: integer('autor_id').references(() => users.id, { onDelete: 'set null' }),
+  texto: text('texto').notNull().default(''),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ peca: index('idx_mkt_peca_comentarios_peca').on(t.pecaId) }))
+
+export const mktAprovLinks = sqliteTable('mkt_aprov_links', {
+  token: text('token').primaryKey(),
+  titulo: text('titulo').notNull().default(''),
+  pecaIds: text('peca_ids').notNull().default('[]'),
+  criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+  expiraEm: text('expira_em').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+})
+
+export const mktDemandas = sqliteTable('mkt_demandas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').references(() => empresas.id),
+  solicitanteId: integer('solicitante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  titulo: text('titulo').notNull(),
+  descricao: text('descricao').notNull().default(''),
+  tipo: text('tipo').notNull().default('Arte'),
+  prioridade: text('prioridade').notNull().default('Normal'),
+  prazo: text('prazo'),
+  status: text('status').notNull().default('Novo'),
+  responsavelId: integer('responsavel_id').references(() => users.id, { onDelete: 'set null' }),
+  linkEntrega: text('link_entrega').notNull().default(''),
+  resposta: text('resposta').notNull().default(''),
+  concluidoEm: text('concluido_em'),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ status: index('idx_mkt_demandas_status').on(t.status) }))

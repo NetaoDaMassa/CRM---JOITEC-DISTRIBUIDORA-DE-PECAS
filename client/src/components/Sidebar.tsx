@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck, MousePointerClick,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
-  Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
+  Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
@@ -182,6 +182,7 @@ export const ADMIN_LINKS = [
   // já é protectedProcedure, sem distinção de role), só precisava do link +
   // rota. Concedido manualmente (não é livre igual 'arquivos').
   { to: '/admin/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
+  { to: '/admin/pedir-marketing', label: 'Pedir ao marketing', icon: Send, feature: 'solicitar_design' },
   // Cross-empresa por design (mesmo padrão de painel_financeiro): quem tem
   // a permissão vê/lança pra TODAS as empresas do grupo, não só a ativa —
   // Financeiro/Compras precisa da visão do grupo inteiro. Pedido do João,
@@ -266,6 +267,7 @@ export const VENDOR_LINKS = [
   // dentro da página, os relatorio_* controlam aba por aba, igual antes.
   { to: '/vendedor/relatorios', label: 'Relatórios', icon: BarChart3, end: true, feature: 'relatorios' },
   { to: '/vendedor/solicitar-design', label: 'Solicitar Arte', icon: Palette, feature: 'solicitar_design' },
+  { to: '/vendedor/pedir-marketing', label: 'Pedir ao marketing', icon: Send, feature: 'solicitar_design' },
   // Resultado por frente (externos/leads/peças) — pedido do João, 2026-10-23.
   { to: '/vendedor/resultados-odin', label: 'Resultados Odin', icon: TrendingUp, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'dashboard_odin' },
   // Era "Dashboard Odin" — é o controle operacional de pedidos/propostas/expedição.

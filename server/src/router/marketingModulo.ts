@@ -12,6 +12,7 @@ import { db } from '../db/client.js'
 import { mktPlanos, mktPecas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mktIgMidias, mktIgComentarios, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos } from '../db/schema.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, type TipoPedido } from '../lib/marketingIa.js'
+import { PILARES_PADRAO, checklistPadrao } from '../lib/marketingFluxo.js'
 import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, temTokenProprio, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
 
 const FEATURE = 'marketing'
@@ -33,11 +34,8 @@ function planoId(empresaId: number, mes: string) {
   return `${empresaId}-${mes}`
 }
 function pecaSaida(p: typeof mktPecas.$inferSelect) {
-  return { ...p, canais: j<string[]>(p.canais, []), analise: j<any>(p.analise, null) }
+  return { ...p, canais: j<string[]>(p.canais, []), analise: j<any>(p.analise, null), checklist: j<{ t: string; ok: boolean }[]>(p.checklist, []) }
 }
-
-const PILARES_PADRAO = [['Produto', 'azul', 'Produto em destaque para vender'], ['Resolver', 'laranja', 'Dor do cliente → produto'], ['Provar', 'verde', 'Mostrar que funciona de verdade'], ['Conectar', 'roxo', 'Pessoas e cultura do grupo'], ['Leveza', 'amarelo', 'Humor de chão de fábrica']]
-  .map(([nome, cor, desc], i) => ({ id: `p${i + 1}`, nome, cor, desc, estrategias: [], formatos: [], canais: [], metricas: [] }))
 
 const pecaCampos = z.object({
   data: z.string().nullable().optional(),
@@ -52,6 +50,9 @@ const pecaCampos = z.object({
   roteiro: z.string().max(20000).optional(),
   legenda: z.string().max(5000).optional(),
   obs: z.string().max(3000).optional(),
+  responsavelId: z.number().int().nullable().optional(),
+  checklist: z.array(z.object({ t: z.string().max(200), ok: z.boolean() })).max(30).optional(),
+  linkMidia: z.string().max(2000).optional(),
 })
 
 const tipoPedido = z.enum(['revisao', 'criar', 'reescrever', 'instagram', 'mes', 'directs', 'ideias', 'persona'])
@@ -108,15 +109,16 @@ export const marketingModuloRouter = router({
     const pl = await db.query.mktPlanos.findFirst({ where: eq(mktPlanos.id, input.planoId) })
     if (!pl) throw new TRPCError({ code: 'NOT_FOUND', message: 'Plano não encontrado.' })
     const id = crypto.randomUUID()
-    const { canais, planoId: _p, ...resto } = input
-    await db.insert(mktPecas).values({ id, empresaId: pl.empresaId, planoId: pl.id, ...resto, canais: JSON.stringify(canais || []) })
+    const { canais, checklist, planoId: _p, ...resto } = input
+    await db.insert(mktPecas).values({ id, empresaId: pl.empresaId, planoId: pl.id, ...resto, canais: JSON.stringify(canais || []), checklist: JSON.stringify(checklist || checklistPadrao(input.tipo || 'Vídeo')) })
     const p = await db.query.mktPecas.findFirst({ where: eq(mktPecas.id, id) })
     return pecaSaida(p!)
   }),
   salvarPeca: proc.input(pecaCampos.extend({ id: z.string() })).mutation(async ({ input }) => {
-    const { id, canais, ...resto } = input
+    const { id, canais, checklist, ...resto } = input
     const set: Record<string, unknown> = { ...resto, updatedAt: agoraSql() }
     if (canais) set.canais = JSON.stringify(canais)
+    if (checklist) set.checklist = JSON.stringify(checklist)
     const r = await db.update(mktPecas).set(set).where(eq(mktPecas.id, id)).returning({ id: mktPecas.id })
     if (!r.length) throw new TRPCError({ code: 'NOT_FOUND', message: 'Peça não encontrada.' })
     return { ok: true }

@@ -5,13 +5,43 @@ import { trpc } from '../../../lib/trpc'
 import Modal from '../../../components/ui/Modal'
 import Button from '../../../components/ui/Button'
 import IaAcao from './IaAcao'
-import { CANAIS, CANAIS_P, CANAIS_V, MODELO_P, MODELO_V, STATUS, cls, rotHash } from './comum'
+import LinkAprovacao from './LinkAprovacao'
+import { CANAIS, CANAIS_P, CANAIS_V, MODELO_P, MODELO_V, STATUS, cls, dataHora, nomeCurtoMarca, rotHash } from './comum'
 
 export type Peca = {
   id: string; empresaId: number; planoId: string; data: string | null; hora: string | null; tipo: string; pilar: string | null
   titulo: string; gancho: string; cta: string; canais: string[]; status: string; roteiro: string; legenda: string; obs: string; analise: any
+  responsavelId?: number | null; checklist?: { t: string; ok: boolean }[]; origem?: string; linkMidia?: string; updatedAt?: string
 }
 type Pilar = { id: string; nome: string; cor?: string; desc?: string }
+
+function paraSalvar(x: Peca) {
+  const { id, data, hora, tipo, pilar, titulo, gancho, cta, canais, status, roteiro, legenda, obs, responsavelId, checklist, linkMidia } = x
+  return { id, data: data || null, hora: hora || null, tipo: tipo as 'Vídeo' | 'Post', pilar, titulo, gancho, cta, canais, status, roteiro, legenda, obs, responsavelId: responsavelId ?? null, checklist: checklist || [], linkMidia: linkMidia || '' }
+}
+
+function Comentarios({ pecaId }: { pecaId: string }) {
+  const utils = trpc.useUtils()
+  const q = trpc.marketingFluxo.comentarios.useQuery({ pecaId })
+  const [t, setT] = useState('')
+  const enviar = trpc.marketingFluxo.comentar.useMutation({ onSuccess: () => { setT(''); utils.marketingFluxo.comentarios.invalidate({ pecaId }); utils.marketingFluxo.ultimosRetornos.invalidate() }, onError: (e) => toast.error(e.message) })
+  const icone: Record<string, string> = { aprovado: '✅', ajuste: '✏️', comentario: '💬' }
+  return (
+    <div className="space-y-2">
+      <span className={cls.rotulo}>Comentários e aprovações</span>
+      <div className="flex gap-2">
+        <input className={cls.input} placeholder="Escreva um comentário para a equipe…" value={t} onChange={(e) => setT(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && t.trim()) enviar.mutate({ pecaId, texto: t }) }} />
+        <Button size="sm" onClick={() => enviar.mutate({ pecaId, texto: t })} disabled={!t.trim()} loading={enviar.isPending}>Enviar</Button>
+      </div>
+      {(q.data || []).map((c) => (
+        <div key={c.id} className={`text-sm rounded-lg px-3 py-2 ${c.tipo === 'ajuste' ? 'bg-yellow-900/20 border border-yellow-800/40' : c.tipo === 'aprovado' ? 'bg-green-900/20 border border-green-800/40' : 'bg-dark-900/60'}`}>
+          <div className="text-xs text-dark-400">{icone[c.tipo] || '💬'} <b className="text-dark-200">{c.autorNome}</b> · {dataHora(c.createdAt)}{c.tipo === 'aprovado' ? ' · aprovou pelo link' : c.tipo === 'ajuste' ? ' · pediu ajuste pelo link' : ''}</div>
+          {c.texto && <div className="text-dark-100 whitespace-pre-wrap">{c.texto}</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
 
 export function AnaliseBox({ a, peca }: { a: any; peca: Peca }) {
   if (!a) return <p className="text-sm text-dark-400">Sem revisão do Claude ainda.</p>
@@ -35,6 +65,10 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
   const salvar = trpc.marketingModulo.salvarPeca.useMutation({ onSuccess: () => { setSalvo(true); utils.marketingModulo.pecas.invalidate() }, onError: (e) => toast.error(e.message) })
   const excluir = trpc.marketingModulo.excluirPeca.useMutation({ onSuccess: () => { utils.marketingModulo.pecas.invalidate(); onClose() } })
   const [confirmaExcluir, setConfirmaExcluir] = useState(false)
+  const [linkAberto, setLinkAberto] = useState(false)
+  const [novoItem, setNovoItem] = useState('')
+  const equipe = trpc.marketingFluxo.equipe.useQuery()
+  const marcas = trpc.marketingModulo.marcas.useQuery()
   useEffect(() => { setP(peca); setSalvo(true) }, [peca?.id])
 
   if (!p) return null
@@ -44,15 +78,13 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
     setSalvo(false)
     clearTimeout(timer.current)
     timer.current = setTimeout(() => {
-      const { id, data, hora, tipo, pilar, titulo, gancho, cta, canais, status, roteiro, legenda, obs } = novo
-      salvar.mutate({ id, data: data || null, hora: hora || null, tipo: tipo as 'Vídeo' | 'Post', pilar, titulo, gancho, cta, canais, status, roteiro, legenda, obs })
+      salvar.mutate(paraSalvar(novo))
     }, 700)
   }
   const fechar = () => {
     if (!salvo) {
       clearTimeout(timer.current)
-      const { id, data, hora, tipo, pilar, titulo, gancho, cta, canais, status, roteiro, legenda, obs } = p
-      salvar.mutate({ id, data: data || null, hora: hora || null, tipo: tipo as 'Vídeo' | 'Post', pilar, titulo, gancho, cta, canais, status, roteiro, legenda, obs })
+      salvar.mutate(paraSalvar(p))
     }
     onClose()
   }
@@ -68,6 +100,23 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
           {campo('Tipo', <select className={cls.input} value={p.tipo} onChange={(e) => mudar({ tipo: e.target.value })}><option>Vídeo</option><option>Post</option></select>)}
           {campo('Pilar', <select className={cls.input} value={p.pilar || ''} onChange={(e) => mudar({ pilar: e.target.value })}><option value="">—</option>{pilares.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}</select>)}
           {campo('Status', <select className={cls.input} value={p.status} onChange={(e) => mudar({ status: e.target.value })}>{STATUS.map((s) => <option key={s}>{s}</option>)}</select>)}
+        </div>
+        <div className="grid md:grid-cols-[220px_1fr] gap-3">
+          {campo('Responsável', <select className={cls.input} value={p.responsavelId ?? ''} onChange={(e) => mudar({ responsavelId: e.target.value ? Number(e.target.value) : null })}><option value="">—</option>{(equipe.data || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</select>)}
+          {campo('Link do vídeo / arte pronta (Drive, Mídia…)', <input className={cls.input} placeholder="Cole o link para quem for aprovar ver" value={p.linkMidia || ''} onChange={(e) => mudar({ linkMidia: e.target.value })} />)}
+        </div>
+        <div className="space-y-1">
+          <span className={cls.rotulo}>Checklist</span>
+          <div className="flex flex-wrap gap-2 items-center">
+            {(p.checklist || []).map((c, i) => (
+              <span key={i} className={`group text-xs px-2.5 py-1 rounded-full border cursor-pointer select-none ${c.ok ? 'bg-green-900/40 border-green-700 text-green-200 line-through' : 'border-dark-600 text-dark-200'}`}
+                onClick={() => mudar({ checklist: (p.checklist || []).map((x, j) => (j === i ? { ...x, ok: !x.ok } : x)) })}>
+                {c.ok ? '☑' : '☐'} {c.t}
+                <button className="ml-1 text-dark-500 hover:text-red-400 hidden group-hover:inline" onClick={(e) => { e.stopPropagation(); mudar({ checklist: (p.checklist || []).filter((_, j) => j !== i) }) }}>×</button>
+              </span>))}
+            <input className="bg-transparent border-b border-dashed border-dark-600 text-xs text-dark-200 px-1 py-0.5 outline-none w-32" placeholder="+ item" value={novoItem} onChange={(e) => setNovoItem(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && novoItem.trim()) { mudar({ checklist: [...(p.checklist || []), { t: novoItem.trim(), ok: false }] }); setNovoItem('') } }} />
+          </div>
         </div>
         <div className="space-y-1">
           <div className="flex items-center justify-between"><span className={cls.rotulo}>Canais</span><button className="text-xs text-gold-400 hover:underline" onClick={() => mudar({ canais: p.tipo === 'Post' ? [...CANAIS_P] : [...CANAIS_V] })}>Canais padrão do tipo</button></div>
@@ -102,6 +151,15 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
         {campo('Legenda e hashtags', <textarea className={cls.input} rows={4} value={p.legenda} onChange={(e) => mudar({ legenda: e.target.value })} />)}
         {campo('CTA', <input className={cls.input} value={p.cta} onChange={(e) => mudar({ cta: e.target.value })} />)}
         {campo('Observações', <textarea className={cls.input} rows={2} value={p.obs} onChange={(e) => mudar({ obs: e.target.value })} />)}
+        <div className="bg-dark-900/60 border border-dark-700 rounded-xl p-3 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-sm text-dark-300">Precisa da aprovação de alguém? Gere um link e mande no WhatsApp.</span>
+            <Button size="sm" onClick={() => setLinkAberto(true)}>Link de aprovação desta peça</Button>
+          </div>
+          <Comentarios pecaId={p.id} />
+        </div>
+        <LinkAprovacao open={linkAberto} onClose={() => setLinkAberto(false)} pecas={[p]} preSelecionadas={[p.id]} tituloPadrao={`Aprovação · ${p.titulo.slice(0, 60)}`}
+          nomeMarca={(id) => nomeCurtoMarca(marcas.data?.find((m) => m.empresaId === id)?.nome || '')} />
         <div className="flex items-center justify-between pt-2 border-t border-dark-700">
           {confirmaExcluir ? (
             <span className="flex gap-2"><Button variant="danger" size="sm" onClick={() => excluir.mutate({ id: p.id })}>Confirmar exclusão</Button><Button size="sm" variant="ghost" onClick={() => setConfirmaExcluir(false)}>Cancelar</Button></span>

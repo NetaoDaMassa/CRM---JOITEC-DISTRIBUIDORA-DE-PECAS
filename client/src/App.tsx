@@ -92,6 +92,8 @@ import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import Chat from './pages/Chat'
 import FilaPosVenda from './pages/FilaPosVenda'
 import PesquisaPosVenda from './pages/PesquisaPosVenda'
+import AprovarPecas from './pages/AprovarPecas'
+import PedirMarketing from './pages/PedirMarketing'
 import PainelTV from './pages/PainelTV'
 import PainelFinanceiro from './pages/PainelFinanceiro'
 import PainelTvOdin from './pages/PainelTvOdin'
@@ -238,6 +240,7 @@ export default function App() {
         <Route path="/devolucao/acompanhar" element={<DevolucaoAcompanhar />} />
         {/* Pesquisa de satisfação do Pós-venda (Odin) — link mandado pro cliente. */}
         <Route path="/pesquisa/:token" element={<PesquisaPosVenda />} />
+        <Route path="/aprovar/:token" element={<AprovarPecas />} />
         <Route
           path="/painel-tv"
           element={
@@ -380,6 +383,7 @@ export default function App() {
           <Route path="admin/integracao-brevo" element={<AdminGuard><FeatureGuard feature="leads"><IntegracaoBrevo /></FeatureGuard></AdminGuard>} />
           <Route path="admin/integracao-instagram" element={<AdminGuard><FeatureGuard feature="leads"><IntegracaoInstagram /></FeatureGuard></AdminGuard>} />
           <Route path="admin/arquivos" element={<AdminGuard><FeatureGuard feature="arquivos"><MarketingArquivos /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/pedir-marketing" element={<AdminGuard><PedirMarketing /></AdminGuard>} />
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
           <Route path="admin/controle-suframa" element={<AdminGuard><FeatureGuard feature="controle_suframa"><ControleSuframa /></FeatureGuard></AdminGuard>} />
@@ -448,6 +452,7 @@ export default function App() {
           <Route path="vendedor/faturamento-geral" element={<FaturamentoGeral />} />
           <Route path="vendedor/calendario" element={<VendorCalendario />} />
           <Route path="vendedor/solicitar-design" element={<SolicitarDesign />} />
+          <Route path="vendedor/pedir-marketing" element={<PedirMarketing />} />
           <Route path="vendedor/cartao-credito" element={<CartaoCredito />} />
           <Route path="vendedor/solicitacao-credito" element={<SolicitacaoCreditoVendor />} />
           <Route path="vendedor/link-pagamento" element={<LinkPagamentoVendor />} />
