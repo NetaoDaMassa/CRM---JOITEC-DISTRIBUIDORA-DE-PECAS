@@ -6,7 +6,7 @@
 // O super admin também pode colar o pacote em Marketing → Conexões.
 import crypto from 'crypto'
 import { z } from 'zod'
-import { and, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, ne, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { mktAnalises, mktRedesPosts, mktRedesResumo } from '../db/schema.js'
 import { marca } from './marketingIa.js'
@@ -61,6 +61,10 @@ export async function importarMlabs(bruto: unknown) {
     }
     // id da mLabs pode repetir entre redes — prefixa com a rede.
     const id = `${x.rede}:${x.id}`.slice(0, 240)
+    // O mesmo post pode chegar com outro id (robô x importação manual):
+    // reconhece pelo link ou pela data/hora de publicação na mesma rede.
+    await db.delete(mktRedesPosts).where(and(eq(mktRedesPosts.empresaId, p.empresaId), eq(mktRedesPosts.rede, x.rede), ne(mktRedesPosts.id, id),
+      x.link ? or(eq(mktRedesPosts.link, x.link), eq(mktRedesPosts.publicadoEm, x.data)) : eq(mktRedesPosts.publicadoEm, x.data)))
     await db.insert(mktRedesPosts).values({ id, ...v }).onConflictDoUpdate({ target: mktRedesPosts.id, set: v })
   }
   if (p.melhoresHorarios?.length) {
