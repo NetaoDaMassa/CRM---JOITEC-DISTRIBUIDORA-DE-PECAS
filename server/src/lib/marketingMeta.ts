@@ -46,7 +46,7 @@ export class MetaErro extends Error {
   }
 }
 function traduzirErro(e: GraphErro): string {
-  if (e.code === 190) return 'O token da Meta expirou ou foi revogado. Gere um novo no Gerenciador de Negócios e cole em Marketing → Conexões.'
+  if (e.code === 190) return `O token da Meta não foi aceito (Meta: ${e.message || 'token inválido'}${e.error_subcode ? `, subcódigo ${e.error_subcode}` : ''}). Gere um novo no Gerenciador de Negócios e cole em Marketing → Conexões.`
   if (e.code === 10 || e.code === 200) return `Falta permissão no token da Meta (${e.message || 'permissão'}). Confira as permissões do Usuário do Sistema.`
   if (e.code === 4 || e.code === 17 || e.code === 32 || e.code === 613) return 'A Meta limitou as consultas por agora. O CRM tenta de novo na próxima hora.'
   return `Meta: ${e.message || 'erro desconhecido'}`
@@ -56,7 +56,10 @@ async function graph<T = any>(caminho: string, params: Record<string, string>, t
   const url = caminho.startsWith('http') ? caminho : `${BASE}/${caminho.replace(/^\//, '')}?${new URLSearchParams({ ...params, access_token: token })}`
   const res = await fetch(url, { signal: AbortSignal.timeout(30000) })
   const json = (await res.json().catch(() => ({}))) as any
-  if (!res.ok || json.error) throw new MetaErro(json.error || { message: `HTTP ${res.status}` })
+  if (!res.ok || json.error) {
+    console.error('[marketing-meta]', caminho.split('?')[0].slice(0, 80), JSON.stringify(json.error || { status: res.status }))
+    throw new MetaErro(json.error || { message: `HTTP ${res.status}` })
+  }
   return json as T
 }
 async function todasPaginas<T = any>(caminho: string, params: Record<string, string>, token: string, parar?: (item: T) => boolean, max = 10): Promise<T[]> {
