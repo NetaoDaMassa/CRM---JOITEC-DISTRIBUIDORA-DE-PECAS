@@ -38,15 +38,18 @@ export default function RedesMlabs({ empresaId }: { empresaId: number }) {
               const comVisu = ps.filter((p) => alcanceDe(p) > 0)
               const media = comVisu.length ? Math.round(comVisu.reduce((s, p) => s + alcanceDe(p), 0) / comVisu.length) : 0
               const melhor = [...ps].sort((a, b) => alcanceDe(b) - alcanceDe(a))[0]
-              const parado = ps.length === 0
+              // O resumo da mLabs conta tudo (inclui Reels do Facebook); a lista de posts às vezes vem com menos.
+              const total = Math.max(ps.length, r?.posts ?? 0)
+              const parado = total === 0
               return (
                 <div key={rede} className={`bg-dark-900/60 rounded-xl p-3 space-y-1.5 border ${parado ? 'border-orange-700/60' : 'border-dark-700'}`} style={{ borderTop: `4px solid ${COR[rede] || COR.outro}` }}>
                   <div className="font-bold text-dark-100">{NOME[rede] || rede}</div>
                   <div className="text-2xl font-bold text-dark-100">{r?.seguidores != null ? fmtN(r.seguidores) : '—'}<span className="text-xs font-normal text-dark-400"> seguidores</span></div>
                   {r?.ganhoPeriodo != null && <div className={`text-xs ${r.ganhoPeriodo >= 0 ? 'text-green-400' : 'text-red-400'}`}>{r.ganhoPeriodo >= 0 ? '+' : ''}{fmtN(r.ganhoPeriodo)} no período</div>}
-                  <div className="text-xs text-dark-300">{ps.length} publicações{media ? ` · média de ${fmtN(media)} visualizações` : ''}</div>
+                  <div className="text-xs text-dark-300">{total} publicações{media ? ` · média de ${fmtN(media)} visualizações` : ''}</div>
+                  {total > ps.length && <div className="text-[11px] text-dark-500">{ps.length} com detalhes (a mLabs não detalha Reels nessa rede)</div>}
                   {r?.engajamentoPct != null && <div className="text-xs text-dark-400">Engajamento {String(r.engajamentoPct).replace('.', ',')}%</div>}
-                  {parado && <div className="text-xs text-orange-400">Nada publicado em 30 dias</div>}
+                  {parado && <div className="text-xs text-orange-400">Nada publicado em 30 dias (a própria mLabs mostra zero)</div>}
                   {melhor && alcanceDe(melhor) > 0 && (
                     <a href={melhor.link || '#'} target="_blank" rel="noopener noreferrer" className="block text-xs text-gold-400 hover:underline truncate" title={melhor.texto}>🏆 {fmtN(alcanceDe(melhor))} · {melhor.texto.slice(0, 50) || 'abrir'}</a>
                   )}
