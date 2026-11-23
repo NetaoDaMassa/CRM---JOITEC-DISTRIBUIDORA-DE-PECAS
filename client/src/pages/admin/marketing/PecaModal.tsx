@@ -191,6 +191,13 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
             etapa.mutate({ id: p.id, status: novo }, { onError: (err) => { toast.error(err.message, { duration: 8000 }); setP((o) => (o ? { ...o, status: antes } : o)) } })
           }}>{STATUS.map((s) => <option key={s}>{s}</option>)}</select>)}
         </div>
+        <ol className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${STATUS.length}, minmax(0, 1fr))` }} aria-label="Etapas da peça">
+          {STATUS.map((st, i) => {
+            const atual = STATUS.indexOf(p.status as (typeof STATUS)[number])
+            const est = i < atual ? 'bg-green-900/30 text-green-200' : i === atual ? 'bg-blue-600 text-white' : 'bg-dark-900 text-dark-500 border border-dark-700'
+            return <li key={st} className={`rounded-lg px-2 py-1.5 ${est}`}><span className="block text-[10px] font-bold opacity-80">{i < atual ? '✓ feito' : i === atual ? 'agora' : 'depois'}</span><span className="block text-[11px] font-semibold leading-tight">{st}</span></li>
+          })}
+        </ol>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {p.origem === 'complementar' && <span className="px-2 py-1 rounded bg-purple-900/40 text-purple-200">Demanda complementar (não passa pela aprovação do roteiro)</span>}
           {p.roteiroAprovadoEm ? <span className="px-2 py-1 rounded bg-green-900/40 text-green-200">✅ Liberado para gravação{p.roteiroAprovadoPor ? ` · roteiro aprovado por ${p.roteiroAprovadoPor}` : ''}</span>

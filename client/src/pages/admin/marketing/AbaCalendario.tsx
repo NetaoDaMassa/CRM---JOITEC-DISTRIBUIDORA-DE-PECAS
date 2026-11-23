@@ -61,6 +61,7 @@ export default function AbaCalendario({ plano, pecas, abrirPeca, salvarDados }: 
             <div className="flex flex-wrap items-center gap-3">
               <h3 className="text-lg font-bold text-dark-100 whitespace-nowrap">Semana {w.n}</h3>
               <span className="text-xs font-mono text-dark-400">{w.ini}–{w.fim} {mesLongo(plano.mes).split(' ')[0]}</span>
+              {(() => { const pl = pecas.filter((p) => p.data && p.data >= a && p.data <= b && p.origem !== 'complementar'); const v = pl.filter((p) => p.tipo !== 'Post').length; const po = pl.length - v; const ok = v >= 3 && po >= 2; return <span className={`text-xs font-bold px-2 py-0.5 rounded ${ok ? 'bg-green-900/40 text-green-300' : 'bg-yellow-900/30 text-yellow-300'}`}>{v}/3 vídeos · {po}/2 posts</span> })()}
               <input className="flex-1 min-w-[220px] bg-transparent border-b border-dashed border-dark-600 focus:border-gold-500 outline-none text-sm font-semibold text-dark-200 px-1 py-0.5" placeholder="Tema da semana" defaultValue={temas[w.n - 1]?.tema || ''} key={`${plano.id}-${w.n}-${temas[w.n - 1]?.tema || ''}`}
                 onBlur={(e) => { const s = semanas.map((_, i) => ({ tema: temas[i]?.tema || '' })); s[w.n - 1] = { tema: e.target.value }; salvarDados({ ...plano.dados, semanas: s }) }} />
             </div>

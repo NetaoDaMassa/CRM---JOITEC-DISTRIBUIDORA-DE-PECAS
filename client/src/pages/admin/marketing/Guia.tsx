@@ -3,6 +3,7 @@
 import { cls } from './comum'
 
 export const DICA_ABA: Record<string, string> = {
+  hoje: 'Comece por aqui: o que está esperando você, a semana da marca escolhida e as metas. Clique em qualquer item para ir resolver.',
   empresa: 'Conheça a marca antes de planejar: base de conhecimento (documentos que a IA lê), números das redes, para quem falamos (persona) e forças e fraquezas (SWOT). Revise 1 vez por mês.',
   brainstorm: 'Guarde ideias e links que inspiram. Clique no card para completar, adaptar para a empresa com IA (ou copiar o pedido para o Claude) e criar a peça no Calendário.',
   plano: 'O norte do mês: objetivo, mensagem central, pilares (os tipos de conteúdo, cada um com uma cor, na ordem que você escolher com ▲▼), metas e o que funcionou ou travou no mês anterior.',
@@ -56,7 +57,7 @@ export default function GuiaMarketing({ fechar }: { fechar: () => void }) {
         <div>
           <div className={cls.rotulo}>Guia</div>
           <h2 className="text-xl font-bold text-dark-100">Como funciona o Marketing</h2>
-          <p className="text-sm text-dark-400 mt-1">As abas estão na ordem do trabalho: <b className="text-dark-200">1. Planejar</b> → <b className="text-dark-200">2. Produzir</b> → <b className="text-dark-200">3. Acompanhar</b>. Cada marca tem o seu plano por mês.</p>
+          <p className="text-sm text-dark-400 mt-1">Comece em <b className="text-dark-200">Hoje</b>. Depois a ordem do trabalho: <b className="text-dark-200">Planejar</b> → <b className="text-dark-200">Produzir</b> → <b className="text-dark-200">Aprovar</b> → <b className="text-dark-200">Resultados</b>. Cada marca tem o seu plano por mês.</p>
         </div>
         <button onClick={fechar} className="text-dark-400 hover:text-dark-100 text-sm whitespace-nowrap">Fechar ✕</button>
       </div>

@@ -13,6 +13,7 @@ import { STATUS, atrasada, cls, diaLabel, diasParada, hojeBR, iniciais, nomeCurt
 import type { Peca } from './PecaModal'
 
 type Marca = { empresaId: number; nome: string }
+const DICA_COL: Record<string, string> = { Ideia: 'só a pauta', Roteiro: 'escrevendo', 'Aprovação do roteiro': 'esperando revisor', Produção: 'gravar, editar e anexar', 'Aprovação final': 'vídeo/arte pronto', 'Agendado na mLabs': 'pronto' }
 
 // Demanda complementar: peça fora do plano (3V+2P), ex.: story, post de
 // feedback, vídeo de evento. Não conta na meta e não passa pela aprovação do roteiro.
@@ -123,7 +124,7 @@ export default function AbaQuadro({ mes, marcas, pecas, abrirPeca }: { mes: stri
             <div key={st} className={`min-w-[250px] w-[250px] flex-shrink-0 rounded-xl border ${arrastando ? 'border-dashed border-dark-500' : 'border-dark-700'} bg-dark-900/40`}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); const id = e.dataTransfer.getData('text/plain'); setArrastando(null); const p = pecas.find((x) => x.id === id); if (p && p.status !== st) mover.mutate({ id, status: st }, { onError: (err) => toast.error(err.message, { duration: 8000 }) }) }}>
-              <div className="px-3 py-2 border-b border-dark-700 flex justify-between text-sm"><b className="text-dark-100">{st}</b><span className="text-dark-400">{col.length}</span></div>
+              <div className="px-3 py-2 border-b border-dark-700"><div className="flex justify-between text-sm"><b className="text-dark-100">{st}</b><span className="text-dark-400">{col.length}</span></div><div className="text-[11px] text-dark-500">{DICA_COL[st]}</div></div>
               <div className="p-2 space-y-2 min-h-[120px]">
                 {col.map((p) => {
                   const atr = atrasada(p)

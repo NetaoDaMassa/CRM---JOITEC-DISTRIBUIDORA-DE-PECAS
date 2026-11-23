@@ -4,7 +4,7 @@
 // persona/SWOT, calendário, plano do mês e brainstorm).
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Target, ClipboardCheck, Radar, Building2, CalendarDays, Map, Lightbulb, Plug, KanbanSquare, Inbox, BarChart3 } from 'lucide-react'
+import { Target, ClipboardCheck, Radar, Building2, CalendarDays, Map, Lightbulb, Plug, KanbanSquare, Inbox, BarChart3, Sun } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import Button from '../../components/ui/Button'
@@ -19,25 +19,35 @@ import AbaConexoes from './marketing/AbaConexoes'
 import AbaQuadro from './marketing/AbaQuadro'
 import AbaPedidos from './marketing/AbaPedidos'
 import AbaRelatorios from './marketing/AbaRelatorios'
+import AbaHoje from './marketing/AbaHoje'
 import GuiaMarketing, { DICA_ABA } from './marketing/Guia'
 import PecaModal, { type Peca } from './marketing/PecaModal'
-import { mesAtual, mesLongo, mesSomar } from './marketing/comum'
+import { mesAtual, mesLongo, mesSomar, nomeCurtoMarca } from './marketing/comum'
 
-type Aba = 'metas' | 'quadro' | 'pedidos' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes' | 'relatorios'
-// Ordem do trabalho do mês (João, 2026-11-23): 1. Planejar → 2. Produzir → 3. Acompanhar.
-type Grupo = '1. Planejar' | '2. Produzir' | '3. Acompanhar' | 'Ajustes'
-const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean; soSuper?: boolean; grupo: Grupo }[] = [
-  { id: 'empresa', rotulo: 'Empresa', icone: Building2, porMarca: true, grupo: '1. Planejar' },
-  { id: 'brainstorm', rotulo: 'Brainstorm', icone: Lightbulb, porMarca: true, grupo: '1. Planejar' },
-  { id: 'plano', rotulo: 'Plano do mês', icone: Map, porMarca: true, grupo: '1. Planejar' },
-  { id: 'calendario', rotulo: 'Calendário', icone: CalendarDays, porMarca: true, grupo: '1. Planejar' },
-  { id: 'pedidos', rotulo: 'Pedidos', icone: Inbox, grupo: '2. Produzir' },
-  { id: 'quadro', rotulo: 'Quadro', icone: KanbanSquare, grupo: '2. Produzir' },
-  { id: 'revisao', rotulo: 'Revisão', icone: ClipboardCheck, grupo: '2. Produzir' },
-  { id: 'metas', rotulo: 'Metas', icone: Target, grupo: '3. Acompanhar' },
-  { id: 'relatorios', rotulo: 'Relatórios', icone: BarChart3, grupo: '3. Acompanhar' },
-  { id: 'radar', rotulo: 'Radar', icone: Radar, porMarca: true, grupo: '3. Acompanhar' },
-  { id: 'conexoes', rotulo: 'Conexões', icone: Plug, soSuper: true, grupo: 'Ajustes' },
+type Aba = 'hoje' | 'metas' | 'quadro' | 'pedidos' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes' | 'relatorios'
+const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean }[] = [
+  { id: 'hoje', rotulo: 'Hoje', icone: Sun, porMarca: true },
+  { id: 'plano', rotulo: 'Plano do mês', icone: Map, porMarca: true },
+  { id: 'calendario', rotulo: 'Calendário', icone: CalendarDays, porMarca: true },
+  { id: 'brainstorm', rotulo: 'Ideias', icone: Lightbulb, porMarca: true },
+  { id: 'quadro', rotulo: 'Quadro', icone: KanbanSquare },
+  { id: 'pedidos', rotulo: 'Pedidos', icone: Inbox },
+  { id: 'revisao', rotulo: 'Revisão', icone: ClipboardCheck },
+  { id: 'metas', rotulo: 'Metas', icone: Target },
+  { id: 'relatorios', rotulo: 'Relatórios', icone: BarChart3 },
+  { id: 'radar', rotulo: 'Radar', icone: Radar, porMarca: true },
+  { id: 'empresa', rotulo: 'Empresa', icone: Building2, porMarca: true },
+  { id: 'conexoes', rotulo: 'Conexões', icone: Plug },
+]
+// Design novo (João, 2026-11-23): 5 lugares principais + Empresa e Ajustes.
+const SECOES: { id: string; rotulo: string; sub: string; icone: typeof Target; abas: Aba[]; soSuper?: boolean; canto?: boolean }[] = [
+  { id: 'hoje', rotulo: 'Hoje', sub: 'o que fazer agora', icone: Sun, abas: ['hoje'] },
+  { id: 'planejar', rotulo: 'Planejar', sub: 'plano, calendário, ideias', icone: Map, abas: ['plano', 'calendario', 'brainstorm'] },
+  { id: 'produzir', rotulo: 'Produzir', sub: 'quadro e pedidos', icone: KanbanSquare, abas: ['quadro', 'pedidos'] },
+  { id: 'aprovar', rotulo: 'Aprovar', sub: 'roteiros e peças prontas', icone: ClipboardCheck, abas: ['revisao'] },
+  { id: 'resultados', rotulo: 'Resultados', sub: 'metas, redes, radar', icone: BarChart3, abas: ['metas', 'relatorios', 'radar'] },
+  { id: 'empresa', rotulo: 'Empresa', sub: 'documentos e persona', icone: Building2, abas: ['empresa'], canto: true },
+  { id: 'ajustes', rotulo: 'Ajustes', sub: 'revisores e conexões', icone: Plug, abas: ['conexoes'], soSuper: true, canto: true },
 ]
 
 function lerLocal(chave: string, padrao: string) {
@@ -48,7 +58,7 @@ export default function MarketingModulo() {
   const { user } = useAuth()
   const superAdmin = !!(user as { superAdmin?: boolean } | null)?.superAdmin
   const utils = trpc.useUtils()
-  const [aba, setAbaS] = useState<Aba>(() => lerLocal('mkt_aba', 'metas') as Aba)
+  const [aba, setAbaS] = useState<Aba>(() => { const a = lerLocal('mkt_aba', 'hoje') as Aba; return ABAS.some((x) => x.id === a) ? a : 'hoje' })
   const [mes, setMes] = useState(mesAtual())
   const [empresaId, setEmpS] = useState<number>(() => Number(lerLocal('mkt_marca', '4')))
   const [aberta, setAberta] = useState<Peca | null>(null)
@@ -91,6 +101,19 @@ export default function MarketingModulo() {
     </div>
   )
 
+  const secaoAtual = SECOES.find((x) => x.abas.includes(aba)) || SECOES[0]
+  const pecasM = (pecasMes.data || []) as Peca[]
+  const aprovarN = pecasM.filter((p) => p.status === 'Aprovação do roteiro' || (p.status === 'Aprovação final' && !p.finalAprovadoEm)).length
+  const navBtn = (x: (typeof SECOES)[number]) => {
+    const ativo = x.id === secaoAtual.id
+    return (
+      <button key={x.id} onClick={() => setAba(x.abas[0])} aria-current={ativo ? 'page' : undefined} className={`text-left rounded-xl px-4 py-3 border-2 transition-colors ${ativo ? 'bg-dark-700/70 border-gold-500' : 'bg-dark-800/60 border-dark-700 hover:border-dark-500'}`}>
+        <span className="flex items-center gap-2 font-bold text-dark-100"><x.icone className="w-4 h-4" />{x.rotulo}{x.id === 'aprovar' && aprovarN > 0 && <span className="ml-1 text-[11px] px-1.5 py-0.5 rounded-full bg-gold-500 text-dark-900">{aprovarN}</span>}</span>
+        <span className="block text-xs text-dark-400 mt-0.5">{x.sub}</span>
+      </button>
+    )
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -100,44 +123,40 @@ export default function MarketingModulo() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={() => setGuia(!guia)}>📖 Como funciona</Button>
-          <Button variant="secondary" size="sm" onClick={() => setMes(mesSomar(mes, -1))}>←</Button>
+          <Button variant="secondary" size="sm" onClick={() => setMes(mesSomar(mes, -1))} aria-label="Mês anterior">←</Button>
           <span className="min-w-[150px] text-center font-semibold text-dark-100 capitalize">{mesLongo(mes)}</span>
-          <Button variant="secondary" size="sm" onClick={() => setMes(mesSomar(mes, 1))}>→</Button>
-          {mes !== mesAtual() && <Button variant="ghost" size="sm" onClick={() => setMes(mesAtual())}>Hoje</Button>}
+          <Button variant="secondary" size="sm" onClick={() => setMes(mesSomar(mes, 1))} aria-label="Próximo mês">→</Button>
+          {mes !== mesAtual() && <Button variant="ghost" size="sm" onClick={() => setMes(mesAtual())}>Mês atual</Button>}
         </div>
       </div>
 
       {guia && <GuiaMarketing fechar={() => setGuia(false)} />}
 
-      <div className="flex gap-4 overflow-x-auto border-b border-dark-700">
-        {(['1. Planejar', '2. Produzir', '3. Acompanhar', 'Ajustes'] as Grupo[]).map((g) => {
-          const abas = ABAS.filter((a) => a.grupo === g && (!a.soSuper || superAdmin))
-          if (!abas.length) return null
-          return (
-            <div key={g} className="flex flex-col shrink-0">
-              <span className="px-4 text-[10px] font-semibold uppercase tracking-wider text-dark-500">{g}</span>
-              <div className="flex gap-1">
-                {abas.map((a) => (
-                  <button key={a.id} onClick={() => setAba(a.id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px ${aba === a.id ? 'border-gold-400 text-gold-200 font-semibold' : 'border-transparent text-dark-400 hover:text-dark-100'}`}>
-                    <a.icone className="w-4 h-4" />{a.rotulo}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )
-        })}
+      <nav className="flex flex-wrap gap-2.5" aria-label="Seções do marketing">
+        <div className="grid gap-2.5 flex-[999_1_640px]" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>{SECOES.filter((x) => !x.canto).map(navBtn)}</div>
+        <div className="grid gap-2.5 flex-[1_1_300px]" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>{SECOES.filter((x) => x.canto && (!x.soSuper || superAdmin)).map(navBtn)}</div>
+      </nav>
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {secaoAtual.abas.length > 1 ? (
+          <div className="flex flex-wrap gap-2" role="tablist">
+            {secaoAtual.abas.map((id) => { const a = ABAS.find((x) => x.id === id)!; return (
+              <button key={id} role="tab" aria-selected={aba === id} onClick={() => setAba(id)} className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold ${aba === id ? 'bg-dark-100 text-dark-900' : 'border border-dark-600 text-dark-300 hover:text-dark-100'}`}><a.icone className="w-4 h-4" />{a.rotulo}</button>
+            ) })}
+          </div>
+        ) : <span />}
+        {abaInfo.porMarca && (
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Marca">
+            {listaMarcas.map((m) => (
+              <button key={m.empresaId} onClick={() => setEmpresaId(m.empresaId)} className={`px-3 py-1.5 rounded-full text-sm border ${empresaId === m.empresaId ? 'bg-dark-100 text-dark-900 border-dark-100 font-semibold' : 'border-dark-600 text-dark-300 hover:text-dark-100'}`}>{nomeCurtoMarca(m.nome)}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {DICA_ABA[aba] && <p className="text-xs text-dark-400 -mt-2">💡 {DICA_ABA[aba]}</p>}
 
-      {abaInfo.porMarca && (
-        <div className="flex flex-wrap gap-2">
-          {listaMarcas.map((m) => (
-            <button key={m.empresaId} onClick={() => setEmpresaId(m.empresaId)} className={`px-3 py-1.5 rounded-full text-sm border ${empresaId === m.empresaId ? 'bg-dark-100 text-dark-900 border-dark-100 font-semibold' : 'border-dark-600 text-dark-300 hover:text-dark-100'}`}>{m.nome}</button>
-          ))}
-        </div>
-      )}
-
+      {aba === 'hoje' && <AbaHoje mes={mes} marcas={listaMarcas} pecas={pecasM} empresaId={empresaId} irPara={(a: Aba) => setAba(a)} abrirPeca={setAberta} pilaresDe={pilaresDe} />}
       {aba === 'metas' && <AbaMetas mes={mes} marcas={listaMarcas} pecas={(pecasMes.data || []) as Peca[]} temPlano={(id) => (planos.data || []).some((p) => p.empresaId === id && p.mes === mes)} abrirPeca={setAberta} />}
       {aba === 'quadro' && <AbaQuadro mes={mes} marcas={listaMarcas} pecas={(pecasMes.data || []) as Peca[]} abrirPeca={setAberta} />}
       {aba === 'pedidos' && <AbaPedidos />}
