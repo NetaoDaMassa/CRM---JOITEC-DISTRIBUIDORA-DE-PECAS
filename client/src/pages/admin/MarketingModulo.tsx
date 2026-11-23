@@ -18,6 +18,7 @@ import AbaBrainstorm from './marketing/AbaBrainstorm'
 import AbaConexoes from './marketing/AbaConexoes'
 import AbaQuadro from './marketing/AbaQuadro'
 import AbaPedidos from './marketing/AbaPedidos'
+import GuiaMarketing, { DICA_ABA } from './marketing/Guia'
 import PecaModal, { type Peca } from './marketing/PecaModal'
 import { mesAtual, mesLongo, mesSomar } from './marketing/comum'
 
@@ -49,6 +50,9 @@ export default function MarketingModulo() {
   const [mes, setMes] = useState(mesAtual())
   const [empresaId, setEmpS] = useState<number>(() => Number(lerLocal('mkt_marca', '4')))
   const [aberta, setAberta] = useState<Peca | null>(null)
+  // Guia abre sozinho na primeira visita; depois só pelo botão.
+  const [guia, setGuiaS] = useState(() => lerLocal('mkt_guia_visto', '') !== '1')
+  const setGuia = (v: boolean) => { setGuiaS(v); if (!v) try { localStorage.setItem('mkt_guia_visto', '1') } catch { /* ok */ } }
   const setAba = (a: Aba) => { setAbaS(a); try { localStorage.setItem('mkt_aba', a) } catch { /* ok */ } }
   const setEmpresaId = (n: number) => { setEmpS(n); try { localStorage.setItem('mkt_marca', String(n)) } catch { /* ok */ } }
 
@@ -93,12 +97,15 @@ export default function MarketingModulo() {
           <h1 className="text-3xl font-bold text-dark-100">Marketing</h1>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setGuia(!guia)}>📖 Como funciona</Button>
           <Button variant="secondary" size="sm" onClick={() => setMes(mesSomar(mes, -1))}>←</Button>
           <span className="min-w-[150px] text-center font-semibold text-dark-100 capitalize">{mesLongo(mes)}</span>
           <Button variant="secondary" size="sm" onClick={() => setMes(mesSomar(mes, 1))}>→</Button>
           {mes !== mesAtual() && <Button variant="ghost" size="sm" onClick={() => setMes(mesAtual())}>Hoje</Button>}
         </div>
       </div>
+
+      {guia && <GuiaMarketing fechar={() => setGuia(false)} />}
 
       <div className="flex gap-4 overflow-x-auto border-b border-dark-700">
         {(['1. Planejar', '2. Produzir', '3. Acompanhar', 'Ajustes'] as Grupo[]).map((g) => {
@@ -118,6 +125,8 @@ export default function MarketingModulo() {
           )
         })}
       </div>
+
+      {DICA_ABA[aba] && <p className="text-xs text-dark-400 -mt-2">💡 {DICA_ABA[aba]}</p>}
 
       {abaInfo.porMarca && (
         <div className="flex flex-wrap gap-2">
