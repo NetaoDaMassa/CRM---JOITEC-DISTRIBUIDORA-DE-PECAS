@@ -12,8 +12,20 @@ export const DIA_CARTORIO = DIAS_REGUA + 1
 
 // N-ésimo dia útil depois de `dataIso` (YYYY-MM-DD) — o próprio dia do
 // vencimento não conta.
-export function diaUtilApos(dataIso: string, n: number): string {
+// Vencimento que caiu em sábado, domingo ou feriado pode ser pago no próximo
+// dia útil sem atraso (regra dos bancos). Reclamação do financeiro,
+// 2026-11-23: boletos de 20/11 (Consciência Negra, sexta) apareceram pra
+// cobrar na segunda 23/11, que ainda era o dia de pagar. Então a contagem
+// dos dias úteis começa do vencimento "efetivo".
+export function vencimentoEfetivo(dataIso: string): string {
   const d = new Date(`${dataIso.slice(0, 10)}T00:00:00Z`)
+  let guarda = 0
+  while (ehDiaNaoUtil(d) && guarda++ < 30) d.setUTCDate(d.getUTCDate() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+export function diaUtilApos(dataIso: string, n: number): string {
+  const d = new Date(`${vencimentoEfetivo(dataIso)}T00:00:00Z`)
   let contados = 0
   while (contados < n) {
     d.setUTCDate(d.getUTCDate() + 1)

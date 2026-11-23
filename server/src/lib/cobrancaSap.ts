@@ -1,9 +1,9 @@
 import { and, eq, gt, inArray, notInArray } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { cobrancaTitulos, sapTitulosAbertos } from '../db/schema.js'
+import { cobrancaContatos, cobrancaTitulos, sapTitulosAbertos } from '../db/schema.js'
 import { agoraSqlite, ehDiaNaoUtil, hojeBrString } from './dataBr.js'
 import { getConfigNumero, getConfigTexto } from './configuracoes.js'
-import { diaUtilApos } from './reguaCobranca.js'
+import { diaUtilApos, vencimentoEfetivo } from './reguaCobranca.js'
 
 // Cobrança automática a partir das contas a receber do SAP (financeiro,
 // 2026-11-13). Ver comentário de cobrancaTitulos no schema.
@@ -19,9 +19,10 @@ export async function regrasCobranca() {
 }
 
 // Quantos dias úteis passaram depois do vencimento até `hoje` (o dia do
-// vencimento não conta). 0 = ainda não começou a cobrar.
+// vencimento não conta). 0 = ainda não começou a cobrar. Vencimento em
+// fim de semana/feriado conta a partir do próximo dia útil (vencimentoEfetivo).
 export function diasUteisAposVencimento(vencimento: string, hoje: string): number {
-  const d = new Date(`${vencimento.slice(0, 10)}T00:00:00Z`)
+  const d = new Date(`${vencimentoEfetivo(vencimento)}T00:00:00Z`)
   const fim = new Date(`${hoje}T00:00:00Z`)
   let n = 0
   while (true) {
@@ -66,10 +67,23 @@ async function atualizar() {
   let pagos = 0
   let cartorio = 0
   let rc = 0
-  const chavesNaFoto = new Set<string>()
+  // "Ainda em aberto no SAP" = qualquer título da foto, vencido ou não — senão
+  // um título que já estava na cobrança mas ainda não chegou no 1º dia útil
+  // (ex.: vencimento em feriado) seria marcado como pago por engano.
+  const chavesNaFoto = new Set<string>(foto.filter((t) => !ignorar.includes(t.codigoCliente)).map((t) => chaveDe(t)))
+  const chavesVencidas = new Set<string>(vencidos.map((t) => chaveDe(t)))
+  // Entrou cedo demais (antes do 1º dia útil) e ninguém cobrou ainda: sai da
+  // lista e volta sozinho quando chegar o dia.
+  const cedo = existentes.filter((e) => e.status === 'cobrar' && chavesNaFoto.has(e.chave) && !chavesVencidas.has(e.chave) && diasUteisAposVencimento(e.vencimento, hoje) < 1)
+  if (cedo.length) {
+    const comContato = new Set(
+      (await db.select({ id: cobrancaContatos.tituloId }).from(cobrancaContatos).where(inArray(cobrancaContatos.tituloId, cedo.map((e) => e.id)))).map((c) => c.id)
+    )
+    const tirar = cedo.filter((e) => !comContato.has(e.id)).map((e) => e.id)
+    if (tirar.length) await db.delete(cobrancaTitulos).where(inArray(cobrancaTitulos.id, tirar))
+  }
   for (const t of vencidos) {
     const chave = chaveDe(t)
-    chavesNaFoto.add(chave)
     const e = porChave.get(chave)
     if (!e) {
       await db.insert(cobrancaTitulos).values({
