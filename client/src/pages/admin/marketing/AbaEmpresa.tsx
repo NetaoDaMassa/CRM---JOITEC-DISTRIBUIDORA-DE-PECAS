@@ -1,5 +1,6 @@
 // Empresa: Instagram dos últimos 90 dias + Persona + SWOT da marca.
 import { useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 import { trpc } from '../../../lib/trpc'
 import Button from '../../../components/ui/Button'
 import Modal from '../../../components/ui/Modal'
@@ -23,20 +24,39 @@ export default function AbaEmpresa({ empresaId, nomeMarca, mes }: { empresaId: n
   const ig = trpc.marketingModulo.igEmpresa.useQuery({ empresaId, mes })
   const perfilQ = trpc.marketingModulo.perfil.useQuery({ empresaId })
   const analises = trpc.marketingModulo.analises.useQuery({ empresaId })
-  const salvar = trpc.marketingModulo.salvarPerfil.useMutation({ onSuccess: () => { setSalvo(true); utils.marketingModulo.perfil.invalidate() } })
+  // Persona/SWOT (João, 2026-11-23: "quero deixar ele ali registrado e não
+  // funciona"): antes, a cada salvamento a tela recarregava do servidor e
+  // apagava o que a pessoa tinha digitado nesse meio-tempo, e erro de
+  // salvamento ficava calado ("Salvando…" para sempre). Agora a tela só carrega
+  // do servidor ao abrir a marca, guarda o rascunho e mostra salvo/erro.
+  const [estado, setEstado] = useState<'salvo' | 'salvando' | 'erro'>('salvo')
+  const salvar = trpc.marketingModulo.salvarPerfil.useMutation({
+    onSuccess: (_r, v) => { if (ultimo.current === v) setEstado('salvo'); utils.marketingModulo.perfil.setData({ empresaId: v.empresaId }, { personas: v.personas, swot: v.swot as any, concorrentes: v.concorrentes }) },
+    onError: (e) => { setEstado('erro'); toast.error('Não salvou: ' + e.message, { duration: 8000 }) },
+  })
   const [perf, setPerf] = useState<Perfil | null>(null)
-  const [salvo, setSalvo] = useState(true)
+  const carregadoDe = useRef<number | null>(null)
+  const ultimo = useRef<any>(null)
   const [sugestao, setSugestao] = useState<{ personas: any[]; swot: any } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => { if (perfilQ.data && salvo) setPerf(perfilQ.data as Perfil) }, [perfilQ.data, empresaId])
-  useEffect(() => { setPerf(null) }, [empresaId])
+  useEffect(() => {
+    if (carregadoDe.current !== empresaId) { setPerf(null); setEstado('salvo') }
+    if (perfilQ.data && !perfilQ.isFetching && carregadoDe.current !== empresaId) { setPerf(perfilQ.data as Perfil); carregadoDe.current = empresaId }
+  }, [perfilQ.data, perfilQ.isFetching, empresaId])
 
+  const limpar = (p: Perfil): Perfil => ({ ...p, swot: Object.fromEntries(Object.entries(p.swot || {}).map(([k, a]) => [k, (a || []).map((x) => x.trim()).filter(Boolean)])) })
   const mudar = (novo: Perfil) => {
     setPerf(novo)
-    setSalvo(false)
+    setEstado('salvando')
     clearTimeout(timer.current)
-    timer.current = setTimeout(() => salvar.mutate({ empresaId, personas: novo.personas, swot: novo.swot, concorrentes: novo.concorrentes }), 800)
+    timer.current = setTimeout(() => {
+      const l = limpar(novo)
+      const v = { empresaId, personas: l.personas.map((x) => Object.fromEntries(Object.entries(x || {}).map(([k, val]) => [k, String(val ?? '')]))), swot: l.swot, concorrentes: l.concorrentes || [] }
+      ultimo.current = v
+      salvar.mutate(v)
+    }, 700)
   }
+  const statusTxt = estado === 'salvando' ? 'Salvando…' : estado === 'erro' ? 'Não salvou — veja a mensagem e tente de novo.' : 'Salvo ✓'
   const aplicarSug = (juntar: boolean) => {
     if (!perf || !sugestao) return
     const sw: Record<string, string[]> = {}
@@ -95,7 +115,7 @@ export default function AbaEmpresa({ empresaId, nomeMarca, mes }: { empresaId: n
 
       <section className={cls.card + ' p-4 space-y-3'}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div><h3 className="text-lg font-bold text-dark-100">Persona</h3><p className="text-sm text-dark-400">Para quem a marca fala. Salva sozinho. {salvo ? '' : 'Salvando…'}</p></div>
+          <div><h3 className="text-lg font-bold text-dark-100">Persona</h3><p className="text-sm text-dark-400">Para quem a marca fala. Salva sozinho. <span className={estado === 'erro' ? 'text-red-400' : estado === 'salvo' ? 'text-green-400' : ''}>{statusTxt}</span></p></div>
           <IaAcao tipo="persona" params={{ empresaId }} rotulo="Claude sugere persona e SWOT" onResultado={(r) => setSugestao(r)} />
         </div>
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
@@ -108,16 +128,17 @@ export default function AbaEmpresa({ empresaId, nomeMarca, mes }: { empresaId: n
               <button className="text-xs text-red-400 hover:underline" onClick={() => mudar({ ...perf!, personas: perf!.personas.filter((_, j) => j !== i) })}>Remover persona</button>
             </div>))}
         </div>
+        {!perf && <p className="text-sm text-dark-400">Carregando…</p>}
         {perf && <Button variant="ghost" onClick={() => mudar({ ...perf, personas: [...perf.personas, {}] })}>+ Persona</Button>}
       </section>
 
       <section className="space-y-3">
-        <div><h3 className="text-lg font-bold text-dark-100">Análise SWOT</h3><p className="text-sm text-dark-400">Forças e fraquezas são de dentro da empresa; oportunidades e ameaças vêm de fora. Um item por linha.</p></div>
+        <div><h3 className="text-lg font-bold text-dark-100">Análise SWOT</h3><p className="text-sm text-dark-400">Forças e fraquezas são de dentro da empresa; oportunidades e ameaças vêm de fora. Um item por linha. Salva sozinho. <span className={estado === 'erro' ? 'text-red-400' : estado === 'salvo' ? 'text-green-400' : ''}>{statusTxt}</span></p></div>
         <div className="grid md:grid-cols-2 gap-3">
           {QUADS.map(([k, t, cor, sub]) => (
             <div key={k} className={`bg-dark-800 border border-dark-700 border-t-4 ${cor} rounded-xl p-3 space-y-1`}>
               <div className="font-bold text-dark-100">{t}</div><div className="text-xs text-dark-400">{sub}</div>
-              <textarea rows={6} className={cls.input} value={(perf?.swot[k] || []).join('\n')} onChange={(e) => perf && mudar({ ...perf, swot: { ...perf.swot, [k]: e.target.value.split('\n') } })} onBlur={() => perf && mudar({ ...perf, swot: { ...perf.swot, [k]: (perf.swot[k] || []).map((s) => s.trim()).filter(Boolean) } })} />
+              <textarea rows={6} className={cls.input} value={(perf?.swot[k] || []).join('\n')} onChange={(e) => perf && mudar({ ...perf, swot: { ...perf.swot, [k]: e.target.value.split('\n') } })} />
             </div>))}
         </div>
       </section>

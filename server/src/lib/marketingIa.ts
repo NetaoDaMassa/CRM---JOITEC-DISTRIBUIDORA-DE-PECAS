@@ -9,6 +9,7 @@ import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { mktPecas, mktPlanos, mktPerfis, mktIgMidias, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos, mktAnalises, mktIdeias } from '../db/schema.js'
 import { blocoConhecimento } from './marketingParte3.js'
+import { getConfigTexto } from './configuracoes.js'
 
 export const MARCAS = [
   { empresaId: 4, nome: 'Odin Compressores', desc: 'compressores de ar industriais (parafuso e pistão, 10 a 200 HP), venda para indústrias e revendas' },
@@ -90,7 +91,7 @@ async function resumoInstagram(empresaId: number, de: string, ate: string): Prom
   const ord = [...midias].sort((a, b) => (b.views || b.alcance) - (a.views || a.alcance))
   const eng = (m: typeof midias[number]) => (m.alcance ? ((m.curtidas + m.comentarios + m.compartilhamentos + m.salvos) / m.alcance) * 100 : 0)
   const segTxt = seg.length ? `${seg[0].seguidores} → ${seg[seg.length - 1].seguidores}` : 'sem dado'
-  return `Período: ${de} a ${ate}\nSeguidores: ${segTxt}\nConteúdos (do melhor para o pior):\n` + ord.map((m) => `- ${m.data} | ${m.tipo} | views ${m.views} | alcance ${m.alcance} | curtidas ${m.curtidas} | coment ${m.comentarios} | compart ${m.compartilhamentos} | salvos ${m.salvos} | eng ${eng(m).toFixed(1)}% | "${m.legenda.replace(/\s+/g, ' ').slice(0, 160)}"`).join('\n').slice(0, 50000)
+  return `Período: ${de} a ${ate}\nSeguidores: ${segTxt}\nConteúdos (do melhor para o pior):\n` + ord.map((m) => `- ${m.data} | ${m.tipo} | views ${m.views} | alcance ${m.alcance} | curtidas ${m.curtidas} | coment ${m.comentarios} | compart ${m.compartilhamentos} | salvos ${m.salvos} | eng ${eng(m).toFixed(1)}% | "${m.legenda.replace(/\s+/g, ' ').slice(0, 160)}"`).join('\n').slice(0, 20000)
 }
 
 export async function montarPedido(tipo: TipoPedido, params: ParamsPedido): Promise<{ prompt: string; formato: 'json' | 'texto' }> {
@@ -193,43 +194,61 @@ function erroAmigavel(e: unknown): Error {
 }
 export const MODELO_IA = process.env.MARKETING_IA_MODELO || 'claude-sonnet-5-5'
 
-// OpenRouter (João, 2026-11-22): conta da Anthropic sem crédito. Com
-// OPENROUTER_API_KEY no .env a IA do marketing passa por lá (Claude Sonnet,
-// trocável por OPENROUTER_MODEL_MARKETING); sem ela, segue na Anthropic.
-async function chamarOpenRouter(prompt: string): Promise<string> {
+// OpenRouter (João, 2026-11-22): conta da Anthropic sem crédito, a IA do
+// marketing passa pelo OpenRouter. 2026-11-23 ("deixar os botões de IA mais
+// rápidos"): o modelo grátis (Nemotron Ultra) levava 1–3 min e só aceitava 50
+// pedidos/dia. Agora usa Claude Haiku 5.5 (pago, ~3 s, centavos por pedido).
+// Trocar só pela configuração mkt_ia_modelo — a variável de ambiente antiga
+// OPENROUTER_MODEL_MARKETING (que apontava para o grátis) é ignorada de propósito.
+// Se o modelo principal falhar (ocupado/sem crédito/demora), tenta 1x num grátis.
+const MODELO_RAPIDO = 'anthropic/claude-haiku-5.5'
+const MODELO_RESERVA = 'nvidia/nemotron-3.5-lightning:free'
+class ErroIa extends Error { constructor(msg: string, public tentarOutro: boolean) { super(msg) } }
+
+async function chamarModelo(modelo: string, prompt: string, segundos: number): Promise<string> {
   let res: Response
   try {
     res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json', 'X-Title': 'CRM - Marketing' },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL_MARKETING || 'anthropic/claude-sonnet-5.5',
-        max_tokens: 12000,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: AbortSignal.timeout(180_000),
+      body: JSON.stringify({ model: modelo, max_tokens: 6000, messages: [{ role: 'user', content: prompt }] }),
+      signal: AbortSignal.timeout(segundos * 1000),
     })
   } catch (e) {
-    console.error('[marketing-ia] falha de rede no OpenRouter:', e)
-    throw new Error('Não foi possível falar com a IA agora. Tente de novo em 1 minuto, ou use o modo "Copiar pedido".')
+    console.error(`[marketing-ia] falha de rede/tempo no OpenRouter (${modelo}):`, (e as Error)?.message)
+    throw new ErroIa('A IA demorou demais para responder. Tente de novo em 1 minuto, ou use o modo "Copiar pedido".', true)
   }
   if (!res.ok) {
-    console.error('[marketing-ia] OpenRouter respondeu', res.status, (await res.text().catch(() => '')).slice(0, 500))
-    if (res.status === 401) throw new Error('A chave do OpenRouter do CRM é inválida. Use o modo "Copiar pedido" enquanto isso.')
-    if (res.status === 402) throw new Error('O OpenRouter está sem crédito. Coloque crédito em openrouter.ai → Credits, ou use o modo "Copiar pedido".')
-    if (res.status === 429 || res.status >= 500) throw new Error('A IA está ocupada agora. Tente de novo em 1 minuto, ou use o modo "Copiar pedido".')
-    throw new Error('Não foi possível falar com a IA agora. Use o modo "Copiar pedido".')
+    console.error('[marketing-ia] OpenRouter respondeu', modelo, res.status, (await res.text().catch(() => '')).slice(0, 500))
+    if (res.status === 401) throw new ErroIa('A chave do OpenRouter do CRM é inválida. Use o modo "Copiar pedido" enquanto isso.', false)
+    if (res.status === 402) throw new ErroIa('O OpenRouter está sem crédito. Coloque crédito em openrouter.ai → Credits, ou use o modo "Copiar pedido".', true)
+    if (res.status === 429 || res.status >= 500 || res.status === 404) throw new ErroIa('A IA está ocupada agora. Tente de novo em 1 minuto, ou use o modo "Copiar pedido".', true)
+    throw new ErroIa('Não foi possível falar com a IA agora. Use o modo "Copiar pedido".', false)
   }
   const json = (await res.json().catch(() => null)) as { choices?: Array<{ message?: { content?: string } }> } | null
   const texto = String(json?.choices?.[0]?.message?.content ?? '').trim()
-  if (!texto) throw new Error('O Claude não devolveu texto.')
+  if (!texto) throw new ErroIa('A IA não devolveu texto. Tente de novo.', true)
   return texto
+}
+
+async function chamarOpenRouter(prompt: string): Promise<string> {
+  const modelo = (await getConfigTexto('mkt_ia_modelo'))?.trim() || MODELO_RAPIDO
+  const t0 = Date.now()
+  try {
+    const r = await chamarModelo(modelo, prompt, 90)
+    console.log(`[marketing-ia] ${modelo} respondeu em ${((Date.now() - t0) / 1000).toFixed(1)}s`)
+    return r
+  } catch (e) {
+    if (!(e instanceof ErroIa) || !e.tentarOutro || modelo === MODELO_RESERVA) throw e
+    console.warn(`[marketing-ia] ${modelo} falhou (${e.message}); tentando ${MODELO_RESERVA}`)
+    return chamarModelo(MODELO_RESERVA, prompt, 90)
+  }
 }
 
 export async function chamarClaude(prompt: string): Promise<string> {
   if (process.env.OPENROUTER_API_KEY) return chamarOpenRouter(prompt)
   try {
-    const r = await obterCliente().messages.create({ model: MODELO_IA, max_tokens: 12000, messages: [{ role: 'user', content: prompt }] })
+    const r = await obterCliente().messages.create({ model: MODELO_IA, max_tokens: 6000, messages: [{ role: 'user', content: prompt }] })
     const texto = r.content.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n').trim()
     if (!texto) throw new Error('O Claude não devolveu texto.')
     return texto

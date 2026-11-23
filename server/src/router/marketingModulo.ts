@@ -182,7 +182,7 @@ export const marketingModuloRouter = router({
     const p = await db.query.mktPerfis.findFirst({ where: eq(mktPerfis.empresaId, input.empresaId) })
     return { personas: j<any[]>(p?.personas, []), swot: { forcas: [], fraquezas: [], oportunidades: [], ameacas: [], ...j<any>(p?.swot, {}) }, concorrentes: j<any[]>(p?.concorrentes, []) }
   }),
-  salvarPerfil: proc.input(z.object({ empresaId: marcaId, personas: z.array(z.record(z.string())).max(6), swot: z.record(z.array(z.string())), concorrentes: z.array(z.object({ handle: z.string(), obs: z.string().optional() })).max(20) })).mutation(async ({ input }) => {
+  salvarPerfil: proc.input(z.object({ empresaId: marcaId, personas: z.array(z.record(z.string())).max(20), swot: z.record(z.array(z.string())), concorrentes: z.array(z.object({ handle: z.string(), obs: z.string().optional() })).max(20) })).mutation(async ({ input }) => {
     const v = { personas: JSON.stringify(input.personas), swot: JSON.stringify(input.swot), concorrentes: JSON.stringify(input.concorrentes.map((c) => ({ handle: c.handle.replace(/^@/, '').trim(), obs: c.obs || '' }))), updatedAt: agoraSql() }
     await db.insert(mktPerfis).values({ empresaId: input.empresaId, ...v }).onConflictDoUpdate({ target: mktPerfis.empresaId, set: v })
     return { ok: true }
