@@ -193,6 +193,29 @@ export const requisicaoPostoRouter = router({
         .groupBy(requisicaoPosto.colaboradorId, requisicaoPostoColaboradores.nome, empresas.nome)
         .orderBy(desc(sql`sum(${requisicaoPosto.valor})`))
 
+      // Por carro (placa) — pedido da Dani (faturista), 2026-11-18: "carro
+      // QIH 4519 — ao total deu X". Placa é lista global (o mesmo carro pode
+      // ser usado por gente de empresas diferentes), então junta os nomes de
+      // quem abasteceu nele no mês.
+      const porVeiculoBruto = await db
+        .select({
+          veiculoId: requisicaoPosto.veiculoId,
+          placa: requisicaoPostoVeiculos.placa,
+          total: sql<number>`coalesce(sum(${requisicaoPosto.valor}), 0)`,
+          qtd: sql<number>`count(*)`,
+          colaboradores: sql<string | null>`group_concat(distinct ${requisicaoPostoColaboradores.nome})`,
+        })
+        .from(requisicaoPosto)
+        .innerJoin(requisicaoPostoVeiculos, eq(requisicaoPostoVeiculos.id, requisicaoPosto.veiculoId))
+        .innerJoin(requisicaoPostoColaboradores, eq(requisicaoPostoColaboradores.id, requisicaoPosto.colaboradorId))
+        .where(filtroMes)
+        .groupBy(requisicaoPosto.veiculoId, requisicaoPostoVeiculos.placa)
+        .orderBy(desc(sql`sum(${requisicaoPosto.valor})`))
+      const porVeiculo = porVeiculoBruto.map((v) => ({
+        ...v,
+        colaboradores: (v.colaboradores ?? '').split(',').filter(Boolean),
+      }))
+
       return {
         mesReferencia: mes,
         totalGeral: totalGeral?.total ?? 0,
@@ -200,6 +223,7 @@ export const requisicaoPostoRouter = router({
         canhotosPendentes: canhotosPendentes[0]?.qtd ?? 0,
         porEmpresa,
         porColaborador,
+        porVeiculo,
       }
     }),
 })

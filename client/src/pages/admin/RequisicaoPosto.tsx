@@ -344,6 +344,37 @@ function RelatorioMensal({ mesReferencia }: { mesReferencia: string }) {
           </div>
         </div>
       </div>
+
+      {/* Por carro — pedido da Dani (faturista), 2026-11-18 */}
+      <div className="border-t border-dark-700 pt-3">
+        <p className="text-xs text-dark-500 mb-1">Por carro</p>
+        {relatorio.porVeiculo.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-dark-500">
+                  <th className="py-1 pr-3 font-normal">Carro</th>
+                  <th className="py-1 pr-3 font-normal">Quem abasteceu</th>
+                  <th className="py-1 pr-3 font-normal text-right">Lançamentos</th>
+                  <th className="py-1 font-normal text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {relatorio.porVeiculo.map((v) => (
+                  <tr key={v.veiculoId} className="border-t border-dark-700">
+                    <td className="py-1.5 pr-3 text-dark-100 font-medium whitespace-nowrap">{v.placa}</td>
+                    <td className="py-1.5 pr-3 text-dark-300">{v.colaboradores.join(', ')}</td>
+                    <td className="py-1.5 pr-3 text-dark-300 text-right">{v.qtd}</td>
+                    <td className="py-1.5 text-dark-100 font-semibold text-right whitespace-nowrap">{formatarMoeda(v.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="text-xs text-dark-500">Nenhum lançamento nesse mês.</p>
+        )}
+      </div>
     </div>
   )
 }
