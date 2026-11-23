@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import AnaliseLigacao from './AnaliseLigacao'
 
 // Player da gravação: o áudio passa pelo CRM (/pabx-gravacao/:id, com login),
 // porque o link da PABXONE360 tem o token da gravação e certificado que o
@@ -45,6 +46,7 @@ export default function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: numb
             </a>
           </div>
         ))}
+        <AnaliseLigacao ligacaoId={ligacaoId} />
       </div>
     )
   return (
@@ -53,6 +55,9 @@ export default function GravacaoLigacao({ ligacaoId, partes }: { ligacaoId: numb
         {carregando ? 'Carregando gravação…' : '▶ Ouvir gravação'}
       </button>
       {erro && <p className="text-xs text-red-300 mt-1">{erro}</p>}
+      <div className="mt-1">
+        <AnaliseLigacao ligacaoId={ligacaoId} />
+      </div>
     </div>
   )
 }

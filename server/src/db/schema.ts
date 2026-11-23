@@ -932,6 +932,30 @@ export const pabxLigacoesProcessadas = sqliteTable('pabx_ligacoes_processadas', 
   userDataIdx: index('idx_pabx_ligacoes_user_data').on(t.userId, t.dataHora),
 }))
 
+// "Analisar ligação" (João, 2026-11-23): transcrição + avaliação por IA de
+// uma gravação (lib/avaliacaoLigacao.ts). Uma por ligação; refazer
+// sobrescreve. pontosFortes/pontosMelhorar = JSON (lista de textos).
+export const ligacaoAvaliacoes = sqliteTable('ligacao_avaliacoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  ligacaoId: integer('ligacao_id').notNull().references(() => pabxLigacoesProcessadas.id, { onDelete: 'cascade' }),
+  status: text('status', { enum: ['processando', 'pronta', 'erro'] }).notNull().default('processando'),
+  transcricao: text('transcricao'),
+  // 'central' = veio pronta da PABXONE360 (grátis); 'ia' = transcrita pelo OpenRouter
+  fonteTranscricao: text('fonte_transcricao'),
+  nota: integer('nota'),
+  resumo: text('resumo'),
+  pontosFortes: text('pontos_fortes'),
+  pontosMelhorar: text('pontos_melhorar'),
+  proximoPasso: text('proximo_passo'),
+  modelo: text('modelo'),
+  erro: text('erro'),
+  criadoPorId: integer('criado_por_id').references(() => users.id, { onDelete: 'set null' }),
+  criadoEm: text('criado_em').notNull().default(sql`(datetime('now'))`),
+  atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({
+  ligacaoIdx: uniqueIndex('idx_ligacao_avaliacoes_ligacao').on(t.ligacaoId),
+}))
+
 // Ramal da PABXONE360 → vendedor do CRM (1 ramal por vendedor). Quem tem
 // conta em mais de uma empresa Odin (contas_vinculadas) liga pelo mesmo
 // ramal — o registro vai pra conta da empresa do cliente/lead.
