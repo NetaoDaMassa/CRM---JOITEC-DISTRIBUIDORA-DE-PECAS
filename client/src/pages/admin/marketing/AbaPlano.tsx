@@ -1,16 +1,53 @@
 // Plano do mês: objetivo, pilares, metas, diagnóstico e aprendizados (editável, salva sozinho).
 import { useEffect, useRef, useState } from 'react'
+import toast from 'react-hot-toast'
 import Button from '../../../components/ui/Button'
-import { CORES, cls, corPilar, mesLongo } from './comum'
+import Modal from '../../../components/ui/Modal'
+import { trpc } from '../../../lib/trpc'
+import { CORES, cls, corPilar, mesLongo, nomeCurtoMarca } from './comum'
 import type { Peca } from './PecaModal'
 
 type Plano = { id: string; empresaId: number; mes: string; dados: any }
 const linhas = (a?: string[]) => (a || []).join('\n')
 const deLinhas = (s: string) => s.split('\n')
 
+// Copiar os pilares para outras marcas no mesmo mês (João, 2026-11-23).
+function CopiarPilares({ plano, pilares, nomeMarca, onClose }: { plano: Plano; pilares: any[]; nomeMarca: string; onClose: () => void }) {
+  const utils = trpc.useUtils()
+  const marcas = trpc.marketingModulo.marcas.useQuery()
+  const outras = (marcas.data || []).filter((m) => m.empresaId !== plano.empresaId)
+  const [sel, setSel] = useState<number[] | null>(null)
+  const marcadas = sel ?? outras.map((m) => m.empresaId)
+  const copiar = trpc.marketingModulo.copiarPilares.useMutation({
+    onSuccess: (r) => { utils.marketingModulo.planos.invalidate(); utils.marketingModulo.pecas.invalidate(); toast.success(`Pilares copiados para: ${r.feitos.map(nomeCurtoMarca).join(', ')}`); onClose() },
+    onError: (e) => toast.error(e.message),
+  })
+  return (
+    <Modal open onClose={onClose} title="Copiar pilares para outras marcas" size="lg">
+      <div className="space-y-4">
+        <p className="text-sm text-dark-300">Os {pilares.length} pilares de <b>{nomeCurtoMarca(nomeMarca)}</b> em {mesLongo(plano.mes)} vão <b>substituir</b> os pilares das marcas marcadas, no mesmo mês. As peças que já existem lá passam para o pilar da mesma posição. Se a marca ainda não tem plano neste mês, ele é criado.</p>
+        <div className="flex flex-wrap gap-2">{pilares.map((p) => <span key={p.id} className="text-xs font-bold px-2 py-1 rounded" style={{ background: `${corPilar(p.cor)}22`, color: corPilar(p.cor) }}>{p.nome}</span>)}</div>
+        <div className="space-y-2">
+          {outras.map((m) => (
+            <label key={m.empresaId} className="flex items-center gap-3 bg-dark-900/60 border border-dark-700 rounded-lg px-3 py-2.5 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4" checked={marcadas.includes(m.empresaId)} onChange={(e) => setSel(e.target.checked ? [...marcadas, m.empresaId] : marcadas.filter((x) => x !== m.empresaId))} />
+              <span className="text-dark-100 font-semibold">{m.nome}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => copiar.mutate({ planoId: plano.id, empresas: marcadas as any, pilares })} loading={copiar.isPending} disabled={!marcadas.length}>Copiar para {marcadas.length} marca(s)</Button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 export default function AbaPlano({ plano, nomeMarca, pecas, salvarDados }: { plano: Plano; nomeMarca: string; pecas: Peca[]; salvarDados: (d: any) => void }) {
   const [d, setD] = useState<any>(plano.dados)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const [copiar, setCopiar] = useState(false)
   useEffect(() => { setD(plano.dados) }, [plano.id])
   const mudar = (novo: any) => {
     setD(novo)
@@ -46,7 +83,11 @@ export default function AbaPlano({ plano, nomeMarca, pecas, salvarDados }: { pla
       </div>
 
       <section className="space-y-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="text-lg font-bold text-dark-100">Pilares</h3><span className="text-xs text-dark-400">Use ▲▼ para mudar a ordem (a mesma ordem aparece no Calendário).</span></div>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div><h3 className="text-lg font-bold text-dark-100">Pilares</h3><span className="text-xs text-dark-400">Use ▲▼ para mudar a ordem (a mesma ordem aparece no Calendário).</span></div>
+          <Button size="sm" variant="secondary" onClick={() => setCopiar(true)} disabled={!pilares.length}>Copiar estes pilares para as outras marcas</Button>
+        </div>
+        {copiar && <CopiarPilares plano={plano} pilares={pilares} nomeMarca={nomeMarca} onClose={() => setCopiar(false)} />}
         {pilares.map((p, i) => (
           <div key={p.id} className="bg-dark-800 border border-dark-700 rounded-xl p-3 grid md:grid-cols-[200px_repeat(4,1fr)] gap-3" style={{ borderLeft: `6px solid ${corPilar(p.cor)}` }}>
             <div className="space-y-1">

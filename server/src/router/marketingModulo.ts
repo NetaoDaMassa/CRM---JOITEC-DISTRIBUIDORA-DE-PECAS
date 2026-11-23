@@ -93,6 +93,32 @@ export const marketingModuloRouter = router({
     return { ok: true }
   }),
 
+  // Copia os pilares deste plano para outras marcas no mesmo mês (João,
+  // 2026-11-23). As peças que já existem lá seguem o pilar da mesma posição.
+  copiarPilares: proc.input(z.object({ planoId: z.string(), empresas: z.array(marcaId).min(1).max(10), pilares: z.array(z.record(z.any())).max(20).optional() })).mutation(async ({ ctx, input }) => {
+    const base = await db.query.mktPlanos.findFirst({ where: eq(mktPlanos.id, input.planoId) })
+    if (!base) throw new TRPCError({ code: 'NOT_FOUND', message: 'Plano não encontrado.' })
+    // A tela manda os pilares que estão na tela (podem ainda não ter salvo).
+    const novos = input.pilares?.length ? input.pilares : j<any>(base.dados, {}).pilares || []
+    if (!novos.length) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Este plano não tem pilares.' })
+    const feitos: string[] = []
+    for (const e of input.empresas) {
+      if (e === base.empresaId) continue
+      const pl = await garantirPlano(e, base.mes, ctx.user.id)
+      const d = j<any>(pl.dados, {})
+      const antigos: { id: string }[] = d.pilares || []
+      d.pilares = JSON.parse(JSON.stringify(novos))
+      await db.update(mktPlanos).set({ dados: JSON.stringify(d), atualizadoPor: ctx.user.id, updatedAt: agoraSql() }).where(eq(mktPlanos.id, pl.id))
+      const ids = new Set(novos.map((x: any) => x.id))
+      for (let i = 0; i < antigos.length; i++) {
+        if (ids.has(antigos[i].id)) continue
+        await db.update(mktPecas).set({ pilar: novos[i]?.id ?? null }).where(and(eq(mktPecas.planoId, pl.id), eq(mktPecas.pilar, antigos[i].id)))
+      }
+      feitos.push(marca(e)?.nome || String(e))
+    }
+    return { feitos }
+  }),
+
   // ---------- peças ----------
   pecas: proc.input(z.object({ mes: mesStr.optional(), planoId: z.string().optional() })).query(async ({ input }) => {
     const conds = []
