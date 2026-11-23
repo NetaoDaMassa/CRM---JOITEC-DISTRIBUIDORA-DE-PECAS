@@ -5,14 +5,15 @@
 // Conexão com a Meta (token): só super admin.
 import { z } from 'zod'
 import crypto from 'crypto'
-import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { mktPlanos, mktPecas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mktIgMidias, mktIgComentarios, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos } from '../db/schema.js'
+import { mktPlanos, mktPecas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mktIgMidias, mktIgComentarios, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos, mktConhecimento, mktRedesPosts, mktRedesResumo } from '../db/schema.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
-import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, type TipoPedido } from '../lib/marketingIa.js'
-import { PILARES_PADRAO, checklistPadrao } from '../lib/marketingFluxo.js'
+import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, separarRoteiroIa, type TipoPedido } from '../lib/marketingIa.js'
+import { PILARES_PADRAO, checklistPadrao, garantirPlano } from '../lib/marketingFluxo.js'
+import { CATEGORIAS, erroTransicao, garantirPasta, registrarAnexo, lerAnexos, conhecimentoTexto } from '../lib/marketingParte3.js'
 import { redesDaEmpresa, importarMlabs } from '../lib/marketingMlabs.js'
 import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, temTokenProprio, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
 
@@ -35,7 +36,7 @@ function planoId(empresaId: number, mes: string) {
   return `${empresaId}-${mes}`
 }
 function pecaSaida(p: typeof mktPecas.$inferSelect) {
-  return { ...p, canais: j<string[]>(p.canais, []), analise: j<any>(p.analise, null), checklist: j<{ t: string; ok: boolean }[]>(p.checklist, []) }
+  return { ...p, canais: j<string[]>(p.canais, []), analise: j<any>(p.analise, null), checklist: j<{ t: string; ok: boolean }[]>(p.checklist, []), anexos: lerAnexos(p.anexos) }
 }
 
 const pecaCampos = z.object({
@@ -56,8 +57,8 @@ const pecaCampos = z.object({
   linkMidia: z.string().max(2000).optional(),
 })
 
-const tipoPedido = z.enum(['revisao', 'criar', 'reescrever', 'instagram', 'mes', 'directs', 'ideias', 'persona'])
-const paramsPedido = z.object({ pecaIds: z.array(z.string()).max(8).optional(), pecaId: z.string().optional(), empresaId: z.number().int().optional(), mes: mesStr.optional() })
+const tipoPedido = z.enum(['revisao', 'criar', 'reescrever', 'instagram', 'mes', 'directs', 'ideias', 'persona', 'legenda', 'adaptar'])
+const paramsPedido = z.object({ pecaIds: z.array(z.string()).max(8).optional(), pecaId: z.string().optional(), empresaId: z.number().int().optional(), mes: mesStr.optional(), ideiaId: z.number().int().optional() })
 
 export const marketingModuloRouter = router({
   marcas: proc.query(async () => {
@@ -117,6 +118,15 @@ export const marketingModuloRouter = router({
   }),
   salvarPeca: proc.input(pecaCampos.extend({ id: z.string() })).mutation(async ({ input }) => {
     const { id, canais, checklist, ...resto } = input
+    const atual = await db.query.mktPecas.findFirst({ where: eq(mktPecas.id, id) })
+    if (!atual) throw new TRPCError({ code: 'NOT_FOUND', message: 'Peça não encontrada.' })
+    // Etapas novas (2026-11-23): cada uma tem a sua trava.
+    if (resto.status && resto.status !== atual.status) {
+      const erro = erroTransicao(atual, resto.status)
+      if (erro) throw new TRPCError({ code: 'BAD_REQUEST', message: erro })
+    }
+    // Escreveu o roteiro → a peça sai de Ideia e vai para Roteiro no quadro.
+    if ((resto.status ?? atual.status) === 'Ideia' && (resto.roteiro ?? '').trim().length > 20) resto.status = 'Roteiro'
     const set: Record<string, unknown> = { ...resto, updatedAt: agoraSql() }
     if (canais) set.canais = JSON.stringify(canais)
     if (checklist) set.checklist = JSON.stringify(checklist)
@@ -128,9 +138,9 @@ export const marketingModuloRouter = router({
     await db.delete(mktPecas).where(eq(mktPecas.id, input.id))
     return { ok: true }
   }),
-  aprovarPecas: proc.input(z.object({ ids: z.array(z.string()).min(1).max(300) })).mutation(async ({ ctx, input }) => {
-    await db.update(mktPecas).set({ status: 'Gravação', aprovadoEm: agoraSql(), aprovadoPor: ctx.user.id, updatedAt: agoraSql() }).where(inArray(mktPecas.id, input.ids))
-    return { aprovadas: input.ids.length }
+  // Texto colado de uma vez → pauta, gancho, roteiro, legenda e CTA (IA do CRM).
+  separarRoteiro: proc.input(z.object({ texto: z.string().min(10).max(20000), tipo: z.string() })).mutation(async ({ input }) => {
+    try { return await separarRoteiroIa(input.texto, input.tipo) } catch (e) { throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message }) }
   }),
 
   // ---------- metas ----------
@@ -154,13 +164,84 @@ export const marketingModuloRouter = router({
 
   // ---------- brainstorm ----------
   ideias: proc.input(z.object({ empresaId: marcaId })).query(async ({ input }) => db.select().from(mktIdeias).where(eq(mktIdeias.empresaId, input.empresaId)).orderBy(desc(mktIdeias.createdAt))),
-  criarIdeia: proc.input(z.object({ empresaId: marcaId, url: z.string().max(1000), nota: z.string().max(2000) })).mutation(async ({ ctx, input }) => {
-    await db.insert(mktIdeias).values({ ...input, autorId: ctx.user.id })
+  criarIdeia: proc.input(z.object({ empresaId: marcaId, url: z.string().max(1000), nota: z.string().max(2000), titulo: z.string().max(300).optional(), detalhes: z.string().max(8000).optional() })).mutation(async ({ ctx, input }) => {
+    if (!input.url.trim() && !input.nota.trim() && !(input.titulo || '').trim()) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escreva a ideia ou cole um link.' })
+    const r = await db.insert(mktIdeias).values({ ...input, titulo: input.titulo || '', detalhes: input.detalhes || '', autorId: ctx.user.id }).returning({ id: mktIdeias.id })
+    return { ok: true, id: r[0].id }
+  }),
+  atualizarIdeia: proc.input(z.object({
+    id: z.number().int(), status: z.enum(['nova', 'usada', 'arquivada']).optional(), usadaEm: z.string().nullable().optional(),
+    titulo: z.string().max(300).optional(), url: z.string().max(1000).optional(), nota: z.string().max(2000).optional(), detalhes: z.string().max(8000).optional(), adaptacao: z.string().max(8000).optional(),
+  })).mutation(async ({ input }) => {
+    const { id, ...set } = input
+    if (set.status && set.status !== 'usada' && set.usadaEm === undefined) set.usadaEm = null
+    if (Object.keys(set).length) await db.update(mktIdeias).set(set).where(eq(mktIdeias.id, id))
     return { ok: true }
   }),
-  atualizarIdeia: proc.input(z.object({ id: z.number().int(), status: z.enum(['nova', 'usada', 'arquivada']), usadaEm: z.string().optional() })).mutation(async ({ input }) => {
-    await db.update(mktIdeias).set({ status: input.status, usadaEm: input.usadaEm ?? null }).where(eq(mktIdeias.id, input.id))
+  // Ideia vira peça no calendário do mês (e fica marcada como usada).
+  ideiaParaPeca: proc.input(z.object({ id: z.number().int(), mes: mesStr, data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(), tipo: z.enum(['Vídeo', 'Post']) })).mutation(async ({ ctx, input }) => {
+    const i = await db.query.mktIdeias.findFirst({ where: eq(mktIdeias.id, input.id) })
+    if (!i) throw new TRPCError({ code: 'NOT_FOUND', message: 'Ideia não encontrada.' })
+    const pl = await garantirPlano(i.empresaId, input.mes, ctx.user.id)
+    const id = crypto.randomUUID()
+    const titulo = (i.titulo || i.nota || 'Ideia do brainstorm').slice(0, 300)
+    const obs = [i.url && `Inspiração: ${i.url}`, i.nota && `Por que inspira: ${i.nota}`, i.detalhes, i.adaptacao && `ADAPTAÇÃO PARA A EMPRESA:\n${i.adaptacao}`].filter(Boolean).join('\n\n').slice(0, 3000)
+    await db.insert(mktPecas).values({ id, empresaId: i.empresaId, planoId: pl.id, data: input.data, hora: '11:00', tipo: input.tipo, titulo, obs, status: 'Ideia', origem: 'brainstorm', canais: JSON.stringify(input.tipo === 'Post' ? ['Instagram', 'Facebook'] : ['Reels Instagram', 'Reels Facebook', 'TikTok', 'YouTube Shorts']), checklist: JSON.stringify(checklistPadrao(input.tipo)) })
+    await db.update(mktIdeias).set({ status: 'usada', usadaEm: new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) }).where(eq(mktIdeias.id, i.id))
+    return pecaSaida((await db.query.mktPecas.findFirst({ where: eq(mktPecas.id, id) }))!)
+  }),
+  // Anotações gerais do brainstorm da marca.
+  notasBrainstorm: proc.input(z.object({ empresaId: marcaId })).query(async ({ input }) => {
+    const r = await db.query.mktAnalises.findFirst({ where: eq(mktAnalises.chave, `brainstorm-notas-${input.empresaId}`) })
+    return { texto: r?.texto || '' }
+  }),
+  salvarNotasBrainstorm: proc.input(z.object({ empresaId: marcaId, texto: z.string().max(20000) })).mutation(async ({ ctx, input }) => {
+    const v = { empresaId: input.empresaId, tipo: 'brainstorm_notas', texto: input.texto, autorId: ctx.user.id, createdAt: agoraSql() }
+    await db.insert(mktAnalises).values({ chave: `brainstorm-notas-${input.empresaId}`, ...v }).onConflictDoUpdate({ target: mktAnalises.chave, set: v })
     return { ok: true }
+  }),
+
+  // ---------- base de conhecimento (a IA lê) ----------
+  conhecimento: proc.input(z.object({ empresaId: marcaId })).query(async ({ input }) => {
+    const rows = await db.select().from(mktConhecimento).where(or(isNull(mktConhecimento.empresaId), eq(mktConhecimento.empresaId, input.empresaId))).orderBy(desc(mktConhecimento.updatedAt))
+    const usado = (await conhecimentoTexto(input.empresaId, 1e9)).length
+    return { categorias: CATEGORIAS, itens: rows, caracteres: usado, limite: 24000 }
+  }),
+  salvarConhecimento: proc.input(z.object({
+    id: z.number().int().optional(), empresaId: marcaId.nullable(), categoria: z.string().max(80), titulo: z.string().trim().min(2, 'Dê um título').max(200), texto: z.string().max(200000),
+    arquivo: z.object({ path: z.string(), nome: z.string(), tipo: z.string().optional(), tamanho: z.number().optional() }).optional(),
+  })).mutation(async ({ ctx, input }) => {
+    let arquivoNome: string | undefined, arquivoPath: string | undefined
+    if (input.arquivo) {
+      const emp = input.empresaId ?? 1
+      const pasta = await garantirPasta(emp, ['Marketing', 'Base de conhecimento'], ctx.user.id)
+      const a = await registrarAnexo(emp, pasta, input.arquivo, ctx.user)
+      arquivoNome = a.nome; arquivoPath = a.path
+    }
+    const v = { empresaId: input.empresaId, categoria: input.categoria, titulo: input.titulo, texto: input.texto, updatedAt: agoraSql(), ...(arquivoPath ? { arquivoNome, arquivoPath } : {}) }
+    if (input.id) await db.update(mktConhecimento).set(v).where(eq(mktConhecimento.id, input.id))
+    else await db.insert(mktConhecimento).values({ ...v, autorId: ctx.user.id })
+    return { ok: true }
+  }),
+  excluirConhecimento: proc.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
+    await db.delete(mktConhecimento).where(eq(mktConhecimento.id, input.id))
+    return { ok: true }
+  }),
+
+  // ---------- relatórios: o que saiu em cada rede ----------
+  // Instagram vem da Meta (traz os reels); as outras redes vêm da mLabs.
+  // Se a marca não tem Instagram ligado na Meta, usa o Instagram da mLabs.
+  relatorio: proc.input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) })).query(async ({ input }) => {
+    const ig = await db.select({ empresaId: mktIgMidias.empresaId, data: mktIgMidias.data, tipo: mktIgMidias.tipo }).from(mktIgMidias).where(and(gte(mktIgMidias.data, input.de), lte(mktIgMidias.data, input.ate)))
+    const ml = await db.select({ empresaId: mktRedesPosts.empresaId, rede: mktRedesPosts.rede, data: mktRedesPosts.data, tipo: mktRedesPosts.tipo }).from(mktRedesPosts).where(and(gte(mktRedesPosts.data, input.de), lte(mktRedesPosts.data, input.ate)))
+    const contasMeta = new Set((await db.select({ e: mktIgContas.empresaId }).from(mktIgContas)).map((c) => c.e))
+    const redesLigadas = await db.selectDistinct({ empresaId: mktRedesResumo.empresaId, rede: mktRedesResumo.rede }).from(mktRedesResumo)
+    const ehVideo = (rede: string, tipo: string | null) => ['tiktok', 'youtube'].includes(rede) || /reel|video|vídeo|short|clip/i.test(tipo || '')
+    const itens = [
+      ...ig.map((m) => ({ empresaId: m.empresaId, rede: 'instagram', data: m.data, video: ehVideo('instagram', m.tipo) })),
+      ...ml.filter((m) => !(m.rede === 'instagram' && contasMeta.has(m.empresaId))).map((m) => ({ empresaId: m.empresaId, rede: m.rede, data: m.data, video: ehVideo(m.rede, m.tipo) })),
+    ]
+    return { itens, redesLigadas, fonteIgMeta: [...contasMeta] }
   }),
   excluirIdeia: proc.input(z.object({ id: z.number().int() })).mutation(async ({ input }) => {
     await db.delete(mktIdeias).where(eq(mktIdeias.id, input.id))

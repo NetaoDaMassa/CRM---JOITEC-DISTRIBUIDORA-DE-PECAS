@@ -5,6 +5,7 @@ import Button from '../../../components/ui/Button'
 import Modal from '../../../components/ui/Modal'
 import IaAcao from './IaAcao'
 import RedesMlabs from './RedesMlabs'
+import BaseConhecimento from './BaseConhecimento'
 import { cls, fmtN, pct, diaLabel } from './comum'
 
 const CAMPOS: [string, string, string][] = [
@@ -65,8 +66,10 @@ export default function AbaEmpresa({ empresaId, nomeMarca, mes }: { empresaId: n
     <div className="space-y-6">
       <div>
         <h2 className="text-2xl font-bold text-dark-100">{nomeMarca}</h2>
-        <p className="text-sm text-dark-400">Instagram, persona e SWOT num lugar só. O Claude usa a persona e a SWOT sempre que cria ou revisa um roteiro.</p>
+        <p className="text-sm text-dark-400">Documentos da empresa, redes sociais, persona e SWOT num lugar só. A IA usa a base de conhecimento, a persona e a SWOT sempre que cria ou revisa um roteiro.</p>
       </div>
+
+      <BaseConhecimento empresaId={empresaId} nomeMarca={nomeMarca} />
 
       <section className={cls.card + ' p-4 space-y-4'}>
         <h3 className="text-lg font-bold text-dark-100">Instagram · últimos 90 dias</h3>

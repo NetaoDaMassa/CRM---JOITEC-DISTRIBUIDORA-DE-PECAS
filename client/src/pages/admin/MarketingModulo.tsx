@@ -4,7 +4,7 @@
 // persona/SWOT, calendário, plano do mês e brainstorm).
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import { Target, ClipboardCheck, Radar, Building2, CalendarDays, Map, Lightbulb, Plug, KanbanSquare, Inbox } from 'lucide-react'
+import { Target, ClipboardCheck, Radar, Building2, CalendarDays, Map, Lightbulb, Plug, KanbanSquare, Inbox, BarChart3 } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import Button from '../../components/ui/Button'
@@ -18,11 +18,12 @@ import AbaBrainstorm from './marketing/AbaBrainstorm'
 import AbaConexoes from './marketing/AbaConexoes'
 import AbaQuadro from './marketing/AbaQuadro'
 import AbaPedidos from './marketing/AbaPedidos'
+import AbaRelatorios from './marketing/AbaRelatorios'
 import GuiaMarketing, { DICA_ABA } from './marketing/Guia'
 import PecaModal, { type Peca } from './marketing/PecaModal'
 import { mesAtual, mesLongo, mesSomar } from './marketing/comum'
 
-type Aba = 'metas' | 'quadro' | 'pedidos' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes'
+type Aba = 'metas' | 'quadro' | 'pedidos' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes' | 'relatorios'
 // Ordem do trabalho do mês (João, 2026-11-23): 1. Planejar → 2. Produzir → 3. Acompanhar.
 type Grupo = '1. Planejar' | '2. Produzir' | '3. Acompanhar' | 'Ajustes'
 const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean; soSuper?: boolean; grupo: Grupo }[] = [
@@ -34,6 +35,7 @@ const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean;
   { id: 'quadro', rotulo: 'Quadro', icone: KanbanSquare, grupo: '2. Produzir' },
   { id: 'revisao', rotulo: 'Revisão', icone: ClipboardCheck, grupo: '2. Produzir' },
   { id: 'metas', rotulo: 'Metas', icone: Target, grupo: '3. Acompanhar' },
+  { id: 'relatorios', rotulo: 'Relatórios', icone: BarChart3, grupo: '3. Acompanhar' },
   { id: 'radar', rotulo: 'Radar', icone: Radar, porMarca: true, grupo: '3. Acompanhar' },
   { id: 'conexoes', rotulo: 'Conexões', icone: Plug, soSuper: true, grupo: 'Ajustes' },
 ]
@@ -144,7 +146,8 @@ export default function MarketingModulo() {
       {aba === 'empresa' && <AbaEmpresa empresaId={empresaId} nomeMarca={nomeMarca} mes={mes} />}
       {aba === 'calendario' && (plano ? <AbaCalendario plano={plano} pecas={(pecasPlano.data || []) as Peca[]} abrirPeca={setAberta} salvarDados={(d) => salvarPlano.mutate({ id: plano.id, dados: d })} /> : semPlano)}
       {aba === 'plano' && (plano ? <AbaPlano key={plano.id} plano={plano} nomeMarca={nomeMarca} pecas={(pecasPlano.data || []) as Peca[]} salvarDados={(d) => salvarPlano.mutate({ id: plano.id, dados: d })} /> : semPlano)}
-      {aba === 'brainstorm' && <AbaBrainstorm empresaId={empresaId} nomeMarca={nomeMarca} />}
+      {aba === 'brainstorm' && <AbaBrainstorm empresaId={empresaId} nomeMarca={nomeMarca} mes={mes} />}
+      {aba === 'relatorios' && <AbaRelatorios mes={mes} marcas={listaMarcas} />}
       {aba === 'conexoes' && superAdmin && <AbaConexoes marcas={listaMarcas} />}
 
       <PecaModal peca={aberta} pilares={aberta ? pilaresDe(aberta.planoId) : []} personaResumo={personaResumo} onClose={() => setAberta(null)} />

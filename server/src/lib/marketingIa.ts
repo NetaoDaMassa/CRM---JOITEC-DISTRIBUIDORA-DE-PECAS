@@ -7,7 +7,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { and, desc, eq, gte, inArray, lte } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { mktPecas, mktPlanos, mktPerfis, mktIgMidias, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos, mktAnalises } from '../db/schema.js'
+import { mktPecas, mktPlanos, mktPerfis, mktIgMidias, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos, mktAnalises, mktIdeias } from '../db/schema.js'
+import { blocoConhecimento } from './marketingParte3.js'
 
 export const MARCAS = [
   { empresaId: 4, nome: 'Odin Compressores', desc: 'compressores de ar industriais (parafuso e pistão, 10 a 200 HP), venda para indústrias e revendas' },
@@ -20,7 +21,7 @@ export function marca(empresaId: number) {
   return MARCAS.find((m) => m.empresaId === empresaId)
 }
 
-export const STATUS_PECA = ['Ideia', 'Roteiro', 'Gravação', 'Edição', 'Aprovação', 'Agendado na mLabs', 'Publicado'] as const
+export const STATUS_PECA = ['Ideia', 'Roteiro', 'Aprovação do roteiro', 'Produção', 'Aprovação final', 'Agendado na mLabs'] as const
 export const MODELO_V = 'GANCHO (0–3 s)\nFala: \nNa tela: \n\nDESENVOLVIMENTO\n1. Fala:  | Cena: \n2. Fala:  | Cena: \n3. Fala:  | Cena: \n\nTEXTO NA TELA\n- \n\nCTA FINAL\n\n\nDURAÇÃO ALVO: 30 s\nÁUDIO SUGERIDO: '
 export const MODELO_P = 'TEXTO DA ARTE / LÂMINAS\n1. \n2. \n3. \n\nOBSERVAÇÕES DE DESIGN\n'
 
@@ -33,9 +34,9 @@ const CRITERIOS = `Critérios:
 6. Risco: números, prazos, preços ou dados técnicos que podem estar errados e precisam ser confirmados.
 7. Coerência com o objetivo do mês, com o pilar e com a persona.`
 
-export type TipoPedido = 'revisao' | 'criar' | 'reescrever' | 'instagram' | 'mes' | 'directs' | 'ideias' | 'persona'
-export type ParamsPedido = { pecaIds?: string[]; pecaId?: string; empresaId?: number; mes?: string }
-const FORMATO: Record<TipoPedido, 'json' | 'texto'> = { revisao: 'json', criar: 'texto', reescrever: 'texto', instagram: 'texto', mes: 'texto', directs: 'texto', ideias: 'json', persona: 'json' }
+export type TipoPedido = 'revisao' | 'criar' | 'reescrever' | 'instagram' | 'mes' | 'directs' | 'ideias' | 'persona' | 'legenda' | 'adaptar'
+export type ParamsPedido = { pecaIds?: string[]; pecaId?: string; empresaId?: number; mes?: string; ideiaId?: number }
+const FORMATO: Record<TipoPedido, 'json' | 'texto'> = { revisao: 'json', criar: 'texto', reescrever: 'texto', instagram: 'texto', mes: 'texto', directs: 'texto', ideias: 'json', persona: 'json', legenda: 'texto', adaptar: 'texto' }
 
 function j<T>(s: string | null | undefined, padrao: T): T {
   try { return s ? (JSON.parse(s) as T) : padrao } catch { return padrao }
@@ -98,23 +99,40 @@ export async function montarPedido(tipo: TipoPedido, params: ParamsPedido): Prom
     const ids = (params.pecaIds || []).slice(0, 8)
     if (!ids.length) throw new Error('Nenhuma peça para revisar.')
     const blocos = []
-    for (let i = 0; i < ids.length; i++) blocos.push(`=== PEÇA ${i + 1} ===\n${(await contextoPeca(ids[i])).texto}`)
-    const prompt = `Você é o editor-chefe de conteúdo do Grupo Odin (compressores de ar, tubos e conexões PPR, automação pneumática, distribuidora de peças, loja de compressores e ferramentas — público B2B e balcão). Revise cada roteiro como um diretor exigente faria antes de liberar para gravação. Seja direto e prático.\n\n${CRITERIOS}\n\nRegras do veredito: "aprovar" = nota 8 a 10 e nada grave para confirmar; "ajustar" = nota 5 a 7; "refazer" = nota 0 a 4.\n\nResponda SOMENTE com um JSON array, um objeto por peça, na mesma ordem, assim:\n[{"id":"<ID>","nota":7,"veredito":"ajustar","resumo":"uma frase","problemas":["até 3 itens curtos"],"gancho":"gancho melhor, ou \\"\\" se o atual está bom","confirmar":["dado a confirmar antes de gravar"]}]\nTexto em português do Brasil.\n\n${blocos.join('\n\n')}`
+    const empresas = new Set<number>()
+    for (let i = 0; i < ids.length; i++) { const c = await contextoPeca(ids[i]); empresas.add(c.peca.empresaId); blocos.push(`=== PEÇA ${i + 1} ===\n${c.texto}`) }
+    let base = ''
+    for (const e of empresas) { const b = await blocoConhecimento(e, Math.floor(12000 / empresas.size)); if (b) base += `\n[${marca(e)?.nome}]${b}` }
+    const prompt = `${base ? base + '\n' : ''}Você é o editor-chefe de conteúdo do Grupo Odin (compressores de ar, tubos e conexões PPR, automação pneumática, distribuidora de peças, loja de compressores e ferramentas — público B2B e balcão). Revise cada roteiro como um diretor exigente faria antes de liberar para gravação. Seja direto e prático.\n\n${CRITERIOS}\n\nRegras do veredito: "aprovar" = nota 8 a 10 e nada grave para confirmar; "ajustar" = nota 5 a 7; "refazer" = nota 0 a 4.\n\nResponda SOMENTE com um JSON array, um objeto por peça, na mesma ordem, assim:\n[{"id":"<ID>","nota":7,"veredito":"ajustar","resumo":"uma frase","problemas":["até 3 itens curtos"],"gancho":"gancho melhor, ou \\"\\" se o atual está bom","confirmar":["dado a confirmar antes de gravar"]}]\nTexto em português do Brasil.\n\n${blocos.join('\n\n')}`
     return { prompt, formato }
   }
-  if (tipo === 'criar' || tipo === 'reescrever') {
-    const { texto, peca } = await contextoPeca(params.pecaId || '')
+  if (tipo === 'criar' || tipo === 'reescrever' || tipo === 'legenda') {
+    const ctx = await contextoPeca(params.pecaId || '')
+    const peca = ctx.peca
+    const texto = ctx.texto + (await blocoConhecimento(peca.empresaId))
     const modelo = peca.tipo === 'Post' ? MODELO_P : MODELO_V
+    if (tipo === 'legenda') {
+      return { formato, prompt: `Escreva a legenda (copy) desta peça para Instagram e Facebook do Grupo Odin. ${peca.tipo === 'Post' ? 'É um post de imagem/carrossel.' : 'É um vídeo curto (Reels/TikTok/Shorts).'}\nRegras: a primeira linha precisa prender (é o que aparece antes do "... mais"); depois 2 a 4 linhas curtas com o benefício prático; uma chamada única no fim (WhatsApp, orçamento ou visita); por último 3 a 5 hashtags. Linguagem do cliente, sem exagero e sem emoji demais. Não invente números, preços ou dados técnicos: se precisar, escreva [CONFIRMAR: ...].\nResponda só com a legenda pronta, sem comentários.\n\n${texto}` }
+    }
     if (tipo === 'criar') {
       return { formato, prompt: `Escreva o roteiro desta peça para as redes sociais do Grupo Odin. ${peca.tipo === 'Post' ? 'É um post de imagem/carrossel.' : 'É um vídeo curto (Reels/TikTok/Shorts) de 20 a 45 segundos, gravável pela equipe com celular.'}\nNão invente números, preços ou dados técnicos: se precisar, escreva [CONFIRMAR: ...].\n${CRITERIOS}\n\nUse exatamente este modelo:\n${modelo}\n\nDepois do roteiro, escreva uma linha "LEGENDA:" com a legenda pronta (até 4 linhas + 3 a 5 hashtags).\nResponda só com o roteiro e a legenda.\n\n${texto}` }
     }
     const a = j<any>(peca.analise, null)
     return { formato, prompt: `Reescreva o roteiro abaixo corrigindo os problemas apontados. Mantenha o produto, a pauta e o CTA, a menos que estejam errados. Não invente números, preços ou dados técnicos: se precisar de um dado, escreva [CONFIRMAR: ...].\n${CRITERIOS}\n\nProblemas apontados: ${a ? (a.problemas || []).join('; ') : 'nenhum'}\nGancho sugerido: ${a?.gancho || '-'}\n\nUse exatamente este modelo:\n${modelo}\n\nResponda só com o roteiro novo, sem comentários.\n\n${texto}` }
   }
+  if (tipo === 'adaptar') {
+    const ideia = await db.query.mktIdeias.findFirst({ where: eq(mktIdeias.id, Number(params.ideiaId)) })
+    if (!ideia) throw new Error('Ideia não encontrada.')
+    const mi = marca(ideia.empresaId)
+    const plA = await db.select().from(mktPlanos).where(eq(mktPlanos.empresaId, ideia.empresaId)).orderBy(desc(mktPlanos.mes)).limit(1)
+    const dA = j<any>(plA[0]?.dados, {})
+    const persA = await personaTexto(ideia.empresaId)
+    return { formato, prompt: `Você é estrategista de conteúdo desta empresa. A equipe guardou a ideia abaixo (de outra marca ou de outro nicho). Traga ela para a realidade desta empresa: produto certo, cliente certo, cenário que a equipe consegue gravar aqui.\nEmpresa: ${mi?.nome} (Grupo Odin, Santa Catarina) — ${mi?.desc}.\n${persA ? persA + '\n' : ''}${plA[0] ? `Plano do mês: objetivo "${dA.objetivo || ''}", pilares ${(dA.pilares || []).map((p: any) => p.nome).join(', ')}\n` : ''}${await blocoConhecimento(ideia.empresaId, 12000)}\nIDEIA GUARDADA:\nTítulo: ${ideia.titulo || '-'}\nLink: ${ideia.url || '-'} (você não consegue abrir o link; use a descrição)\nPor que inspira: ${ideia.nota || '-'}\nMais informações: ${ideia.detalhes || '-'}\n\nResponda em português do Brasil, simples, neste formato:\nTÍTULO:\nFORMATO: (Vídeo ou Post/carrossel, e a duração)\nPILAR:\nGANCHO (3 primeiros segundos):\nROTEIRO RESUMIDO: 3 a 6 passos (fala + cena)\nLEGENDA SUGERIDA:\nO QUE PRECISA PARA GRAVAR: produto, pessoa, lugar\nPOR QUE FUNCIONA AQUI: 1 frase\nNão invente números, preços ou dados técnicos: se precisar, escreva [CONFIRMAR: ...].` }
+  }
   const empresaId = Number(params.empresaId)
   const m = marca(empresaId)
   if (!m) throw new Error('Marca inválida.')
-  const pers = await personaTexto(empresaId)
+  const pers = (await personaTexto(empresaId)) + (await blocoConhecimento(empresaId, 10000))
   const intro = `Empresa: ${m.nome} (Grupo Odin, Santa Catarina) — ${m.desc}.`
   if (tipo === 'instagram') {
     const ate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
@@ -270,6 +288,11 @@ export async function aplicarResposta(tipo: TipoPedido, params: ParamsPedido, te
     return { revisadas: n }
   }
   if (tipo === 'criar') return separarLegenda(limpo)
+  if (tipo === 'legenda') return { legenda: limpo.replace(/^\s*LEGENDA:\s*/i, '') }
+  if (tipo === 'adaptar') {
+    await db.update(mktIdeias).set({ adaptacao: limpo.slice(0, 8000) }).where(eq(mktIdeias.id, Number(params.ideiaId)))
+    return { adaptacao: limpo }
+  }
   if (tipo === 'reescrever') return { roteiro: limpo }
   const empresaId = Number(params.empresaId)
   const mes = params.mes || null
@@ -297,4 +320,14 @@ export async function aplicarResposta(tipo: TipoPedido, params: ParamsPedido, te
 
 export async function pecasDoPedido(ids: string[]) {
   return ids.length ? db.select().from(mktPecas).where(inArray(mktPecas.id, ids)) : []
+}
+
+// "Colar roteiro completo" (João, 2026-11-23): separa um texto colado em pauta,
+// gancho, roteiro, legenda e CTA. Usado quando a IA do CRM está ligada; sem
+// ela a tela separa pelos títulos (GANCHO:, LEGENDA:…).
+export async function separarRoteiroIa(texto: string, tipo: string) {
+  const prompt = `Separe o texto abaixo (roteiro de ${tipo === 'Post' ? 'post/carrossel' : 'vídeo curto'} para redes sociais) nos campos pedidos. NÃO reescreva, NÃO corrija e NÃO invente: copie os trechos exatamente como estão. Se um campo não existir no texto, deixe "".\n- titulo: a pauta/título (1 linha)\n- gancho: a frase de abertura (primeiros 3 segundos)\n- roteiro: o roteiro inteiro (falas, cenas, texto na tela, lâminas), sem a legenda\n- legenda: a legenda/copy do post com as hashtags\n- cta: a chamada final (1 linha)\nResponda SOMENTE com JSON: {"titulo":"","gancho":"","roteiro":"","legenda":"","cta":""}\n\nTEXTO:\n${texto.slice(0, 15000)}`
+  const r = lerJson(await chamarClaude(prompt))
+  const s = (k: string) => String(r?.[k] ?? '').trim()
+  return { titulo: s('titulo'), gancho: s('gancho'), roteiro: s('roteiro') || texto.trim(), legenda: s('legenda'), cta: s('cta') }
 }

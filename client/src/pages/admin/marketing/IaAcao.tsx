@@ -9,8 +9,8 @@ import { trpc } from '../../../lib/trpc'
 import Modal from '../../../components/ui/Modal'
 import Button from '../../../components/ui/Button'
 
-export type TipoIa = 'revisao' | 'criar' | 'reescrever' | 'instagram' | 'mes' | 'directs' | 'ideias' | 'persona'
-export type ParamsIa = { pecaIds?: string[]; pecaId?: string; empresaId?: number; mes?: string }
+export type TipoIa = 'revisao' | 'criar' | 'reescrever' | 'instagram' | 'mes' | 'directs' | 'ideias' | 'persona' | 'legenda' | 'adaptar'
+export type ParamsIa = { pecaIds?: string[]; pecaId?: string; empresaId?: number; mes?: string; ideiaId?: number }
 
 export function useIa() {
   const disp = trpc.marketingModulo.iaDisponivel.useQuery(undefined, { staleTime: 60_000 })

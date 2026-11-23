@@ -4,7 +4,7 @@ import { useState } from 'react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../../lib/trpc'
 import Button from '../../../components/ui/Button'
-import { cls, dataHora } from './comum'
+import { CORES_REVISOR, cls, dataHora } from './comum'
 
 type Marca = { empresaId: number; nome: string }
 
@@ -72,6 +72,7 @@ export default function AbaConexoes({ marcas }: { marcas: Marca[] }) {
         <p className="text-sm text-dark-300">Uma chave por empresa, gerada no portfólio dela na Meta (Usuário do sistema). Ao salvar, o CRM testa e, se achar um Instagram só, já liga sozinho. Depois atualiza de hora em hora: posts, views, comentários, directs e concorrentes.</p>
         {marcas.map((m) => <LinhaMarca key={m.empresaId} m={m} temToken={!!st.data?.tokens?.[m.empresaId]} ligada={st.data?.contas.find((c) => c.empresaId === m.empresaId)} />)}
       </section>
+      <SecaoRevisores />
       <SecaoMlabs />
       <section className={cls.card + ' p-4 space-y-3'}>
         <h3 className="text-lg font-bold text-dark-100">Trazer os planos do painel do Claude</h3>
@@ -101,6 +102,48 @@ function SecaoMlabs() {
         <textarea rows={4} className={cls.input + ' font-mono text-xs mt-2'} value={json} onChange={(e) => setJson(e.target.value)} placeholder='{"empresaId": 6, "periodo": {...}, "redes": [...], "posts": [...]}' />
         <Button size="sm" className="mt-2" disabled={!json.trim()} loading={imp.isPending} onClick={() => imp.mutate({ json })}>Importar</Button>
       </details>
+    </section>
+  )
+}
+
+// Revisores (João, 2026-11-23): quem aprova roteiro e peça final, e o quê.
+// A ordem define a cor de cada um no roteiro (1º amarelo, 2º rosa, 3º azul…).
+function SecaoRevisores() {
+  const utils = trpc.useUtils()
+  const equipe = trpc.marketingFluxo.equipe.useQuery()
+  const rev = trpc.marketingFluxo.revisores.useQuery()
+  const [lista, setLista] = useState<{ userId: number; video: boolean; post: boolean }[] | null>(null)
+  const salvar = trpc.marketingFluxo.salvarRevisores.useMutation({ onSuccess: () => { utils.marketingFluxo.revisores.invalidate(); setLista(null); toast.success('Revisores salvos') }, onError: (e) => toast.error(e.message) })
+  const atual = lista ?? (rev.data?.lista || []).map((r) => ({ userId: r.userId, video: r.video, post: r.post }))
+  const nome = (id: number) => equipe.data?.find((u) => u.id === id)?.name || rev.data?.lista.find((r) => r.userId === id)?.nome || `#${id}`
+  const livres = (equipe.data || []).filter((u) => !atual.some((r) => r.userId === u.id))
+  const set = (i: number, c: Partial<{ video: boolean; post: boolean }>) => setLista(atual.map((r, j) => (j === i ? { ...r, ...c } : r)))
+  return (
+    <section className={cls.card + ' p-4 space-y-3'}>
+      <div>
+        <h3 className="text-lg font-bold text-dark-100">Revisores</h3>
+        <p className="text-sm text-dark-400">Quem aprova o roteiro (libera a gravação) e a peça pronta (aprovação final). Ex.: João vídeo e post, Maria só vídeo, Gaby só post. A pessoa precisa ter a permissão Marketing. A ordem define a cor dela no roteiro.</p>
+      </div>
+      {atual.map((r, i) => (
+        <div key={r.userId} className="flex flex-wrap items-center gap-3 text-sm bg-dark-900/60 rounded-lg px-3 py-2">
+          <span className="w-5 h-5 rounded" style={{ background: CORES_REVISOR[i % CORES_REVISOR.length].texto }} />
+          <b className="text-dark-100 min-w-[160px]">{nome(r.userId)}</b>
+          <label className="flex items-center gap-1 text-dark-300"><input type="checkbox" checked={r.video} onChange={(e) => set(i, { video: e.target.checked })} />revisa vídeo</label>
+          <label className="flex items-center gap-1 text-dark-300"><input type="checkbox" checked={r.post} onChange={(e) => set(i, { post: e.target.checked })} />revisa post</label>
+          <span className="ml-auto flex gap-1">
+            <button disabled={i === 0} className="px-1.5 rounded bg-dark-700 disabled:opacity-30" onClick={() => { const a = [...atual]; [a[i - 1], a[i]] = [a[i], a[i - 1]]; setLista(a) }}>▲</button>
+            <button className="px-2 rounded text-red-400 hover:bg-dark-700" onClick={() => setLista(atual.filter((_, j) => j !== i))}>tirar</button>
+          </span>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-2">
+        <select className={cls.input + ' w-auto'} value="" onChange={(e) => { const id = Number(e.target.value); if (id) setLista([...atual, { userId: id, video: true, post: true }]) }}>
+          <option value="">+ Adicionar revisor…</option>
+          {livres.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+        {lista && <Button size="sm" onClick={() => salvar.mutate({ lista: atual })} loading={salvar.isPending}>Salvar revisores</Button>}
+        {lista && <Button size="sm" variant="ghost" onClick={() => setLista(null)}>Desfazer</Button>}
+      </div>
     </section>
   )
 }

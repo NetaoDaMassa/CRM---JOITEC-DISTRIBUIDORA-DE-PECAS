@@ -5643,6 +5643,13 @@ export const mktPecas = sqliteTable('mkt_pecas', {
   checklist: text('checklist').notNull().default('[]'),
   origem: text('origem').notNull().default('manual'),
   linkMidia: text('link_midia').notNull().default(''),
+  // 0179: anexos (vídeo/arte, também em Arquivos/Mídia) e aprovações dos revisores.
+  anexos: text('anexos').notNull().default('[]'),
+  pastaId: integer('pasta_id'),
+  roteiroAprovadoEm: text('roteiro_aprovado_em'),
+  roteiroAprovadoPor: text('roteiro_aprovado_por'),
+  finalAprovadoEm: text('final_aprovado_em'),
+  finalAprovadoPor: text('final_aprovado_por'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({ empresaData: index('idx_mkt_pecas_empresa_data').on(t.empresaId, t.data), plano: index('idx_mkt_pecas_plano').on(t.planoId) }))
@@ -5655,6 +5662,9 @@ export const mktIdeias = sqliteTable('mkt_ideias', {
   status: text('status').notNull().default('nova'),
   usadaEm: text('usada_em'),
   autorId: integer('autor_id').references(() => users.id, { onDelete: 'set null' }),
+  titulo: text('titulo').notNull().default(''),
+  detalhes: text('detalhes').notNull().default(''),
+  adaptacao: text('adaptacao').notNull().default(''),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({ empresa: index('idx_mkt_ideias_empresa').on(t.empresaId, t.status) }))
 
@@ -5814,6 +5824,32 @@ export const mktDemandas = sqliteTable('mkt_demandas', {
   linkEntrega: text('link_entrega').notNull().default(''),
   resposta: text('resposta').notNull().default(''),
   concluidoEm: text('concluido_em'),
+  anexos: text('anexos').notNull().default('[]'),
+  pastaId: integer('pasta_id'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({ status: index('idx_mkt_demandas_status').on(t.status) }))
+
+// Marketing parte 3 (0179): versões do roteiro (cada revisor numa cor) e base de conhecimento.
+export const mktPecaVersoes = sqliteTable('mkt_peca_versoes', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  pecaId: text('peca_id').notNull().references(() => mktPecas.id, { onDelete: 'cascade' }),
+  roteiro: text('roteiro').notNull().default(''),
+  autorId: integer('autor_id').references(() => users.id, { onDelete: 'set null' }),
+  autorNome: text('autor_nome').notNull().default(''),
+  revisor: integer('revisor', { mode: 'boolean' }).notNull().default(false),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ peca: index('idx_mkt_peca_versoes_peca').on(t.pecaId) }))
+
+export const mktConhecimento = sqliteTable('mkt_conhecimento', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').references(() => empresas.id),
+  categoria: text('categoria').notNull().default('Informações gerais'),
+  titulo: text('titulo').notNull().default(''),
+  texto: text('texto').notNull().default(''),
+  arquivoNome: text('arquivo_nome'),
+  arquivoPath: text('arquivo_path'),
+  autorId: integer('autor_id').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ empresa: index('idx_mkt_conhecimento_empresa').on(t.empresaId) }))

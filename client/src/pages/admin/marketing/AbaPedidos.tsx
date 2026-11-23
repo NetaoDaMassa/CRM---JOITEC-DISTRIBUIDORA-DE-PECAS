@@ -1,16 +1,18 @@
 // Fila de pedidos de outros setores ao marketing (estilo Operand/Ummense):
-// quadro Novo → Em produção → Aprovação → Entregue, com responsável e prazo.
+// quadro Novo → Aprovado → Produção → Entregue (João, 2026-11-23), com
+// responsável e prazo. Regra: só entrega com o arquivo anexado.
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import { trpc } from '../../../lib/trpc'
 import Modal from '../../../components/ui/Modal'
 import Button from '../../../components/ui/Button'
-import { STATUS_DEMANDA, cls, dataHora, diaLabel, hojeBR, iniciais } from './comum'
+import Anexos from './Anexos'
+import { STATUS_DEMANDA, cls, dataHora, diaLabel, hojeBR, iniciais, type Anexo } from './comum'
 
 type Demanda = {
   id: number; titulo: string; descricao: string; tipo: string; prioridade: string; prazo: string | null; status: string; responsavelId: number | null
-  linkEntrega: string; resposta: string; solicitante: string; marca: string; createdAt: string
+  linkEntrega: string; resposta: string; solicitante: string; marca: string; createdAt: string; anexos: Anexo[]
 }
 const corPrio: Record<string, string> = { Urgente: 'text-red-400', Normal: 'text-dark-300', Baixa: 'text-dark-500' }
 
@@ -18,7 +20,9 @@ function DemandaModal({ d, onClose }: { d: Demanda | null; onClose: () => void }
   const utils = trpc.useUtils()
   const equipe = trpc.marketingFluxo.equipe.useQuery()
   const [f, setF] = useState<Demanda | null>(d)
-  const salvar = trpc.marketingFluxo.salvarDemanda.useMutation({ onSuccess: () => { utils.marketingFluxo.demandas.invalidate(); toast.success('Salvo'); onClose() }, onError: (e) => toast.error(e.message) })
+  const salvar = trpc.marketingFluxo.salvarDemanda.useMutation({ onSuccess: () => { utils.marketingFluxo.demandas.invalidate(); toast.success('Salvo'); onClose() }, onError: (e) => toast.error(e.message, { duration: 8000 }) })
+  const anexar = trpc.marketingFluxo.anexarDemanda.useMutation()
+  const tirar = trpc.marketingFluxo.removerAnexoDemanda.useMutation({ onError: (e) => toast.error(e.message) })
   if (!d || !f) return null
   return (
     <Modal open={!!d} onClose={onClose} title={`Pedido #${d.id}`} size="lg">
@@ -31,7 +35,12 @@ function DemandaModal({ d, onClose }: { d: Demanda | null; onClose: () => void }
           <label className="block space-y-1"><span className={cls.rotulo}>Prazo</span><input type="date" className={cls.input} value={f.prazo || ''} onChange={(e) => setF({ ...f, prazo: e.target.value || null })} /></label>
           <label className="block space-y-1"><span className={cls.rotulo}>Prioridade</span><select className={cls.input} value={f.prioridade} onChange={(e) => setF({ ...f, prioridade: e.target.value })}>{['Baixa', 'Normal', 'Urgente'].map((s) => <option key={s}>{s}</option>)}</select></label>
         </div>
-        <label className="block space-y-1"><span className={cls.rotulo}>Link da entrega (Drive, Mídia…)</span><input className={cls.input} value={f.linkEntrega} onChange={(e) => setF({ ...f, linkEntrega: e.target.value })} /></label>
+        <div className="bg-dark-900/60 border border-dark-700 rounded-xl p-3">
+          <Anexos anexos={f.anexos} aviso="Para marcar como Entregue, anexe o arquivo (vídeo, arte, post). Ele vai também para Arquivos/Mídia → Marketing → Pedidos ao marketing."
+            enviar={async (arq) => { const a = await anexar.mutateAsync({ id: f.id, arquivo: arq }); setF((o) => (o ? { ...o, anexos: [...o.anexos, a as Anexo] } : o)); utils.marketingFluxo.demandas.invalidate(); toast.success('Anexado') }}
+            remover={(arquivoId) => tirar.mutate({ id: f.id, arquivoId }, { onSuccess: () => { setF((o) => (o ? { ...o, anexos: o.anexos.filter((a) => a.arquivoId !== arquivoId) } : o)); utils.marketingFluxo.demandas.invalidate() } })} />
+        </div>
+        <label className="block space-y-1"><span className={cls.rotulo}>Link extra (opcional)</span><input className={cls.input} value={f.linkEntrega} onChange={(e) => setF({ ...f, linkEntrega: e.target.value })} /></label>
         <label className="block space-y-1"><span className={cls.rotulo}>Resposta para quem pediu</span><textarea rows={3} className={cls.input} value={f.resposta} onChange={(e) => setF({ ...f, resposta: e.target.value })} /></label>
         <Button onClick={() => salvar.mutate({ id: f.id, status: f.status as any, responsavelId: f.responsavelId, prazo: f.prazo, prioridade: f.prioridade as any, linkEntrega: f.linkEntrega, resposta: f.resposta })} loading={salvar.isPending}>Salvar</Button>
       </div>
@@ -44,7 +53,7 @@ export default function AbaPedidos() {
   const lista = trpc.marketingFluxo.demandas.useQuery()
   const equipe = trpc.marketingFluxo.equipe.useQuery()
   const artes = trpc.marketingFluxo.artesVendedores.useQuery()
-  const mover = trpc.marketingFluxo.salvarDemanda.useMutation({ onSuccess: () => utils.marketingFluxo.demandas.invalidate(), onError: (e) => toast.error(e.message) })
+  const mover = trpc.marketingFluxo.salvarDemanda.useMutation({ onSuccess: () => utils.marketingFluxo.demandas.invalidate(), onError: (e) => toast.error(e.message, { duration: 8000 }) })
   const [aberta, setAberta] = useState<Demanda | null>(null)
   const [verRecusados, setVerRecusados] = useState(false)
   const nome = (id: number | null) => equipe.data?.find((u) => u.id === id)?.name || ''
@@ -85,6 +94,7 @@ export default function AbaPedidos() {
                       <div className="flex items-center gap-2 text-[11px]">
                         {resp ? <span title={resp} className="w-6 h-6 rounded-full bg-gold-900/50 text-gold-200 flex items-center justify-center font-bold">{iniciais(resp)}</span> : <span className="text-dark-500">sem responsável</span>}
                         {d.prazo && <span className={atr ? 'text-red-400 font-semibold' : 'text-dark-300'}>prazo {diaLabel(d.prazo)}</span>}
+                        {d.anexos.length > 0 && <span className="text-dark-300">📎 {d.anexos.length}</span>}
                       </div>
                     </div>
                   )

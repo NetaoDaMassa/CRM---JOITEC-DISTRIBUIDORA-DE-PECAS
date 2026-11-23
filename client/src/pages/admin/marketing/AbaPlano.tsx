@@ -18,6 +18,8 @@ export default function AbaPlano({ plano, nomeMarca, pecas, salvarDados }: { pla
     timer.current = setTimeout(() => salvarDados(novo), 800)
   }
   const pilares: any[] = d.pilares || []
+  // Ordem dos pilares (João, 2026-11-23): a mesma ordem vale no Calendário.
+  const moverPilar = (i: number, dir: number) => { const ps = [...pilares]; const j = i + dir; if (j < 0 || j >= ps.length) return; [ps[i], ps[j]] = [ps[j], ps[i]]; mudar({ ...d, pilares: ps }) }
   const setPilar = (i: number, campos: any) => { const ps = [...pilares]; ps[i] = { ...ps[i], ...campos }; mudar({ ...d, pilares: ps }) }
   const lista = (k: string, rot: string, cor: string) => (
     <div className={`bg-dark-800 border border-dark-700 border-t-4 ${cor} rounded-xl p-3 space-y-1`}>
@@ -44,7 +46,7 @@ export default function AbaPlano({ plano, nomeMarca, pecas, salvarDados }: { pla
       </div>
 
       <section className="space-y-3">
-        <h3 className="text-lg font-bold text-dark-100">Pilares</h3>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h3 className="text-lg font-bold text-dark-100">Pilares</h3><span className="text-xs text-dark-400">Use ▲▼ para mudar a ordem (a mesma ordem aparece no Calendário).</span></div>
         {pilares.map((p, i) => (
           <div key={p.id} className="bg-dark-800 border border-dark-700 rounded-xl p-3 grid md:grid-cols-[200px_repeat(4,1fr)] gap-3" style={{ borderLeft: `6px solid ${corPilar(p.cor)}` }}>
             <div className="space-y-1">
@@ -53,6 +55,10 @@ export default function AbaPlano({ plano, nomeMarca, pecas, salvarDados }: { pla
               <div className="flex items-center gap-2 text-xs text-dark-400">
                 <button className="w-5 h-5 rounded" style={{ background: corPilar(p.cor) }} title="Trocar cor" onClick={() => setPilar(i, { cor: CORES[(CORES.indexOf(p.cor) + 1) % CORES.length] })} />
                 {pecas.filter((x) => x.pilar === p.id).length} peças
+                <span className="flex gap-0.5 ml-1" title="Mudar a ordem dos pilares">
+                  <button disabled={i === 0} className="px-1.5 rounded bg-dark-700 hover:bg-dark-600 disabled:opacity-30" onClick={() => moverPilar(i, -1)}>▲</button>
+                  <button disabled={i === pilares.length - 1} className="px-1.5 rounded bg-dark-700 hover:bg-dark-600 disabled:opacity-30" onClick={() => moverPilar(i, 1)}>▼</button>
+                </span>
                 <button className="text-red-400 hover:underline ml-auto" onClick={() => { if (confirm(`Remover o pilar ${p.nome}?`)) mudar({ ...d, pilares: pilares.filter((_, j) => j !== i) }) }}>remover</button>
               </div>
             </div>

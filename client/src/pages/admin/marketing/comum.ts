@@ -3,7 +3,8 @@ export const TZ = 'America/Sao_Paulo'
 export const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez']
 export const MESES_LONGO = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro']
 export const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
-export const STATUS = ['Ideia', 'Roteiro', 'Gravação', 'Edição', 'Aprovação', 'Agendado na mLabs', 'Publicado'] as const
+// Etapas do quadro (João, 2026-11-23). Produção = gravação + edição.
+export const STATUS = ['Ideia', 'Roteiro', 'Aprovação do roteiro', 'Produção', 'Aprovação final', 'Agendado na mLabs'] as const
 export const CANAIS_V = ['Reels Instagram', 'Reels Facebook', 'TikTok', 'YouTube Shorts']
 export const CANAIS_P = ['Instagram', 'Facebook', 'Pinterest']
 export const CANAIS = [...CANAIS_V, ...CANAIS_P, 'LinkedIn', 'Google Meu Negócio']
@@ -113,8 +114,8 @@ export const cls = {
 }
 
 // ---- Parte 2 (quadro, pedidos, aprovação) ----
-export const STATUS_DEMANDA = ['Novo', 'Em produção', 'Aprovação', 'Entregue', 'Recusado'] as const
-const FINAL = ['Agendado na mLabs', 'Publicado']
+export const STATUS_DEMANDA = ['Novo', 'Aprovado', 'Produção', 'Entregue', 'Recusado'] as const
+const FINAL = ['Agendado na mLabs']
 export function atrasada(p: { data: string | null; status: string }) {
   return !!p.data && p.data < hojeBR() && !FINAL.includes(p.status)
 }
@@ -129,4 +130,89 @@ export function iniciais(nome?: string | null) {
 }
 export function nomeCurtoMarca(nome: string) {
   return nome.replace('Odin Automação Pneumática', 'Odin Automação').replace('Odin Tubos e Conexões', 'Odin Tubos').replace('Joitec Distribuidora', 'Joitec')
+}
+
+// ---- Parte 3 (anexos, revisores, base de conhecimento) ----
+export type Anexo = { arquivoId: number; nome: string; path: string; tipo: string; tamanho: number; em: string; por: string }
+
+// Sobe o arquivo cru (mesma rota de Arquivos/Mídia); quem grava na pasta é o tRPC.
+export async function subirArquivo(file: File): Promise<{ path: string; nome: string; tipo: string; tamanho: number }> {
+  const token = localStorage.getItem('odin_token')
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch('/upload/marketing-arquivo', { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data.error ?? 'Falha ao enviar o arquivo')
+  return { path: data.path, nome: data.nome, tipo: data.tipo || file.type, tamanho: data.tamanho || file.size }
+}
+
+// Lê o texto do arquivo no navegador para a IA: PDF (pdfjs), texto puro.
+export async function extrairTexto(file: File): Promise<string | null> {
+  const nome = file.name.toLowerCase()
+  if (file.type.startsWith('text/') || /\.(txt|md|csv|json)$/.test(nome)) return (await file.text()).slice(0, 200000)
+  if (file.type === 'application/pdf' || nome.endsWith('.pdf')) {
+    const [pdfjsLib, worker] = await Promise.all([import('pdfjs-dist'), import('pdfjs-dist/build/pdf.worker.mjs?url')])
+    pdfjsLib.GlobalWorkerOptions.workerSrc = worker.default
+    const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise
+    const partes: string[] = []
+    for (let i = 1; i <= Math.min(pdf.numPages, 150); i++) {
+      const pg = await pdf.getPage(i)
+      const c = await pg.getTextContent()
+      partes.push(c.items.map((it: any) => ('str' in it ? it.str : '') + (it.hasEOL ? '\n' : ' ')).join(''))
+    }
+    return partes.join('\n\n').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 200000)
+  }
+  return null
+}
+
+export function tamanhoArq(b: number) {
+  return b > 1048576 ? `${(b / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(b / 1024))} KB`
+}
+
+// Cor de cada revisor (pela ordem da lista em Conexões).
+export const CORES_REVISOR = [
+  { fundo: 'rgba(234,179,8,.22)', texto: '#fde047', nome: 'amarelo' },
+  { fundo: 'rgba(236,72,153,.22)', texto: '#f9a8d4', nome: 'rosa' },
+  { fundo: 'rgba(6,182,212,.22)', texto: '#67e8f9', nome: 'azul' },
+  { fundo: 'rgba(34,197,94,.22)', texto: '#86efac', nome: 'verde' },
+  { fundo: 'rgba(168,85,247,.22)', texto: '#d8b4fe', nome: 'roxo' },
+]
+
+// "Quem escreveu cada palavra": compara versão a versão (LCS por palavra) e
+// marca o que cada revisor acrescentou. Texto do autor original fica sem cor.
+export type Trecho = { t: string; autor: string | null }
+function tokens(s: string) {
+  return s.split(/(\s+)/).filter((x) => x !== '')
+}
+function lcsMap(a: string[], b: string[]): (number | null)[] {
+  const n = a.length, m = b.length
+  if (n * m > 9_000_000) return b.map(() => null)
+  const dp = Array.from({ length: n + 1 }, () => new Uint16Array(m + 1))
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1])
+  const map: (number | null)[] = b.map(() => null)
+  let i = 0, j = 0
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { map[j] = i; i++; j++ } else if (dp[i + 1][j] >= dp[i][j + 1]) i++
+    else j++
+  }
+  return map
+}
+export function autoria(versoes: { roteiro: string; autorNome: string; revisor: boolean }[], atual: string): Trecho[] {
+  if (!versoes.length) return [{ t: atual, autor: null }]
+  let toks = tokens(versoes[0].roteiro)
+  let dono: (string | null)[] = toks.map(() => null)
+  const passos = [...versoes.slice(1), ...(versoes[versoes.length - 1].roteiro !== atual ? [{ roteiro: atual, autorNome: '', revisor: false }] : [])]
+  for (const v of passos) {
+    const novo = tokens(v.roteiro)
+    const map = lcsMap(toks, novo)
+    dono = novo.map((tk, j) => (map[j] !== null ? dono[map[j]!] : /^\s+$/.test(tk) ? null : v.revisor ? v.autorNome : null))
+    toks = novo
+  }
+  const out: Trecho[] = []
+  toks.forEach((t, i) => {
+    const a = /^\s+$/.test(t) && out.length ? out[out.length - 1].autor : dono[i]
+    if (out.length && out[out.length - 1].autor === a) out[out.length - 1].t += t
+    else out.push({ t, autor: a })
+  })
+  return out
 }

@@ -1254,6 +1254,13 @@
       "when": 1795300800000,
       "tag": "0178_marketing_redes_mlabs",
       "breakpoints": true
+    },
+    {
+      "idx": 179,
+      "version": "6",
+      "when": 1795387200000,
+      "tag": "0179_marketing_parte3",
+      "breakpoints": true
     }
   ]
 }

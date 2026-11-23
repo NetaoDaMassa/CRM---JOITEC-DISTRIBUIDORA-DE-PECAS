@@ -8,7 +8,7 @@ import Button from '../components/ui/Button'
 
 const inp = 'bg-dark-900 border border-dark-600 rounded-lg px-3 py-2 text-sm text-dark-100 focus:outline-none focus:border-gold-500 w-full'
 const rot = 'text-[11px] font-semibold uppercase tracking-wider text-dark-400'
-const corStatus: Record<string, string> = { Novo: 'bg-dark-700 text-dark-200', 'Em produção': 'bg-blue-900/50 text-blue-200', Aprovação: 'bg-yellow-900/50 text-yellow-200', Entregue: 'bg-green-900/50 text-green-200', Recusado: 'bg-red-900/50 text-red-200' }
+const corStatus: Record<string, string> = { Novo: 'bg-dark-700 text-dark-200', Aprovado: 'bg-yellow-900/50 text-yellow-200', Produção: 'bg-blue-900/50 text-blue-200', Entregue: 'bg-green-900/50 text-green-200', Recusado: 'bg-red-900/50 text-red-200' }
 
 export default function PedirMarketing() {
   const utils = trpc.useUtils()
@@ -48,6 +48,7 @@ export default function PedirMarketing() {
             <div className="text-xs text-dark-400">{d.tipo}{d.marca && ` · ${d.marca}`}{d.prazo && ` · prazo ${d.prazo.split('-').reverse().join('/')}`}</div>
             {d.resposta && <div className="text-sm text-dark-200"><b>Marketing:</b> {d.resposta}</div>}
             {d.linkEntrega && <a className="text-sm text-gold-400 hover:underline break-all" href={d.linkEntrega} target="_blank" rel="noreferrer">Ver entrega</a>}
+            {d.anexos?.length > 0 && <div className="flex flex-wrap gap-2">{d.anexos.map((a) => <a key={a.arquivoId} className="text-sm text-gold-400 hover:underline" href={a.path} target="_blank" rel="noreferrer">📎 {a.nome}</a>)}</div>}
           </div>
         ))}
       </div>

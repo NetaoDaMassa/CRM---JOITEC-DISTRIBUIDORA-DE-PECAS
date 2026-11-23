@@ -13,8 +13,8 @@ const TZ = 'America/Sao_Paulo'
 export const PILARES_PADRAO = [['Produto', 'azul', 'Produto em destaque para vender'], ['Resolver', 'laranja', 'Dor do cliente → produto'], ['Provar', 'verde', 'Mostrar que funciona de verdade'], ['Conectar', 'roxo', 'Pessoas e cultura do grupo'], ['Leveza', 'amarelo', 'Humor de chão de fábrica']]
   .map(([nome, cor, desc], i) => ({ id: `p${i + 1}`, nome, cor, desc, estrategias: [], formatos: [], canais: [], metricas: [] }))
 
-export const CHECK_VIDEO = ['Roteiro escrito', 'Roteiro aprovado', 'Gravado', 'Editado', 'Legenda pronta', 'Agendado na mLabs']
-export const CHECK_POST = ['Texto da arte', 'Arte pronta', 'Legenda pronta', 'Aprovado', 'Agendado na mLabs']
+export const CHECK_VIDEO = ['Roteiro escrito', 'Gravado', 'Editado', 'Legenda pronta', 'Vídeo anexado']
+export const CHECK_POST = ['Texto da arte', 'Arte pronta', 'Legenda pronta', 'Arte anexada']
 export function checklistPadrao(tipo: string) {
   return (tipo === 'Post' ? CHECK_POST : CHECK_VIDEO).map((t) => ({ t, ok: false }))
 }
@@ -41,7 +41,7 @@ export function segundaDe(iso: string) {
 }
 
 // Garante o plano da marca naquele mês (copiando os pilares do último plano).
-async function garantirPlano(empresaId: number, mes: string, userId: number | null) {
+export async function garantirPlano(empresaId: number, mes: string, userId: number | null) {
   const id = `${empresaId}-${mes}`
   const ja = await db.query.mktPlanos.findFirst({ where: eq(mktPlanos.id, id) })
   if (ja) return ja
@@ -67,8 +67,9 @@ export async function gerarPecasDaSemana(opts: { segunda?: string; userId?: numb
   const out: { empresaId: number; nome: string; videos: number; posts: number }[] = []
   for (const m of MARCAS) {
     if (opts.empresas && !opts.empresas.includes(m.empresaId)) continue
-    const ja = await db.select({ tipo: mktPecas.tipo, data: mktPecas.data, pilar: mktPecas.pilar }).from(mktPecas)
-      .where(and(eq(mktPecas.empresaId, m.empresaId), gte(mktPecas.data, seg), lte(mktPecas.data, dom)))
+    // Demanda complementar não conta para a meta da semana.
+    const ja = (await db.select({ tipo: mktPecas.tipo, data: mktPecas.data, pilar: mktPecas.pilar, origem: mktPecas.origem }).from(mktPecas)
+      .where(and(eq(mktPecas.empresaId, m.empresaId), gte(mktPecas.data, seg), lte(mktPecas.data, dom)))).filter((p) => p.origem !== 'complementar')
     const temV = ja.filter((p) => p.tipo !== 'Post')
     const temP = ja.filter((p) => p.tipo === 'Post')
     const criar: { tipo: 'Vídeo' | 'Post'; data: string }[] = []
@@ -114,14 +115,14 @@ export async function gerarSemanaAgendado() {
   return r.total ? `${r.total} peças criadas para a semana de ${r.segunda}` : null
 }
 
-// Para onde a peça vai quando aprovada / quando pedem ajuste pelo link.
+// Link de aprovação antigo (tirado da tela em 2026-11-23, links já mandados
+// ainda abrem): segue as etapas novas.
 export function statusAoAprovar(status: string) {
-  if (['Ideia', 'Roteiro'].includes(status)) return 'Gravação'
-  if (['Gravação', 'Edição', 'Aprovação'].includes(status)) return 'Agendado na mLabs'
+  if (['Ideia', 'Roteiro', 'Aprovação do roteiro'].includes(status)) return 'Produção'
   return status
 }
 export function statusAoPedirAjuste(status: string) {
-  if (['Ideia', 'Roteiro'].includes(status)) return 'Roteiro'
-  if (['Gravação', 'Edição', 'Aprovação'].includes(status)) return 'Edição'
+  if (['Ideia', 'Roteiro', 'Aprovação do roteiro'].includes(status)) return 'Roteiro'
+  if (['Produção', 'Aprovação final'].includes(status)) return 'Produção'
   return status
 }
