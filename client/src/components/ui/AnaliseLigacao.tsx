@@ -1,10 +1,18 @@
 import { useState } from 'react'
 import { trpc } from '../../lib/trpc'
+import { useAuth } from '../../contexts/AuthContext'
 
 // "Analisar ligação" (João, 2026-11-23): a IA transcreve a gravação e dá
 // nota + o que foi bem + o que melhorar. Servidor: lib/avaliacaoLigacao.ts.
 // Só consulta quando a pessoa clica (não pesa nas listas com muitas gravações).
+// Só gestores veem (admin/gestor/superAdmin) — João, 2026-11-23.
 export default function AnaliseLigacao({ ligacaoId }: { ligacaoId: number }) {
+  const { user } = useAuth()
+  if (!user || (user.role === 'vendor' && !user.superAdmin)) return null
+  return <AnaliseLigacaoGestor ligacaoId={ligacaoId} />
+}
+
+function AnaliseLigacaoGestor({ ligacaoId }: { ligacaoId: number }) {
   const [aberta, setAberta] = useState(false)
   const [verTranscricao, setVerTranscricao] = useState(false)
   const utils = trpc.useUtils()

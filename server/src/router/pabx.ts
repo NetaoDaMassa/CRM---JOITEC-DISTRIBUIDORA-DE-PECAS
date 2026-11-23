@@ -365,6 +365,8 @@ export const pabxRouter = router({
   avaliarLigacao: protectedProcedure
     .input(z.object({ ligacaoId: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      // Só gestores (admin/gestor/superAdmin) — cada análise custa centavos (João, 2026-11-23).
+      if (ctx.user.role === 'vendor' && !ctx.user.superAdmin) throw new Error('A análise de ligação é só para gestores.')
       const lig = await db.query.pabxLigacoesProcessadas.findFirst({ where: eq(pabxLigacoesProcessadas.id, input.ligacaoId) })
       if (!lig || !(await podeOuvirLigacao(ctx.user, ctx.empresaId, lig))) throw new Error('Sem permissão para essa ligação.')
       await iniciarAvaliacao(input.ligacaoId, ctx.user.id)
@@ -375,6 +377,7 @@ export const pabxRouter = router({
     .input(z.object({ ligacaoId: z.number() }))
     .query(async ({ ctx, input }) => {
       const lig = await db.query.pabxLigacoesProcessadas.findFirst({ where: eq(pabxLigacoesProcessadas.id, input.ligacaoId) })
+      if (ctx.user.role === 'vendor' && !ctx.user.superAdmin) return { disponivel: false, avaliacao: null }
       if (!lig || !(await podeOuvirLigacao(ctx.user, ctx.empresaId, lig))) return { disponivel: false, avaliacao: null }
       return { disponivel: iaLigacaoDisponivel(), avaliacao: await lerAvaliacao(input.ligacaoId) }
     }),
