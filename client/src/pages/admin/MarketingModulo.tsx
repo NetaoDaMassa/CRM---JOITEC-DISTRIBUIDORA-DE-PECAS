@@ -22,17 +22,19 @@ import PecaModal, { type Peca } from './marketing/PecaModal'
 import { mesAtual, mesLongo, mesSomar } from './marketing/comum'
 
 type Aba = 'metas' | 'quadro' | 'pedidos' | 'revisao' | 'radar' | 'empresa' | 'calendario' | 'plano' | 'brainstorm' | 'conexoes'
-const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean; soSuper?: boolean }[] = [
-  { id: 'metas', rotulo: 'Metas', icone: Target },
-  { id: 'quadro', rotulo: 'Quadro', icone: KanbanSquare },
-  { id: 'pedidos', rotulo: 'Pedidos', icone: Inbox },
-  { id: 'revisao', rotulo: 'Revisão', icone: ClipboardCheck },
-  { id: 'radar', rotulo: 'Radar', icone: Radar, porMarca: true },
-  { id: 'empresa', rotulo: 'Empresa', icone: Building2, porMarca: true },
-  { id: 'calendario', rotulo: 'Calendário', icone: CalendarDays, porMarca: true },
-  { id: 'plano', rotulo: 'Plano do mês', icone: Map, porMarca: true },
-  { id: 'brainstorm', rotulo: 'Brainstorm', icone: Lightbulb, porMarca: true },
-  { id: 'conexoes', rotulo: 'Conexões', icone: Plug, soSuper: true },
+// Ordem do trabalho do mês (João, 2026-11-23): 1. Planejar → 2. Produzir → 3. Acompanhar.
+type Grupo = '1. Planejar' | '2. Produzir' | '3. Acompanhar' | 'Ajustes'
+const ABAS: { id: Aba; rotulo: string; icone: typeof Target; porMarca?: boolean; soSuper?: boolean; grupo: Grupo }[] = [
+  { id: 'empresa', rotulo: 'Empresa', icone: Building2, porMarca: true, grupo: '1. Planejar' },
+  { id: 'brainstorm', rotulo: 'Brainstorm', icone: Lightbulb, porMarca: true, grupo: '1. Planejar' },
+  { id: 'plano', rotulo: 'Plano do mês', icone: Map, porMarca: true, grupo: '1. Planejar' },
+  { id: 'calendario', rotulo: 'Calendário', icone: CalendarDays, porMarca: true, grupo: '1. Planejar' },
+  { id: 'pedidos', rotulo: 'Pedidos', icone: Inbox, grupo: '2. Produzir' },
+  { id: 'quadro', rotulo: 'Quadro', icone: KanbanSquare, grupo: '2. Produzir' },
+  { id: 'revisao', rotulo: 'Revisão', icone: ClipboardCheck, grupo: '2. Produzir' },
+  { id: 'metas', rotulo: 'Metas', icone: Target, grupo: '3. Acompanhar' },
+  { id: 'radar', rotulo: 'Radar', icone: Radar, porMarca: true, grupo: '3. Acompanhar' },
+  { id: 'conexoes', rotulo: 'Conexões', icone: Plug, soSuper: true, grupo: 'Ajustes' },
 ]
 
 function lerLocal(chave: string, padrao: string) {
@@ -98,12 +100,23 @@ export default function MarketingModulo() {
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-dark-700">
-        {ABAS.filter((a) => !a.soSuper || superAdmin).map((a) => (
-          <button key={a.id} onClick={() => setAba(a.id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px ${aba === a.id ? 'border-gold-400 text-gold-200 font-semibold' : 'border-transparent text-dark-400 hover:text-dark-100'}`}>
-            <a.icone className="w-4 h-4" />{a.rotulo}
-          </button>
-        ))}
+      <div className="flex gap-4 overflow-x-auto border-b border-dark-700">
+        {(['1. Planejar', '2. Produzir', '3. Acompanhar', 'Ajustes'] as Grupo[]).map((g) => {
+          const abas = ABAS.filter((a) => a.grupo === g && (!a.soSuper || superAdmin))
+          if (!abas.length) return null
+          return (
+            <div key={g} className="flex flex-col shrink-0">
+              <span className="px-4 text-[10px] font-semibold uppercase tracking-wider text-dark-500">{g}</span>
+              <div className="flex gap-1">
+                {abas.map((a) => (
+                  <button key={a.id} onClick={() => setAba(a.id)} className={`flex items-center gap-1.5 px-4 py-2.5 text-sm whitespace-nowrap border-b-2 -mb-px ${aba === a.id ? 'border-gold-400 text-gold-200 font-semibold' : 'border-transparent text-dark-400 hover:text-dark-100'}`}>
+                    <a.icone className="w-4 h-4" />{a.rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
 
       {abaInfo.porMarca && (
