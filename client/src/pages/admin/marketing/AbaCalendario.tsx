@@ -1,7 +1,7 @@
 // Calendário: peças do plano (marca + mês) por semana.
 import { useState } from 'react'
 import { trpc } from '../../../lib/trpc'
-import { STATUS, corPilar, diaLabel, faixaSemana, mesLongo, semanasDoMes, CANAIS_V, cls } from './comum'
+import { STATUS, corPilar, diaLabel, faixaSemana, mesLongo, semanasDoMes, CANAIS_V, CANAIS_P, cls } from './comum'
 import type { Peca } from './PecaModal'
 
 type Plano = { id: string; empresaId: number; mes: string; dados: any }
@@ -19,11 +19,11 @@ export default function AbaCalendario({ plano, pecas, abrirPeca, salvarDados }: 
   const comRot = pecas.filter((p) => (p.roteiro || '').trim().length > 20).length
   const pil = (id: string | null) => pilares.find((x) => x.id === id)
 
-  const novaPeca = (ini: number, fim: number) => {
+  const novaPeca = (ini: number, fim: number, tipo: 'Vídeo' | 'Post' = 'Vídeo') => {
     const [y, m] = plano.mes.split('-').map(Number)
     let d = ini
     while (d < fim && [0, 6].includes(new Date(y, m - 1, d).getDay())) d++
-    criar.mutate({ planoId: plano.id, data: `${plano.mes}-${String(d).padStart(2, '0')}`, hora: '11:00', tipo: 'Vídeo', pilar: pilares[0]?.id || null, canais: [...CANAIS_V], status: 'Ideia' })
+    criar.mutate({ planoId: plano.id, data: `${plano.mes}-${String(d).padStart(2, '0')}`, hora: '11:00', tipo, pilar: pilares[0]?.id || null, canais: tipo === 'Post' ? [...CANAIS_P] : [...CANAIS_V], status: tipo === 'Post' ? 'Produção' : 'Ideia' })
   }
   const Card = ({ p }: { p: Peca }) => {
     const pi = pil(p.pilar)
@@ -67,7 +67,10 @@ export default function AbaCalendario({ plano, pecas, abrirPeca, salvarDados }: 
             </div>
             <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(220px,1fr))' }}>
               {itens.map((p) => <Card key={p.id} p={p} />)}
-              <button onClick={() => novaPeca(w.ini, w.fim)} className="border border-dashed border-dark-600 rounded-lg text-dark-400 hover:text-dark-100 text-sm font-semibold min-h-[90px]">+ Nova peça</button>
+              <div className="grid grid-rows-2 gap-2 min-h-[90px]">
+                <button onClick={() => novaPeca(w.ini, w.fim)} className="border border-dashed border-dark-600 rounded-lg text-dark-400 hover:text-dark-100 text-sm font-semibold">+ Vídeo</button>
+                <button onClick={() => novaPeca(w.ini, w.fim, 'Post')} title="Post não precisa de roteiro aprovado: anexe a arte e mande para a aprovação final" className="border border-dashed border-dark-600 rounded-lg text-dark-400 hover:text-dark-100 text-sm font-semibold">+ Post</button>
+              </div>
             </div>
           </section>
         )

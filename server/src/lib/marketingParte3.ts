@@ -18,13 +18,15 @@ export function lerAnexos(s: string | null | undefined): Anexo[] {
 }
 
 // Travas ao mudar de etapa. Demanda complementar não passa pela aprovação do roteiro.
-export function erroTransicao(p: { status: string; origem: string; anexos: string; roteiroAprovadoEm: string | null; finalAprovadoEm: string | null }, novo: string): string | null {
+export function erroTransicao(p: { status: string; origem: string; tipo?: string | null; anexos: string; roteiroAprovadoEm: string | null; finalAprovadoEm: string | null }, novo: string): string | null {
   if (novo === p.status) return null
   if (!ETAPAS.includes(novo as (typeof ETAPAS)[number])) return 'Etapa inválida.'
   const i = idxEtapa(novo)
   const complementar = p.origem === 'complementar'
-  if (i >= idxEtapa('Produção') && !complementar && !p.roteiroAprovadoEm) return 'O roteiro ainda não foi aprovado por um revisor. Mande para "Aprovação do roteiro" e espere a aprovação.'
-  if (i >= idxEtapa('Aprovação final') && !lerAnexos(p.anexos).length) return 'Anexe o vídeo ou a arte na peça antes de mandar para a aprovação final.'
+  // Post (arte) não tem roteiro para aprovar (João, 2026-11-23): pode ir direto para a aprovação final.
+  const post = p.tipo === 'Post'
+  if (i >= idxEtapa('Produção') && !complementar && !post && !p.roteiroAprovadoEm) return 'O roteiro ainda não foi aprovado por um revisor. Mande para "Aprovação do roteiro" e espere a aprovação.'
+  if (i >= idxEtapa('Aprovação final') && !lerAnexos(p.anexos).length) return post ? 'Anexe a arte pronta na peça antes de mandar para a aprovação final.' : 'Anexe o vídeo ou a arte na peça antes de mandar para a aprovação final.'
   if (novo === 'Agendado na mLabs' && !p.finalAprovadoEm) return 'A peça ainda não teve a aprovação final de um revisor.'
   return null
 }

@@ -148,7 +148,7 @@ export const marketingModuloRouter = router({
     if (!atual) throw new TRPCError({ code: 'NOT_FOUND', message: 'Peça não encontrada.' })
     // Etapas novas (2026-11-23): cada uma tem a sua trava.
     if (resto.status && resto.status !== atual.status) {
-      const erro = erroTransicao(atual, resto.status)
+      const erro = erroTransicao({ ...atual, tipo: resto.tipo ?? atual.tipo }, resto.status)
       if (erro) throw new TRPCError({ code: 'BAD_REQUEST', message: erro })
     }
     // Escreveu o roteiro → a peça sai de Ideia e vai para Roteiro no quadro.

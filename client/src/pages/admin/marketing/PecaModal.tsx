@@ -188,7 +188,7 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
             const novo = e.target.value
             if (!salvo) { clearTimeout(timer.current); salvar.mutate(paraSalvar(p)) }
             setP({ ...p, status: novo })
-            etapa.mutate({ id: p.id, status: novo }, { onError: (err) => { toast.error(err.message, { duration: 8000 }); setP((o) => (o ? { ...o, status: antes } : o)) } })
+            etapa.mutate({ id: p.id, status: novo, tipo: p.tipo as any }, { onError: (err) => { toast.error(err.message, { duration: 8000 }); setP((o) => (o ? { ...o, status: antes } : o)) } })
           }}>{STATUS.map((s) => <option key={s}>{s}</option>)}</select>)}
         </div>
         <ol className="grid gap-1.5" style={{ gridTemplateColumns: `repeat(${STATUS.length}, minmax(0, 1fr))` }} aria-label="Etapas da peça">
@@ -202,6 +202,8 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
           {p.origem === 'complementar' && <span className="px-2 py-1 rounded bg-purple-900/40 text-purple-200">Demanda complementar (não passa pela aprovação do roteiro)</span>}
           {p.roteiroAprovadoEm ? <span className="px-2 py-1 rounded bg-green-900/40 text-green-200">✅ Liberado para gravação{p.roteiroAprovadoPor ? ` · roteiro aprovado por ${p.roteiroAprovadoPor}` : ''}</span>
             : p.status === 'Aprovação do roteiro' ? <span className="px-2 py-1 rounded bg-yellow-900/40 text-yellow-200">⏳ Esperando um revisor aprovar o roteiro (aba Revisão)</span>
+            : p.tipo === 'Post' ? (p.status !== 'Aprovação final' && p.status !== 'Agendado na mLabs' && <><span className="px-2 py-1 rounded bg-dark-700 text-dark-200">Post não precisa de aprovação do roteiro</span>
+              <Button size="sm" variant="outline" disabled={!(p.anexos || []).length} title={(p.anexos || []).length ? '' : 'Anexe a arte primeiro (mais abaixo)'} onClick={() => { const antes = p.status; if (!salvo) { clearTimeout(timer.current); salvar.mutate(paraSalvar(p)) } setP({ ...p, status: 'Aprovação final' }); etapa.mutate({ id: p.id, status: 'Aprovação final', tipo: 'Post' }, { onSuccess: () => toast.success('Post mandado para a aprovação final'), onError: (err) => { toast.error(err.message, { duration: 8000 }); setP((o) => (o ? { ...o, status: antes } : o)) } }) }}>Mandar para aprovação final{(p.anexos || []).length ? '' : ' (anexe a arte)'}</Button></>)
             : p.origem !== 'complementar' && ['Ideia', 'Roteiro'].includes(p.status) && <Button size="sm" variant="outline" onClick={() => { if (!salvo) { clearTimeout(timer.current); salvar.mutate(paraSalvar(p)) } enviarAprov.mutate({ pecaId: p.id }) }} loading={enviarAprov.isPending} disabled={(p.roteiro || '').trim().length < 20}>Mandar roteiro para aprovação</Button>}
           {p.finalAprovadoEm && <span className="px-2 py-1 rounded bg-green-900/40 text-green-200">✅ Aprovação final{p.finalAprovadoPor ? ` por ${p.finalAprovadoPor}` : ''} — pode agendar na mLabs</span>}
           {!p.finalAprovadoEm && p.status === 'Aprovação final' && <span className="px-2 py-1 rounded bg-yellow-900/40 text-yellow-200">⏳ Esperando a aprovação final (aba Revisão)</span>}
