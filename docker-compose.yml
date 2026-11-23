@@ -21,6 +21,8 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL_LEAD_PRINT: ${OPENROUTER_MODEL_LEAD_PRINT:-}
       OPENROUTER_MODEL_MARKETING: ${OPENROUTER_MODEL_MARKETING:-}
+      # Robô diário da mLabs (Marketing → todas as redes) manda o pacote com esta chave.
+      MKT_MLABS_CHAVE: ${MKT_MLABS_CHAVE:-}
       # SAP Business One (Service Layer, só leitura) — URL/banco/usuário/senha
       # no .env do servidor. Sem isso a integração fica desligada sozinha.
       SAP_SL_URL: ${SAP_SL_URL:-}
