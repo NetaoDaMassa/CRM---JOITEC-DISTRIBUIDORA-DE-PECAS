@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process'
 import express from 'express'
 import { createServer } from 'http'
 import cors from 'cors'
@@ -23,7 +22,8 @@ import { FILIAL_ODIN_COMPRESSORES, lerNfSapOrdem, nfsDigitadas } from './lib/sap
 import { startScheduler } from './lib/scheduler.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
-import { trocarCodigoPorToken, iniciarListener, baixarGravacaoGoto } from './lib/goto.js'
+import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
+import { baixarAudioGravacao, ErroGravacao } from './lib/gravacaoAudio.js'
 import { migrarParaFuncoesVivas, ehSetorDoGrupo } from './lib/acessos.js'
 import { backfillPermissoesRelatorios, backfillPermissaoPainelTv, backfillPermissoesVendedor } from './lib/permissoesBackfill.js'
 import { seedFuncaoTemplatesPadrao, backfillFuncaoRh } from './lib/funcaoTemplatesSeed.js'
@@ -600,24 +600,9 @@ app.get('/marketing-arquivo/baixar/:token', async (req, res) => {
   }
 })
 
-// Gravação de ligação da PABXONE360 (relatório Ligações). O CRM busca o
-// áudio no link da PABXONE360 e repassa, só pra quem pode ver aquela
-// ligação (o link carrega o token da gravação, não vai pro navegador).
-function paraMp3(entrada: Buffer): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const p = spawn('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', 'pipe:0', '-ac', '1', '-f', 'mp3', '-b:a', '48k', 'pipe:1'])
-    const saida: Buffer[] = []
-    let erro = ''
-    const timer = setTimeout(() => p.kill('SIGKILL'), 60_000)
-    p.stdout.on('data', (d: Buffer) => saida.push(d))
-    p.stderr.on('data', (d: Buffer) => (erro += d.toString()))
-    p.on('error', (e) => (clearTimeout(timer), reject(e)))
-    p.on('close', (code) => (clearTimeout(timer), code === 0 ? resolve(Buffer.concat(saida)) : reject(new Error(erro.slice(0, 200) || `ffmpeg saiu com ${code}`))))
-    p.stdin.on('error', () => {})
-    p.stdin.end(entrada)
-  })
-}
-
+// Gravação de ligação (PABXONE360 / GoTo). O CRM busca o áudio e repassa,
+// só pra quem pode ver aquela ligação (o link carrega o token da gravação,
+// não vai pro navegador). Download em lib/gravacaoAudio.ts.
 app.get('/pabx-gravacao/:id', async (req, res) => {
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
@@ -628,62 +613,15 @@ app.get('/pabx-gravacao/:id', async (req, res) => {
   if (!lig || !link) return res.status(404).json({ error: 'Gravação não encontrada' })
   const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
   if (!(await podeOuvirLigacao(user, empresaId, lig))) return res.status(403).json({ error: 'Sem permissão' })
-  // GoTo (Joitec): "goto:<recordingId>" — baixa pela API da GoTo.
-  if (link.startsWith('goto:')) {
-    try {
-      const { audio } = await baixarGravacaoGoto(link.slice(5))
-      // Já vem em MP3 ("ID3" ou cabeçalho de quadro 0xFFEx) — só converte se não for.
-      const jaMp3 = audio.subarray(0, 3).toString('latin1') === 'ID3' || (audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0)
-      const mp3 = jaMp3 ? audio : await paraMp3(audio).catch(() => null)
-      const final = mp3?.length ? mp3 : audio
-      res.setHeader('Content-Type', mp3?.length ? 'audio/mpeg' : 'audio/wav')
-      res.setHeader('Content-Length', String(final.length))
-      res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}.${mp3?.length ? 'mp3' : 'wav'}"`)
-      res.setHeader('Cache-Control', 'private, max-age=3600')
-      return res.end(final)
-    } catch (e) {
-      return res.status(502).json({ error: (e as Error).message })
-    }
-  }
-  let url: URL
   try {
-    url = new URL(link)
-  } catch {
-    return res.status(404).json({ error: 'Link de gravação inválido' })
-  }
-  // A API devolve o link num IP (https://45.170.138.172/…) com certificado
-  // autoassinado; o mesmo download_audio.php responde no domínio oficial,
-  // que tem certificado válido — usa o domínio.
-  if (/^\d+\.\d+\.\d+\.\d+$/.test(url.hostname)) {
-    url.hostname = 'pabxone360.com.br'
-    url.protocol = 'https:'
-    url.port = ''
-  }
-  try {
-    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) })
-    if (!resp.ok || !resp.body) return res.status(502).json({ error: `PABXONE360 não devolveu o áudio (${resp.status})` })
-    const tipo = resp.headers.get('content-type') ?? ''
-    // "Parâmetros inválidos!" / link vencido vem como página HTML, não áudio.
-    if (/text\/|json/i.test(tipo)) return res.status(502).json({ error: `PABXONE360 não devolveu o áudio: ${(await resp.text()).replace(/<[^>]+>/g, ' ').trim().slice(0, 120)}` })
-    // Vem como application/force-download; o arquivo é WAV ("RIFF") —
-    // descobre pelo começo do arquivo pro navegador tocar.
-    let audio: Buffer = Buffer.from(await resp.arrayBuffer())
-    const inicio = audio.subarray(0, 4).toString('latin1')
-    let [mime, ext] =
-      inicio === 'RIFF' ? ['audio/wav', 'wav'] : inicio === 'OggS' ? ['audio/ogg', 'ogg'] : /audio/i.test(tipo) ? [tipo, 'mp3'] : ['audio/mpeg', 'mp3']
-    // WAV de telefonia (GSM/µ-law…) o Chrome não toca — converte pra MP3.
-    if (inicio === 'RIFF') {
-      const mp3 = await paraMp3(audio).catch((e) => (console.error('[pabx-gravacao] ffmpeg:', (e as Error).message), null))
-      if (mp3?.length) [audio, mime, ext] = [mp3, 'audio/mpeg', 'mp3']
-    }
+    const { audio, mime, ext } = await baixarAudioGravacao(link)
     res.setHeader('Content-Type', mime)
     res.setHeader('Content-Length', String(audio.length))
     res.setHeader('Content-Disposition', `inline; filename="ligacao-${lig.id}${parte ? `-${parte + 1}` : ''}.${ext}"`)
     res.setHeader('Cache-Control', 'private, max-age=3600')
     res.end(audio)
   } catch (e) {
-    const causa = (e as { cause?: { code?: string } }).cause?.code ?? (e as Error).message
-    res.status(502).json({ error: `Não consegui buscar a gravação na PABXONE360 (${causa})` })
+    res.status(e instanceof ErroGravacao ? e.status : 502).json({ error: (e as Error).message })
   }
 })
 
