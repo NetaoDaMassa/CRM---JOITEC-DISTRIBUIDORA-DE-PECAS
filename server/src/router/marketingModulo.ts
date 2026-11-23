@@ -13,6 +13,7 @@ import { mktPlanos, mktPecas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mk
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, type TipoPedido } from '../lib/marketingIa.js'
 import { PILARES_PADRAO, checklistPadrao } from '../lib/marketingFluxo.js'
+import { redesDaEmpresa, importarMlabs } from '../lib/marketingMlabs.js'
 import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, temTokenProprio, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
 
 const FEATURE = 'marketing'
@@ -202,6 +203,21 @@ export const marketingModuloRouter = router({
       conversas: conversas.map((c) => ({ ...c, mensagens: j<any[]>(c.mensagens, []) })),
       semResposta: semResposta.map((c) => ({ ...c, mensagens: j<any[]>(c.mensagens, []) })),
       concorrentes: Object.values(concorrentes),
+    }
+  }),
+  // Todas as redes (mLabs, 1x por dia) — aba Empresa.
+  redesEmpresa: proc.input(z.object({ empresaId: marcaId, dias: z.number().int().min(7).max(120).default(30) })).query(({ input }) => redesDaEmpresa(input.empresaId, input.dias)),
+  // Super admin cola o pacote da mLabs à mão (mesmo formato do robô).
+  importarMlabs: superAdminProcedure.input(z.object({ json: z.string().max(5_000_000) })).mutation(async ({ input }) => {
+    let bruto: unknown
+    try { bruto = JSON.parse(input.json) } catch { throw new TRPCError({ code: 'BAD_REQUEST', message: 'Não é um JSON válido.' }) }
+    try {
+      const pacotes = Array.isArray(bruto) ? bruto : [bruto]
+      const r = []
+      for (const p of pacotes) r.push(await importarMlabs(p))
+      return r
+    } catch (e) {
+      throw new TRPCError({ code: 'BAD_REQUEST', message: (e as Error).message.slice(0, 500) })
     }
   }),
   sincronizar: proc.input(z.object({ empresaId: marcaId })).mutation(async ({ input }) => {

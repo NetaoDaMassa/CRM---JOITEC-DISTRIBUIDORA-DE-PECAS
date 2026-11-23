@@ -4,6 +4,7 @@ import { trpc } from '../../../lib/trpc'
 import Button from '../../../components/ui/Button'
 import Modal from '../../../components/ui/Modal'
 import IaAcao from './IaAcao'
+import RedesMlabs from './RedesMlabs'
 import { cls, fmtN, pct, diaLabel } from './comum'
 
 const CAMPOS: [string, string, string][] = [
@@ -86,6 +87,8 @@ export default function AbaEmpresa({ empresaId, nomeMarca, mes }: { empresaId: n
           </>
         )}
       </section>
+
+      <RedesMlabs empresaId={empresaId} />
 
       <section className={cls.card + ' p-4 space-y-3'}>
         <div className="flex flex-wrap items-center justify-between gap-2">

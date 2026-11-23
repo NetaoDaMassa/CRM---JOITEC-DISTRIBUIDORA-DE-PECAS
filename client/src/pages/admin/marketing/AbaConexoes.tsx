@@ -72,6 +72,7 @@ export default function AbaConexoes({ marcas }: { marcas: Marca[] }) {
         <p className="text-sm text-dark-300">Uma chave por empresa, gerada no portfólio dela na Meta (Usuário do sistema). Ao salvar, o CRM testa e, se achar um Instagram só, já liga sozinho. Depois atualiza de hora em hora: posts, views, comentários, directs e concorrentes.</p>
         {marcas.map((m) => <LinhaMarca key={m.empresaId} m={m} temToken={!!st.data?.tokens?.[m.empresaId]} ligada={st.data?.contas.find((c) => c.empresaId === m.empresaId)} />)}
       </section>
+      <SecaoMlabs />
       <section className={cls.card + ' p-4 space-y-3'}>
         <h3 className="text-lg font-bold text-dark-100">Trazer os planos do painel do Claude</h3>
         <p className="text-sm text-dark-300">Escolha o arquivo <b>marketing-painel-export.json</b> (na pasta Documentos). Não apaga nada: só entra o que ainda não existe.</p>
@@ -79,5 +80,27 @@ export default function AbaConexoes({ marcas }: { marcas: Marca[] }) {
         {importar.isPending && <p className="text-sm text-dark-400">Importando…</p>}
       </section>
     </div>
+  )
+}
+
+// mLabs: o robô do Claude manda os números de todas as redes 1x por dia.
+// Aqui dá para colar o pacote à mão (mesmo formato) se precisar.
+function SecaoMlabs() {
+  const utils = trpc.useUtils()
+  const [json, setJson] = useState('')
+  const imp = trpc.marketingModulo.importarMlabs.useMutation({
+    onSuccess: (r) => { setJson(''); utils.marketingModulo.redesEmpresa.invalidate(); toast.success(`Importado: ${r.map((x) => `${x.posts} publicações`).join(', ')}`) },
+    onError: (e) => toast.error(e.message, { duration: 10000 }),
+  })
+  return (
+    <section className={cls.card + ' p-4 space-y-2'}>
+      <h3 className="text-lg font-bold text-dark-100">Todas as redes (mLabs)</h3>
+      <p className="text-sm text-dark-300">Facebook, TikTok, YouTube, LinkedIn, Pinterest, Google e Threads chegam da mLabs 1 vez por dia, por um robô do Claude, e aparecem na aba <b>Empresa</b>. A Odin Automação não está na mLabs.</p>
+      <details className="text-sm text-dark-400">
+        <summary className="cursor-pointer">Colar um pacote da mLabs à mão</summary>
+        <textarea rows={4} className={cls.input + ' font-mono text-xs mt-2'} value={json} onChange={(e) => setJson(e.target.value)} placeholder='{"empresaId": 6, "periodo": {...}, "redes": [...], "posts": [...]}' />
+        <Button size="sm" className="mt-2" disabled={!json.trim()} loading={imp.isPending} onClick={() => imp.mutate({ json })}>Importar</Button>
+      </details>
+    </section>
   )
 }

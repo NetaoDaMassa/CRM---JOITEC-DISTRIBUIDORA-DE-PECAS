@@ -38,6 +38,7 @@ import { encryptSecret } from './lib/crypto.js'
 import { cifrar as cifrarDrive, trocarCodigo as trocarCodigoDrive, validarState as validarStateDrive, limparTokenCache as limparTokenDrive } from './lib/googleDrive.js'
 import { iniciarChatSocket } from './lib/chatSocket.js'
 import { lerTokenDownload, escreverZip, nomesUnicos } from './lib/marketingDownload.js'
+import { importarMlabs, chaveMlabsValida } from './lib/marketingMlabs.js'
 
 config()
 
@@ -94,6 +95,20 @@ app.use('/api/careers', cors({ origin: true }), careersRouter)
 // chamada fetch — mas serve-lo aqui, antes do CORS global, mantém tudo
 // junto e não depende de nenhuma pasta estática extra no Dockerfile).
 app.use('/api/tracking', cors({ origin: true }), trackingRouter)
+
+// Marketing: pacote diário da mLabs mandado pelo robô do Claude (lib/marketingMlabs.ts).
+app.post('/api/marketing/mlabs', cors({ origin: false }), async (req, res) => {
+  if (!chaveMlabsValida(req.get('x-chave'))) return res.status(401).json({ erro: 'chave inválida' })
+  try {
+    const pacotes = Array.isArray(req.body) ? req.body : [req.body]
+    const r = []
+    for (const p of pacotes) r.push(await importarMlabs(p))
+    res.json({ ok: true, importados: r })
+  } catch (e) {
+    console.error('[marketing-mlabs]', (e as Error).message)
+    res.status(400).json({ erro: (e as Error).message.slice(0, 500) })
+  }
+})
 app.get('/tracker.js', cors({ origin: true }), (req, res) => {
   res.type('application/javascript').send(TRACKER_JS)
 })

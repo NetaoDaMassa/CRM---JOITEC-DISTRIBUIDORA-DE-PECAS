@@ -5744,6 +5744,41 @@ export const mktConcorrentesFotos = sqliteTable('mkt_concorrentes_fotos', {
   erro: text('erro'),
 }, (t) => ({ pk: primaryKey({ columns: [t.empresaId, t.handle, t.data] }) }))
 
+// 0178: números de todas as redes vindos da mLabs (robô diário → POST /api/marketing/mlabs).
+export const mktRedesResumo = sqliteTable('mkt_redes_resumo', {
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  rede: text('rede').notNull(),
+  data: text('data').notNull(),
+  nome: text('nome'),
+  seguidores: integer('seguidores'),
+  ganhoPeriodo: integer('ganho_periodo'),
+  crescimentoPct: real('crescimento_pct'),
+  posts: integer('posts'),
+  reels: integer('reels'),
+  viewsMediaReel: real('views_media_reel'),
+  engajamentoPct: real('engajamento_pct'),
+  periodoInicio: text('periodo_inicio'),
+  periodoFim: text('periodo_fim'),
+}, (t) => ({ pk: primaryKey({ columns: [t.empresaId, t.rede, t.data] }) }))
+
+export const mktRedesPosts = sqliteTable('mkt_redes_posts', {
+  id: text('id').primaryKey(),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+  rede: text('rede').notNull(),
+  publicadoEm: text('publicado_em').notNull(),
+  data: text('data').notNull(),
+  tipo: text('tipo'),
+  texto: text('texto').notNull().default(''),
+  link: text('link'),
+  views: integer('views'),
+  alcance: integer('alcance'),
+  curtidas: integer('curtidas'),
+  comentarios: integer('comentarios'),
+  compartilhamentos: integer('compartilhamentos'),
+  salvos: integer('salvos'),
+  updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({ empresaData: index('idx_mkt_redes_posts_empresa_data').on(t.empresaId, t.data) }))
+
 // Marketing parte 2 (0177) — comentários/aprovações da peça, links de
 // aprovação sem login e pedidos de outros setores ao marketing.
 export const mktPecaComentarios = sqliteTable('mkt_peca_comentarios', {
