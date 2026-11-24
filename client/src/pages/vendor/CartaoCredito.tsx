@@ -18,6 +18,7 @@ const CATEGORIA_LABEL: Record<string, string> = {
   alimentacao: 'Alimentação',
   hospedagem: 'Hospedagem',
   pedagio: 'Pedágio',
+  estacionamento: 'Estacionamento',
   manutencao: 'Manutenção',
   outro: 'Outro',
 }
@@ -81,11 +82,19 @@ function FormularioNovoGasto() {
       toast.error('Preencha o valor')
       return
     }
+    if (!categoria) {
+      toast.error('Escolha o que foi o gasto (almoço, gasolina...)')
+      return
+    }
+    if (categoria === 'outro' && !descricao.trim()) {
+      toast.error('Escreva o que foi o gasto')
+      return
+    }
     if (!anexos.length) {
       toast.error('Anexe a nota fiscal ou o cupom fiscal')
       return
     }
-    criarMut.mutate({ data, valor: valorNumero, categoria: (categoria || undefined) as any, descricao: descricao || undefined, anexos })
+    criarMut.mutate({ data, valor: valorNumero, categoria: categoria as any, descricao: descricao || undefined, anexos })
   }
 
   return (
@@ -95,13 +104,18 @@ function FormularioNovoGasto() {
         <Input label="Data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
         <Input label="Valor" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="R$ 0,00" />
         <Select
-          label="Categoria (opcional)"
-          placeholder="Selecione"
+          label="O que foi? *"
+          placeholder="Almoço, gasolina..."
           value={categoria}
           onChange={(e) => setCategoria(e.target.value)}
           options={Object.entries(CATEGORIA_LABEL).map(([value, label]) => ({ value, label }))}
         />
-        <Input label="Descrição (opcional)" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Ex: almoço com cliente" />
+        <Input
+          label={categoria === 'outro' ? 'Descrição *' : 'Descrição (opcional)'}
+          value={descricao}
+          onChange={(e) => setDescricao(e.target.value)}
+          placeholder="Ex: almoço com cliente"
+        />
       </div>
 
       <div className="space-y-2">
@@ -167,7 +181,7 @@ function LinhaGasto({ g }: { g: Gasto }) {
           <Input type="date" value={data} onChange={(e) => setData(e.target.value)} />
           <Input value={valor} onChange={(e) => setValor(e.target.value)} placeholder="R$ 0,00" />
           <Select
-            placeholder="Categoria"
+            placeholder="O que foi?"
             value={categoria}
             onChange={(e) => setCategoria(e.target.value)}
             options={Object.entries(CATEGORIA_LABEL).map(([value, label]) => ({ value, label }))}
@@ -178,9 +192,11 @@ function LinhaGasto({ g }: { g: Gasto }) {
           <Button
             size="sm"
             loading={editarMut.isPending}
-            onClick={() =>
-              editarMut.mutate({ id: g.id, data, valor: parseValorBr(valor), categoria: (categoria || undefined) as any, descricao: descricao || undefined })
-            }
+            onClick={() => {
+              if (!categoria) return toast.error('Escolha o que foi o gasto (almoço, gasolina...)')
+              if (categoria === 'outro' && !descricao.trim()) return toast.error('Escreva o que foi o gasto')
+              editarMut.mutate({ id: g.id, data, valor: parseValorBr(valor), categoria: categoria as any, descricao: descricao || undefined })
+            }}
           >
             Salvar
           </Button>
@@ -197,7 +213,11 @@ function LinhaGasto({ g }: { g: Gasto }) {
       <div>
         <p className="text-sm text-dark-100">
           {new Date(g.data + 'T00:00:00').toLocaleDateString('pt-BR')} — <span className="font-medium">{formatarMoeda(g.valor)}</span>
-          {g.categoria && <span className="text-xs text-dark-400 ml-2">{CATEGORIA_LABEL[g.categoria]}</span>}
+          {g.categoria ? (
+            <span className="text-xs text-dark-400 ml-2">{CATEGORIA_LABEL[g.categoria]}</span>
+          ) : (
+            <span className="text-xs text-red-400 ml-2">falta dizer o que foi — clique no lápis</span>
+          )}
         </p>
         {g.descricao && <p className="text-xs text-dark-400">{g.descricao}</p>}
         <div className="flex gap-2 mt-1">

@@ -1,8 +1,9 @@
 import { z } from 'zod'
-import { and, desc, eq, inArray, like, sql } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { router, protectedProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { cartaoGastos, cartaoGastoAnexos, users, empresas } from '../db/schema.js'
+import { cartaoGastos, cartaoGastoAnexos } from '../db/schema.js'
+import { CATEGORIAS_CARTAO, buscarGastosCartao, vendedoresComGasto } from '../lib/cartaoRelatorio.js'
 import { mesReferenciaAtual } from '../lib/dataBr.js'
 
 const anexoInput = z.object({
@@ -10,6 +11,10 @@ const anexoInput = z.object({
   nomeArquivo: z.string().min(1),
   tipoArquivo: z.string().optional(),
 })
+
+function exigirDescricao(input: { categoria: string; descricao?: string }) {
+  if (input.categoria === 'outro' && !input.descricao?.trim()) throw new Error('Escreva o que foi o gasto (tipo "Outro")')
+}
 
 // Controle de gastos do cartão corporativo — pensado pro vendedor EXTERNO
 // da Odin Compressores (visita → proposta → venda), mas não trava por
@@ -31,12 +36,15 @@ export const cartaoRouter = router({
       z.object({
         data: z.string(),
         valor: z.number().positive('Valor precisa ser maior que zero'),
-        categoria: z.enum(['combustivel', 'alimentacao', 'hospedagem', 'pedagio', 'manutencao', 'outro']).optional(),
+        // Obrigatório desde 2026-11-24 (pedido do João): tem que dizer o que é
+        // o cupom/NF — almoço, gasolina etc. "Outro" exige a descrição.
+        categoria: z.enum(CATEGORIAS_CARTAO, { errorMap: () => ({ message: 'Escolha o tipo do gasto (almoço, gasolina...)' }) }),
         descricao: z.string().optional(),
         anexos: z.array(anexoInput).min(1, 'Anexe a nota fiscal ou o cupom fiscal'),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      exigirDescricao(input)
       const [gasto] = await db
         .insert(cartaoGastos)
         .values({
@@ -58,11 +66,14 @@ export const cartaoRouter = router({
         id: z.number(),
         data: z.string(),
         valor: z.number().positive('Valor precisa ser maior que zero'),
-        categoria: z.enum(['combustivel', 'alimentacao', 'hospedagem', 'pedagio', 'manutencao', 'outro']).optional(),
+        // Obrigatório desde 2026-11-24 (pedido do João): tem que dizer o que é
+        // o cupom/NF — almoço, gasolina etc. "Outro" exige a descrição.
+        categoria: z.enum(CATEGORIAS_CARTAO, { errorMap: () => ({ message: 'Escolha o tipo do gasto (almoço, gasolina...)' }) }),
         descricao: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      exigirDescricao(input)
       const gasto = await db.query.cartaoGastos.findFirst({ where: eq(cartaoGastos.id, input.id) })
       if (!gasto) throw new Error('Gasto não encontrado')
       if (gasto.vendedorId !== ctx.user.id) throw new Error('Acesso negado')
@@ -87,63 +98,15 @@ export const cartaoRouter = router({
   // empresas juntas). Virou permissão delegável em 2026-09-22 (pedido do
   // João) — um admin comum concedido só vê os gastos da própria empresa
   // (senão vazaria gasto de vendedor de outra empresa pra quem não devia).
+  // 2026-11-24: filtro por período (de/até) e por vendedor, agrupado por
+  // vendedor — ver lib/cartaoRelatorio.ts (o PDF com anexos usa o mesmo).
   relatorio: featureProcedure('cartao_credito_relatorio')
-    .input(z.object({ mesReferencia: z.string().optional() }))
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), ate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), vendedorId: z.number().optional() }))
     .query(async ({ ctx, input }) => {
-      const mes = input.mesReferencia ?? mesReferenciaAtual()
-      const filtroMes = like(cartaoGastos.data, `${mes}%`)
-      const filtroEmpresa = ctx.user.superAdmin ? undefined : eq(users.empresaId, ctx.empresaId)
-
-      const lancamentos = await db
-        .select({
-          id: cartaoGastos.id,
-          data: cartaoGastos.data,
-          valor: cartaoGastos.valor,
-          categoria: cartaoGastos.categoria,
-          descricao: cartaoGastos.descricao,
-          vendedorId: cartaoGastos.vendedorId,
-          vendedorNome: users.name,
-          empresaNome: empresas.nome,
-        })
-        .from(cartaoGastos)
-        .innerJoin(users, eq(users.id, cartaoGastos.vendedorId))
-        .innerJoin(empresas, eq(empresas.id, users.empresaId))
-        .where(filtroEmpresa ? and(filtroMes, filtroEmpresa) : filtroMes)
-        .orderBy(desc(cartaoGastos.data))
-
-      const anexosDoMes = lancamentos.length
-        ? await db.query.cartaoGastoAnexos.findMany({ where: inArray(cartaoGastoAnexos.gastoId, lancamentos.map((l) => l.id)) })
-        : []
-      const lancamentosComAnexos = lancamentos.map((l) => ({
-        ...l,
-        anexos: anexosDoMes.filter((a) => a.gastoId === l.id),
-      }))
-
-      const [totalGeral] = await db
-        .select({ total: sql<number>`coalesce(sum(${cartaoGastos.valor}), 0)`, qtd: sql<number>`count(*)` })
-        .from(cartaoGastos)
-        .innerJoin(users, eq(users.id, cartaoGastos.vendedorId))
-        .where(filtroEmpresa ? and(filtroMes, filtroEmpresa) : filtroMes)
-
-      const porVendedor = await db
-        .select({
-          vendedorId: cartaoGastos.vendedorId,
-          vendedorNome: users.name,
-          total: sql<number>`coalesce(sum(${cartaoGastos.valor}), 0)`,
-          qtd: sql<number>`count(*)`,
-        })
-        .from(cartaoGastos)
-        .innerJoin(users, eq(users.id, cartaoGastos.vendedorId))
-        .where(filtroEmpresa ? and(filtroMes, filtroEmpresa) : filtroMes)
-        .groupBy(cartaoGastos.vendedorId, users.name)
-        .orderBy(desc(sql`sum(${cartaoGastos.valor})`))
-
-      return {
-        mesReferencia: mes,
-        totalGeral: totalGeral?.total ?? 0,
-        quantidadeGeral: totalGeral?.qtd ?? 0,
-        porVendedor,
-        lancamentos: lancamentosComAnexos,
-      }
+      const mes = mesReferenciaAtual().slice(0, 7)
+      const filtro = { de: input.de ?? `${mes}-01`, ate: input.ate ?? `${mes}-31`, vendedorId: input.vendedorId }
+      const escopo = { superAdmin: !!ctx.user.superAdmin, empresaId: ctx.empresaId ?? null }
+      const [dados, vendedores] = await Promise.all([buscarGastosCartao(escopo, filtro), vendedoresComGasto(escopo)])
+      return { ...filtro, ...dados, vendedores }
     }),
 })
