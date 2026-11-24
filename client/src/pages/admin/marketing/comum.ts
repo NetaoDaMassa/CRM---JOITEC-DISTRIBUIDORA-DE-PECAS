@@ -87,6 +87,17 @@ export function dataHora(s?: string | null) {
   const d = new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z')
   return d.toLocaleString('pt-BR', { timeZone: TZ, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 }
+// Tempo desde uma data do banco (UTC): "3d", "5h", "agora".
+export function tempoDesde(s?: string | null, ate?: string | null) {
+  if (!s) return ''
+  const t = (x: string) => new Date(x.includes('T') ? x : x.replace(' ', 'T') + 'Z').getTime()
+  const ms = (ate ? t(ate) : Date.now()) - t(s)
+  const h = Math.floor(ms / 3600000)
+  if (h < 1) return `${Math.max(0, Math.floor(ms / 60000))}min`
+  if (h < 24) return `${h}h`
+  const d = Math.floor(h / 24)
+  return `${d}d${h % 24 && d < 3 ? ` ${h % 24}h` : ''}`
+}
 export function fmtN(n?: number | null) {
   return (Number(n) || 0).toLocaleString('pt-BR')
 }

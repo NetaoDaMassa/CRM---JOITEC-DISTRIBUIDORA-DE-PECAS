@@ -9,7 +9,7 @@ import { trpc } from '../../../lib/trpc'
 import { useAuth } from '../../../contexts/AuthContext'
 import Button from '../../../components/ui/Button'
 import Modal from '../../../components/ui/Modal'
-import { STATUS, atrasada, cls, diaLabel, diasParada, hojeBR, iniciais, nomeCurtoMarca, semanasDoMes, faixaSemana } from './comum'
+import { STATUS, atrasada, cls, dataHora, diaLabel, diasParada, hojeBR, iniciais, nomeCurtoMarca, semanasDoMes, faixaSemana, tempoDesde } from './comum'
 import type { Peca } from './PecaModal'
 
 type Marca = { empresaId: number; nome: string }
@@ -139,6 +139,7 @@ export default function AbaQuadro({ mes, marcas, pecas, abrirPeca }: { mes: stri
                       <div className="text-sm font-semibold text-dark-100 leading-snug">{p.titulo || 'Sem título'}</div>
                       {p.roteiroAprovadoEm && p.status === 'Produção' && <div className="text-[11px] font-semibold px-2 py-0.5 rounded bg-green-900/50 text-green-200 inline-block">✅ Liberado para gravação</div>}
                       {p.finalAprovadoEm && p.status === 'Aprovação final' && <div className="text-[11px] font-semibold px-2 py-0.5 rounded bg-green-900/50 text-green-200 inline-block">✅ Aprovado — agendar na mLabs</div>}
+                      {p.etapaDesde && <div className="text-[11px] text-dark-400" title={p.etapaDesdeEstimado ? 'Data aproximada: peça criada antes do registro de etapas' : 'Quando a peça entrou nesta etapa'}>nesta etapa desde {p.etapaDesdeEstimado ? '≈ ' : ''}{dataHora(p.etapaDesde)} · {tempoDesde(p.etapaDesde)}</div>}
                       {p.status === 'Produção' && !(p.anexos || []).length && <div className="text-[11px] text-orange-300">falta anexar o {p.tipo === 'Post' ? 'post' : 'vídeo'}</div>}
                       <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
                         {resp ? <span title={resp} className="w-6 h-6 rounded-full bg-gold-900/50 text-gold-200 flex items-center justify-center font-bold">{iniciais(resp)}</span> : <span className="text-dark-500">sem responsável</span>}

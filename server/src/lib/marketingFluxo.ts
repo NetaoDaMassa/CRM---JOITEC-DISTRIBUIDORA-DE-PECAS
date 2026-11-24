@@ -2,9 +2,9 @@
 // sozinhas (meta 3 vídeos + 2 posts por marca), checklist padrão e regras do
 // link de aprovação. Usado pelo router `marketingFluxo` e pelo agendador.
 import crypto from 'crypto'
-import { and, desc, eq, gte, lt, lte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, lt, lte, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { mktPlanos, mktPecas } from '../db/schema.js'
+import { mktPlanos, mktPecas, mktPecaEtapas } from '../db/schema.js'
 import { MARCAS } from './marketingIa.js'
 import { getConfigNumero, getConfigTexto } from './configuracoes.js'
 
@@ -125,4 +125,22 @@ export function statusAoPedirAjuste(status: string) {
   if (['Ideia', 'Roteiro', 'Aprovação do roteiro'].includes(status)) return 'Roteiro'
   if (['Produção', 'Aprovação final'].includes(status)) return 'Produção'
   return status
+}
+
+// Histórico de etapas (0183): as datas são gravadas pelos gatilhos do banco;
+// aqui só se anota quem fez a mudança na etapa que acabou de abrir.
+export async function marcarQuemEtapa(pecaId: string, nome: string) {
+  await db.update(mktPecaEtapas).set({ porNome: nome.slice(0, 80) }).where(and(eq(mktPecaEtapas.pecaId, pecaId), sql`${mktPecaEtapas.saiuEm} IS NULL`, eq(mktPecaEtapas.porNome, '')))
+}
+export async function etapaAtualDesde(pecaIds: string[]) {
+  const out = new Map<string, { desde: string; estimado: boolean }>()
+  for (let i = 0; i < pecaIds.length; i += 500) {
+    const lote = pecaIds.slice(i, i + 500)
+    const rows = await db.select().from(mktPecaEtapas).where(and(inArray(mktPecaEtapas.pecaId, lote), sql`${mktPecaEtapas.saiuEm} IS NULL`))
+    for (const r of rows) {
+      const a = out.get(r.pecaId)
+      if (!a || r.entrouEm > a.desde) out.set(r.pecaId, { desde: r.entrouEm, estimado: r.estimado })
+    }
+  }
+  return out
 }

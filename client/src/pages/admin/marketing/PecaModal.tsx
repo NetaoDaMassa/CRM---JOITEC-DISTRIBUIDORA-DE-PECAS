@@ -6,13 +6,14 @@ import Modal from '../../../components/ui/Modal'
 import Button from '../../../components/ui/Button'
 import IaAcao, { useIa } from './IaAcao'
 import Anexos from './Anexos'
-import { CANAIS, CANAIS_P, CANAIS_V, MODELO_P, MODELO_V, STATUS, cls, dataHora, rotHash, type Anexo } from './comum'
+import { CANAIS, CANAIS_P, CANAIS_V, MODELO_P, MODELO_V, STATUS, cls, dataHora, rotHash, tempoDesde, type Anexo } from './comum'
 
 export type Peca = {
   id: string; empresaId: number; planoId: string; data: string | null; hora: string | null; tipo: string; pilar: string | null
   titulo: string; gancho: string; cta: string; canais: string[]; status: string; roteiro: string; legenda: string; obs: string; analise: any
   responsavelId?: number | null; checklist?: { t: string; ok: boolean }[]; origem?: string; linkMidia?: string; updatedAt?: string
   anexos?: Anexo[]; roteiroAprovadoEm?: string | null; roteiroAprovadoPor?: string | null; finalAprovadoEm?: string | null; finalAprovadoPor?: string | null
+  etapaDesde?: string | null; etapaDesdeEstimado?: boolean
 }
 type Pilar = { id: string; nome: string; cor?: string; desc?: string }
 
@@ -42,6 +43,32 @@ function Comentarios({ pecaId }: { pecaId: string }) {
         </div>
       ))}
     </div>
+  )
+}
+
+// Data em que a peça entrou e saiu de cada etapa (gravado pelo banco).
+function HistoricoEtapas({ pecaId, status }: { pecaId: string; status: string }) {
+  const q = trpc.marketingModulo.etapasPeca.useQuery({ pecaId })
+  const rows = q.data || []
+  if (!rows.length) return null
+  return (
+    <details className="text-sm">
+      <summary className="cursor-pointer text-dark-300 font-semibold">Histórico das etapas ({rows.length})</summary>
+      <table className="w-full text-xs mt-2">
+        <thead><tr className="text-dark-400 text-left"><th className="py-1 pr-2">Etapa</th><th className="pr-2">Entrou</th><th className="pr-2">Saiu</th><th className="pr-2">Tempo</th><th>Quem moveu</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.id} className={`border-t border-dark-700 ${!r.saiuEm && r.etapa === status ? 'text-blue-200' : 'text-dark-200'}`}>
+              <td className="py-1 pr-2 font-semibold">{r.etapa}</td>
+              <td className="pr-2" title={r.estimado ? 'Peça criada antes do registro começar: data aproximada (última alteração)' : ''}>{r.estimado ? '≈ ' : ''}{dataHora(r.entrouEm)}</td>
+              <td className="pr-2">{r.saiuEm ? dataHora(r.saiuEm) : <span className="text-blue-300">está aqui</span>}</td>
+              <td className="pr-2">{tempoDesde(r.entrouEm, r.saiuEm)}</td>
+              <td className="text-dark-400">{r.porNome || '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </details>
   )
 }
 
@@ -140,19 +167,20 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
   const [p, setP] = useState<Peca | null>(peca)
   const [salvo, setSalvo] = useState(true)
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  const salvar = trpc.marketingModulo.salvarPeca.useMutation({ onSuccess: () => { setSalvo(true); utils.marketingModulo.pecas.invalidate() }, onError: (e) => toast.error(e.message) })
+  const salvar = trpc.marketingModulo.salvarPeca.useMutation({ onSuccess: () => { setSalvo(true); utils.marketingModulo.pecas.invalidate(); utils.marketingModulo.etapasPeca.invalidate() }, onError: (e) => toast.error(e.message) })
   const excluir = trpc.marketingModulo.excluirPeca.useMutation({ onSuccess: () => { utils.marketingModulo.pecas.invalidate(); onClose() } })
   const [confirmaExcluir, setConfirmaExcluir] = useState(false)
   const [colar, setColar] = useState(false)
   const [novoItem, setNovoItem] = useState('')
   const equipe = trpc.marketingFluxo.equipe.useQuery()
   // Etapa salva na hora (não espera): se a trava do servidor recusar, volta.
-  const etapa = trpc.marketingModulo.salvarPeca.useMutation({ onSuccess: () => utils.marketingModulo.pecas.invalidate() })
-  const enviarAprov = trpc.marketingFluxo.enviarAprovacaoRoteiro.useMutation({ onSuccess: () => { utils.marketingModulo.pecas.invalidate(); setP((o) => (o ? { ...o, status: 'Aprovação do roteiro' } : o)); toast.success('Mandado para aprovação do roteiro') }, onError: (e) => toast.error(e.message) })
+  const etapa = trpc.marketingModulo.salvarPeca.useMutation({ onSuccess: () => { utils.marketingModulo.pecas.invalidate(); utils.marketingModulo.etapasPeca.invalidate() } })
+  const enviarAprov = trpc.marketingFluxo.enviarAprovacaoRoteiro.useMutation({ onSuccess: () => { utils.marketingModulo.pecas.invalidate(); utils.marketingModulo.etapasPeca.invalidate(); setP((o) => (o ? { ...o, status: 'Aprovação do roteiro' } : o)); toast.success('Mandado para aprovação do roteiro') }, onError: (e) => toast.error(e.message) })
   const atualizarAnexos = (anexos: Anexo[]) => { setP((o) => (o ? { ...o, anexos } : o)); utils.marketingModulo.pecas.invalidate() }
   const anexar = trpc.marketingFluxo.anexarPeca.useMutation()
   const tirarAnexo = trpc.marketingFluxo.removerAnexoPeca.useMutation({ onError: (e) => toast.error(e.message) })
   useEffect(() => { setP(peca); setSalvo(true) }, [peca?.id])
+  const etapasQ = trpc.marketingModulo.etapasPeca.useQuery({ pecaId: peca?.id || '' }, { enabled: !!peca?.id })
 
   if (!p) return null
   const mudar = (campos: Partial<Peca>) => {
@@ -195,9 +223,12 @@ export default function PecaModal({ peca, pilares, personaResumo, onClose }: { p
           {STATUS.map((st, i) => {
             const atual = STATUS.indexOf(p.status as (typeof STATUS)[number])
             const est = i < atual ? 'bg-green-900/30 text-green-200' : i === atual ? 'bg-blue-600 text-white' : 'bg-dark-900 text-dark-500 border border-dark-700'
-            return <li key={st} className={`rounded-lg px-2 py-1.5 ${est}`}><span className="block text-[10px] font-bold opacity-80">{i < atual ? '✓ feito' : i === atual ? 'agora' : 'depois'}</span><span className="block text-[11px] font-semibold leading-tight">{st}</span></li>
+            const ult = [...(etapasQ.data || [])].reverse().find((r) => r.etapa === st)
+            return <li key={st} className={`rounded-lg px-2 py-1.5 ${est}`}><span className="block text-[10px] font-bold opacity-80">{i < atual ? '✓ feito' : i === atual ? 'agora' : 'depois'}</span><span className="block text-[11px] font-semibold leading-tight">{st}</span>
+              {ult && <span className="block text-[10px] opacity-80 mt-0.5" title={ult.porNome ? `por ${ult.porNome}` : ''}>{ult.estimado ? '≈ ' : ''}{dataHora(ult.entrouEm)}{i === atual && !ult.saiuEm ? ` · há ${tempoDesde(ult.entrouEm)}` : ''}</span>}</li>
           })}
         </ol>
+        <HistoricoEtapas pecaId={p.id} status={p.status} />
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {p.origem === 'complementar' && <span className="px-2 py-1 rounded bg-purple-900/40 text-purple-200">Demanda complementar (não passa pela aprovação do roteiro)</span>}
           {p.roteiroAprovadoEm ? <span className="px-2 py-1 rounded bg-green-900/40 text-green-200">✅ Liberado para gravação{p.roteiroAprovadoPor ? ` · roteiro aprovado por ${p.roteiroAprovadoPor}` : ''}</span>

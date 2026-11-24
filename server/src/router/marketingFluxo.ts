@@ -13,7 +13,7 @@ import { db } from '../db/client.js'
 import { mktPecas, mktPecaComentarios, mktPecaVersoes, mktAprovLinks, mktDemandas, users, permissoesAdmin, solicitacoesDesign } from '../db/schema.js'
 import { getConfigTexto, setConfig } from '../lib/configuracoes.js'
 import { MARCAS, marca } from '../lib/marketingIa.js'
-import { gerarPecasDaSemana, statusAoAprovar, statusAoPedirAjuste, garantirPlano, checklistPadrao } from '../lib/marketingFluxo.js'
+import { gerarPecasDaSemana, statusAoAprovar, statusAoPedirAjuste, garantirPlano, checklistPadrao, marcarQuemEtapa } from '../lib/marketingFluxo.js'
 import { ETAPAS, erroTransicao, garantirPasta, registrarAnexo, lerAnexos, lerRevisores, salvarRevisores, podeRevisar } from '../lib/marketingParte3.js'
 
 const proc = featureProcedure('marketing')
@@ -104,6 +104,7 @@ export const marketingFluxoRouter = router({
     const set: Record<string, unknown> = { status: novo, updatedAt: agoraSql() }
     if (input.acao === 'aprovar') set.aprovadoEm = agoraSql()
     await db.update(mktPecas).set(set).where(eq(mktPecas.id, p.id))
+    await marcarQuemEtapa(p.id, `${input.nome} (link)`)
     await db.insert(mktPecaComentarios).values({ pecaId: p.id, tipo: input.acao === 'aprovar' ? 'aprovado' : 'ajuste', autorNome: input.nome, texto: input.texto })
     return { status: novo }
   }),
@@ -203,6 +204,7 @@ export const marketingFluxoRouter = router({
       id, empresaId: input.empresaId, planoId: pl.id, data: input.data, hora: '11:00', tipo: input.tipo, titulo: input.titulo, obs: input.obs, status: input.status, origem: 'complementar',
       responsavelId: input.responsavelId, canais: JSON.stringify([]), checklist: JSON.stringify(checklistPadrao(input.tipo)), updatedAt: agoraSql(),
     })
+    await marcarQuemEtapa(id, ctx.user.name)
     return { id }
   }),
 
@@ -222,6 +224,7 @@ export const marketingFluxoRouter = router({
     if (!p) throw new TRPCError({ code: 'NOT_FOUND', message: 'Peça não encontrada.' })
     if ((p.roteiro || '').trim().length < 20) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Escreva o roteiro antes de mandar para aprovação.' })
     await db.update(mktPecas).set({ status: 'Aprovação do roteiro', updatedAt: agoraSql() }).where(eq(mktPecas.id, p.id))
+    await marcarQuemEtapa(p.id, ctx.user.name)
     await db.insert(mktPecaComentarios).values({ pecaId: p.id, tipo: 'comentario', autorId: ctx.user.id, autorNome: ctx.user.name, texto: 'Mandou o roteiro para aprovação.' })
     return { ok: true }
   }),
@@ -245,6 +248,7 @@ export const marketingFluxoRouter = router({
     if (input.acao === 'aprovar') Object.assign(set, { status: 'Produção', roteiroAprovadoEm: agoraSql(), roteiroAprovadoPor: ctx.user.name, aprovadoEm: agoraSql(), aprovadoPor: ctx.user.id })
     if (input.acao === 'ajuste') Object.assign(set, { status: 'Roteiro', roteiroAprovadoEm: null, roteiroAprovadoPor: null })
     await db.update(mktPecas).set(set).where(eq(mktPecas.id, p.id))
+    if (input.acao !== 'salvar') await marcarQuemEtapa(p.id, ctx.user.name)
     if (input.acao !== 'salvar') await db.insert(mktPecaComentarios).values({ pecaId: p.id, tipo: input.acao === 'aprovar' ? 'aprovado' : 'ajuste', autorId: ctx.user.id, autorNome: ctx.user.name, texto: input.acao === 'aprovar' ? `Roteiro aprovado — liberado para gravação.${input.texto ? ' ' + input.texto : ''}` : input.texto || '' })
     return { ok: true }
   }),
@@ -259,6 +263,7 @@ export const marketingFluxoRouter = router({
     } else {
       await db.update(mktPecas).set({ finalAprovadoEm: null, finalAprovadoPor: null, status: 'Produção', updatedAt: agoraSql() }).where(eq(mktPecas.id, p.id))
     }
+    await marcarQuemEtapa(p.id, ctx.user.name)
     await db.insert(mktPecaComentarios).values({ pecaId: p.id, tipo: input.acao === 'aprovar' ? 'aprovado' : 'ajuste', autorId: ctx.user.id, autorNome: ctx.user.name, texto: input.acao === 'aprovar' ? `Aprovação final — pode agendar na mLabs.${input.texto ? ' ' + input.texto : ''}` : input.texto || '' })
     return { ok: true }
   }),

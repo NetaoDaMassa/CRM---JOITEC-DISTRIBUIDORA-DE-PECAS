@@ -5868,6 +5868,17 @@ export const mktPecaVersoes = sqliteTable('mkt_peca_versoes', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({ peca: index('idx_mkt_peca_versoes_peca').on(t.pecaId) }))
 
+// 0183: data em que a peça entrou/saiu de cada etapa do Quadro (gatilhos no banco).
+export const mktPecaEtapas = sqliteTable('mkt_peca_etapas', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  pecaId: text('peca_id').notNull().references(() => mktPecas.id, { onDelete: 'cascade' }),
+  etapa: text('etapa').notNull(),
+  entrouEm: text('entrou_em').notNull().default(sql`(datetime('now'))`),
+  saiuEm: text('saiu_em'),
+  porNome: text('por_nome').notNull().default(''),
+  estimado: integer('estimado', { mode: 'boolean' }).notNull().default(false),
+}, (t) => ({ peca: index('idx_mkt_peca_etapas_peca').on(t.pecaId) }))
+
 export const mktConhecimento = sqliteTable('mkt_conhecimento', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').references(() => empresas.id),

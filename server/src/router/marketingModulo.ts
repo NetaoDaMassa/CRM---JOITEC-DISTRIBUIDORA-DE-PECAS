@@ -9,10 +9,10 @@ import { and, desc, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm'
 import { TRPCError } from '@trpc/server'
 import { router, featureProcedure, superAdminProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { mktPlanos, mktPecas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mktIgMidias, mktIgComentarios, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos, mktConhecimento, mktRedesPosts, mktRedesResumo } from '../db/schema.js'
+import { mktPlanos, mktPecas, mktPecaEtapas, mktIdeias, mktAnalises, mktPerfis, mktIgContas, mktIgMidias, mktIgComentarios, mktIgConversas, mktIgSeguidores, mktConcorrentesFotos, mktConhecimento, mktRedesPosts, mktRedesResumo } from '../db/schema.js'
 import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, separarRoteiroIa, type TipoPedido } from '../lib/marketingIa.js'
-import { PILARES_PADRAO, checklistPadrao, garantirPlano } from '../lib/marketingFluxo.js'
+import { PILARES_PADRAO, checklistPadrao, garantirPlano, marcarQuemEtapa, etapaAtualDesde } from '../lib/marketingFluxo.js'
 import { CATEGORIAS, erroTransicao, garantirPasta, registrarAnexo, lerAnexos, conhecimentoTexto } from '../lib/marketingParte3.js'
 import { redesDaEmpresa, importarMlabs } from '../lib/marketingMlabs.js'
 import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, temTokenProprio, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
@@ -131,18 +131,24 @@ export const marketingModuloRouter = router({
       const planos = await db.select({ id: mktPlanos.id }).from(mktPlanos).where(eq(mktPlanos.mes, input.mes))
       if (planos.length) semData = (await db.select().from(mktPecas).where(inArray(mktPecas.planoId, planos.map((p) => p.id)))).filter((p) => !p.data)
     }
-    return [...rows, ...semData].map(pecaSaida)
+    const todas = [...rows, ...semData]
+    const desde = await etapaAtualDesde(todas.map((p) => p.id))
+    return todas.map((p) => ({ ...pecaSaida(p), etapaDesde: desde.get(p.id)?.desde ?? null, etapaDesdeEstimado: desde.get(p.id)?.estimado ?? false }))
   }),
-  criarPeca: proc.input(pecaCampos.extend({ planoId: z.string() })).mutation(async ({ input }) => {
+  // Quando a peça entrou e saiu de cada etapa (mais antiga primeiro).
+  etapasPeca: proc.input(z.object({ pecaId: z.string() })).query(async ({ input }) =>
+    db.select().from(mktPecaEtapas).where(eq(mktPecaEtapas.pecaId, input.pecaId)).orderBy(mktPecaEtapas.entrouEm, mktPecaEtapas.id)),
+  criarPeca: proc.input(pecaCampos.extend({ planoId: z.string() })).mutation(async ({ ctx, input }) => {
     const pl = await db.query.mktPlanos.findFirst({ where: eq(mktPlanos.id, input.planoId) })
     if (!pl) throw new TRPCError({ code: 'NOT_FOUND', message: 'Plano não encontrado.' })
     const id = crypto.randomUUID()
     const { canais, checklist, planoId: _p, ...resto } = input
     await db.insert(mktPecas).values({ id, empresaId: pl.empresaId, planoId: pl.id, ...resto, canais: JSON.stringify(canais || []), checklist: JSON.stringify(checklist || checklistPadrao(input.tipo || 'Vídeo')) })
+    await marcarQuemEtapa(id, ctx.user.name)
     const p = await db.query.mktPecas.findFirst({ where: eq(mktPecas.id, id) })
     return pecaSaida(p!)
   }),
-  salvarPeca: proc.input(pecaCampos.extend({ id: z.string() })).mutation(async ({ input }) => {
+  salvarPeca: proc.input(pecaCampos.extend({ id: z.string() })).mutation(async ({ ctx, input }) => {
     const { id, canais, checklist, ...resto } = input
     const atual = await db.query.mktPecas.findFirst({ where: eq(mktPecas.id, id) })
     if (!atual) throw new TRPCError({ code: 'NOT_FOUND', message: 'Peça não encontrada.' })
@@ -158,6 +164,7 @@ export const marketingModuloRouter = router({
     if (checklist) set.checklist = JSON.stringify(checklist)
     const r = await db.update(mktPecas).set(set).where(eq(mktPecas.id, id)).returning({ id: mktPecas.id })
     if (!r.length) throw new TRPCError({ code: 'NOT_FOUND', message: 'Peça não encontrada.' })
+    if (resto.status && resto.status !== atual.status) await marcarQuemEtapa(id, ctx.user.name)
     return { ok: true }
   }),
   excluirPeca: proc.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
