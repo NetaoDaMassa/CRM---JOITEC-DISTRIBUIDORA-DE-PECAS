@@ -85,13 +85,21 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
                 {l.status === 'aguardando' && (
                   <span className="text-[11px] font-bold rounded-lg px-2 py-1 border text-amber-200 bg-amber-900/30 border-amber-600/60">⏳ AGUARDANDO COMPROVANTE DO VENDEDOR</span>
                 )}
-                {l.status === 'anexado' && l.comprovantes.length > 0 && (
+                {l.status === 'anexado' && (l.comprovantes.length > 0 || l.garantia) && (
                   <>
-                    <LinksComprovantes arquivos={l.comprovantes} onAbrir={() => setAbertos((s) => new Set(s).add(l.vendaId))} />
-                    <span className="text-[11px] text-dark-500">anexado {l.anexadoEm ? formatDateTime(l.anexadoEm) : ''}</span>
+                    {l.garantia ? (
+                      <span className="text-[11px] font-bold rounded-lg px-2 py-1 border text-sky-200 bg-sky-900/30 border-sky-600/60">🛡 GARANTIA — vendedor disse que não tem comprovante</span>
+                    ) : (
+                      <LinksComprovantes arquivos={l.comprovantes} onAbrir={() => setAbertos((s) => new Set(s).add(l.vendaId))} />
+                    )}
+                    <span className="text-[11px] text-dark-500">{l.garantia ? 'marcado' : 'anexado'} {l.anexadoEm ? formatDateTime(l.anexadoEm) : ''}</span>
                     {confirmando === l.vendaId ? (
                       <div className="rounded-lg border border-gold-600/60 bg-dark-900 p-2 text-right space-y-1.5 max-w-[260px]">
-                        <p className="text-xs text-dark-100">Confirma que abriu o comprovante e que o PIX de {formatarMoeda(l.valor)} caiu na conta?</p>
+                        <p className="text-xs text-dark-100">
+                          {l.garantia
+                            ? `Confirma que esta venda (${formatarMoeda(l.valor)}) é garantia e não precisa de PIX?`
+                            : `Confirma que abriu o comprovante e que o PIX de ${formatarMoeda(l.valor)} caiu na conta?`}
+                        </p>
                         <div className="flex justify-end gap-1.5">
                           <Button size="sm" variant="secondary" onClick={() => setConfirmando(null)}>
                             Cancelar
@@ -103,16 +111,17 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
                       </div>
                     ) : (
                       <>
-                        <Button size="sm" variant="secondary" onClick={() => setConfirmando(l.vendaId)} disabled={!abertos.has(l.vendaId)}>
+                        <Button size="sm" variant="secondary" onClick={() => setConfirmando(l.vendaId)} disabled={!l.garantia && !abertos.has(l.vendaId)}>
                           <Check size={14} className="mr-1" /> Marcar como conferido
                         </Button>
-                        {!abertos.has(l.vendaId) && <span className="text-[11px] text-dark-500">abra o comprovante antes</span>}
+                        {!l.garantia && !abertos.has(l.vendaId) && <span className="text-[11px] text-dark-500">abra o comprovante antes</span>}
                       </>
                     )}
                   </>
                 )}
                 {l.status === 'conferido' && (
                   <>
+                    {l.garantia && <span className="text-[11px] text-sky-300">🛡 Garantia — sem comprovante</span>}
                     <LinksComprovantes arquivos={l.comprovantes} />
                     <span className="text-[11px] text-green-400">
                       ✓ conferido {l.conferidoEm ? formatDateTime(l.conferidoEm) : ''} {l.conferidoPor ? `por ${l.conferidoPor}` : ''}

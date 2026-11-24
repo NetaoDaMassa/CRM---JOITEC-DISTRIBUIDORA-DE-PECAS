@@ -5478,6 +5478,9 @@ export const adiantamentosPix = sqliteTable(
     conferidoEm: text('conferido_em'),
     conferidoPor: integer('conferido_por').references(() => users.id, { onDelete: 'set null' }),
     observacao: text('observacao'),
+    // 'garantia' = vendedor avisou que não vai ter comprovante (venda de
+    // garantia). Conta como "enviado": o financeiro ainda confere.
+    semComprovanteMotivo: text('sem_comprovante_motivo'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (t) => ({

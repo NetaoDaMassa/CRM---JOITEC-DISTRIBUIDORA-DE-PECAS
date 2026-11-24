@@ -98,6 +98,8 @@ export type PixDaVenda = {
   comprovantes: ArquivoPix[]
   anexadoEm: string | null
   conferidoEm: string | null
+  // Vendedor marcou "não vai ter comprovante — é garantia".
+  garantia: boolean
 }
 
 type VendaBase = { id: number; condicaoPagamento: string | null; dataFechamento: string; clienteId: number; vendedorId: number }
@@ -131,12 +133,13 @@ export async function pixDasVendas(lista: VendaBase[]): Promise<Map<number, PixD
     const comprovantes = lerComprovantes(l?.comprovantePath, l?.comprovanteNome)
     out.set(v.id, {
       tipo: tipoPix(v.condicaoPagamento, regra)!,
-      status: l?.conferidoEm ? 'conferido' : comprovantes.length ? 'anexado' : 'aguardando',
+      status: l?.conferidoEm ? 'conferido' : comprovantes.length || l?.semComprovanteMotivo ? 'anexado' : 'aguardando',
       comprovantePath: comprovantes[0]?.path ?? null,
       comprovanteNome: comprovantes[0]?.nome ?? null,
       comprovantes,
       anexadoEm: l?.anexadoEm ?? null,
       conferidoEm: l?.conferidoEm ?? null,
+      garantia: l?.semComprovanteMotivo === 'garantia',
     })
   }
   return out
