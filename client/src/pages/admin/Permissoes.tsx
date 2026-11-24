@@ -56,6 +56,7 @@ const FEATURES_RELATORIOS = [
   { feature: 'relatorio_visao_geral', label: 'Visão geral' },
   { feature: 'relatorio_contatos', label: 'Contatos & Ligações' },
   { feature: 'relatorio_orcamentos', label: 'Orçamentos & Vendas' },
+  { feature: 'relatorio_itens_sap', label: 'Itens do SAP mês a mês' },
   { feature: 'relatorio_alertas', label: 'Alertas' },
 ]
 

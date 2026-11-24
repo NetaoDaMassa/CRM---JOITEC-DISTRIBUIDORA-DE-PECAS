@@ -316,6 +316,9 @@ export const FEATURES_RELATORIOS = [
   'relatorio_visao_geral',
   'relatorio_contatos',
   'relatorio_orcamentos',
+  // Itens do SAP mês a mês — antes vinha junto com relatorio_orcamentos
+  // (João, 2026-11-24, migração 0181 copiou pra quem já tinha).
+  'relatorio_itens_sap',
   'relatorio_alertas',
 ] as const
 

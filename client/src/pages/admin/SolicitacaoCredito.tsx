@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { ShieldCheck, Paperclip, X, Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
@@ -610,12 +610,101 @@ function Relatorios({ f, irParaLista }: { f: Filtros; irParaLista: (p: Partial<F
   )
 }
 
+function haDias(n: number) {
+  return n <= 0 ? 'hoje' : n === 1 ? 'ontem' : `há ${n} dias`
+}
+
+// Aba "Pesquisar cliente" (financeiro, 2026-11-24): digita o código, CNPJ
+// ou nome e já vê se o cliente foi consultado e quando — juntando o mesmo
+// CNPJ de todas as empresas.
+function PesquisarCliente({ onAbrir }: { onAbrir: (id: number) => void }) {
+  const [texto, setTexto] = usePersistedState('solicitacaoCredito:pesquisa', '')
+  const [q, setQ] = useState(texto)
+  useEffect(() => {
+    const t = setTimeout(() => setQ(texto.trim()), 350)
+    return () => clearTimeout(t)
+  }, [texto])
+  const { data, isFetching } = trpc.solicitacaoCredito.pesquisarCliente.useQuery({ q }, { enabled: q.length >= 2 })
+
+  return (
+    <div className="space-y-3">
+      <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+        <Input
+          icon={<Search size={14} />}
+          label="Código, CNPJ/CPF ou nome do cliente"
+          placeholder="Ex: C001234 ou 12.345.678/0001-90"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
+          autoFocus
+        />
+        <p className="text-xs text-dark-500 mt-2">Mostra a última consulta do Serasa e todos os pedidos desse cliente, em todas as empresas (mesmo CNPJ).</p>
+      </div>
+
+      {q.length >= 2 && isFetching && !data && <p className="text-sm text-dark-400">Procurando...</p>}
+      {q.length >= 2 && data && !data.grupos.length && <p className="text-sm text-dark-400">Nenhum cliente encontrado com "{q}".</p>}
+      {data?.muitos && <p className="text-xs text-amber-400">Muitos resultados — digite mais do nome ou o código/CNPJ completo.</p>}
+
+      {data?.grupos.map((g) => {
+        const u = g.ultimaConsulta
+        const dias = u?.serasaConsultaEm ? diasDesde(u.serasaConsultaEm.slice(0, 10)) : null
+        return (
+          <div key={g.chave} className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-dark-700 space-y-2">
+              <div>
+                <p className="text-base font-medium text-dark-50">{g.nome}</p>
+                <p className="text-xs text-dark-400">
+                  {g.documento ? <>CNPJ/CPF {g.documento} · </> : null}
+                  {g.cadastros.map((c) => `${c.codigo} (${c.empresaNome})`).join(' · ')}
+                </p>
+              </div>
+              {u ? (
+                <div
+                  className={`rounded-xl border px-3 py-2 text-sm ${
+                    u.serasaLimpo ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'
+                  }`}
+                >
+                  <span className="font-semibold">
+                    Última consulta Serasa: {dataBr(u.serasaConsultaEm!)} ({haDias(dias!)})
+                  </span>{' '}
+                  · {u.serasaLimpo ? 'Limpo' : 'Não está limpo'} · {STATUS_LABEL[u.status]}
+                  {u.status === 'liberado' && u.valorLiberado != null && <> {formatarMoeda(u.valorLiberado)}</>}
+                  {u.quemLiberou && <> · por {u.quemLiberou}</>} · {u.empresaNome}
+                </div>
+              ) : (
+                <div className="rounded-xl border px-3 py-2 text-sm bg-dark-700/50 border-dark-600 text-dark-300">
+                  {g.pedidos.length ? 'Tem pedido, mas ainda sem consulta do Serasa respondida.' : 'Nunca foi consultado por aqui.'}
+                </div>
+              )}
+            </div>
+            {g.pedidos.length > 0 && (
+              <div className="divide-y divide-dark-700">
+                {g.pedidos.map((p) => (
+                  <button key={p.id} onClick={() => onAbrir(p.id)} className="w-full text-left px-4 py-2.5 flex items-center justify-between gap-3 hover:bg-dark-700/40 transition-colors">
+                    <p className="text-xs text-dark-400">
+                      <span className="text-dark-200">{formatDateTime(p.createdAt)}</span> · {p.tipo === 'consulta' && p.tipoConsulta ? TIPO_CONSULTA_LABEL[p.tipoConsulta] : TIPO_LABEL[p.tipo]} · Cód.{' '}
+                      {p.clienteCodigo} · {p.empresaNome} · pedido de {p.vendedorNome}
+                      {p.valorSolicitado != null && <> · pedido {formatarMoeda(p.valorSolicitado)}</>}
+                      {p.status === 'liberado' && p.valorLiberado != null && <> · liberado {formatarMoeda(p.valorLiberado)}</>}
+                      {p.serasaConsultaEm && <> · Serasa {dataBr(p.serasaConsultaEm)} {p.serasaLimpo ? 'limpo' : 'não limpo'}</>}
+                    </p>
+                    <Badge className={STATUS_COR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 // Consultas e pedidos de limite numa fila só (João, 2026-11-16: "tudo o
 // que a gente responde fica junto"). Registros de liberação ficou só com o
 // controle manual de quem libera fora do esquema. Aba Relatórios com os
 // mesmos filtros.
 export default function SolicitacaoCredito() {
-  const [aba, setAba] = usePersistedState<'pedidos' | 'relatorios'>('solicitacaoCredito:aba', 'pedidos')
+  const [aba, setAba] = usePersistedState<'pedidos' | 'pesquisar' | 'relatorios'>('solicitacaoCredito:aba', 'pedidos')
   const [filtros, setFiltros] = usePersistedState<Filtros>('solicitacaoCredito:filtros', FILTROS_VAZIOS)
   const f = { ...FILTROS_VAZIOS, ...filtros }
   const set = (p: Partial<Filtros>) => setFiltros({ ...f, ...p })
@@ -632,20 +721,21 @@ export default function SolicitacaoCredito() {
       </div>
 
       <div className="flex gap-1 border-b border-dark-700">
-        {(['pedidos', 'relatorios'] as const).map((t) => (
+        {(['pedidos', 'pesquisar', 'relatorios'] as const).map((t) => (
           <button
             key={t}
             onClick={() => setAba(t)}
             className={`px-3 py-2 text-sm border-b-2 transition-colors ${aba === t ? 'border-gold-500 text-gold-400 font-medium' : 'border-transparent text-dark-400 hover:text-dark-200'}`}
           >
-            {t === 'pedidos' ? 'Pedidos' : 'Relatórios'}
+            {t === 'pedidos' ? 'Pedidos' : t === 'pesquisar' ? 'Pesquisar cliente' : 'Relatórios'}
           </button>
         ))}
       </div>
 
-      <BarraFiltros f={f} set={set} mostrarStatus={aba === 'pedidos'} />
+      {aba !== 'pesquisar' && <BarraFiltros f={f} set={set} mostrarStatus={aba === 'pedidos'} />}
 
       {aba === 'pedidos' && <ListaPedidos f={f} onAbrir={setAbertoId} />}
+      {aba === 'pesquisar' && <PesquisarCliente onAbrir={setAbertoId} />}
       {aba === 'relatorios' && (
         <Relatorios
           f={f}

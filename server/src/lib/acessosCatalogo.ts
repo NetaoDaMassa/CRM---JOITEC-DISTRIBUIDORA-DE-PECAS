@@ -144,6 +144,7 @@ export const CATALOGO: ItemCatalogo[] = [
   { id: 'relatorio_visao_geral', area: 'Relatórios', nome: 'Aba Visão geral', niveis: { 1: ['relatorio_visao_geral'] } },
   { id: 'relatorio_contatos', area: 'Relatórios', nome: 'Aba Contatos e ligações', niveis: { 1: ['relatorio_contatos'] } },
   { id: 'relatorio_orcamentos', area: 'Relatórios', nome: 'Aba Orçamentos e vendas', niveis: { 1: ['relatorio_orcamentos'] } },
+  { id: 'relatorio_itens_sap', area: 'Relatórios', nome: 'Itens do SAP mês a mês', dica: 'Relatório Itens do SAP (mês a mês, faturam pouco, estoque parado). Vendedor vê só os clientes dele.', niveis: { 1: ['relatorio_itens_sap'] } },
   { id: 'relatorio_alertas', area: 'Relatórios', nome: 'Aba Alertas', niveis: { 1: ['relatorio_alertas'] } },
   { id: 'relatorio_ligacoes', area: 'Relatórios', nome: 'Ligações (PABX)', niveis: { 1: ['relatorio_ligacoes'] } },
 

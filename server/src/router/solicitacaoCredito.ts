@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql } from 'drizzle-orm'
 import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { solicitacoesCredito, solicitacaoCreditoAnexos, solicitacaoCreditoRespostas, liberacoesCredito, clientes, empresas, users, cotacoesCrmHistorico, notifications } from '../db/schema.js'
@@ -45,6 +45,92 @@ function montarFiltros(input: z.infer<typeof filtrosInput>) {
     filtros.push(or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo))!)
   }
   return filtros
+}
+
+// Busca usada pelas duas telas (financeiro completo; vendedor resumido).
+async function pesquisarClienteCredito(input: { q: string }) {
+  const termo = `%${input.q}%`
+  const digitos = input.q.replace(/\D/g, '')
+  const docSql = (col: typeof clientes.cnpj | typeof clientes.cpf) => sql<string>`replace(replace(replace(replace(coalesce(${col}, ''), '.', ''), '/', ''), '-', ''), ' ', '')`
+  const condicoes = [like(clientes.codigo, termo), like(clientes.codigoAntigo, termo), like(clientes.razaoSocial, termo)]
+  // Só procura no CNPJ/CPF quando digitou número (senão "C000001" casaria
+  // com todo CNPJ que tem 000001 no meio).
+  if (digitos.length >= 5 && /^[\d.\/\-\s]+$/.test(input.q)) condicoes.push(like(docSql(clientes.cnpj), `%${digitos}%`), like(docSql(clientes.cpf), `%${digitos}%`))
+  const achados = await db
+    .select({ id: clientes.id, cnpj: clientes.cnpj, cpf: clientes.cpf })
+    .from(clientes)
+    .where(or(...condicoes))
+    .limit(60)
+  if (!achados.length) return { grupos: [], muitos: false }
+
+  // Mesmo documento em outras empresas.
+  const docs = [...new Set(achados.map((c) => (c.cnpj || c.cpf || '').replace(/\D/g, '')).filter((d) => d.length >= 11))]
+  const irmaos = docs.length
+    ? await db
+        .select({ id: clientes.id })
+        .from(clientes)
+        .where(or(inArray(docSql(clientes.cnpj), docs), inArray(docSql(clientes.cpf), docs)))
+    : []
+  const ids = [...new Set([...achados.map((c) => c.id), ...irmaos.map((c) => c.id)])]
+
+  const cadastros = await db
+    .select({ id: clientes.id, razaoSocial: clientes.razaoSocial, codigo: clientes.codigo, cnpj: clientes.cnpj, cpf: clientes.cpf, empresaNome: empresas.nome })
+    .from(clientes)
+    .innerJoin(empresas, eq(empresas.id, clientes.empresaId))
+    .where(inArray(clientes.id, ids))
+  const pedidos = await db
+    .select({
+      id: solicitacoesCredito.id,
+      clienteId: solicitacoesCredito.clienteId,
+      empresaNome: empresas.nome,
+      vendedorNome: users.name,
+      tipo: solicitacoesCredito.tipo,
+      tipoConsulta: solicitacoesCredito.tipoConsulta,
+      status: solicitacoesCredito.status,
+      valorSolicitado: solicitacoesCredito.valorSolicitado,
+      valorLiberado: solicitacoesCredito.valorLiberado,
+      quemLiberou: solicitacoesCredito.quemLiberou,
+      serasaLimpo: solicitacoesCredito.serasaLimpo,
+      serasaConsultaEm: solicitacoesCredito.serasaConsultaEm,
+      decididoEm: solicitacoesCredito.decididoEm,
+      createdAt: solicitacoesCredito.createdAt,
+    })
+    .from(solicitacoesCredito)
+    .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
+    .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
+    .where(inArray(solicitacoesCredito.clienteId, ids))
+    .orderBy(desc(solicitacoesCredito.createdAt))
+
+  type Grupo = {
+    chave: string
+    documento: string | null
+    nome: string
+    cadastros: { id: number; codigo: string; empresaNome: string; razaoSocial: string }[]
+    pedidos: ((typeof pedidos)[number] & { clienteCodigo: string })[]
+    ultimaConsulta: ((typeof pedidos)[number] & { clienteCodigo: string }) | null
+  }
+  const grupos = new Map<string, Grupo>()
+  for (const c of cadastros) {
+    const doc = (c.cnpj || c.cpf || '').replace(/\D/g, '')
+    const chave = doc.length >= 11 ? `doc:${doc}` : `id:${c.id}`
+    const g = grupos.get(chave) ?? { chave, documento: doc.length >= 11 ? c.cnpj || c.cpf : null, nome: c.razaoSocial, cadastros: [], pedidos: [], ultimaConsulta: null }
+    g.cadastros.push({ id: c.id, codigo: c.codigo, empresaNome: c.empresaNome, razaoSocial: c.razaoSocial })
+    g.pedidos.push(...pedidos.filter((p) => p.clienteId === c.id).map((p) => ({ ...p, clienteCodigo: c.codigo })))
+    grupos.set(chave, g)
+  }
+  const lista = [...grupos.values()].map((g) => {
+    g.pedidos.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    // Última consulta do Serasa = a resposta mais recente com data de consulta.
+    g.ultimaConsulta = [...g.pedidos].filter((p) => p.serasaConsultaEm).sort((a, b) => (b.serasaConsultaEm! + b.createdAt).localeCompare(a.serasaConsultaEm! + a.createdAt))[0] ?? null
+    return g
+  })
+  // Código/CNPJ exato primeiro; depois quem tem pedido (mais recente em
+  // cima); depois o resto por nome.
+  const qMaiusculo = input.q.toUpperCase()
+  const exato = (g: Grupo) =>
+    g.cadastros.some((c) => c.codigo.toUpperCase() === qMaiusculo) || (digitos.length >= 11 && (g.documento ?? '').replace(/\D/g, '') === digitos) ? 1 : 0
+  lista.sort((a, b) => exato(b) - exato(a) || (b.pedidos[0]?.createdAt ?? '').localeCompare(a.pedidos[0]?.createdAt ?? '') || a.nome.localeCompare(b.nome))
+  return { grupos: lista.slice(0, 30), muitos: lista.length > 30 || achados.length === 60 }
 }
 
 // Fluxo completo de solicitação de crédito: o vendedor abre o pedido (com
@@ -410,6 +496,42 @@ export const solicitacaoCreditoRouter = router({
           .map(comPct)
           .sort((a, b) => b.pedidos - a.pedidos || b.ultimoPedido.localeCompare(a.ultimoPedido))
           .slice(0, 50),
+      }
+    }),
+
+  // Pesquisar cliente (financeiro, 2026-11-24: "pesquisar o código do
+  // cliente e ver se recente já consultei o CNPJ dele, ao invés de olhar um
+  // por um"). Busca por código, código antigo, razão social ou CNPJ/CPF e
+  // junta os cadastros do MESMO documento em todas as empresas — o CNPJ pode
+  // ter sido consultado pela Joitec e agora o pedido vir da Odin Tubos.
+  pesquisarCliente: featureProcedure('solicitacao_credito')
+    .input(z.object({ q: z.string().trim().min(2) }))
+    .query(async ({ input }) => pesquisarClienteCredito(input)),
+
+  // Versão do vendedor (João, 2026-11-24: "preciso mostrar pro vendedor, é
+  // para ele pesquisar"): antes de pedir de novo, vê se o CNPJ já foi
+  // consultado e se tem pedido esperando. Só data, limpo/não e resultado —
+  // sem valores, sem quem liberou, sem nome de outros vendedores.
+  pesquisarClienteVendedor: adminOrFeatureProcedure('solicitacao_credito')
+    .input(z.object({ q: z.string().trim().min(2) }))
+    .query(async ({ input }) => {
+      const r = await pesquisarClienteCredito(input)
+      return {
+        muitos: r.muitos,
+        grupos: r.grupos.map((g) => {
+          const pendente = g.pedidos.find((p) => p.status === 'pendente')
+          return {
+            chave: g.chave,
+            nome: g.nome,
+            documento: g.documento,
+            cadastros: g.cadastros.map((c) => ({ codigo: c.codigo, empresaNome: c.empresaNome })),
+            ultimaConsulta: g.ultimaConsulta
+              ? { serasaConsultaEm: g.ultimaConsulta.serasaConsultaEm, serasaLimpo: g.ultimaConsulta.serasaLimpo, status: g.ultimaConsulta.status, empresaNome: g.ultimaConsulta.empresaNome }
+              : null,
+            pendenteDesde: pendente?.createdAt ?? null,
+            totalPedidos: g.pedidos.length,
+          }
+        }),
       }
     }),
 

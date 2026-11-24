@@ -38,6 +38,7 @@ import { encryptSecret } from './lib/crypto.js'
 import { cifrar as cifrarDrive, trocarCodigo as trocarCodigoDrive, validarState as validarStateDrive, limparTokenCache as limparTokenDrive } from './lib/googleDrive.js'
 import { iniciarChatSocket } from './lib/chatSocket.js'
 import { lerTokenDownload, escreverZip, nomesUnicos } from './lib/marketingDownload.js'
+import { buscarGastosCartao, gerarPdfCartao } from './lib/cartaoRelatorio.js'
 import { importarMlabs, chaveMlabsValida } from './lib/marketingMlabs.js'
 
 config()
@@ -377,6 +378,34 @@ app.post('/upload/cartao-anexo', uploadCartao.single('file'), async (req, res) =
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
   if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido' })
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
+// PDF do relatório do Cartão de Crédito com TODOS os comprovantes juntos,
+// por vendedor (pedido do João, 2026-11-24). Mesma regra da tela: permissão
+// cartao_credito_relatorio; admin comum só vê a própria empresa.
+app.get('/api/cartao-credito-pdf', async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!user.superAdmin && !(await temFeature(user.id, 'cartao_credito_relatorio'))) return res.status(403).json({ error: 'Sem permissão' })
+  const dia = /^\d{4}-\d{2}-\d{2}$/
+  const de = String(req.query.de ?? '')
+  const ate = String(req.query.ate ?? '')
+  if (!dia.test(de) || !dia.test(ate)) return res.status(400).json({ error: 'Período inválido' })
+  const vendedorId = Number(req.query.vendedorId) || undefined
+  try {
+    const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
+    const filtro = { de, ate, vendedorId }
+    const dados = await buscarGastosCartao({ superAdmin: !!user.superAdmin, empresaId: empresaId ?? null }, filtro)
+    const pdf = await gerarPdfCartao(dados, filtro, UPLOADS_DIR)
+    const nome = vendedorId && dados.porVendedor[0] ? dados.porVendedor[0].vendedorNome : 'todos'
+    const arquivo = `cartao-${nome}-${de}-a-${ate}.pdf`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '-')
+    res.setHeader('Content-Type', 'application/pdf')
+    res.setHeader('Content-Disposition', `attachment; filename="${arquivo}"`)
+    res.end(pdf)
+  } catch (e) {
+    console.error('[cartao pdf]', e)
+    res.status(500).json({ error: 'Não deu pra gerar o PDF' })
+  }
 })
 
 // Comprovante opcional da Liberação de Crédito — mesmo padrão de

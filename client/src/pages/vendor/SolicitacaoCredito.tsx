@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
-import { ShieldCheck, Paperclip, X, MessageCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import { ShieldCheck, Paperclip, X, MessageCircle, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import { formatarMoeda as formatarMoedaBr } from '../../lib/moeda'
@@ -311,6 +311,69 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
   )
 }
 
+function diasDesde(iso: string) {
+  const hoje = new Date(new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) + 'T00:00:00')
+  const n = Math.round((hoje.getTime() - new Date(iso.slice(0, 10) + 'T00:00:00').getTime()) / 86400000)
+  return n <= 0 ? 'hoje' : n === 1 ? 'ontem' : `há ${n} dias`
+}
+const dataBr = (d: string) => d.slice(0, 10).split('-').reverse().join('/')
+
+// Pesquisar antes de pedir (João, 2026-11-24): o vendedor digita código,
+// CNPJ ou nome e vê se o cliente já foi consultado (em qualquer empresa do
+// grupo) e se já tem pedido esperando resposta — pra não mandar de novo.
+function PesquisarCliente() {
+  const [texto, setTexto] = useState('')
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setQ(texto.trim()), 350)
+    return () => clearTimeout(t)
+  }, [texto])
+  const { data, isFetching } = trpc.solicitacaoCredito.pesquisarClienteVendedor.useQuery({ q }, { enabled: q.length >= 2 })
+
+  return (
+    <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
+      <div>
+        <p className="text-sm font-medium text-dark-100">Antes de pedir: esse cliente já foi consultado?</p>
+        <p className="text-xs text-dark-500">Digite o código, o CNPJ/CPF ou o nome. Vale para todas as empresas do grupo.</p>
+      </div>
+      <Input icon={<Search size={14} />} placeholder="Ex: C001234 ou 12.345.678/0001-90" value={texto} onChange={(e) => setTexto(e.target.value)} />
+      {q.length >= 2 && isFetching && !data && <p className="text-sm text-dark-400">Procurando...</p>}
+      {q.length >= 2 && data && !data.grupos.length && <p className="text-sm text-dark-400">Nenhum cliente encontrado com "{q}".</p>}
+      {data?.muitos && <p className="text-xs text-amber-400">Muitos resultados — digite o código ou o CNPJ completo.</p>}
+      {q.length >= 2 &&
+        data?.grupos.map((g) => {
+          const u = g.ultimaConsulta
+          return (
+            <div key={g.chave} className="border border-dark-600 rounded-xl p-3 space-y-2">
+              <div>
+                <p className="text-sm font-medium text-dark-50">{g.nome}</p>
+                <p className="text-xs text-dark-400">
+                  {g.documento ? <>CNPJ/CPF {g.documento} · </> : null}
+                  {g.cadastros.map((c) => `${c.codigo} (${c.empresaNome})`).join(' · ')}
+                </p>
+              </div>
+              {u?.serasaConsultaEm ? (
+                <div className={`rounded-lg border px-3 py-2 text-sm ${u.serasaLimpo ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
+                  <span className="font-semibold">
+                    Consultado em {dataBr(u.serasaConsultaEm)} ({diasDesde(u.serasaConsultaEm)})
+                  </span>{' '}
+                  · {u.serasaLimpo ? 'Limpo' : 'Não está limpo'} · {STATUS_LABEL[u.status]} · {u.empresaNome}
+                </div>
+              ) : (
+                <div className="rounded-lg border px-3 py-2 text-sm bg-dark-700/50 border-dark-600 text-dark-300">Ainda não foi consultado.</div>
+              )}
+              {g.pendenteDesde && (
+                <div className="rounded-lg border px-3 py-2 text-sm bg-amber-500/10 border-amber-500/30 text-amber-300">
+                  Já tem pedido esperando resposta do financeiro desde {formatDateTime(g.pendenteDesde)} — não precisa mandar de novo.
+                </div>
+              )}
+            </div>
+          )
+        })}
+    </div>
+  )
+}
+
 export default function SolicitacaoCredito() {
   const { data: pedidos, isLoading } = trpc.solicitacaoCredito.meusPedidos.useQuery()
 
@@ -323,6 +386,8 @@ export default function SolicitacaoCredito() {
           <p className="text-sm text-dark-400">Peça a liberação de crédito de um cliente da sua carteira pro Financeiro.</p>
         </div>
       </div>
+
+      <PesquisarCliente />
 
       <FormularioNovaSolicitacao />
 

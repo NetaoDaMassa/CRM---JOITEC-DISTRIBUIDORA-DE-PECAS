@@ -3832,7 +3832,7 @@ export const cartaoGastos = sqliteTable('cartao_gastos', {
   data: text('data').notNull(), // YYYY-MM-DD, data do gasto (não do lançamento)
   valor: real('valor').notNull(),
   categoria: text('categoria', {
-    enum: ['combustivel', 'alimentacao', 'hospedagem', 'pedagio', 'manutencao', 'outro'],
+    enum: ['combustivel', 'alimentacao', 'hospedagem', 'pedagio', 'estacionamento', 'manutencao', 'outro'],
   }),
   descricao: text('descricao'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
