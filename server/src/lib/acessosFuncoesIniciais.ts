@@ -16,7 +16,7 @@ export interface FuncaoInicial {
   chaves: string[]
 }
 
-const ABAS_RELATORIO = ['relatorio_visao_geral', 'relatorio_contatos', 'relatorio_orcamentos', 'relatorio_alertas']
+const ABAS_RELATORIO = ['relatorio_visao_geral', 'relatorio_contatos', 'relatorio_orcamentos', 'relatorio_itens_sap', 'relatorio_alertas']
 const ODIN_GERENCIA = [
   'dashboard_odin', 'propostas_odin', 'pedidos_odin', 'garantias_odin', 'garantias_oficina', 'revendas_odin', 'visitas_odin',
   'prospeccao_odin', 'demonstracoes_odin', 'qualidade_odin', 'estoque_odin', 'pos_venda', 'relatorios_odin', 'configuracoes_odin', 'painel_tv_odin',
