@@ -121,7 +121,9 @@ export const adiantamentoPixRouter = router({
     .input(z.object({ vendaId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const l = await db.query.adiantamentosPix.findFirst({ where: eq(adiantamentosPix.vendaId, input.vendaId) })
-      await db.update(adiantamentosPix).set({ conferidoEm: null, conferidoPor: null }).where(eq(adiantamentosPix.vendaId, input.vendaId))
+      // Garantia desfeita = não era garantia: volta a esperar o comprovante.
+      const limpaGarantia = l?.semComprovanteMotivo === 'garantia' && !l.comprovantePath ? { semComprovanteMotivo: null, anexadoEm: null, anexadoPor: null } : {}
+      await db.update(adiantamentosPix).set({ conferidoEm: null, conferidoPor: null, ...limpaGarantia }).where(eq(adiantamentosPix.vendaId, input.vendaId))
       if (l?.conferidoEm)
         await registrarAuditoria({ tabela: 'adiantamentos_pix', registroId: l.id, acao: 'editar', campo: 'conferido', valorAnterior: `conferido em ${l.conferidoEm} por usuário ${l.conferidoPor}`, valorNovo: `desfeito (venda ${input.vendaId})`, alteradoPor: ctx.user.id })
       return { ok: true }
@@ -175,16 +177,19 @@ export const adiantamentoPixRouter = router({
     }),
 
   // Venda de garantia: não tem PIX nem comprovante (João, 2026-11-24). O
-  // vendedor avisa por aqui; o financeiro confere igual (só aí destrava).
+  // vendedor avisa por aqui e já sai como conferida — não passa pela tela
+  // "À conferir" do financeiro (João, 2026-11-25). Fica na aba Conferidos com
+  // o selo 🛡 e no histórico (log_auditoria).
   marcarGarantia: protectedProcedure.input(z.object({ vendaId: z.number() })).mutation(async ({ ctx, input }) => {
     const v = await acharVenda(input.vendaId)
     if (ctx.user.role !== 'admin' && v.vendedorId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor da venda faz isso.' })
     const pix = (await pixDasVendas([v])).get(v.id)
     if (!pix) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Essa venda não é à vista nem entrada + boleto.' })
     if (pix.status !== 'aguardando') throw new TRPCError({ code: 'BAD_REQUEST', message: 'Essa venda já tem comprovante (ou já foi conferida).' })
-    const dados = { semComprovanteMotivo: 'garantia', anexadoEm: agoraSqlite(), anexadoPor: ctx.user.id }
+    const agora = agoraSqlite()
+    const dados = { semComprovanteMotivo: 'garantia', anexadoEm: agora, anexadoPor: ctx.user.id, conferidoEm: agora, conferidoPor: ctx.user.id }
     const res = await db.insert(adiantamentosPix).values({ vendaId: v.id, ...dados }).onConflictDoUpdate({ target: adiantamentosPix.vendaId, set: dados }).returning({ id: adiantamentosPix.id })
-    await registrarAuditoria({ tabela: 'adiantamentos_pix', registroId: res[0]?.id ?? v.id, acao: 'editar', campo: 'sem_comprovante_motivo', valorNovo: `garantia — sem comprovante (venda ${v.id})`, alteradoPor: ctx.user.id })
+    await registrarAuditoria({ tabela: 'adiantamentos_pix', registroId: res[0]?.id ?? v.id, acao: 'editar', campo: 'sem_comprovante_motivo', valorNovo: `garantia — sem comprovante, conferido automático (venda ${v.id})`, alteradoPor: ctx.user.id })
     return { ok: true }
   }),
 
@@ -193,12 +198,20 @@ export const adiantamentoPixRouter = router({
     const v = await acharVenda(input.vendaId)
     if (ctx.user.role !== 'admin' && v.vendedorId !== ctx.user.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'Só o vendedor da venda mexe no comprovante.' })
     const l = await db.query.adiantamentosPix.findFirst({ where: eq(adiantamentosPix.vendaId, v.id) })
-    if (l?.conferidoEm) throw new TRPCError({ code: 'BAD_REQUEST', message: 'O financeiro já conferiu — peça pra desfazer a conferência antes.' })
+    // Garantia é conferida sozinha: o vendedor pode desfazer ("não era garantia").
+    const desfazGarantia = l?.semComprovanteMotivo === 'garantia' && !input.path
+    if (l?.conferidoEm && !desfazGarantia) throw new TRPCError({ code: 'BAD_REQUEST', message: 'O financeiro já conferiu — peça pra desfazer a conferência antes.' })
     const resto = input.path ? lerComprovantes(l?.comprovantePath, l?.comprovanteNome).filter((a) => a.path !== input.path) : []
     await db
       .update(adiantamentosPix)
-      .set(resto.length ? gravarComprovantes(resto) : { comprovantePath: null, comprovanteNome: null, anexadoEm: null, anexadoPor: null, semComprovanteMotivo: null })
+      .set(
+        resto.length
+          ? gravarComprovantes(resto)
+          : { comprovantePath: null, comprovanteNome: null, anexadoEm: null, anexadoPor: null, semComprovanteMotivo: null, ...(desfazGarantia ? { conferidoEm: null, conferidoPor: null } : {}) }
+      )
       .where(eq(adiantamentosPix.vendaId, v.id))
+    if (desfazGarantia && l)
+      await registrarAuditoria({ tabela: 'adiantamentos_pix', registroId: l.id, acao: 'editar', campo: 'sem_comprovante_motivo', valorAnterior: 'garantia', valorNovo: `desfeito pelo vendedor — volta a pedir comprovante (venda ${v.id})`, alteradoPor: ctx.user.id })
     return { ok: true }
   }),
 })

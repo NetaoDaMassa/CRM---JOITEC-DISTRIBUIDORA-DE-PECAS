@@ -941,7 +941,7 @@ export default function FunilBoard({
                           <p className={`text-[11px] font-medium rounded-lg px-2 py-1 mb-2 border ${todosConferidos ? 'text-green-300 bg-green-900/20 border-green-700/40' : 'text-sky-200 bg-sky-900/20 border-sky-700/40'}`}>
                             {soGarantia
                               ? todosConferidos
-                                ? '✓ Garantia (sem PIX) conferida pelo financeiro'
+                                ? '🛡 Garantia — sem PIX, liberado'
                                 : '🛡 Garantia, sem comprovante · financeiro conferindo'
                               : todosConferidos
                                 ? '✓ PIX conferido pelo financeiro'
@@ -1251,7 +1251,7 @@ function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onM
   })
   const remover = trpc.adiantamentoPix.removerComprovante.useMutation({ onSuccess: () => onMudou(), onError: (e) => toast.error(e.message) })
   const garantia = trpc.adiantamentoPix.marcarGarantia.useMutation({
-    onSuccess: () => (toast.success('Marcado como garantia — o financeiro vai conferir'), setConfirmaGarantia(false), onMudou()),
+    onSuccess: () => (toast.success('Marcado como garantia — liberado, não precisa de comprovante'), setConfirmaGarantia(false), onMudou()),
     onError: (e) => toast.error(e.message),
   })
   const [confirmaGarantia, setConfirmaGarantia] = useState(false)
@@ -1292,10 +1292,10 @@ function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onM
           <input type="file" multiple accept="image/*,application/pdf" className="hidden" disabled={enviando} onChange={(e) => (enviar(e.target.files), (e.target.value = ''))} />
         </label>
         <p className="text-[10px] text-amber-200/70">Dá pra escolher várias imagens de uma vez.</p>
-        {/* Garantia não tem PIX (João, 2026-11-24): o vendedor avisa e o financeiro confere. */}
+        {/* Garantia não tem PIX (João, 2026-11-24): o vendedor avisa e já sai conferida (2026-11-25). */}
         {confirmaGarantia ? (
           <div className="rounded-lg border border-amber-500/60 bg-dark-900/60 p-2 space-y-1.5">
-            <p className="text-[11px] text-amber-100">Confirma que esta venda é <b>garantia</b> e não vai ter comprovante de PIX? O financeiro vai conferir.</p>
+            <p className="text-[11px] text-amber-100">Confirma que esta venda é <b>garantia</b> e não vai ter comprovante de PIX? Ela é liberada na hora (fica registrado que foi você).</p>
             <div className="flex gap-1.5">
               <button type="button" className="rounded-lg bg-amber-500 px-2.5 py-1 text-[11px] font-semibold text-dark-900 hover:bg-amber-400 disabled:opacity-60" disabled={garantia.isPending} onClick={() => garantia.mutate({ vendaId: venda.id })}>
                 Sim, é garantia
@@ -1317,13 +1317,13 @@ function ComprovantePix({ venda, onMudou }: { venda: Card['vendas'][number]; onM
       <span>
         {pix.garantia
           ? pix.status === 'conferido'
-            ? '✓ Garantia (sem PIX) conferida pelo financeiro'
+            ? '🛡 Garantia — sem PIX, liberado'
             : '🛡 Garantia, sem comprovante · financeiro conferindo'
           : pix.status === 'conferido'
             ? '✓ PIX conferido pelo financeiro'
             : '📎 Comprovante enviado · financeiro conferindo'}
       </span>
-      {pix.garantia && pix.status === 'anexado' && (
+      {pix.garantia && (
         <button type="button" className="text-dark-300 hover:text-white underline" title="Não era garantia: volta a pedir o comprovante" onClick={() => remover.mutate({ vendaId: venda.id })}>
           desfazer
         </button>

@@ -121,7 +121,7 @@ function Lista({ aba }: { aba: 'conferir' | 'conferido' }) {
                 )}
                 {l.status === 'conferido' && (
                   <>
-                    {l.garantia && <span className="text-[11px] text-sky-300">🛡 Garantia — sem comprovante</span>}
+                    {l.garantia && <span className="text-[11px] text-sky-300">🛡 Garantia — sem comprovante (liberado automático pelo vendedor)</span>}
                     <LinksComprovantes arquivos={l.comprovantes} />
                     <span className="text-[11px] text-green-400">
                       ✓ conferido {l.conferidoEm ? formatDateTime(l.conferidoEm) : ''} {l.conferidoPor ? `por ${l.conferidoPor}` : ''}

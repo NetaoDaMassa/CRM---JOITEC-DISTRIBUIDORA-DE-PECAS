@@ -1303,6 +1303,13 @@
       "when": 1795700000000,
       "tag": "0185_motivos_perda",
       "breakpoints": true
+    },
+    {
+      "idx": 186,
+      "version": "6",
+      "when": 1795750000000,
+      "tag": "0186_pix_garantia_auto",
+      "breakpoints": true
     }
   ]
 }
