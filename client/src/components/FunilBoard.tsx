@@ -569,7 +569,8 @@ export default function FunilBoard({
             ((c.telefoneWhatsapp && c.telefoneWhatsapp.replace(/\D/g, '').includes(termoDigitos)) ||
               c.telefonesExtras.some((t) => t.numero.replace(/\D/g, '').includes(termoDigitos)) ||
               (c.cnpj && c.cnpj.includes(termoDigitos)) ||
-              c.vendas.some((v) => v.numeroNotaFiscal && v.numeroNotaFiscal.replace(/\D/g, '').includes(termoDigitos))))
+              c.vendas.some((v) => v.numeroNotaFiscal && v.numeroNotaFiscal.replace(/\D/g, '').includes(termoDigitos)) ||
+              c.vendas.some((v) => v.numeroPedido && v.numeroPedido.replace(/\D/g, '').includes(termoDigitos))))
       )
     : cardsBase
 
@@ -657,7 +658,7 @@ export default function FunilBoard({
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="max-w-sm flex-1 min-w-[220px]">
-          <Input placeholder="Buscar cliente por nome, código ou telefone..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+          <Input placeholder="Buscar cliente por nome, código, telefone, nº do pedido ou NF..." value={busca} onChange={(e) => setBusca(e.target.value)} />
         </div>
         <div className="w-56">
           <Select
