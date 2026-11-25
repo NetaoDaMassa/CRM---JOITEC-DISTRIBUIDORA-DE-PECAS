@@ -13,7 +13,9 @@
 import fs from 'fs'
 import path from 'path'
 import pino from 'pino'
-import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, type WASocket } from 'baileys'
+// Baileys 7 só aqui (a sessão dos avisos continua na 6.7): com a 6.7 o WhatsApp
+// aceitava o QR e derrubava o aparelho logo depois de conectar (2026-11-25).
+import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, type WASocket } from 'baileys7'
 import { getConfigBool, setConfig } from '../configuracoes.js'
 import { extrairMensagem, registrarMensagem } from './capturaLeads.js'
 
@@ -36,7 +38,7 @@ type Sessao = {
 }
 
 const sessoes = new Map<number, Sessao>()
-const logger = pino({ level: 'silent' })
+const logger = pino({ level: process.env.WA_CAPTURA_LOG || 'error' })
 const chaveAtiva = (empresaId: number) => `wa_captura_${empresaId}_ativa`
 const desligadaGeral = () => process.env.WA_CAPTURA_DESLIGADA === '1'
 
@@ -129,11 +131,13 @@ async function abrir(s: Sessao): Promise<void> {
     if (u.connection === 'close') {
       s.sock = null
       const codigo = (u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode
+      const erro = u.lastDisconnect?.error as { message?: string; data?: unknown } | undefined
+      const detalhe = `${erro?.message || ''} ${erro?.data ? JSON.stringify(erro.data).slice(0, 300) : ''}`.trim()
       if (s.parando) { s.estado = 'desligada'; return }
       if (codigo === DisconnectReason.loggedOut) {
         s.estado = 'desconectado'
         s.precisaParear = true
-        log(s, 'DESCONECTADO no celular (logout). Precisa ler o QR code de novo na tela WhatsApp → captura.', true)
+        log(s, `DESCONECTADO no celular (logout). Precisa ler o QR code de novo na tela WhatsApp → captura. [${detalhe}]`, true)
         limparLogin(s.empresaId)
         return
       }
@@ -155,7 +159,7 @@ async function abrir(s: Sessao): Promise<void> {
       }
       const espera = Math.min(300_000, 5_000 * 2 ** Math.min(s.tentativas, 6))
       s.tentativas++
-      log(s, `conexão caiu (código ${codigo ?? '?'}). Tentando de novo em ${Math.round(espera / 1000)}s`, true)
+      log(s, `conexão caiu (código ${codigo ?? '?'} ${detalhe}). Tentando de novo em ${Math.round(espera / 1000)}s`, true)
       if (s.timer) clearTimeout(s.timer)
       s.timer = setTimeout(() => { s.timer = null; iniciarCaptura(s.empresaId).catch((e) => log(s, `falha ao reconectar: ${(e as Error).message}`, true)) }, espera)
     }
