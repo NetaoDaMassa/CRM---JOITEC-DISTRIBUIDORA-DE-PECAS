@@ -89,6 +89,7 @@ import SolicitacaoCreditoVendor from './pages/vendor/SolicitacaoCredito'
 import CartaoCredito from './pages/vendor/CartaoCredito'
 import CartaoCreditoRelatorio from './pages/admin/CartaoCreditoRelatorio'
 import GuiaFinanceiro from './pages/admin/GuiaFinanceiro'
+import MotivosPerda from './pages/admin/MotivosPerda'
 import FaturamentoGeral from './pages/vendor/FaturamentoGeral'
 import Chat from './pages/Chat'
 import FilaPosVenda from './pages/FilaPosVenda'
@@ -404,6 +405,7 @@ export default function App() {
           <Route path="admin/cobranca" element={<AdminGuard><FeatureGuard feature="cobranca_sap"><CobrancaSap /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitacao-credito" element={<AdminGuard><FeatureGuard feature="solicitacao_credito"><SolicitacaoCreditoAdmin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cartao-relatorio" element={<AdminGuard><FeatureGuard feature="cartao_credito_relatorio"><CartaoCreditoRelatorio /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/motivos-perda" element={<AdminGuard><MotivosPerda /></AdminGuard>} />
           <Route path="admin/guia-financeiro" element={<AdminGuard><FeatureGuard feature={FEATURES_GUIA_FINANCEIRO}><GuiaFinanceiro /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />

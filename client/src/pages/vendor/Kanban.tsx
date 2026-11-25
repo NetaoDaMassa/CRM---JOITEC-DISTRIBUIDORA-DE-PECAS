@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import FunilBoard from '../../components/FunilBoard'
+import ReclassificarPerdidos from '../../components/ReclassificarPerdidos'
 import { primeiroDiaMesString } from '../../lib/utils'
 import { SLUGS_COLUNA_PEDIDOS_CARTEIRA } from '../../components/PedidoCarteiraAcoes'
 
@@ -24,6 +25,7 @@ export default function VendorKanban() {
           className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5"
         />
       </div>
+      <ReclassificarPerdidos />
       <FunilBoard
         cards={cards ?? []}
         coberturaMes={mesReferencia}

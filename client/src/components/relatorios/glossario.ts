@@ -183,7 +183,7 @@ export const GLOSSARIO: Record<string, Explicacao[]> = {
   perdas: [
     { termo: 'Pedidos perdidos', texto: 'Cards que foram pra etapa "Perdido" dentro do período.' },
     { termo: 'Valor orçado perdido', texto: 'Soma dos valores que estavam orçados nesses cards perdidos. É o dinheiro que ficou na mesa.' },
-    { termo: 'Motivo nº 1', texto: 'A categoria de motivo que mais apareceu nas perdas (preço, prazo, estoque...).' },
+    { termo: 'Motivo nº 1', texto: 'O motivo que mais apareceu nas perdas (preço/concorrente, falta de peça, crédito, cliente sumiu, cliente final...). Desde 25/11/2026 o vendedor escolhe entre 8 motivos e escreve o detalhe (mínimo 40 caracteres).' },
     { termo: 'Itens que mais fizeram perder', texto: 'Produtos mais citados pelo vendedor como motivo da perda.' },
   ],
   'todas-empresas': [

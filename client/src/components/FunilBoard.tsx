@@ -35,6 +35,7 @@ import { AvatarIniciais, dispararConfete } from './ui/Visual'
 import ColunaAgendamentosPecas from './agendamentos/ColunaAgendamentosPecas'
 import GravacaoLigacao from './ui/GravacaoLigacao'
 import NotaSapBotoes from './NotaSapBotoes'
+import MotivoPerdaCampos, { MOTIVO_PERDA_VAZIO, erroDoMotivo, type MotivoPerdaValor } from './MotivoPerdaCampos'
 import { LigacaoWhatsappButton, NaoFoiConversaButton } from './LigacaoWhatsapp'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
@@ -1633,10 +1634,14 @@ function CardModal({
   // Hidrata do card quando ele já está Perdido/Consumidor Final (reabrir um
   // card já classificado mostrava os campos em branco, mesmo o motivo já
   // estando salvo — parecia que "não gravou", mas só faltava ler de volta.
-  const [motivoCategoria, setMotivoCategoria] = useState(card.motivoPerdaCategoria ?? '')
-  const [motivoOpcao, setMotivoOpcao] = useState(card.motivoPerdaOpcao ?? '')
-  const [motivoItem, setMotivoItem] = useState(card.motivoPerdaItem ?? '')
-  const [motivoObs, setMotivoObs] = useState(card.motivoPerdaObservacao ?? '')
+  // Categorias antigas (estoque/financeiro/compras) não voltam pro select —
+  // reabrir um perdido antigo pede a categoria nova.
+  const [motivoPerda, setMotivoPerda] = useState<MotivoPerdaValor>(() => ({
+    categoria: ['estoque', 'financeiro', 'compras'].includes(card.motivoPerdaCategoria ?? '') ? '' : card.motivoPerdaCategoria ?? '',
+    observacao: card.motivoPerdaObservacao ?? '',
+    concorrente: card.motivoPerdaConcorrente ?? '',
+    item: card.motivoPerdaItem ?? '',
+  }))
   const [empresaRepasse, setEmpresaRepasse] = useState(card.empresaRepasse ?? '')
   const [motivoRepasseObs, setMotivoRepasseObs] = useState(card.motivoRepasseObservacao ?? '')
   const [agendarAberto, setAgendarAberto] = useState(false)
@@ -1653,8 +1658,7 @@ function CardModal({
   const [cancelarAberto, setCancelarAberto] = useState(false)
   const [cancelarNovaEtapa, setCancelarNovaEtapa] = useState<string>('perdido')
   const [cancelarMotivo, setCancelarMotivo] = useState('')
-  const [cancelarMotivoCategoria, setCancelarMotivoCategoria] = useState('')
-  const [cancelarMotivoObs, setCancelarMotivoObs] = useState('')
+  const [cancelarMotivoPerda, setCancelarMotivoPerda] = useState<MotivoPerdaValor>(MOTIVO_PERDA_VAZIO)
 
   function invalidarTudo() {
     utils.funil.meuFunil.invalidate()
@@ -1701,16 +1705,19 @@ function CardModal({
 
   function handleCancelarPedido() {
     if (!cancelarMotivo.trim()) return toast.error('Explique por que esse pedido está sendo cancelado.')
-    if (cancelarNovaEtapa === 'perdido' && (!cancelarMotivoCategoria || !cancelarMotivoObs.trim())) {
-      return toast.error('Informe a categoria e a observação do motivo de perda.')
+    if (cancelarNovaEtapa === 'perdido') {
+      const erro = erroDoMotivo(cancelarMotivoPerda)
+      if (erro) return toast.error(erro)
     }
     cancelarPedidoMut.mutate({
       funilMensalId: card.funilMensalId,
       versao: card.versao,
       novaEtapa: cancelarNovaEtapa as any,
       motivoCancelamento: cancelarMotivo.trim(),
-      motivoPerdaCategoria: cancelarNovaEtapa === 'perdido' ? (cancelarMotivoCategoria as any) : undefined,
-      motivoPerdaObservacao: cancelarNovaEtapa === 'perdido' ? cancelarMotivoObs.trim() : undefined,
+      motivoPerdaCategoria: cancelarNovaEtapa === 'perdido' ? (cancelarMotivoPerda.categoria as any) : undefined,
+      motivoPerdaObservacao: cancelarNovaEtapa === 'perdido' ? cancelarMotivoPerda.observacao.trim() : undefined,
+      motivoPerdaConcorrente: cancelarNovaEtapa === 'perdido' ? cancelarMotivoPerda.concorrente.trim() || undefined : undefined,
+      motivoPerdaItem: cancelarNovaEtapa === 'perdido' ? cancelarMotivoPerda.item.trim() || undefined : undefined,
     })
   }
 
@@ -1928,9 +1935,8 @@ function CardModal({
     }
 
     if (etapaSelecionada === 'perdido') {
-      if (!motivoCategoria || !motivoObs.trim()) {
-        return toast.error('Informe a categoria e a observação do motivo de perda.')
-      }
+      const erro = erroDoMotivo(motivoPerda)
+      if (erro) return toast.error(erro)
     }
 
     if (etapaSelecionada === 'consumidor_final' && !empresaRepasse) {
@@ -1948,10 +1954,10 @@ function CardModal({
       tipoComprovante: (tipoComprovante || undefined) as 'cupom_fiscal' | 'nota_fiscal' | undefined,
       pdfPedidoPath,
       pdfPropostaPath,
-      motivoPerdaCategoria: (motivoCategoria || undefined) as any,
-      motivoPerdaOpcao: motivoOpcao || undefined,
-      motivoPerdaItem: motivoItem || undefined,
-      motivoPerdaObservacao: motivoObs || undefined,
+      motivoPerdaCategoria: etapaSelecionada === 'perdido' ? ((motivoPerda.categoria || undefined) as any) : undefined,
+      motivoPerdaItem: etapaSelecionada === 'perdido' ? motivoPerda.item.trim() || undefined : undefined,
+      motivoPerdaObservacao: etapaSelecionada === 'perdido' ? motivoPerda.observacao.trim() || undefined : undefined,
+      motivoPerdaConcorrente: etapaSelecionada === 'perdido' ? motivoPerda.concorrente.trim() || undefined : undefined,
       empresaRepasse: (empresaRepasse || undefined) as any,
       motivoRepasseObservacao: motivoRepasseObs || undefined,
       clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
@@ -2401,23 +2407,7 @@ function CardModal({
                 />
                 {cancelarNovaEtapa === 'perdido' && (
                   <>
-                    <Select
-                      label="Categoria do motivo de perda — obrigatório"
-                      value={cancelarMotivoCategoria}
-                      onChange={(e) => setCancelarMotivoCategoria(e.target.value)}
-                      placeholder="Selecione..."
-                      options={[
-                        { value: 'estoque', label: 'Estoque' },
-                        { value: 'financeiro', label: 'Financeiro' },
-                        { value: 'compras', label: 'Compras' },
-                      ]}
-                    />
-                    <Textarea
-                      label="Observação do motivo de perda — obrigatória"
-                      rows={2}
-                      value={cancelarMotivoObs}
-                      onChange={(e) => setCancelarMotivoObs(e.target.value)}
-                    />
+                    <MotivoPerdaCampos valor={cancelarMotivoPerda} onChange={(p) => setCancelarMotivoPerda((v) => ({ ...v, ...p }))} />
                   </>
                 )}
                 <div className="flex gap-2">
@@ -2700,25 +2690,7 @@ function CardModal({
 
           {etapaSelecionada === 'perdido' && (
             <>
-              <Select
-                label="Categoria do motivo — obrigatório"
-                value={motivoCategoria}
-                onChange={(e) => setMotivoCategoria(e.target.value)}
-                placeholder="Selecione..."
-                options={[
-                  { value: 'estoque', label: 'Estoque' },
-                  { value: 'financeiro', label: 'Financeiro' },
-                  { value: 'compras', label: 'Compras' },
-                ]}
-              />
-              <Input label="Opção específica (opcional)" value={motivoOpcao} onChange={(e) => setMotivoOpcao(e.target.value)} />
-              <Input label="Peça/item perdido (opcional)" value={motivoItem} onChange={(e) => setMotivoItem(e.target.value)} />
-              <Textarea
-                label="Observação — obrigatória"
-                rows={2}
-                value={motivoObs}
-                onChange={(e) => setMotivoObs(e.target.value)}
-              />
+              <MotivoPerdaCampos valor={motivoPerda} onChange={(p) => setMotivoPerda((v) => ({ ...v, ...p }))} />
             </>
           )}
 

@@ -563,12 +563,29 @@ export const funilMensal = sqliteTable('funil_mensal', {
   qtdTentativasContato: integer('qtd_tentativas_contato').notNull().default(0),
   dataUltimoContato: text('data_ultimo_contato'),
   valorOrcado: real('valor_orcado'),
+  // Categorias novas desde 2026-11-25 (lib/motivosPerda.ts); as 3 antigas
+  // (estoque/financeiro/compras) ficam nos perdidos de antes.
   motivoPerdaCategoria: text('motivo_perda_categoria', {
-    enum: ['estoque', 'financeiro', 'compras'],
+    enum: [
+      'preco_concorrente', 'falta_peca', 'restricao_credito', 'prazo_entrega', 'sem_retorno', 'cliente_final', 'adiou', 'cadastro_errado',
+      'estoque', 'financeiro', 'compras',
+    ],
   }),
   motivoPerdaOpcao: text('motivo_perda_opcao'),
   motivoPerdaItem: text('motivo_perda_item'),
   motivoPerdaObservacao: text('motivo_perda_observacao'),
+  // Preço/Concorrente: pra quem perdeu.
+  motivoPerdaConcorrente: text('motivo_perda_concorrente'),
+  // Perdido de novembro/2026 que o vendedor precisa reclassificar com a
+  // categoria nova e o texto detalhado (migração 0185). O que estava antes
+  // fica guardado nas colunas *_antiga/_antigo.
+  motivoPerdaReclassificar: integer('motivo_perda_reclassificar', { mode: 'boolean' }).notNull().default(false),
+  motivoPerdaCategoriaAntiga: text('motivo_perda_categoria_antiga'),
+  motivoPerdaTextoAntigo: text('motivo_perda_texto_antigo'),
+  // Tela Motivos de perda: quem do setor (ou gerência, se a categoria não é
+  // de setor) já viu. Comentários ficam em funil_perda_comentarios.
+  motivoPerdaVistoPor: integer('motivo_perda_visto_por'),
+  motivoPerdaVistoEm: text('motivo_perda_visto_em'),
   empresaRepasse: text('empresa_repasse', {
     enum: ['tubos_conexoes', 'compressores', 'outra'],
   }),
@@ -976,6 +993,20 @@ export const gotoRamais = sqliteTable('goto_ramais', {
   userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
   atualizadoEm: text('atualizado_em').notNull().default(sql`(datetime('now'))`),
 })
+
+// Comentários do setor/gerência sobre um perdido (tela Motivos de perda,
+// 2026-11-25) — cada um vira notificação pro vendedor.
+export const funilPerdaComentarios = sqliteTable(
+  'funil_perda_comentarios',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    funilMensalId: integer('funil_mensal_id').notNull().references(() => funilMensal.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    texto: text('texto').notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ porCard: index('idx_funil_perda_coment').on(t.funilMensalId) })
+)
 
 export const notifications = sqliteTable('notifications', {
   id: integer('id').primaryKey({ autoIncrement: true }),

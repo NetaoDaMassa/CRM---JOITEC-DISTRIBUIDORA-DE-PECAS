@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ROTULO_CATEGORIA_PERDA } from '../../lib/motivosPerda'
 import { Link } from 'react-router-dom'
 import {
   Bar,
@@ -192,11 +193,7 @@ const ORIGEM_LABEL: Record<string, string> = {
   ligacao_automatica: 'Ligação automática (PABX)',
 }
 
-const CATEGORIA_LABEL: Record<string, string> = {
-  estoque: 'Estoque',
-  financeiro: 'Financeiro',
-  compras: 'Compras',
-}
+const CATEGORIA_LABEL: Record<string, string> = ROTULO_CATEGORIA_PERDA
 
 const ETAPA_LABEL_REPORT: Record<string, string> = {
   novo: 'Novo',

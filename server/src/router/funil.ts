@@ -3,6 +3,7 @@ import { pixDasVendas } from '../lib/adiantamentoPix.js'
 import { chegadasNaCarteira } from '../lib/chegouNaCarteira.js'
 import { ehClienteBalcao } from '../lib/consumidorFinalBalcao.js'
 import { z } from 'zod'
+import { CATEGORIAS_PERDA, erroMotivoPerda } from '../lib/motivosPerda.js'
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
@@ -340,6 +341,8 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
     motivoPerdaOpcao: f.motivoPerdaOpcao,
     motivoPerdaItem: f.motivoPerdaItem,
     motivoPerdaObservacao: f.motivoPerdaObservacao,
+    motivoPerdaConcorrente: f.motivoPerdaConcorrente,
+    motivoPerdaReclassificar: f.motivoPerdaReclassificar,
     empresaRepasse: f.empresaRepasse,
     motivoRepasseObservacao: f.motivoRepasseObservacao,
     vendas: f.vendas.map((v) => ({
@@ -508,10 +511,11 @@ export const funilRouter = router({
         clienteIdFaturamento: z.number().optional(),
         // Só pra card de mês passado (ver dataFechamentoDoCard): YYYY-MM-DD.
         dataPedido: z.string().optional(),
-        motivoPerdaCategoria: z.enum(['estoque', 'financeiro', 'compras']).optional(),
+        motivoPerdaCategoria: z.enum(CATEGORIAS_PERDA).optional(),
         motivoPerdaOpcao: z.string().optional(),
         motivoPerdaItem: z.string().optional(),
         motivoPerdaObservacao: z.string().optional(),
+        motivoPerdaConcorrente: z.string().optional(),
         empresaRepasse: z.enum(['tubos_conexoes', 'compressores', 'outra']).optional(),
         motivoRepasseObservacao: z.string().optional(),
         itens: z
@@ -604,13 +608,17 @@ export const funilRouter = router({
       }
 
       if (input.etapa === 'perdido') {
-        if (!input.motivoPerdaCategoria || !input.motivoPerdaObservacao) {
-          throw new Error('Informe a categoria e a observação do motivo de perda.')
-        }
+        const erro = erroMotivoPerda(input.motivoPerdaCategoria, input.motivoPerdaObservacao, input.motivoPerdaConcorrente, input.motivoPerdaItem)
+        if (erro) throw new Error(erro)
         updates.motivoPerdaCategoria = input.motivoPerdaCategoria
         updates.motivoPerdaOpcao = input.motivoPerdaOpcao ?? null
-        updates.motivoPerdaItem = input.motivoPerdaItem ?? null
-        updates.motivoPerdaObservacao = input.motivoPerdaObservacao
+        updates.motivoPerdaItem = input.motivoPerdaItem?.trim() || null
+        updates.motivoPerdaObservacao = input.motivoPerdaObservacao!.trim()
+        updates.motivoPerdaConcorrente = input.motivoPerdaCategoria === 'preco_concorrente' ? input.motivoPerdaConcorrente!.trim() : null
+        // Perda nova: setor ainda não viu.
+        updates.motivoPerdaReclassificar = false
+        updates.motivoPerdaVistoPor = null
+        updates.motivoPerdaVistoEm = null
       }
 
       if (input.etapa === 'consumidor_final') {
@@ -797,10 +805,11 @@ export const funilRouter = router({
         versao: z.number(),
         novaEtapa: z.enum(ETAPAS_CANCELAMENTO),
         motivoCancelamento: z.string().min(1, 'Explique por que esse pedido está sendo cancelado.'),
-        motivoPerdaCategoria: z.enum(['estoque', 'financeiro', 'compras']).optional(),
+        motivoPerdaCategoria: z.enum(CATEGORIAS_PERDA).optional(),
         motivoPerdaOpcao: z.string().optional(),
         motivoPerdaItem: z.string().optional(),
         motivoPerdaObservacao: z.string().optional(),
+        motivoPerdaConcorrente: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -813,8 +822,9 @@ export const funilRouter = router({
         if (pedidoSap !== null) throw new Error(msgTravaSap(pedidoSap))
       }
 
-      if (input.novaEtapa === 'perdido' && (!input.motivoPerdaCategoria || !input.motivoPerdaObservacao)) {
-        throw new Error('Informe a categoria e a observação do motivo de perda.')
+      if (input.novaEtapa === 'perdido') {
+        const erro = erroMotivoPerda(input.motivoPerdaCategoria, input.motivoPerdaObservacao, input.motivoPerdaConcorrente, input.motivoPerdaItem)
+        if (erro) throw new Error(erro)
       }
 
       const vendasAbertas = await db.query.vendas.findMany({
@@ -873,8 +883,12 @@ export const funilRouter = router({
       if (input.novaEtapa === 'perdido') {
         updates.motivoPerdaCategoria = input.motivoPerdaCategoria
         updates.motivoPerdaOpcao = input.motivoPerdaOpcao ?? null
-        updates.motivoPerdaItem = input.motivoPerdaItem ?? null
-        updates.motivoPerdaObservacao = input.motivoPerdaObservacao
+        updates.motivoPerdaItem = input.motivoPerdaItem?.trim() || null
+        updates.motivoPerdaObservacao = input.motivoPerdaObservacao!.trim()
+        updates.motivoPerdaConcorrente = input.motivoPerdaCategoria === 'preco_concorrente' ? input.motivoPerdaConcorrente!.trim() : null
+        updates.motivoPerdaReclassificar = false
+        updates.motivoPerdaVistoPor = null
+        updates.motivoPerdaVistoEm = null
       }
 
       const updated = await db

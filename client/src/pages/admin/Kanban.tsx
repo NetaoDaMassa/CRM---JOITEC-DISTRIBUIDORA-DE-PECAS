@@ -3,6 +3,7 @@ import { trpc } from '../../lib/trpc'
 import { useAuth } from '../../contexts/AuthContext'
 import Select from '../../components/ui/Select'
 import FunilBoard from '../../components/FunilBoard'
+import ReclassificarPerdidos from '../../components/ReclassificarPerdidos'
 import { primeiroDiaMesString } from '../../lib/utils'
 import { SLUGS_COLUNA_PEDIDOS_CARTEIRA } from '../../components/PedidoCarteiraAcoes'
 
@@ -51,6 +52,7 @@ export default function AdminKanban() {
         </div>
       </div>
 
+      <ReclassificarPerdidos />
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
       {!isLoading && (
         <FunilBoard

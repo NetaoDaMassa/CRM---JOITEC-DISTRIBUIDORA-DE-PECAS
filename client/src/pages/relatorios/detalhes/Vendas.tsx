@@ -8,6 +8,7 @@ import { Abas, Etiqueta, KpiCard, OrigemVendas, Ranking, Secao, moeda, numero, p
 import TabelaDados from '../../../components/relatorios/TabelaDados'
 import type { Coluna } from '../../../components/relatorios/TabelaDados'
 import type { PropsDetalhe } from './tipos'
+import { ROTULO_CATEGORIA_PERDA } from '../../../lib/motivosPerda'
 
 const CORES = ['#24aff4', '#f97316', '#22a861', '#8b5cf6', '#e5534b', '#f2a516', '#0ea5a4', '#ec4899', '#64748b', '#3a86d6']
 const eixoY = (v: number) => (v >= 1000 ? `${Math.round(v / 1000)}k` : String(v))
@@ -477,7 +478,8 @@ export function Produtos({ f, mostrarResumo }: PropsDetalhe) {
 }
 
 // ── Motivos de perda ────────────────────────────────────────────────────
-const CATEGORIA_PERDA: Record<string, string> = { estoque: 'Estoque', financeiro: 'Financeiro', compras: 'Compras' }
+// Categorias novas (2026-11-25) + as 3 antigas — lib/motivosPerda.ts.
+const CATEGORIA_PERDA: Record<string, string> = ROTULO_CATEGORIA_PERDA
 
 export function Perdas({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe) {
   const { data, isLoading } = trpc.reports.motivosPerdas.useQuery(f.periodo)
@@ -490,9 +492,11 @@ export function Perdas({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe
     { id: 'cliente', rotulo: 'Cliente', valor: (d) => d.razaoSocial, render: (d) => <span className="font-medium text-dark-50">{d.razaoSocial}</span> },
     ...(simples ? [] : [{ id: 'vendedor', rotulo: 'Vendedor', valor: (d: D) => d.vendedorNome }]),
     { id: 'categoria', rotulo: 'Categoria', valor: (d) => (d.motivoPerdaCategoria ? CATEGORIA_PERDA[d.motivoPerdaCategoria] ?? d.motivoPerdaCategoria : 'Sem categoria') },
-    { id: 'motivo', rotulo: 'Motivo', valor: (d) => d.motivoPerdaOpcao },
+    // "Motivo" agora é o que o vendedor escreveu (antes mostrava a "opção
+    // específica", que quase ninguém preenchia, e a coluna ficava "—").
+    { id: 'motivo', rotulo: 'Motivo (o que o vendedor escreveu)', quebrar: true, valor: (d) => d.motivoPerdaObservacao, render: (d) => <span className="text-dark-300 text-xs">{d.motivoPerdaObservacao || '—'}</span> },
+    { id: 'concorrente', rotulo: 'Perdeu pra', valor: (d) => d.motivoPerdaConcorrente },
     { id: 'item', rotulo: 'Item', valor: (d) => d.motivoPerdaItem },
-    { id: 'obs', rotulo: 'O que o vendedor escreveu', quebrar: true, valor: (d) => d.motivoPerdaObservacao, render: (d) => <span className="text-dark-300 text-xs">{d.motivoPerdaObservacao || '—'}</span> },
     { id: 'valor', rotulo: 'Valor orçado', valor: (d) => d.valorOrcado, formato: 'moeda', somar: true },
   ]
   return (
@@ -519,7 +523,7 @@ export function Perdas({ f, simples, mostrarResumo, clientesBase }: PropsDetalhe
         linhas={detalhes}
         colunas={colunas}
         chave={(d) => `${d.clienteId}-${d.dataEntradaEtapa}`}
-        buscaEm={(d) => `${d.razaoSocial} ${d.vendedorNome} ${d.motivoPerdaItem ?? ''} ${d.motivoPerdaObservacao ?? ''}`}
+        buscaEm={(d) => `${d.razaoSocial} ${d.vendedorNome} ${d.motivoPerdaItem ?? ''} ${d.motivoPerdaObservacao ?? ''} ${d.motivoPerdaConcorrente ?? ''}`}
         placeholderBusca="Buscar cliente, vendedor, item ou texto..."
         nomeArquivo="motivos-de-perda.csv"
         link={(d) => `${clientesBase}/${d.clienteId}`}

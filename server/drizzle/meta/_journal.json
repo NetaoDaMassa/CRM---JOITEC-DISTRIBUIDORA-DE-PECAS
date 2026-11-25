@@ -1296,6 +1296,13 @@
       "when": 1795640000000,
       "tag": "0184_lead_whatsapp_mensagens",
       "breakpoints": true
+    },
+    {
+      "idx": 185,
+      "version": "6",
+      "when": 1795700000000,
+      "tag": "0185_motivos_perda",
+      "breakpoints": true
     }
   ]
 }

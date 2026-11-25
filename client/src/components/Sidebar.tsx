@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Smartphone, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
+  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -504,6 +504,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   // Vendedor também usa essa query agora, só pra saber se ainda tem alguma
   // aba de relatório liberada (ver filtro de VENDOR_LINKS abaixo).
   const { data: piloto } = trpc.pilotoFinanceiro.eu.useQuery(undefined, { enabled: !!user, staleTime: 60_000 })
+  const { data: motivosPerda } = trpc.motivosPerda.meuAcesso.useQuery(undefined, { enabled: user?.role === 'admin', staleTime: 2 * 60_000 })
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
   })
@@ -546,6 +547,14 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       label: 'Guia do Financeiro',
       icon: NotebookText,
       visivel: user?.role === 'admin' && !!(user.superAdmin || FEATURES_GUIA_FINANCEIRO.some((f) => minhasFeatures?.includes(f))),
+    },
+    // Motivos de perda (2026-11-25): gerente vê tudo da empresa; Financeiro
+    // e Compras veem as perdas do setor. Número = perdas que ainda não viram.
+    {
+      to: '/admin/motivos-perda',
+      label: motivosPerda?.naoVistos ? `Motivos de perda (${motivosPerda.naoVistos})` : 'Motivos de perda',
+      icon: TrendingDown,
+      visivel: user?.role === 'admin' && !!motivosPerda?.visivel,
     },
     { to: '/painel-tv', label: 'Painel de TV', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv')) },
     // Funções vivas (2026-11-09): uma tela só no lugar de Permissões +

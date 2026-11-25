@@ -1493,6 +1493,7 @@ export const reportsRouter = router({
         motivoPerdaOpcao: funilMensal.motivoPerdaOpcao,
         motivoPerdaItem: funilMensal.motivoPerdaItem,
         motivoPerdaObservacao: funilMensal.motivoPerdaObservacao,
+        motivoPerdaConcorrente: funilMensal.motivoPerdaConcorrente,
       })
       .from(funilMensal)
       .innerJoin(users, eq(users.id, funilMensal.vendedorId))
