@@ -14,7 +14,7 @@ import { getConfigNumero, setConfig } from '../lib/configuracoes.js'
 import { MARCAS, marca, montarPedido, chamarClaude, aplicarResposta, separarRoteiroIa, type TipoPedido } from '../lib/marketingIa.js'
 import { PILARES_PADRAO, checklistPadrao, garantirPlano, marcarQuemEtapa, etapaAtualDesde } from '../lib/marketingFluxo.js'
 import { CATEGORIAS, erroTransicao, garantirPasta, registrarAnexo, lerAnexos, conhecimentoTexto } from '../lib/marketingParte3.js'
-import { redesDaEmpresa, importarMlabs } from '../lib/marketingMlabs.js'
+import { redesDaEmpresa, importarMlabs, salvarSeguidoresManual } from '../lib/marketingMlabs.js'
 import { listarContasDoToken, vincularConta, desvincularConta, salvarTokenSistema, tokenSistema, temTokenProprio, sincronizarEmpresa, sincronizarConcorrentes, hojeBR } from '../lib/marketingMeta.js'
 
 const FEATURE = 'marketing'
@@ -320,6 +320,8 @@ export const marketingModuloRouter = router({
     }
   }),
   // Todas as redes (mLabs, 1x por dia) — aba Empresa.
+  salvarSeguidoresManual: proc.input(z.object({ empresaId: marcaId, rede: z.enum(['instagram', 'facebook', 'tiktok', 'youtube', 'linkedin', 'pinterest', 'google', 'threads', 'outro']), seguidores: z.number().int().min(0).max(100_000_000).nullable() }))
+    .mutation(({ ctx, input }) => salvarSeguidoresManual(input.empresaId, input.rede, input.seguidores, ctx.user.name || 'equipe')),
   redesEmpresa: proc.input(z.object({ empresaId: marcaId, dias: z.number().int().min(7).max(120).default(30) })).query(({ input }) => redesDaEmpresa(input.empresaId, input.dias)),
   // Super admin cola o pacote da mLabs à mão (mesmo formato do robô).
   importarMlabs: superAdminProcedure.input(z.object({ json: z.string().max(5_000_000) })).mutation(async ({ input }) => {

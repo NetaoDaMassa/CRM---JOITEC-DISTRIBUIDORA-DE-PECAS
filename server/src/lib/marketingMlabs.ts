@@ -93,7 +93,23 @@ export async function redesDaEmpresa(empresaId: number, dias = 30) {
     posts,
     melhoresHorarios: (ler(`mlabs-horarios-${empresaId}`) || []) as { rede: string; dia: string; horarios: string[] }[],
     ultimo: ler(`mlabs-ultimo-${empresaId}`) as { em: string; redes: number; posts: number } | null,
+    // Seguidores digitados pela equipe (YouTube, Google, Pinterest…): só valem quando a mLabs não manda o número.
+    manual: (ler(`seg-manual-${empresaId}`) || {}) as Record<string, { seguidores: number; em: string; por: string }>,
   }
+}
+
+// João, 2026-11-25: a mLabs não entrega seguidores de algumas redes; a equipe digita.
+export async function salvarSeguidoresManual(empresaId: number, rede: string, seguidores: number | null, por: string) {
+  const chave = `seg-manual-${empresaId}`
+  const atual = await db.select().from(mktAnalises).where(eq(mktAnalises.chave, chave))
+  let mapa: Record<string, unknown> = {}
+  try { mapa = JSON.parse(atual[0]?.dados || '{}') || {} } catch { mapa = {} }
+  if (seguidores == null) delete mapa[rede]
+  else mapa[rede] = { seguidores, em: new Date().toISOString(), por }
+  const dados = JSON.stringify(mapa)
+  await db.insert(mktAnalises).values({ chave, empresaId, tipo: 'seg_manual', texto: '', dados })
+    .onConflictDoUpdate({ target: mktAnalises.chave, set: { dados, createdAt: sql`(datetime('now'))` } })
+  return mapa
 }
 
 export function chaveMlabsValida(recebida: string | undefined) {

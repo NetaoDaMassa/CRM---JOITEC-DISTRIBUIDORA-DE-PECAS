@@ -1,4 +1,5 @@
 // Aba Empresa → "Todas as redes": números de cada rede vindos da mLabs (robô diário).
+import { useState } from 'react'
 import { trpc } from '../../../lib/trpc'
 import { cls, dataHora, diaLabel, fmtN } from './comum'
 
@@ -44,7 +45,9 @@ export default function RedesMlabs({ empresaId }: { empresaId: number }) {
               return (
                 <div key={rede} className={`bg-dark-900/60 rounded-xl p-3 space-y-1.5 border ${parado ? 'border-orange-700/60' : 'border-dark-700'}`} style={{ borderTop: `4px solid ${COR[rede] || COR.outro}` }}>
                   <div className="font-bold text-dark-100">{NOME[rede] || rede}</div>
-                  <div className="text-2xl font-bold text-dark-100">{r?.seguidores != null ? fmtN(r.seguidores) : '—'}<span className="text-xs font-normal text-dark-400"> seguidores</span></div>
+                  {r?.seguidores != null
+                    ? <div className="text-2xl font-bold text-dark-100">{fmtN(r.seguidores)}<span className="text-xs font-normal text-dark-400"> seguidores</span></div>
+                    : <SeguidoresManual empresaId={empresaId} rede={rede} m={d?.manual?.[rede]} />}
                   {r?.ganhoPeriodo != null && <div className={`text-xs ${r.ganhoPeriodo >= 0 ? 'text-green-400' : 'text-red-400'}`}>{r.ganhoPeriodo >= 0 ? '+' : ''}{fmtN(r.ganhoPeriodo)} no período</div>}
                   <div className="text-xs text-dark-300">{total} publicações{media ? ` · média de ${fmtN(media)} visualizações` : ''}</div>
                   {total > ps.length && <div className="text-[11px] text-dark-500">{ps.length} com detalhes (a mLabs não detalha Reels nessa rede)</div>}
@@ -88,5 +91,37 @@ export default function RedesMlabs({ empresaId }: { empresaId: number }) {
         </>
       )}
     </section>
+  )
+}
+
+// A mLabs não manda seguidores de algumas redes (YouTube, Google, Pinterest…): a equipe digita.
+// Quando a mLabs passar a mandar, o número dela aparece no lugar deste.
+function SeguidoresManual({ empresaId, rede, m }: { empresaId: number; rede: string; m?: { seguidores: number; em: string; por: string } }) {
+  const utils = trpc.useUtils()
+  const [editando, setEditando] = useState(false)
+  const [valor, setValor] = useState('')
+  const salvar = trpc.marketingModulo.salvarSeguidoresManual.useMutation({ onSuccess: () => { setEditando(false); utils.marketingModulo.redesEmpresa.invalidate() } })
+  const rotulo = rede === 'youtube' ? 'inscritos' : 'seguidores'
+  if (editando) {
+    const n = Number(valor.replace(/\D/g, ''))
+    return (
+      <form className="flex gap-1.5 items-center" onSubmit={(e) => { e.preventDefault(); if (valor.trim() !== '') salvar.mutate({ empresaId, rede: rede as any, seguidores: n }) }}>
+        <input autoFocus inputMode="numeric" className={cls.input + ' w-28 py-1'} placeholder={`nº de ${rotulo}`} value={valor} onChange={(e) => setValor(e.target.value)} />
+        <button type="submit" disabled={salvar.isPending || valor.trim() === ''} className="text-xs font-semibold px-2 py-1 rounded bg-gold-500 text-dark-900 disabled:opacity-50">Salvar</button>
+        <button type="button" onClick={() => setEditando(false)} className="text-xs text-dark-400">cancelar</button>
+      </form>
+    )
+  }
+  if (m) return (
+    <div>
+      <div className="text-2xl font-bold text-dark-100">{fmtN(m.seguidores)}<span className="text-xs font-normal text-dark-400"> {rotulo}</span></div>
+      <div className="text-[11px] text-dark-500">digitado por {m.por} em {dataHora(m.em)} · <button className="text-gold-400 hover:underline" onClick={() => { setValor(String(m.seguidores)); setEditando(true) }}>atualizar</button></div>
+    </div>
+  )
+  return (
+    <div>
+      <div className="text-2xl font-bold text-dark-100">—<span className="text-xs font-normal text-dark-400"> {rotulo}</span></div>
+      <button className="text-xs text-gold-400 hover:underline" onClick={() => { setValor(''); setEditando(true) }}>A mLabs não informa · digitar o número</button>
+    </div>
   )
 }
