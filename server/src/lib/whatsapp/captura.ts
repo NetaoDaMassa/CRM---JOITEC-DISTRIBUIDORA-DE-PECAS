@@ -15,7 +15,7 @@ import path from 'path'
 import pino from 'pino'
 // Baileys 7 só aqui (a sessão dos avisos continua na 6.7): com a 6.7 o WhatsApp
 // aceitava o QR e derrubava o aparelho logo depois de conectar (2026-11-25).
-import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, type WASocket } from 'baileys7'
+import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, Browsers, type WASocket } from 'baileys7'
 import { getConfigBool, setConfig } from '../configuracoes.js'
 import { extrairMensagem, registrarMensagem } from './capturaLeads.js'
 
@@ -103,10 +103,15 @@ async function abrir(s: Sessao): Promise<void> {
     auth: state,
     version,
     logger,
-    browser: ['CRM Grupo Odin (captura)', 'Chrome', '1.0.0'],
+    // Nome padrão de navegador: com nome inventado o celular removia o aparelho
+    // logo depois de conectar ("device_removed", 2026-11-25). Aparece no
+    // celular como "Chrome (Ubuntu)".
+    browser: Browsers.ubuntu('Chrome'),
     markOnlineOnConnect: false, // celular continua recebendo notificação
+    // Aceita a sincronização inicial que o celular manda ao conectar (recusar
+    // também pode fazer o celular desistir), mas syncFullHistory=false mantém
+    // pequena, e conversa antiga NÃO vira lead: só eventos 'notify' são lidos.
     syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false, // não importa conversas antigas
     generateHighQualityLinkPreview: false,
   })
   s.sock = sock
