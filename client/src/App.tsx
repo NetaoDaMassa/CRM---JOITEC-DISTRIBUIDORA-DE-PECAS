@@ -56,6 +56,7 @@ import LeadsRegioes from './pages/admin/LeadsRegioes'
 import SidebarGrupos from './pages/admin/SidebarGrupos'
 import HistoricoSap from './pages/admin/HistoricoSap'
 import AutomacaoLeads from './pages/admin/AutomacaoLeads'
+import WhatsappCaptura from './pages/admin/WhatsappCaptura'
 import Demandas from './pages/Demandas'
 import Boletos from './pages/admin/Boletos'
 import Negociacoes from './pages/admin/Negociacoes'
@@ -406,6 +407,7 @@ export default function App() {
           <Route path="admin/guia-financeiro" element={<AdminGuard><FeatureGuard feature={FEATURES_GUIA_FINANCEIRO}><GuiaFinanceiro /></FeatureGuard></AdminGuard>} />
           <Route path="admin/leads-regioes" element={<AdminGuard><SuperAdminGuard><LeadsRegioes /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/automacoes" element={<AdminGuard><SuperAdminGuard><AutomacaoLeads /></SuperAdminGuard></AdminGuard>} />
+          <Route path="admin/whatsapp-captura" element={<AdminGuard><SuperAdminGuard><WhatsappCaptura /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/sidebar-grupos" element={<AdminGuard><SuperAdminGuard><SidebarGrupos /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/historico-sap" element={<AdminGuard><SuperAdminGuard><HistoricoSap /></SuperAdminGuard></AdminGuard>} />
           <Route path="admin/devolucoes" element={<AdminGuard><FeatureGuard feature="devolucoes"><Devolucoes /></FeatureGuard></AdminGuard>} />

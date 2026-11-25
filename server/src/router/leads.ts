@@ -2,6 +2,7 @@ import { z } from 'zod'
 import fs from 'fs'
 import path from 'path'
 import { eq, and, isNull, isNotNull, inArray, sql } from 'drizzle-orm'
+import { conversaDoLead } from '../lib/whatsapp/capturaLeads.js'
 import { router, protectedProcedure, adminProcedure, superAdminProcedure, gestorFeatureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import {
@@ -392,6 +393,17 @@ export const leadsRouter = router({
         }))
       )
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+  }),
+
+  // Conversa do WhatsApp capturada pelo CRM (WhatsApp → captura de leads).
+  whatsappConversa: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+    const lead = await db.query.leads.findFirst({ where: eq(leads.id, input.id), columns: { id: true, empresaId: true, vendorId: true } })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (lead.empresaId !== ctx.empresaId) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && lead.vendorId !== ctx.user.id && !(await vendedorVeTudo(ctx.user.id))) {
+      throw new Error('Acesso negado')
+    }
+    return conversaDoLead(lead.empresaId, lead.id)
   }),
 
   // Tudo o que o lead fez na loja virtual nova (Compretec) — lib/lojaLeadHistorico.ts.

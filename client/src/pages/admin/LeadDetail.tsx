@@ -1,5 +1,6 @@
 import GravacoesDoContato from '../../components/ui/GravacoesDoContato'
 import LojaVirtualLead from '../../components/LojaVirtualLead'
+import ConversaWhatsappLead from '../../components/ConversaWhatsappLead'
 import { useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
@@ -763,6 +764,8 @@ export default function LeadDetail() {
           </div>
         </div>
       </div>
+
+      <ConversaWhatsappLead leadId={lead.id} />
 
       <LojaVirtualLead leadId={lead.id} />
 

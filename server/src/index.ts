@@ -20,6 +20,7 @@ import { semearFotosCatalogo } from './lib/fotosProdutos.js'
 import { baixarArquivoNotaSap, baixarArquivoNotaDoPedidoSap, FILIAL_SAP_POR_SLUG, type ArquivoNota } from './lib/sapDanfe.js'
 import { FILIAL_ODIN_COMPRESSORES, lerNfSapOrdem, nfsDigitadas } from './lib/sapNfOrdensOdin.js'
 import { startScheduler } from './lib/scheduler.js'
+import { iniciarCapturasAtivas } from './lib/whatsapp/captura.js'
 import { importarClientesCsv } from './lib/importClientes.js'
 import { processarHistoricoSap } from './lib/importSapHistorico.js'
 import { trocarCodigoPorToken, iniciarListener } from './lib/goto.js'
@@ -998,6 +999,10 @@ async function start() {
     console.log(`📡 tRPC disponível em http://localhost:${PORT}/trpc`)
     console.log(`💬 Chat Grupo Odin (socket) em /chat-socket`)
     startScheduler()
+    // WhatsApp → captura de leads: sobe as empresas com a captura ligada.
+    db.query.empresas.findMany({ columns: { id: true } })
+      .then((es) => iniciarCapturasAtivas(es.map((e) => e.id)))
+      .catch((err) => console.error('[wa-captura] falha ao iniciar no boot:', err))
     iniciarListener().catch((err) => console.error('[goto] falha ao iniciar listener no boot:', err))
   })
 }

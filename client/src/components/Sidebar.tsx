@@ -4,7 +4,7 @@ import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, BarChart3, FileClock, PackageCheck, Medal, UsersRound, Truck, MousePointerClick,
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
-  Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Activity, UserPlus, MapPin,
+  Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Smartphone, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
@@ -557,6 +557,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     // 2026-10-19: "pode tirar, depois construímos") — rotas continuam no App.tsx.
     // { to: '/admin/marketing-geral', label: 'Marketing — Geral', icon: BarChart3, visivel: !!user?.superAdmin },
     { to: '/admin/automacoes', label: 'Automações', icon: Zap, visivel: !!user?.superAdmin },
+    { to: '/admin/whatsapp-captura', label: 'WhatsApp → leads', icon: Smartphone, visivel: !!user?.superAdmin },
     { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar', icon: Layers, visivel: !!user?.superAdmin },
     { to: '/admin/piloto-financeiro', label: 'Piloto do financeiro', icon: FlaskConical, visivel: !!user?.superAdmin },
     // Histórico SAP fora do menu (João 2026-10-20: importação é feita por

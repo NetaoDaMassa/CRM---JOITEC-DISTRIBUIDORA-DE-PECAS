@@ -92,6 +92,7 @@ import { boletosRouter } from './boletos.js'
 import { negociacoesRouter } from './negociacoes.js'
 import { leadCampaignsRouter } from './leadCampaigns.js'
 import { avisoLeadsRouter } from './avisoLeads.js'
+import { whatsappCapturaRouter } from './whatsappCaptura.js'
 import { marketingRouter } from './marketing.js'
 import { marketingModuloRouter } from './marketingModulo.js'
 import { router } from './_base.js'
@@ -193,6 +194,7 @@ export const appRouter = router({
   negociacoes: negociacoesRouter,
   leadCampaigns: leadCampaignsRouter,
   avisoLeads: avisoLeadsRouter,
+  whatsappCaptura: whatsappCapturaRouter,
   marketing: marketingRouter,
   marketingModulo: marketingModuloRouter,
   brevo: brevoRouter,

@@ -1776,6 +1776,31 @@ export const leadHistory = sqliteTable('lead_history', {
   leadIdx: index('idx_lead_history_lead').on(t.leadId),
 }))
 
+// Conversa do WhatsApp da empresa capturada pelo CRM (Fase 1, pedido do João
+// 2026-11-25): toda mensagem recebida/enviada no número conectado em
+// "WhatsApp → captura de leads" vira linha aqui, ligada ao lead. Só leitura —
+// o CRM não manda nada por essa sessão. wa_message_id é único por empresa
+// (reconexão do WhatsApp reenvia eventos). lead_id nulo = mensagem que a
+// empresa mandou para um número que ainda não é lead (liga depois, pelo jid).
+export const leadWhatsappMensagens = sqliteTable('lead_whatsapp_mensagens', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
+  leadId: integer('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
+  waMessageId: text('wa_message_id').notNull(),
+  jid: text('jid').notNull(),
+  telefone: text('telefone'),
+  direcao: text('direcao', { enum: ['recebida', 'enviada'] }).notNull(),
+  tipo: text('tipo').notNull().default('texto'),
+  texto: text('texto').notNull().default(''),
+  pushName: text('push_name'),
+  enviadaEm: text('enviada_em').notNull(),
+  createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+}, (t) => ({
+  msgUnica: uniqueIndex('uq_lead_wa_msg').on(t.empresaId, t.waMessageId),
+  leadIdx: index('idx_lead_wa_msg_lead').on(t.leadId, t.enviadaEm),
+  jidIdx: index('idx_lead_wa_msg_jid').on(t.empresaId, t.jid),
+}))
+
 export const leadContactAttempts = sqliteTable('lead_contact_attempts', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   leadId: integer('lead_id').notNull().references(() => leads.id, { onDelete: 'cascade' }),
