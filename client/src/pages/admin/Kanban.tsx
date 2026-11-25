@@ -23,6 +23,9 @@ export default function AdminKanban() {
   const ehCompretecLojaFisica = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'compretec-loja-fisica'
   const ehOdinTubos = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-tubos'
   const todos = vendedorId === null
+  // Busca do pedido em outro mês/vendedor: o board remonta ao trocar o
+  // vendedor, então a busca digitada é guardada aqui e volta preenchida.
+  const [buscaMantida, setBuscaMantida] = useState('')
 
   const { data: cards, isLoading } = trpc.funil.funilPorVendedor.useQuery({ vendedorId: vendedorId ?? undefined, mesReferencia })
 
@@ -39,7 +42,7 @@ export default function AdminKanban() {
           <input
             type="month"
             value={mesReferencia.slice(0, 7)}
-            onChange={(e) => setMesReferencia(e.target.value + '-01')}
+            onChange={(e) => { setBuscaMantida(''); setMesReferencia(e.target.value + '-01') }}
             className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5"
           />
           <div className="w-64">
@@ -58,6 +61,12 @@ export default function AdminKanban() {
         <FunilBoard
           key={vendedorId ?? 'todos'}
           cards={cards ?? []}
+          buscaInicial={buscaMantida}
+          onIrParaPedido={(d, termo) => {
+            setBuscaMantida(termo)
+            setMesReferencia(d.mesReferencia)
+            if (vendedorId !== null && vendedorId !== d.vendedorId) setVendedorId(d.vendedorId)
+          }}
           coberturaMes={mesReferencia}
           coberturaVendedorId={vendedorId ?? undefined}
           coberturaTodos={todos}

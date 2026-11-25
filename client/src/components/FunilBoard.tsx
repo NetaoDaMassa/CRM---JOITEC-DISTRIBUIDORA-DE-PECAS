@@ -460,6 +460,8 @@ export default function FunilBoard({
   mostrarOutrasLinhas,
   apenasEtapas,
   mostrarPedidosCarteira,
+  onIrParaPedido,
+  buscaInicial,
   coberturaMes,
   coberturaVendedorId,
   coberturaTodos,
@@ -500,6 +502,10 @@ export default function FunilBoard({
   // visão "Faturamento Geral" da Daniela) — sem isso, mostra tudo (ou tudo
   // exceto Faturamento/Consumidor Final, conforme as flags acima).
   apenasEtapas?: string[]
+  // Busca pelo nº do pedido em todos os meses: a página troca o mês (e, no
+  // admin, o vendedor) pra onde o card está. Sem isso, a busca fica só no mês aberto.
+  onIrParaPedido?: (destino: { mesReferencia: string; vendedorId: number }, termo: string) => void
+  buscaInicial?: string
 }) {
   const { user, empresaAtivaId } = useAuth()
   const { data: empresas } = trpc.empresas.list.useQuery()
@@ -536,7 +542,7 @@ export default function FunilBoard({
   const [cardAbertoId, setCardAbertoId] = useState<number | null>(null)
   const [extrasPorColuna, setExtrasPorColuna] = useState<Record<string, number>>({})
   const cardAberto = cards.find((c) => c.funilMensalId === cardAbertoId) ?? null
-  const [busca, setBusca] = useState('')
+  const [busca, setBusca] = useState(buscaInicial ?? '')
   const [ordenacao, setOrdenacao] = useState('padrao')
   const [dataInicioFiltro, setDataInicioFiltro] = useState('')
   // Filtro "só quem chegou na carteira" (transferido / novo / aprovado) — João, 2026-11-17.
@@ -556,6 +562,18 @@ export default function FunilBoard({
 
   const termo = busca.trim().toLowerCase()
   const termoDigitos = termo.replace(/\D/g, '')
+  // Pedido em outro mês (ou de outro vendedor, no admin) — atalho pra ir até lá.
+  const [termoPedidoDebounce, setTermoPedidoDebounce] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setTermoPedidoDebounce(termoDigitos.length >= 3 ? termoDigitos : ''), 400)
+    return () => clearTimeout(t)
+  }, [termoDigitos])
+  const { data: pedidosAchados } = trpc.funil.buscarPedidoTodosMeses.useQuery(
+    { termo: termoPedidoDebounce },
+    { enabled: !!onIrParaPedido && termoPedidoDebounce.length >= 3, staleTime: 60_000 }
+  )
+  const idsNaTela = new Set(cards.map((c) => c.funilMensalId))
+  const pedidosEmOutroLugar = (pedidosAchados ?? []).filter((p) => !idsNaTela.has(p.funilMensalId))
   const cardsBase = filtroPainel ? cards.filter((c) => filtroPainel.cardIds.has(c.funilMensalId)) : cards
   const cardsFiltrados = termo
     ? cardsBase.filter(
@@ -660,6 +678,25 @@ export default function FunilBoard({
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <div className="max-w-sm flex-1 min-w-[220px]">
           <Input placeholder="Buscar cliente por nome, código, telefone, nº do pedido ou NF..." value={busca} onChange={(e) => setBusca(e.target.value)} />
+          {!!onIrParaPedido && pedidosEmOutroLugar.length > 0 && (
+            <div className="mt-2 rounded-lg border border-sky-500/40 bg-sky-500/10 p-2 text-xs text-dark-100 space-y-1">
+              <p className="text-dark-300">Pedido encontrado em outro mês:</p>
+              {pedidosEmOutroLugar.slice(0, 6).map((p) => {
+                const [ano, mes] = p.mesReferencia.slice(0, 7).split('-')
+                return (
+                  <button
+                    key={p.funilMensalId + ':' + p.numeroPedido}
+                    type="button"
+                    onClick={() => onIrParaPedido({ mesReferencia: p.mesReferencia.slice(0, 7) + '-01', vendedorId: p.vendedorId }, busca)}
+                    className="block w-full text-left rounded px-2 py-1 hover:bg-sky-500/20"
+                  >
+                    <span className="font-semibold">Pedido {p.numeroPedido}</span> · {p.razaoSocial} · {mes}/{ano}
+                    {p.vendedorNome ? ` · ${p.vendedorNome}` : ''} <span className="text-sky-300 underline">ir pra lá →</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
         <div className="w-56">
           <Select

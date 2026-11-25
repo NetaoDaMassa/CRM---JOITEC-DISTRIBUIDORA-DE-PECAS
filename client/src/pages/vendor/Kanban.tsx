@@ -28,6 +28,7 @@ export default function VendorKanban() {
       <ReclassificarPerdidos />
       <FunilBoard
         cards={cards ?? []}
+        onIrParaPedido={(d) => setMesReferencia(d.mesReferencia)}
         coberturaMes={mesReferencia}
         permitirVendaRapida={ehCompretecLojaFisica}
         mostrarFaturamento={ehCompretecLojaFisica}

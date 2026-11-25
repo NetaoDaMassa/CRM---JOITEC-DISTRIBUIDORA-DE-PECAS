@@ -7,7 +7,7 @@ import { CATEGORIAS_PERDA, erroMotivoPerda } from '../lib/motivosPerda.js'
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { funilMensal, clientes, registroContato, pabxLigacoesProcessadas, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens } from '../db/schema.js'
+import { funilMensal, clientes, registroContato, pabxLigacoesProcessadas, itensPedido, vendas, solicitacoesCarteira, clienteVinculos, compromissos, empresas, caixaMovimentacoes, ordens, users } from '../db/schema.js'
 import { mesReferenciaAtual, diasDesde, agoraSqlite, hojeBrString, dataFechamentoDoCard } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { executarResetMensal } from '../lib/resetMensal.js'
@@ -461,6 +461,46 @@ export const funilRouter = router({
       if (input.vendedorId) return buscarFunilDoVendedor(input.vendedorId, ctx.user.id, true, input.mesReferencia)
       const daEmpresa = db.select({ id: clientes.id }).from(clientes).where(eq(clientes.empresaId, ctx.empresaId))
       return buscarFunilComFiltro(inArray(funilMensal.clienteId, daEmpresa), ctx.user.id, true, input.mesReferencia)
+    }),
+
+  // Busca do Kanban pelo nº do pedido em TODOS os meses (pedido do João,
+  // 2026-11-25): a busca normal só olha o mês aberto; aqui acha em qual mês
+  // (e de qual vendedor) está o card com aquele pedido, pro board pular pra lá.
+  // Vendedor só acha os próprios; admin acha qualquer um da empresa ativa.
+  buscarPedidoTodosMeses: protectedProcedure
+    .input(z.object({ termo: z.string().min(3).max(30) }))
+    .query(async ({ ctx, input }) => {
+      const digitos = input.termo.replace(/\D/g, '')
+      if (digitos.length < 3) return []
+      const ehAdmin = ctx.user.role === 'admin'
+      const rows = await db
+        .select({
+          funilMensalId: funilMensal.id,
+          mesReferencia: funilMensal.mesReferencia,
+          etapa: funilMensal.etapa,
+          vendedorId: funilMensal.vendedorId,
+          vendedorNome: users.name,
+          razaoSocial: clientes.razaoSocial,
+          numeroPedido: vendas.numeroPedido,
+          valorFechado: vendas.valorFechado,
+        })
+        .from(vendas)
+        .innerJoin(funilMensal, eq(funilMensal.id, vendas.funilMensalId))
+        .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+        .leftJoin(users, eq(users.id, funilMensal.vendedorId))
+        .where(
+          and(
+            isNull(vendas.deletedAt),
+            isNull(funilMensal.deletedAt),
+            isNull(clientes.deletedAt),
+            eq(clientes.empresaId, ctx.empresaId),
+            sql`replace(replace(replace(replace(${vendas.numeroPedido}, '.', ''), '-', ''), '/', ''), ' ', '') LIKE ${'%' + digitos + '%'}`,
+            ehAdmin ? undefined : or(eq(funilMensal.vendedorId, ctx.user.id), eq(vendas.vendedorId, ctx.user.id))
+          )
+        )
+        .orderBy(sql`${funilMensal.mesReferencia} DESC`)
+        .limit(20)
+      return rows
     }),
 
   // Cobertura de contato do mês (widget do Kanban). Denominador = carteira
