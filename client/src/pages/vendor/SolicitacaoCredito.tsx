@@ -45,7 +45,6 @@ function FormularioNovaSolicitacao() {
   const [tipo, setTipo] = useState<'consulta' | 'limite'>('consulta')
   const [tipoConsulta, setTipoConsulta] = useState<'geral' | 'limpo'>('geral')
   const [cliente, setCliente] = useState<{ id: number; razaoSocial: string } | null>(null)
-  const [valorSolicitado, setValorSolicitado] = useState('')
   const [valorPedido, setValorPedido] = useState('')
   const [informacoesFiscais, setInformacoesFiscais] = useState('')
   const [observacoes, setObservacoes] = useState('')
@@ -56,7 +55,7 @@ function FormularioNovaSolicitacao() {
     onSuccess() {
       toast.success('Solicitação enviada pro Financeiro')
       setCliente(null)
-      setValorSolicitado('')
+      setValorPedido('')
       setInformacoesFiscais('')
       setObservacoes('')
       setAnexos([])
@@ -82,15 +81,12 @@ function FormularioNovaSolicitacao() {
 
   function enviar() {
     if (!cliente) return toast.error('Escolha o cliente')
-    const valorNumero = tipo === 'limite' && valorSolicitado ? parseValorBr(valorSolicitado) : undefined
-    if (tipo === 'limite' && valorSolicitado && !valorNumero) return toast.error('Valor de limite inválido')
     const pedidoNumero = tipo === 'limite' && valorPedido ? parseValorBr(valorPedido) : undefined
     if (tipo === 'limite' && valorPedido && !pedidoNumero) return toast.error('Valor do pedido inválido')
     criarMut.mutate({
       clienteId: cliente.id,
       tipo,
       tipoConsulta: tipo === 'consulta' ? tipoConsulta : undefined,
-      valorSolicitado: valorNumero,
       valorPedido: pedidoNumero,
       informacoesFiscais: informacoesFiscais.trim() || undefined,
       observacoes: observacoes.trim() || undefined,
@@ -134,8 +130,9 @@ function FormularioNovaSolicitacao() {
       <ClientePicker label="Cliente (da sua carteira)" clienteId={cliente?.id ?? null} clienteNome={cliente?.razaoSocial ?? null} onSelect={setCliente} />
 
       {tipo === 'limite' && (
+        // "Limite desejado" saiu (João, 2026-11-25): vendedor confundia o valor
+        // que pediu com o que o financeiro liberou. Só o valor do pedido.
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Input label="Valor de limite desejado" value={valorSolicitado} onChange={(e) => setValorSolicitado(e.target.value)} placeholder="R$ 0,00" />
           <Input label="Valor do pedido de venda" value={valorPedido} onChange={(e) => setValorPedido(e.target.value)} placeholder="R$ 0,00" />
         </div>
       )}
@@ -218,10 +215,17 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
           <p className="text-sm text-dark-100 font-medium">{s.clienteNome}</p>
           <p className="text-xs text-dark-500">
             {s.tipo === 'consulta' && s.tipoConsulta ? TIPO_CONSULTA_LABEL[s.tipoConsulta] : TIPO_LABEL[s.tipo]} · Cód. {s.clienteCodigo} ·{' '}
-            {formatDateTime(s.createdAt)} {s.valorSolicitado != null && <>· pedido: {formatarMoeda(s.valorSolicitado)}</>}
+            {formatDateTime(s.createdAt)}
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {/* Valor que o financeiro LIBEROU, bem à vista (João, 2026-11-25). */}
+          {s.status === 'liberado' && s.valorLiberado != null && (
+            <span className="text-right leading-tight">
+              <span className="block text-[10px] uppercase tracking-wide text-dark-500">limite liberado</span>
+              <span className="block text-base font-bold text-green-400">{formatarMoeda(s.valorLiberado)}</span>
+            </span>
+          )}
           <Badge className={STATUS_COR[s.status]}>{STATUS_LABEL[s.status]}</Badge>
           {aberto ? <ChevronUp size={16} className="text-dark-500" /> : <ChevronDown size={16} className="text-dark-500" />}
         </div>

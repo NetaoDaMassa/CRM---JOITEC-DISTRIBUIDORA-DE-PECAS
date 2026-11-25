@@ -153,10 +153,17 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-dark-900/60 border border-dark-700 rounded-xl p-4 text-sm">
-            {data.valorSolicitado != null && (
+            {/* Valor liberado em destaque; "limite desejado" saiu do pedido (João, 2026-11-25). */}
+            {data.valorSolicitado != null && data.tipo !== 'limite' && (
               <div>
-                <p className="text-xs text-dark-500 uppercase tracking-wide">{data.tipo === 'limite' ? 'Limite desejado' : 'Valor solicitado'}</p>
+                <p className="text-xs text-dark-500 uppercase tracking-wide">Valor do pedido (cotação)</p>
                 <p className="text-dark-100">{formatarMoeda(data.valorSolicitado)}</p>
+              </div>
+            )}
+            {data.status === 'liberado' && data.valorLiberado != null && (
+              <div>
+                <p className="text-xs text-dark-500 uppercase tracking-wide">Limite liberado</p>
+                <p className="text-lg font-bold text-green-400">{formatarMoeda(data.valorLiberado)}</p>
               </div>
             )}
             {data.valorPedido != null && (
@@ -480,8 +487,8 @@ function ListaPedidos({ f, onAbrir }: { f: Filtros; onAbrir: (id: number) => voi
             <p className="text-xs text-dark-500">
               {l.tipo === 'consulta' && l.tipoConsulta ? TIPO_CONSULTA_LABEL[l.tipoConsulta] : TIPO_LABEL[l.tipo]} · Cód. {l.clienteCodigo} ·{' '}
               {l.empresaNome} · pedido de {l.vendedorNome} · {formatDateTime(l.createdAt)}
-              {l.valorSolicitado != null && <> · pedido {formatarMoeda(l.valorSolicitado)}</>}
-              {l.status === 'liberado' && l.valorLiberado != null && <> · liberado {formatarMoeda(l.valorLiberado)}</>}
+                            {l.cotacaoId && l.valorSolicitado != null && <> · pedido {formatarMoeda(l.valorSolicitado)}</>}
+              {l.status === 'liberado' && l.valorLiberado != null && <> · <span className="font-semibold text-green-400">liberado {formatarMoeda(l.valorLiberado)}</span></>}
               {l.quemLiberou && <> · decidido por {l.quemLiberou}</>}
               {l.serasaLimpo != null && <> · Serasa {l.serasaLimpo ? 'limpo' : 'não limpo'}</>}
             </p>
@@ -683,8 +690,7 @@ function PesquisarCliente({ onAbrir }: { onAbrir: (id: number) => void }) {
                     <p className="text-xs text-dark-400">
                       <span className="text-dark-200">{formatDateTime(p.createdAt)}</span> · {p.tipo === 'consulta' && p.tipoConsulta ? TIPO_CONSULTA_LABEL[p.tipoConsulta] : TIPO_LABEL[p.tipo]} · Cód.{' '}
                       {p.clienteCodigo} · {p.empresaNome} · pedido de {p.vendedorNome}
-                      {p.valorSolicitado != null && <> · pedido {formatarMoeda(p.valorSolicitado)}</>}
-                      {p.status === 'liberado' && p.valorLiberado != null && <> · liberado {formatarMoeda(p.valorLiberado)}</>}
+                      {p.status === 'liberado' && p.valorLiberado != null && <> · <span className="font-semibold text-green-400">liberado {formatarMoeda(p.valorLiberado)}</span></>}
                       {p.serasaConsultaEm && <> · Serasa {dataBr(p.serasaConsultaEm)} {p.serasaLimpo ? 'limpo' : 'não limpo'}</>}
                     </p>
                     <Badge className={STATUS_COR[p.status]}>{STATUS_LABEL[p.status]}</Badge>
