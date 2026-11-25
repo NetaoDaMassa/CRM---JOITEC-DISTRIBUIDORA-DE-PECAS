@@ -5,7 +5,7 @@ import { trpc } from '../../lib/trpc'
 import Button from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
 import Select from '../../components/ui/Select'
-import { ADMIN_LINKS, VENDOR_LINKS, NOMES_ICONES_GRUPO, PALETA_GRUPOS } from '../../components/Sidebar'
+import { ADMIN_LINKS, VENDOR_LINKS, EXTRAS_CATALOGO, NOMES_ICONES_GRUPO, PALETA_GRUPOS } from '../../components/Sidebar'
 import { textoContem } from '../../lib/utils'
 import { usePersistedState } from '../../lib/usePersistedState'
 
@@ -23,21 +23,7 @@ function moverNaLista<T>(lista: T[], indice: number, direcao: -1 | 1): T[] {
 // grupo "Marketing") — cada usuário só vê a que existe pro papel dele.
 const ITENS_ADMIN = ADMIN_LINKS.map((l) => ({ to: l.to, label: `${l.label} (admin)` }))
 const ITENS_VENDEDOR = VENDOR_LINKS.map((l) => ({ to: l.to, label: `${l.label} (vendedor)` }))
-const ITENS_EXTRAS = [
-  { to: '/painel-tv', label: 'Painel de TV' },
-  { to: '/admin/acessos', label: 'Funções e permissões' },
-  { to: '/admin/guia-financeiro', label: 'Guia do Financeiro' },
-  { to: '/painel-tv-logistica', label: 'Painel Controle Logístico' },
-  { to: '/admin/permissoes', label: 'Permissões' },
-  { to: '/admin/funcoes', label: 'Funções' },
-  { to: '/admin/leads-regioes', label: 'Regiões de Leads' },
-  { to: '/admin/automacoes', label: 'Automações' },
-  { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar' },
-  { to: '/painel-financeiro', label: 'Painel Financeiro' },
-  { to: '/painel-tv-odin', label: 'Painel de TV Odin' },
-  { to: '/painel-tv-marketing', label: 'Painel de TV Marketing' },
-  { to: '/guia/', label: 'Guia do CRM' },
-]
+const ITENS_EXTRAS = EXTRAS_CATALOGO
 const TODOS_ITENS = [...ITENS_ADMIN, ...ITENS_VENDEDOR, ...ITENS_EXTRAS]
 const LABEL_POR_ITEM = new Map(TODOS_ITENS.map((i) => [i.to, i.label]))
 
@@ -154,6 +140,14 @@ export default function SidebarGrupos() {
     reordenarMut.mutate({ ids: nova.map((g) => g.id) })
   }
 
+  // Em qual grupo (do escopo atual) cada item já está — pra mostrar no
+  // checkbox e achar os que ficaram soltos no fim do menu.
+  const grupoDoItem = new Map<string, string>()
+  grupos?.forEach((g) => {
+    if (g.id !== selecionadoId) g.itens.forEach((to) => grupoDoItem.set(to, g.nome))
+  })
+  const itensSoltos = TODOS_ITENS.filter((i) => !grupos?.some((g) => g.itens.includes(i.to)))
+
   function toggleItem(to: string) {
     setForm((prev) => ({
       ...prev,
@@ -226,6 +220,22 @@ export default function SidebarGrupos() {
           </div>
         )}
       </div>
+
+      {!isLoading && !!grupos?.length && itensSoltos.length > 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4">
+          <p className="text-sm text-amber-300 font-medium">
+            {itensSoltos.length} ite{itensSoltos.length === 1 ? 'm' : 'ns'} fora de qualquer grupo — aparece{itensSoltos.length === 1 ? '' : 'm'} solto{itensSoltos.length === 1 ? '' : 's'} no fim do menu
+          </p>
+          <p className="text-xs text-dark-400 mt-0.5 mb-2">Abra um grupo à esquerda e marque o item pra colocar ele lá dentro.</p>
+          <div className="flex flex-wrap gap-1.5">
+            {itensSoltos.map((i) => (
+              <span key={i.to} className="text-xs px-2 py-1 rounded-lg bg-dark-800 border border-dark-600 text-dark-200">
+                {i.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
 
@@ -333,7 +343,14 @@ export default function SidebarGrupos() {
                     {TODOS_ITENS.filter(({ label }) => textoContem(label, buscaItens)).map(({ to, label }) => (
                       <label key={to} className="flex items-center gap-2 text-sm text-dark-200 px-2 py-1.5 rounded-lg hover:bg-dark-700/50">
                         <input type="checkbox" className="accent-gold-500" checked={form.itens.includes(to)} onChange={() => toggleItem(to)} />
-                        {label}
+                        <span className="min-w-0">
+                          {label}
+                          {grupoDoItem.has(to) ? (
+                            <span className="block text-[11px] text-dark-500">já em {grupoDoItem.get(to)}</span>
+                          ) : !form.itens.includes(to) ? (
+                            <span className="block text-[11px] text-amber-400">solto</span>
+                          ) : null}
+                        </span>
                       </label>
                     ))}
                     {TODOS_ITENS.filter(({ label }) => textoContem(label, buscaItens)).length === 0 && (

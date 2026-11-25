@@ -309,6 +309,28 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/arquivos', label: 'Arquivos/Mídia', icon: Folder, feature: 'arquivos' },
 ]
 
+// Itens "extras" (fora de ADMIN_LINKS/VENDOR_LINKS, regra de visibilidade
+// própria) — catálogo único usado pela tela Grupos da Sidebar. Antes a tela
+// tinha uma cópia manual e todo item novo ficava solto sem poder agrupar
+// (João, 2026-11-25: Motivos de perda, WhatsApp → leads, Piloto...).
+// Item novo em `extras` lá embaixo → acrescentar aqui também.
+export const EXTRAS_CATALOGO: { to: string; label: string }[] = [
+  { to: '/guia/', label: 'Guia do CRM' },
+  { to: '/admin/guia-financeiro', label: 'Guia do Financeiro' },
+  { to: '/admin/motivos-perda', label: 'Motivos de perda' },
+  { to: '/painel-tv', label: 'Painel de TV' },
+  { to: '/admin/acessos', label: 'Funções e permissões' },
+  { to: '/admin/leads-regioes', label: 'Regiões de Leads' },
+  { to: '/admin/automacoes', label: 'Automações' },
+  { to: '/admin/whatsapp-captura', label: 'WhatsApp → leads' },
+  { to: '/admin/sidebar-grupos', label: 'Grupos da Sidebar' },
+  { to: '/admin/piloto-financeiro', label: 'Piloto do financeiro' },
+  { to: '/painel-financeiro', label: 'Painel Financeiro' },
+  { to: '/painel-ecommerce', label: 'Painel de TV E-commerce' },
+  { to: '/painel-tv-logistica', label: 'Painel Controle Logístico' },
+  { to: '/painel-tv-odin', label: 'Painel de TV Odin' },
+]
+
 // Gestor (papel novo, 2026-09-30) — nasce só com isso, sem passar pelo
 // filtro de features de VENDOR_LINKS/ADMIN_LINKS (o menu dele é fixo, quem
 // controla o que ele PODE FAZER lá dentro é FEATURES_GESTOR em Permissões,
