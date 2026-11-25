@@ -156,7 +156,8 @@ function preencher(texto: string, lead: LeadKanban, vendedor: string, empresa: s
 
 export function MensagensProntas({ lead, vendedor, empresa }: { lead: LeadKanban; vendedor: string; empresa: string }) {
   const [aberto, setAberto] = useState(false)
-  const telefone = leadTelefoneCompleto(lead.ddd, lead.phone).replace(/\D/g, '')
+  const telefoneCompleto = leadTelefoneCompleto(lead.ddd, lead.phone)
+  const telefone = telefoneCompleto.replace(/\D/g, '')
   if (!telefone) return null
   const daEtapa = MENSAGENS.filter((m) => !m.etapas || m.etapas.includes(lead.status))
   return (
@@ -179,7 +180,7 @@ export function MensagensProntas({ lead, vendedor, empresa }: { lead: LeadKanban
               return (
                 <a
                   key={m.titulo}
-                  href={`https://wa.me/55${telefone}?text=${encodeURIComponent(texto)}`}
+                  href={`https://wa.me/${telefoneCompleto.startsWith('+') ? '' : '55'}${telefone}?text=${encodeURIComponent(texto)}`}
                   target="_blank"
                   rel="noreferrer"
                   onClick={() => setAberto(false)}

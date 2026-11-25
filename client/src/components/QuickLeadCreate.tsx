@@ -8,7 +8,7 @@ import Modal from './ui/Modal'
 import Button from './ui/Button'
 import Select from './ui/Select'
 import { Input, Textarea } from './ui/Input'
-import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS, LEAD_STATUS_LABELS } from '../lib/leadsShared'
+import { LEAD_SEGMENT_VALUES, LEAD_SEGMENT_LABELS, LEAD_STATUS_LABELS, PAISES_TELEFONE } from '../lib/leadsShared'
 
 // --- "Novo lead por print" (João, 2026-11-16) --------------------------
 // Print do WhatsApp → IA lê (leads.lerPrint) → campos abaixo preenchidos pra
@@ -195,6 +195,11 @@ export default function QuickLeadCreate({
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [ddd, setDdd] = useState('')
+  // País do telefone (João, 2026-11-25 — leads do Paraguai na Odin
+  // Compressores): fora do Brasil não tem DDD, vai o número inteiro com o
+  // código do país. 'outro' = digita o código na mão.
+  const [pais, setPais] = useState('55')
+  const [codigoOutro, setCodigoOutro] = useState('')
   const [email, setEmail] = useState('')
   const [company, setCompany] = useState('')
   const [city, setCity] = useState('')
@@ -225,6 +230,8 @@ export default function QuickLeadCreate({
     setName('')
     setPhone('')
     setDdd('')
+    setPais('55')
+    setCodigoOutro('')
     setEmail('')
     setCompany('')
     setCity('')
@@ -274,6 +281,7 @@ export default function QuickLeadCreate({
       // a pessoa deixou (pode já ter digitado algo).
       if (r.nome) setName(r.nome)
       if (r.ddd && r.phone) {
+        setPais('55')
         setDdd(String(r.ddd))
         setPhone(r.phone)
       }
@@ -342,6 +350,7 @@ export default function QuickLeadCreate({
       if (telefoneRotulado) {
         const tel = extrairTelefone(telefoneRotulado)
         if (tel) {
+          setPais('55')
           setDdd(String(tel.ddd))
           setPhone(tel.phone)
         }
@@ -401,6 +410,7 @@ export default function QuickLeadCreate({
     // antiga: 1ª linha vira nome, 1º telefone/e-mail reconhecido no texto.
     const tel = extrairTelefone(texto)
     if (tel) {
+      setPais('55')
       setDdd(String(tel.ddd))
       setPhone(tel.phone)
     }
@@ -488,11 +498,14 @@ export default function QuickLeadCreate({
   function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return toast.error('Nome é obrigatório')
-    if (!phone.trim() || !ddd) return toast.error('Telefone com DDD é obrigatório')
+    const codigoPais = pais === 'outro' ? codigoOutro.replace(/\D/g, '') : pais
+    const estrangeiro = codigoPais !== '55'
+    if (estrangeiro && !codigoPais) return toast.error('Informe o código do país')
+    if (!phone.trim() || (!estrangeiro && !ddd)) return toast.error(estrangeiro ? 'Telefone é obrigatório' : 'Telefone com DDD é obrigatório')
     mut.mutate({
       name,
-      phone,
-      ddd: Number(ddd),
+      phone: estrangeiro ? `+${codigoPais}${phone.replace(/\D/g, '')}` : phone,
+      ddd: estrangeiro ? undefined : Number(ddd),
       email: email || undefined,
       company: company || undefined,
       city: city || undefined,
@@ -645,9 +658,36 @@ export default function QuickLeadCreate({
           rows={3}
         />
         <Input label="Nome *" value={name} onChange={(e) => setName(e.target.value)} />
-        <div className="grid grid-cols-[100px_1fr] gap-2">
-          <Input label="DDD *" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />
-          <Input label="Telefone *" value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))} />
+        <div className={`grid gap-2 ${pais === '55' ? 'grid-cols-[130px_100px_1fr]' : pais === 'outro' ? 'grid-cols-[130px_90px_1fr]' : 'grid-cols-[130px_1fr]'}`}>
+          <Select
+            label="País"
+            value={pais}
+            onChange={(e) => setPais(e.target.value)}
+            options={[...PAISES_TELEFONE.map((p) => ({ value: p.codigo, label: `${p.nome} +${p.codigo}` })), { value: 'outro', label: 'Outro país' }]}
+          />
+          {pais === '55' && <Input label="DDD *" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />}
+          {pais === 'outro' && <Input label="Código *" value={codigoOutro} onChange={(e) => setCodigoOutro(e.target.value.replace(/\D/g, ''))} maxLength={4} placeholder="ex: 56" />}
+          <Input
+            label={pais === '55' ? 'Telefone *' : 'Telefone (sem o código do país) *'}
+            value={phone}
+            placeholder={pais === '595' ? 'ex: 981 898124' : undefined}
+            onChange={(e) => {
+              const v = e.target.value
+              // Colou o número internacional inteiro ("+595 981 898124"):
+              // escolhe o país sozinho e deixa só o resto no campo.
+              const t = v.trim()
+              if (t.startsWith('+') && !t.startsWith('+55')) {
+                const d = t.replace(/\D/g, '')
+                const p = PAISES_TELEFONE.find((x) => x.codigo !== '55' && d.startsWith(x.codigo))
+                if (p) {
+                  setPais(p.codigo)
+                  setPhone(d.slice(p.codigo.length))
+                  return
+                }
+              }
+              setPhone(v.replace(/\D/g, ''))
+            }}
+          />
         </div>
         <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <div className="grid grid-cols-2 gap-2">

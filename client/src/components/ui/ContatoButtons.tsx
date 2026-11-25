@@ -12,6 +12,18 @@ import EmailButton from './EmailButton'
 // não deve ser mexido.
 // Exportado pra client/src/components/ui/LeadContatoButtons.tsx reaproveitar
 // (mesmo tratamento de número, achados de bug documentados abaixo).
+// Número estrangeiro (ex: Paraguai): guardado com "+" e o código do país
+// (ver telefoneEstrangeiro em lib/leadsShared.ts) — não leva o 55 na frente.
+export function ehTelefoneEstrangeiro(v: string): boolean {
+  const t = v.trim()
+  return t.startsWith('+') && !t.startsWith('+55')
+}
+
+export function linkWhatsapp(telefone: string, mensagem?: string): string {
+  const numero = ehTelefoneEstrangeiro(telefone) ? telefone.replace(/\D/g, '') : `55${soDigitos(telefone)}`
+  return `https://wa.me/${numero}${mensagem ? `?text=${encodeURIComponent(mensagem)}` : ''}`
+}
+
 export function soDigitos(v: string): string {
   let digitos = v.replace(/\D/g, '')
   if ((digitos.length === 12 || digitos.length === 13) && digitos.startsWith('55')) {

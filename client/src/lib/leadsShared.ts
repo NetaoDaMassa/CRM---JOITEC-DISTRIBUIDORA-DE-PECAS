@@ -166,7 +166,24 @@ export function getLeadContactUrgency(nextContactAt: string, status: string) {
 // `phone`. Essas duas funções juntam ddd+phone sem duplicar o DDD quando ele
 // já está lá — usadas tanto pra exibir o telefone quanto pra montar o link
 // do WhatsApp/discador, que precisam do número completo.
+// Lead de fora do Brasil (ex: Paraguai, pedido do João 2026-11-25 pra Odin
+// Compressores): não tem DDD — o número inteiro, com o código do país, fica
+// em `phone` começando com "+" (ex: "+595981898124") e `ddd` fica vazio.
+export function telefoneEstrangeiro(phone: string | null | undefined): boolean {
+  const t = (phone ?? '').trim()
+  return t.startsWith('+') && !t.startsWith('+55')
+}
+
+export const PAISES_TELEFONE = [
+  { codigo: '55', nome: 'Brasil' },
+  { codigo: '595', nome: 'Paraguai' },
+  { codigo: '54', nome: 'Argentina' },
+  { codigo: '598', nome: 'Uruguai' },
+  { codigo: '591', nome: 'Bolívia' },
+] as const
+
 export function leadTelefoneCompleto(ddd: number | null, phone: string | null): string {
+  if (telefoneEstrangeiro(phone)) return `+${phone!.replace(/\D/g, '')}`
   if (ddd === null || phone === null) return ''
   const digitosPhone = phone.replace(/\D/g, '')
   const dddStr = String(ddd)
@@ -175,6 +192,11 @@ export function leadTelefoneCompleto(ddd: number | null, phone: string | null): 
 }
 
 export function leadTelefoneFormatado(ddd: number | null, phone: string | null): string {
+  if (telefoneEstrangeiro(phone)) {
+    const d = phone!.replace(/\D/g, '')
+    const pais = PAISES_TELEFONE.find((p) => p.codigo !== '55' && d.startsWith(p.codigo))
+    return pais ? `+${pais.codigo} ${d.slice(pais.codigo.length)} (${pais.nome})` : `+${d}`
+  }
   if (ddd === null || phone === null) return 'Sem telefone'
   const completo = leadTelefoneCompleto(ddd, phone)
   const local = completo.slice(String(ddd).length)

@@ -510,7 +510,8 @@ export const leadsRouter = router({
       z.object({
         name: z.string().min(2),
         phone: z.string().min(8),
-        ddd: z.number().min(11).max(99),
+        // Sem DDD só pra número de outro país ("+595...", ver abaixo).
+        ddd: z.number().min(11).max(99).optional(),
         email: z.string().email().optional().or(z.literal('')),
         company: z.string().optional(),
         city: z.string().optional(),
@@ -529,6 +530,21 @@ export const leadsRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       if (ctx.user.role === 'gestor') throw new Error('Acesso negado')
+      // Lead de outro país (ex: Paraguai, Odin Compressores — João,
+      // 2026-11-25): número inteiro com código do país em phone ("+595..."),
+      // sem DDD. Sem DDD não tem região/rodízio — fica com quem cadastrou
+      // (vendedor) ou com o vendedor escolhido pelo admin.
+      const estrangeiro = input.phone.trim().startsWith('+') && !input.phone.trim().startsWith('+55')
+      let ddd: number | null = null
+      let phone = input.phone
+      if (estrangeiro) {
+        const d = input.phone.replace(/\D/g, '')
+        if (d.length < 8 || d.length > 15) throw new Error('Telefone internacional inválido — use + código do país + número (ex: +595 981 898124)')
+        phone = `+${d}`
+      } else {
+        if (!input.ddd) throw new Error('Informe o DDD do telefone')
+        ddd = input.ddd
+      }
       const paraFilaConsumidorFinal = input.status === 'novo_consumidor_final'
       let vendorId: number | null = null
 
@@ -547,15 +563,15 @@ export const leadsRouter = router({
           throw new Error('Vendedor inválido')
         }
         vendorId = input.vendorId
-      } else if (input.autoAssign) {
-        vendorId = await getVendorByDDD(input.ddd, ctx.empresaId)
+      } else if (input.autoAssign && ddd) {
+        vendorId = await getVendorByDDD(ddd, ctx.empresaId)
       }
 
       // Região vem sempre do DDD, com ou sem vendedor atribuído — precisa
       // dela mesmo sem dono pra a fila de Consumidor Final aparecer pra
       // quem atende aquela região (antes só era calculada quando um
       // vendedor também era definido).
-      const regionId = await getRegionIdByDDD(input.ddd, ctx.empresaId)
+      const regionId = ddd ? await getRegionIdByDDD(ddd, ctx.empresaId) : null
 
       if (input.campaignId) {
         const campanha = await db.query.leadCampaigns.findFirst({ where: eq(leadCampaigns.id, input.campaignId) })
@@ -567,8 +583,8 @@ export const leadsRouter = router({
       const result = await db.insert(leads).values({
         empresaId: ctx.empresaId,
         name: input.name,
-        phone: input.phone,
-        ddd: input.ddd,
+        phone,
+        ddd,
         email: input.email || null,
         company: input.company || null,
         city: input.city || null,
@@ -685,6 +701,12 @@ export const leadsRouter = router({
         // Lead sem telefone (e-mail marketing) e o campo continuou vazio.
         delete updates.phone
         delete updates.ddd
+      } else if (rest.phone !== undefined && rest.phone.trim().startsWith('+') && !rest.phone.trim().startsWith('+55')) {
+        // Número de outro país (ex: Paraguai): fica inteiro, sem DDD.
+        const d = rest.phone.replace(/\D/g, '')
+        if (d.length < 8 || d.length > 15) throw new Error('Telefone internacional inválido — use + código do país + número (ex: +595 981 898124)')
+        updates.phone = `+${d}`
+        updates.ddd = null
       } else if (rest.phone !== undefined) {
         let d = rest.phone.replace(/\D/g, '')
         if (d.length >= 12 && d.startsWith('55')) d = d.slice(2)

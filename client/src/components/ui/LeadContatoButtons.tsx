@@ -2,7 +2,7 @@ import { Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { trpc } from '../../lib/trpc'
 import EmailButton from './EmailButton'
-import { soDigitos, usePabxDiscar } from './ContatoButtons'
+import { ehTelefoneEstrangeiro, linkWhatsapp, soDigitos, usePabxDiscar } from './ContatoButtons'
 
 // Mesmo esquema visual/de registro do ContatoButtons.tsx (Carteira), mas pro
 // módulo de Leads: clicar já abre o WhatsApp/discador E registra a
@@ -23,8 +23,7 @@ export function LeadWhatsappButton({
   mensagem?: string
   size?: 'sm' | 'md'
 }) {
-  const digitos = soDigitos(telefone)
-  const url = `https://wa.me/55${digitos}${mensagem ? `?text=${encodeURIComponent(mensagem)}` : ''}`
+  const url = linkWhatsapp(telefone, mensagem)
   const utils = trpc.useUtils()
 
   const registrarMut = trpc.leads.registrarContatoPendente.useMutation({
@@ -58,6 +57,7 @@ export function LeadWhatsappButton({
 export function LeadLigarButton({ telefone, leadId, size = 'sm' }: { telefone: string; leadId: number; size?: 'sm' | 'md' }) {
   const utils = trpc.useUtils()
   const pabx = usePabxDiscar()
+  const estrangeiro = ehTelefoneEstrangeiro(telefone)
 
   const registrarMut = trpc.leads.registrarContatoPendente.useMutation({
     onSuccess: () => {
@@ -73,9 +73,15 @@ export function LeadLigarButton({ telefone, leadId, size = 'sm' }: { telefone: s
       // Mesmo formato de discagem nacional (0 + número, sem +55) que a
       // Carteira usa — ver comentário em ContatoButtons.tsx (MicroSIP/PABX
       // não aceita o formato internacional).
-      href={`tel:0${soDigitos(telefone)}`}
+      href={estrangeiro ? `tel:+${telefone.replace(/\D/g, '')}` : `tel:0${soDigitos(telefone)}`}
       onClick={(e) => {
         e.stopPropagation()
+        // Número de outro país: a central (PABX) só disca número do Brasil —
+        // abre o discador com o número internacional e registra a tentativa.
+        if (estrangeiro) {
+          registrarMut.mutate({ leadId, channel: 'ligacao' })
+          return
+        }
         // Pelo PABX a tentativa entra sozinha (com resultado) quando a
         // ligação aparece no histórico — não registra pendente aqui.
         if (pabx.ativo) {
@@ -85,7 +91,7 @@ export function LeadLigarButton({ telefone, leadId, size = 'sm' }: { telefone: s
         }
         registrarMut.mutate({ leadId, channel: 'ligacao' })
       }}
-      title={`${pabx.ativo ? 'Ligar pelo PABX' : 'Ligar'} — ${telefone}`}
+      title={`${pabx.ativo && !estrangeiro ? 'Ligar pelo PABX' : 'Ligar'} — ${telefone}`}
       className={`inline-flex items-center justify-center rounded-lg bg-gold-600/20 hover:bg-gold-600/40 text-gold-400 hover:text-gold-300 border border-gold-600/30 hover:border-gold-500/60 transition-all shrink-0 ${size === 'sm' ? 'w-7 h-7' : 'w-8 h-8'}`}
     >
       <Phone size={size === 'sm' ? 14 : 16} />

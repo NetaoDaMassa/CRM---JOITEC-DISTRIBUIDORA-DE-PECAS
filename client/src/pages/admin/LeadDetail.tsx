@@ -44,6 +44,7 @@ import {
   leadTelefoneCompleto,
   leadTelefoneFormatado,
   labelOrigemLead,
+  telefoneEstrangeiro,
 } from '../../lib/leadsShared'
 
 const HISTORY_ACTION_LABELS: Record<string, string> = {
@@ -882,11 +883,11 @@ function EditarInfoModal({ lead, open, onClose }: { lead: any; open: boolean; on
         className="space-y-4"
       >
         <Input label="Nome" value={name} onChange={(e) => setName(e.target.value)} required />
-        <div className="grid grid-cols-[80px_1fr] gap-3">
-          <Input label="DDD" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />
-          <Input label="Telefone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98888-7777" />
+        <div className={`grid gap-3 ${telefoneEstrangeiro(phone) ? 'grid-cols-1' : 'grid-cols-[80px_1fr]'}`}>
+          {!telefoneEstrangeiro(phone) && <Input label="DDD" value={ddd} onChange={(e) => setDdd(e.target.value.replace(/\D/g, ''))} maxLength={2} />}
+          <Input label={telefoneEstrangeiro(phone) ? 'Telefone (outro país)' : 'Telefone'} value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="98888-7777" />
         </div>
-        <p className="-mt-2 text-[11px] text-dark-500">Pode colar o número inteiro com DDD (ex: (11) 98888-7777) — o CRM separa sozinho. É por ele que a central telefônica acha este lead.</p>
+        <p className="-mt-2 text-[11px] text-dark-500">Pode colar o número inteiro com DDD (ex: (11) 98888-7777) — o CRM separa sozinho. É por ele que a central telefônica acha este lead. Número de outro país: comece com + e o código do país (ex: +595 981 898124).</p>
         <Input label="E-mail" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <div className="grid grid-cols-2 gap-3">
           <Input label="Empresa" value={company} onChange={(e) => setCompany(e.target.value)} />
