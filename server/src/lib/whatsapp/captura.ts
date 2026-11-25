@@ -185,6 +185,8 @@ async function abrir(s: Sessao): Promise<void> {
           if (r.acao === 'criado') {
             s.contagem.leadsCriados++
             log(s, `lead #${r.leadId} criado (${m.pushName || m.telefone || m.jid})${r.vendorId ? ` → vendedor ${r.vendorId}` : ' sem vendedor (distribuir)'}`)
+          } else if (r.acao === 'cliente') {
+            console.log(`[wa-captura empresa ${s.empresaId}] mensagem de cliente da carteira #${r.clienteId} (não vira lead)`)
           } else if (r.acao === 'anexada') {
             console.log(`[wa-captura empresa ${s.empresaId}] mensagem ${m.deMim ? 'enviada' : 'recebida'} anexada ao lead #${r.leadId}`)
           }

@@ -17,6 +17,7 @@ import InadimplenciaCliente from '../components/InadimplenciaCliente'
 import HistoricoCotacoesSapCliente from '../components/HistoricoCotacoesSapCliente'
 import JornadaPedidosCliente from '../components/JornadaPedidosCliente'
 import GarantiasCliente from '../components/GarantiasCliente'
+import ConversaWhatsappLead from '../components/ConversaWhatsappLead'
 import ConversarSobreIssoButton from '../components/chat/ConversarSobreIssoButton'
 import { parseValorBr } from '../lib/valorBr'
 import ResumoCliente, { EtiquetasCliente } from '../components/ResumoCliente'
@@ -652,6 +653,7 @@ export default function ClienteDetail() {
       <ResumoCliente clienteId={cliente.id} />
 
       <InadimplenciaCliente clienteId={cliente.id} />
+      <ConversaWhatsappLead clienteId={cliente.id} />
       <JornadaPedidosCliente clienteId={cliente.id} />
       <GarantiasCliente clienteId={cliente.id} />
 

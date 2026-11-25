@@ -1317,6 +1317,13 @@
       "when": 1795800000000,
       "tag": "0187_cartao_forma_pagamento",
       "breakpoints": true
+    },
+    {
+      "idx": 188,
+      "version": "6",
+      "when": 1795810000000,
+      "tag": "0188_wa_msg_cliente",
+      "breakpoints": true
     }
   ]
 }

@@ -1817,6 +1817,8 @@ export const leadWhatsappMensagens = sqliteTable('lead_whatsapp_mensagens', {
   id: integer('id').primaryKey({ autoIncrement: true }),
   empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
   leadId: integer('lead_id').references(() => leads.id, { onDelete: 'cascade' }),
+  // Número que já é cliente da carteira: não vira lead, a conversa fica no cliente.
+  clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
   waMessageId: text('wa_message_id').notNull(),
   jid: text('jid').notNull(),
   telefone: text('telefone'),
@@ -1830,6 +1832,7 @@ export const leadWhatsappMensagens = sqliteTable('lead_whatsapp_mensagens', {
   msgUnica: uniqueIndex('uq_lead_wa_msg').on(t.empresaId, t.waMessageId),
   leadIdx: index('idx_lead_wa_msg_lead').on(t.leadId, t.enviadaEm),
   jidIdx: index('idx_lead_wa_msg_jid').on(t.empresaId, t.jid),
+  clienteIdx: index('idx_lead_wa_msg_cliente').on(t.clienteId, t.enviadaEm),
 }))
 
 export const leadContactAttempts = sqliteTable('lead_contact_attempts', {

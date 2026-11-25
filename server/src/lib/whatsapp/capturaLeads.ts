@@ -10,7 +10,7 @@
 // Só leitura: nada aqui envia mensagem nem marca como lida.
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../../db/client.js'
-import { leads, leadHistory, leadWhatsappMensagens } from '../../db/schema.js'
+import { leads, leadHistory, leadWhatsappMensagens, clientes, clienteTelefones } from '../../db/schema.js'
 import { findOrCreateLeadFromTrackingDetalhado } from '../leadsTrackingService.js'
 
 export type MensagemCapturada = {
@@ -146,6 +146,40 @@ export async function leadPorTelefone(empresaId: number, tel: TelefoneBr) {
   return r[0]?.id ?? null
 }
 
+// ---------- achar cliente da carteira ----------
+const limpaSql = (col: unknown) => sql`replace(replace(replace(replace(replace(replace(coalesce(${col}, ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', '')`
+
+async function clientePorJid(empresaId: number, jid: string) {
+  const r = await db
+    .select({ id: leadWhatsappMensagens.clienteId })
+    .from(leadWhatsappMensagens)
+    .where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.jid, jid), sql`${leadWhatsappMensagens.clienteId} IS NOT NULL`))
+    .orderBy(desc(leadWhatsappMensagens.id))
+    .limit(1)
+  return r[0]?.id ?? null
+}
+
+/** Cliente da carteira da empresa com o mesmo telefone (principal ou extra; com/sem 9 e 55). */
+export async function clientePorTelefone(empresaId: number, tel: TelefoneBr) {
+  const formas = tel.variantes.flatMap((v) => [`${tel.ddd}${v}`, `55${tel.ddd}${v}`])
+  const lista = sql.join(formas.map((v) => sql`${v}`), sql`, `)
+  const principal = await db
+    .select({ id: clientes.id })
+    .from(clientes)
+    .where(and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt), sql`${limpaSql(clientes.telefoneWhatsapp)} IN (${lista})`))
+    .orderBy(desc(clientes.id))
+    .limit(1)
+  if (principal[0]) return principal[0].id
+  const extra = await db
+    .select({ id: clientes.id })
+    .from(clienteTelefones)
+    .innerJoin(clientes, eq(clientes.id, clienteTelefones.clienteId))
+    .where(and(eq(clientes.empresaId, empresaId), isNull(clientes.deletedAt), sql`${limpaSql(clienteTelefones.numero)} IN (${lista})`))
+    .orderBy(desc(clientes.id))
+    .limit(1)
+  return extra[0]?.id ?? null
+}
+
 // ---------- fila por contato (2 mensagens seguidas não criam 2 leads) ----------
 const filas = new Map<string, Promise<unknown>>()
 function emFila<T>(chave: string, fn: () => Promise<T>): Promise<T> {
@@ -155,7 +189,7 @@ function emFila<T>(chave: string, fn: () => Promise<T>): Promise<T> {
   return p
 }
 
-export type ResultadoCaptura = { acao: 'duplicada' | 'anexada' | 'criado' | 'sem_lead'; leadId: number | null; vendorId?: number | null }
+export type ResultadoCaptura = { acao: 'duplicada' | 'anexada' | 'criado' | 'sem_lead' | 'cliente'; leadId: number | null; clienteId?: number | null; vendorId?: number | null }
 
 /** Grava a mensagem e cria/acha o lead. Idempotente pelo id da mensagem. */
 export function registrarMensagem(empresaId: number, m: MensagemCapturada): Promise<ResultadoCaptura> {
@@ -173,8 +207,11 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
   let leadId: number | null = (await leadPorJid(empresaId, m.jid)) ?? (tel ? await leadPorTelefone(empresaId, tel) : null)
   let acao: ResultadoCaptura['acao'] = leadId ? 'anexada' : 'sem_lead'
   let vendorId: number | null | undefined
+  // Já é cliente da carteira? Então a conversa vai para o cliente e não vira lead.
+  const clienteId = leadId ? null : ((await clientePorJid(empresaId, m.jid)) ?? (tel ? await clientePorTelefone(empresaId, tel) : null))
+  if (clienteId) acao = 'cliente'
 
-  if (!leadId && !m.deMim) {
+  if (!leadId && !clienteId && !m.deMim) {
     const nome = m.pushName || (tel ? `(${tel.ddd}) ${tel.local}` : m.telefone || 'Contato do WhatsApp')
     const obs = `Primeira mensagem no WhatsApp: "${m.texto.slice(0, 300)}"`
     if (tel) {
@@ -206,6 +243,7 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
     .values({
       empresaId,
       leadId,
+      clienteId,
       waMessageId: m.id,
       jid: m.jid,
       telefone: m.telefone,
@@ -221,7 +259,17 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
   if (leadId && acao === 'criado') {
     await db.update(leadWhatsappMensagens).set({ leadId }).where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.jid, m.jid), isNull(leadWhatsappMensagens.leadId)))
   }
-  return { acao, leadId, vendorId }
+  return { acao, leadId, clienteId, vendorId }
+}
+
+/** Conversa de um cliente da carteira, em ordem (para a ficha do cliente). */
+export async function conversaDoCliente(empresaId: number, clienteId: number) {
+  return db
+    .select({ id: leadWhatsappMensagens.id, direcao: leadWhatsappMensagens.direcao, tipo: leadWhatsappMensagens.tipo, texto: leadWhatsappMensagens.texto, pushName: leadWhatsappMensagens.pushName, enviadaEm: leadWhatsappMensagens.enviadaEm })
+    .from(leadWhatsappMensagens)
+    .where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.clienteId, clienteId)))
+    .orderBy(leadWhatsappMensagens.enviadaEm, leadWhatsappMensagens.id)
+    .limit(1000)
 }
 
 /** Conversa de um lead, em ordem (para a ficha do lead). */

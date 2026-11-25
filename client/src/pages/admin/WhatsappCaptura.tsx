@@ -65,7 +65,7 @@ export default function WhatsappCaptura() {
     <div className="space-y-5 max-w-4xl">
       <div>
         <h1 className="text-3xl font-bold text-dark-100 flex items-center gap-2"><Smartphone className="w-7 h-7 text-emerald-400" /> WhatsApp → leads</h1>
-        <p className="text-sm text-dark-400">Conecta o WhatsApp principal da empresa ao CRM. Mensagem de número novo vira lead na etapa <b>Novo</b>, com o vendedor escolhido pelo DDD (mesma regra dos leads da Meta). A conversa aparece na ficha do lead. <b>O CRM não envia nenhuma mensagem e não marca nada como lido</b> — o celular continua notificando normalmente.</p>
+        <p className="text-sm text-dark-400">Conecta o WhatsApp principal da empresa ao CRM. Mensagem de número novo vira lead na etapa <b>Novo</b> (se o número já é <b>cliente da carteira</b>, não vira lead: a conversa vai para a ficha do cliente), com o vendedor escolhido pelo DDD (mesma regra dos leads da Meta). A conversa aparece na ficha do lead. <b>O CRM não envia nenhuma mensagem e não marca nada como lido</b> — o celular continua notificando normalmente.</p>
       </div>
 
       <div className="flex flex-wrap gap-2">
@@ -119,7 +119,7 @@ export default function WhatsappCaptura() {
                   <span className={`text-[10px] mt-0.5 px-1.5 py-0.5 rounded ${m.direcao === 'recebida' ? 'bg-dark-700 text-dark-300' : 'bg-emerald-600/20 text-emerald-300'}`}>{m.direcao === 'recebida' ? 'recebida' : 'enviada'}</span>
                   <div className="min-w-0 flex-1">
                     <div className="text-dark-200 truncate">{m.texto}</div>
-                    <div className="text-xs text-dark-500">{quando(m.enviadaEm)} · {m.pushName || (m.telefone ? `+${m.telefone}` : '—')}{m.leadId ? <> · <Link className="text-emerald-400 hover:underline" to={`/admin/leads/${m.leadId}`}>lead #{m.leadId} {m.leadNome}</Link></> : ' · ainda não é lead'}</div>
+                    <div className="text-xs text-dark-500">{quando(m.enviadaEm)} · {m.pushName || (m.telefone ? `+${m.telefone}` : '—')}{m.leadId ? <> · <Link className="text-emerald-400 hover:underline" to={`/admin/leads/${m.leadId}`}>lead #{m.leadId} {m.leadNome}</Link></> : m.clienteId ? <> · <Link className="text-sky-400 hover:underline" to={`/admin/clientes/${m.clienteId}`}>cliente da carteira: {m.clienteNome}</Link></> : ' · ainda não é lead'}</div>
                   </div>
                 </div>
               ))}

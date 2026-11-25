@@ -9,8 +9,12 @@ import { trpc } from '../lib/trpc'
 const quando = (iso: string) => new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
 const dia = (iso: string) => new Date(iso).toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' })
 
-export default function ConversaWhatsappLead({ leadId }: { leadId: number }) {
-  const { data } = trpc.leads.whatsappConversa.useQuery({ id: leadId }, { refetchInterval: 20000 })
+// Também serve para a ficha do cliente da carteira (clienteId): número que já é
+// cliente não vira lead, a conversa fica no cliente.
+export default function ConversaWhatsappLead({ leadId, clienteId }: { leadId?: number; clienteId?: number }) {
+  const doLead = trpc.leads.whatsappConversa.useQuery({ id: leadId ?? 0 }, { enabled: !!leadId, refetchInterval: 20000 })
+  const doCliente = trpc.whatsappCaptura.conversaCliente.useQuery({ id: clienteId ?? 0 }, { enabled: !!clienteId, refetchInterval: 20000, retry: false })
+  const data = leadId ? doLead.data : doCliente.data
   const fim = useRef<HTMLDivElement>(null)
   useEffect(() => { fim.current?.scrollIntoView({ block: 'nearest' }) }, [data?.length])
   if (!data?.length) return null
