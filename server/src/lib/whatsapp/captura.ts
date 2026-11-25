@@ -138,6 +138,21 @@ async function abrir(s: Sessao): Promise<void> {
         return
       }
       s.estado = 'desconectado'
+      // Logo depois de ler o QR o WhatsApp pede para reconectar (515): tem que
+      // ser NA HORA — se demorar, o celular desiste e desliga o aparelho.
+      if (codigo === DisconnectReason.restartRequired) {
+        log(s, 'QR lido, reconectando…')
+        if (s.timer) { clearTimeout(s.timer); s.timer = null }
+        setTimeout(() => iniciarCaptura(s.empresaId).catch((e) => log(s, `falha ao reconectar: ${(e as Error).message}`, true)), 300)
+        return
+      }
+      // Ainda não pareado (QR expirou sem ninguém ler): não fica tentando
+      // sozinho; a tela gera um QR novo quando clicar em "Mostrar QR".
+      if (!state.creds.registered) {
+        s.qr = null
+        log(s, 'QR expirou sem ser lido. Clique em "Mostrar QR" para gerar outro.')
+        return
+      }
       const espera = Math.min(300_000, 5_000 * 2 ** Math.min(s.tentativas, 6))
       s.tentativas++
       log(s, `conexão caiu (código ${codigo ?? '?'}). Tentando de novo em ${Math.round(espera / 1000)}s`, true)
