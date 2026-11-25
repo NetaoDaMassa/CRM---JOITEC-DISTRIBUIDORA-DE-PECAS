@@ -61,7 +61,9 @@ import {
 //    pendente de revisão. Aqui isso é decidido direto pelo `leadHistory`: o evento mais
 //    recente do lead entre "entrou em desqualificado" e "desqualificação aprovada" —
 //    se o mais recente for a entrada, ainda está pendente.
-// 3. "Admin da empresa" pra quem o lead desqualificado é reatribuído: o sistema antigo
+// 3. "Admin da empresa" pra quem o lead desqualificado é reatribuído (na Odin
+//    Compressores, desde 2026-11-25, o lead não muda de dono — só o aviso vai
+//    pra esse admin): o sistema antigo
 //    tinha sempre um usuário fixo `username: 'admin'` por empresa. Aqui uma empresa pode
 //    ter mais de um admin, então prioriza o superAdmin "dono" da empresa (se existir) e
 //    cai pro primeiro admin comum encontrado.
@@ -872,12 +874,21 @@ export const leadsRouter = router({
         updates.repasseEm = now
       }
 
-      // Desqualificado sempre cai pro admin da empresa revisar (ver adaptação 3 no
-      // topo do arquivo) — vendedor não fica dono de um lead que ele mesmo desqualificou.
+      // Desqualificado cai pro admin da empresa revisar (ver adaptação 3 no topo
+      // do arquivo) — EXCETO na Odin Compressores: lá o lead CONTINUA no nome de
+      // quem já era dono e o admin só recebe o aviso (a fila de revisão é da
+      // empresa toda, não depende do dono). Antes ia pro "primeiro admin" (o
+      // Roberto): os desqualificados da Emily sumiam do nome dela e, se ela
+      // trazia o lead de volta e transferia pra Propostas, a proposta nascia no
+      // nome do Roberto. Pedido do João, 2026-11-25 (só Odin Compressores).
       let reassignedAdmin: { id: number; name: string } | null = null
       if (input.status === 'desqualificado') {
         reassignedAdmin = await findEmpresaAdmin(ctx.empresaId)
-        if (reassignedAdmin) updates.vendorId = reassignedAdmin.id
+        if (slug === 'odin-compressores') {
+          if (!existing.vendorId) updates.vendorId = ctx.user.id
+        } else if (reassignedAdmin) {
+          updates.vendorId = reassignedAdmin.id
+        }
       }
 
       await db.update(leads).set(updates).where(eq(leads.id, input.id))
@@ -919,7 +930,9 @@ export const leadsRouter = router({
           vendedorId: reassignedAdmin.id,
           type: 'lead_desqualificado_revisao',
           title: 'Lead desqualificado precisa de revisão',
-          message: `O lead "${existing.name}" foi desqualificado e caiu pra você revisar o motivo.`,
+          message: slug === 'odin-compressores'
+            ? `O lead "${existing.name}" foi desqualificado por ${ctx.user.name} — revise o motivo.`
+            : `O lead "${existing.name}" foi desqualificado e caiu pra você revisar o motivo.`,
         })
       }
 
