@@ -67,8 +67,8 @@ function fimDoMes(ano: number, mes0: number) {
 
 // Relatório do cartão corporativo — pedido do João, 2026-11-24: separar por
 // vendedor e por datas, imprimir todos os comprovantes por vendedor e gerar
-// relatório. Quem vê: permissão cartao_credito_relatorio (admin comum só a
-// própria empresa — regra no servidor).
+// relatório. Quem vê: permissão cartao_credito_relatorio — todas as empresas
+// desde 2026-11-25.
 export default function CartaoCreditoRelatorio() {
   const hoje = hojeBrString()
   const [de, setDe] = usePersistedState('cartaoCreditoRelatorio:de', `${hoje.slice(0, 7)}-01`)
@@ -92,7 +92,7 @@ export default function CartaoCreditoRelatorio() {
         <div>
           <h1 className="font-heading text-xl text-dark-50">Cartão de Crédito — Relatório</h1>
           <p className="text-sm text-dark-400">
-            Gastos com cartão corporativo por vendedor. {relatorio && <>Período: {dataBr(relatorio.de)} a {dataBr(relatorio.ate)}.</>}
+            Gastos (cartão corporativo ou dinheiro) por vendedor, de todas as empresas. {relatorio && <>Período: {dataBr(relatorio.de)} a {dataBr(relatorio.ate)}.</>}
           </p>
         </div>
       </div>
@@ -132,6 +132,8 @@ export default function CartaoCreditoRelatorio() {
           <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-2">
             <p className="text-sm text-dark-400">
               Total do período: <span className="text-dark-100 font-semibold">{formatarMoeda(relatorio.totalGeral)}</span> ({relatorio.quantidadeGeral} gastos)
+              <span className="ml-3 text-sky-300">💳 Cartão: {formatarMoeda(relatorio.totalCartao)}</span>
+              <span className="ml-3 text-emerald-300">💵 Dinheiro: {formatarMoeda(relatorio.totalDinheiro)}</span>
             </p>
             <div className="space-y-1">
               {relatorio.porVendedor.map((v) => (
@@ -157,6 +159,10 @@ export default function CartaoCreditoRelatorio() {
                     {v.empresaNome} · {v.qtd} gasto{v.qtd === 1 ? '' : 's'} · <span className="text-dark-100 font-semibold">{formatarMoeda(v.total)}</span>
                     {v.semAnexo > 0 && <span className="text-red-400"> · {v.semAnexo} sem comprovante</span>}
                   </p>
+                  <p className="text-xs mt-0.5">
+                    <span className="text-sky-300">💳 Cartão: {formatarMoeda(v.totalCartao)}</span>
+                    <span className="text-emerald-300 ml-3">💵 Dinheiro: {formatarMoeda(v.totalDinheiro)}</span>
+                  </p>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {v.porCategoria.map((c) => (
                       <span
@@ -177,6 +183,7 @@ export default function CartaoCreditoRelatorio() {
                       <th className="px-3 py-2 font-normal">Data</th>
                       <th className="px-3 py-2 font-normal">O que foi</th>
                       <th className="px-3 py-2 font-normal">Descrição</th>
+                      <th className="px-3 py-2 font-normal">Pago com</th>
                       <th className="px-3 py-2 font-normal text-right">Valor</th>
                       <th className="px-3 py-2 font-normal">Comprovante</th>
                     </tr>
@@ -189,6 +196,7 @@ export default function CartaoCreditoRelatorio() {
                           {l.categoria ? <span className="text-dark-200">{CATEGORIA_LABEL[l.categoria] ?? l.categoria}</span> : <span className="text-red-400 text-xs">sem categoria</span>}
                         </td>
                         <td className="px-3 py-2 text-dark-400">{l.descricao}</td>
+                        <td className={`px-3 py-2 whitespace-nowrap text-xs ${l.formaPagamento === 'dinheiro' ? 'text-emerald-300' : 'text-sky-300'}`}>{l.formaPagamento === 'dinheiro' ? '💵 Dinheiro' : '💳 Cartão'}</td>
                         <td className="px-3 py-2 text-dark-100 font-medium text-right whitespace-nowrap">{formatarMoeda(l.valor)}</td>
                         <td className="px-3 py-2">
                           <div className="flex flex-wrap gap-2">

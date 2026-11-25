@@ -90,8 +90,6 @@ export const CATALOGO: ItemCatalogo[] = [
   { id: 'qualidade_odin', area: 'Odin Compressores', nome: 'Controle de qualidade', empresas: ODIN, niveis: { 2: ['qualidade_odin'] } },
   { id: 'estoque_odin', area: 'Odin Compressores', nome: 'Almoxarifado', empresas: ODIN, niveis: { 2: ['estoque_odin'] } },
   { id: 'pos_venda', area: 'Odin Compressores', nome: 'Fila de pós-venda', empresas: ODIN, niveis: { 2: ['pos_venda'] } },
-  { id: 'cartao_credito', area: 'Odin Compressores', nome: 'Cartão de crédito (lançar gastos)', empresas: ODIN, niveis: { 2: ['cartao_credito'] } },
-  { id: 'cartao_credito_relatorio', area: 'Odin Compressores', nome: 'Cartão de crédito — relatório', niveis: { 1: ['cartao_credito_relatorio'] } },
   { id: 'relatorios_odin', area: 'Odin Compressores', nome: 'Relatórios Odin', empresas: ODIN, niveis: { 1: ['relatorios_odin'] } },
   { id: 'configuracoes_odin', area: 'Odin Compressores', nome: 'Config. Odin', empresas: ODIN, niveis: { 3: ['configuracoes_odin'] } },
 
@@ -106,6 +104,10 @@ export const CATALOGO: ItemCatalogo[] = [
   { id: 'controle_estoque', area: 'Estoque e expedição', nome: 'Expedição (separação, coleta, equipe)', empresas: EXPEDICAO, dica: 'Gerencia: descarta pedido que voltou', niveis: { 2: ['controle_estoque'], 3: ['expedicao_descartar'] } },
 
   // Financeiro
+  // Cartão: em todas as empresas desde 2026-11-25 (Sergio trabalha em várias;
+  // Rubia não achava o relatório na área Odin Compressores).
+  { id: 'cartao_credito', area: 'Financeiro', nome: 'Cartão de crédito (lançar gastos)', niveis: { 2: ['cartao_credito'] } },
+  { id: 'cartao_credito_relatorio', area: 'Financeiro', nome: 'Cartão de crédito — relatório', niveis: { 1: ['cartao_credito_relatorio'] } },
   { id: 'caixa', area: 'Financeiro', nome: 'Caixa', niveis: { 2: ['caixa'] } },
   { id: 'boletos', area: 'Financeiro', nome: 'Boletos', niveis: { 2: ['boletos'] } },
   { id: 'negociacoes', area: 'Financeiro', nome: 'Negociações e cobrança', niveis: { 2: ['negociacoes'] } },

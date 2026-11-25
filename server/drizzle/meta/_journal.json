@@ -1310,6 +1310,13 @@
       "when": 1795750000000,
       "tag": "0186_pix_garantia_auto",
       "breakpoints": true
+    },
+    {
+      "idx": 187,
+      "version": "6",
+      "when": 1795800000000,
+      "tag": "0187_cartao_forma_pagamento",
+      "breakpoints": true
     }
   ]
 }

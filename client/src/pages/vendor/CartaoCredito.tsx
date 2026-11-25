@@ -23,6 +23,28 @@ const CATEGORIA_LABEL: Record<string, string> = {
   outro: 'Outro',
 }
 
+// Cartão de crédito ou dinheiro — obrigatório (João, 2026-11-25).
+function EscolhaForma({ valor, onChange }: { valor: string; onChange: (v: 'cartao' | 'dinheiro') => void }) {
+  const op = (v: 'cartao' | 'dinheiro', rotulo: string) => (
+    <button
+      type="button"
+      onClick={() => onChange(v)}
+      className={`rounded-lg border px-3 py-1.5 text-sm ${valor === v ? 'border-gold-500 bg-gold-500/15 text-gold-300 font-medium' : 'border-dark-600 bg-dark-700 text-dark-300 hover:text-dark-100'}`}
+    >
+      {rotulo}
+    </button>
+  )
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-sm text-dark-200 font-medium">Pagou com? *</span>
+      {op('cartao', '💳 Cartão de crédito')}
+      {op('dinheiro', '💵 Dinheiro')}
+    </div>
+  )
+}
+
+const FORMA_LABEL: Record<string, string> = { cartao: 'Cartão', dinheiro: 'Dinheiro' }
+
 type Anexo = { urlArquivo: string; nomeArquivo: string; tipoArquivo?: string }
 
 async function fazerUpload(file: File): Promise<Anexo> {
@@ -45,6 +67,7 @@ function FormularioNovoGasto() {
   const [valor, setValor] = useState('')
   const [categoria, setCategoria] = useState('')
   const [descricao, setDescricao] = useState('')
+  const [forma, setForma] = useState('')
   const [anexos, setAnexos] = useState<Anexo[]>([])
   const [enviandoArquivo, setEnviandoArquivo] = useState(false)
 
@@ -55,6 +78,7 @@ function FormularioNovoGasto() {
       setValor('')
       setCategoria('')
       setDescricao('')
+      setForma('')
       setAnexos([])
       utils.cartao.meusGastos.invalidate()
     },
@@ -90,11 +114,15 @@ function FormularioNovoGasto() {
       toast.error('Escreva o que foi o gasto')
       return
     }
+    if (!forma) {
+      toast.error('Diga se pagou no cartão de crédito ou em dinheiro')
+      return
+    }
     if (!anexos.length) {
       toast.error('Anexe a nota fiscal ou o cupom fiscal')
       return
     }
-    criarMut.mutate({ data, valor: valorNumero, categoria: categoria as any, descricao: descricao || undefined, anexos })
+    criarMut.mutate({ data, valor: valorNumero, categoria: categoria as any, descricao: descricao || undefined, formaPagamento: forma as 'cartao' | 'dinheiro', anexos })
   }
 
   return (
@@ -117,6 +145,8 @@ function FormularioNovoGasto() {
           placeholder="Ex: almoço com cliente"
         />
       </div>
+
+      <EscolhaForma valor={forma} onChange={setForma} />
 
       <div className="space-y-2">
         <p className="text-sm text-dark-200 font-medium">Nota fiscal / cupom fiscal</p>
@@ -149,6 +179,7 @@ type Gasto = {
   valor: number
   categoria: string | null
   descricao: string | null
+  formaPagamento: string
   anexos: { id: number; urlArquivo: string; nomeArquivo: string }[]
 }
 
@@ -159,6 +190,7 @@ function LinhaGasto({ g }: { g: Gasto }) {
   const [valor, setValor] = useState(String(g.valor))
   const [categoria, setCategoria] = useState(g.categoria ?? '')
   const [descricao, setDescricao] = useState(g.descricao ?? '')
+  const [forma, setForma] = useState(g.formaPagamento ?? 'cartao')
 
   function invalidar() {
     utils.cartao.meusGastos.invalidate()
@@ -188,6 +220,7 @@ function LinhaGasto({ g }: { g: Gasto }) {
           />
           <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descrição" />
         </div>
+        <EscolhaForma valor={forma} onChange={setForma} />
         <div className="flex gap-2">
           <Button
             size="sm"
@@ -195,7 +228,7 @@ function LinhaGasto({ g }: { g: Gasto }) {
             onClick={() => {
               if (!categoria) return toast.error('Escolha o que foi o gasto (almoço, gasolina...)')
               if (categoria === 'outro' && !descricao.trim()) return toast.error('Escreva o que foi o gasto')
-              editarMut.mutate({ id: g.id, data, valor: parseValorBr(valor), categoria: categoria as any, descricao: descricao || undefined })
+              editarMut.mutate({ id: g.id, data, valor: parseValorBr(valor), categoria: categoria as any, descricao: descricao || undefined, formaPagamento: forma as 'cartao' | 'dinheiro' })
             }}
           >
             Salvar
@@ -213,6 +246,7 @@ function LinhaGasto({ g }: { g: Gasto }) {
       <div>
         <p className="text-sm text-dark-100">
           {new Date(g.data + 'T00:00:00').toLocaleDateString('pt-BR')} — <span className="font-medium">{formatarMoeda(g.valor)}</span>
+          <span className={`text-xs ml-2 ${g.formaPagamento === 'dinheiro' ? 'text-emerald-400' : 'text-sky-400'}`}>{g.formaPagamento === 'dinheiro' ? '💵' : '💳'} {FORMA_LABEL[g.formaPagamento] ?? 'Cartão'}</span>
           {g.categoria ? (
             <span className="text-xs text-dark-400 ml-2">{CATEGORIA_LABEL[g.categoria]}</span>
           ) : (
@@ -256,7 +290,7 @@ export default function CartaoCredito() {
         <CreditCard size={20} className="text-gold-400" />
         <div>
           <h1 className="font-heading text-xl text-dark-50">Cartão de Crédito</h1>
-          <p className="text-sm text-dark-400">Lance seus gastos com o cartão corporativo, sempre com a nota fiscal ou o cupom fiscal anexado.</p>
+          <p className="text-sm text-dark-400">Lance seus gastos (cartão corporativo ou dinheiro), sempre com a nota fiscal ou o cupom fiscal anexado.</p>
         </div>
       </div>
 

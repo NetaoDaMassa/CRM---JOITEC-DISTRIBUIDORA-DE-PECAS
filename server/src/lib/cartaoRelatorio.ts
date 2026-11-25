@@ -23,13 +23,17 @@ export const CATEGORIA_LABEL: Record<string, string> = {
   outro: 'Outro',
 }
 
+export const FORMAS_CARTAO = ['cartao', 'dinheiro'] as const
+export const FORMA_LABEL: Record<string, string> = { cartao: 'Cartão de crédito', dinheiro: 'Dinheiro' }
+
 export type FiltroCartao = { de: string; ate: string; vendedorId?: number }
 export type EscopoCartao = { superAdmin: boolean; empresaId: number | null }
 
 export async function buscarGastosCartao(escopo: EscopoCartao, filtro: FiltroCartao) {
   const condicoes: SQL[] = [gte(cartaoGastos.data, filtro.de), lte(cartaoGastos.data, filtro.ate)]
-  // Admin comum com a permissão só vê os gastos da própria empresa (regra de
-  // 2026-09-22); o superAdmin vê todas.
+  // Quem tem a permissão vê todas as empresas desde 2026-11-25 (o financeiro
+  // cuida do grupo inteiro e vendedor como o Sergio lança de várias contas) —
+  // as rotas passam superAdmin: true. Escopo por empresa fica pra quem chamar.
   if (!escopo.superAdmin) condicoes.push(eq(users.empresaId, escopo.empresaId ?? -1))
   if (filtro.vendedorId) condicoes.push(eq(cartaoGastos.vendedorId, filtro.vendedorId))
 
@@ -40,6 +44,7 @@ export async function buscarGastosCartao(escopo: EscopoCartao, filtro: FiltroCar
       valor: cartaoGastos.valor,
       categoria: cartaoGastos.categoria,
       descricao: cartaoGastos.descricao,
+      formaPagamento: cartaoGastos.formaPagamento,
       vendedorId: cartaoGastos.vendedorId,
       vendedorNome: users.name,
       empresaNome: empresas.nome,
@@ -63,17 +68,21 @@ export async function buscarGastosCartao(escopo: EscopoCartao, filtro: FiltroCar
     total: number
     qtd: number
     semAnexo: number
+    totalCartao: number
+    totalDinheiro: number
     porCategoria: { categoria: string; total: number; qtd: number }[]
     lancamentos: typeof comAnexos
   }[] = []
   for (const l of comAnexos) {
     let g = porVendedor.find((v) => v.vendedorId === l.vendedorId)
     if (!g) {
-      g = { vendedorId: l.vendedorId, vendedorNome: l.vendedorNome, empresaNome: l.empresaNome, total: 0, qtd: 0, semAnexo: 0, porCategoria: [], lancamentos: [] }
+      g = { vendedorId: l.vendedorId, vendedorNome: l.vendedorNome, empresaNome: l.empresaNome, total: 0, qtd: 0, semAnexo: 0, totalCartao: 0, totalDinheiro: 0, porCategoria: [], lancamentos: [] }
       porVendedor.push(g)
     }
     g.total += l.valor
     g.qtd++
+    if (l.formaPagamento === 'dinheiro') g.totalDinheiro += l.valor
+    else g.totalCartao += l.valor
     if (!l.anexos.length) g.semAnexo++
     g.lancamentos.push(l)
     const cat = l.categoria ?? 'sem_categoria'
@@ -88,6 +97,8 @@ export async function buscarGastosCartao(escopo: EscopoCartao, filtro: FiltroCar
   return {
     totalGeral: comAnexos.reduce((s, l) => s + l.valor, 0),
     quantidadeGeral: comAnexos.length,
+    totalCartao: comAnexos.filter((l) => l.formaPagamento !== 'dinheiro').reduce((s, l) => s + l.valor, 0),
+    totalDinheiro: comAnexos.filter((l) => l.formaPagamento === 'dinheiro').reduce((s, l) => s + l.valor, 0),
     porVendedor,
   }
 }
@@ -137,8 +148,8 @@ function cortar(t: string, font: PDFFont, tam: number, largura: number) {
   return s + '...'
 }
 
-function rotuloGasto(l: { data: string; categoria: string | null; valor: number; descricao: string | null }) {
-  return [dataBr(l.data), l.categoria ? CATEGORIA_LABEL[l.categoria] ?? l.categoria : 'Sem categoria', brl(l.valor), l.descricao ?? ''].filter(Boolean).join('  ·  ')
+function rotuloGasto(l: { data: string; categoria: string | null; valor: number; descricao: string | null; formaPagamento: string }) {
+  return [dataBr(l.data), l.categoria ? CATEGORIA_LABEL[l.categoria] ?? l.categoria : 'Sem categoria', brl(l.valor), FORMA_LABEL[l.formaPagamento] ?? '', l.descricao ?? ''].filter(Boolean).join('  ·  ')
 }
 
 function faixa(page: PDFPage, font: PDFFont, bold: PDFFont, titulo: string, sub: string) {
@@ -181,6 +192,8 @@ export async function gerarPdfCartao(dados: Awaited<ReturnType<typeof buscarGast
     linha(`${v.empresaNome}  ·  Período: ${periodo}`, { size: 10, cor: [0.3, 0.3, 0.3] })
     y -= 26
     linha(`Total: ${brl(v.total)}   (${v.qtd} gasto${v.qtd === 1 ? '' : 's'}${v.semAnexo ? `, ${v.semAnexo} sem comprovante` : ''})`, { size: 12, b: true })
+    y -= 16
+    linha(`Cartão de crédito: ${brl(v.totalCartao)}   ·   Dinheiro: ${brl(v.totalDinheiro)}`, { size: 10 })
     y -= 22
     linha('Por tipo de gasto', { size: 9, cor: [0.4, 0.4, 0.4] })
     y -= 14
@@ -192,9 +205,9 @@ export async function gerarPdfCartao(dados: Awaited<ReturnType<typeof buscarGast
     }
     y -= 14
 
-    const colunas = [MARGEM, MARGEM + 62, MARGEM + 160, A4[0] - MARGEM - 120, A4[0] - MARGEM - 40]
+    const colunas = [MARGEM, MARGEM + 58, MARGEM + 145, A4[0] - MARGEM - 175, A4[0] - MARGEM - 105, A4[0] - MARGEM - 35]
     const cabecalho = () => {
-      ;['Data', 'Tipo', 'Descrição', 'Valor', 'Anexos'].forEach((t, i) => page.drawText(t, { x: colunas[i], y, size: 8, font: bold, color: rgb(0.4, 0.4, 0.4) }))
+      ;['Data', 'Tipo', 'Descrição', 'Pago com', 'Valor', 'Anexos'].forEach((t, i) => page.drawText(t, { x: colunas[i], y, size: 8, font: bold, color: rgb(0.4, 0.4, 0.4) }))
       y -= 4
       page.drawLine({ start: { x: MARGEM, y }, end: { x: A4[0] - MARGEM, y }, thickness: 0.5, color: rgb(0.75, 0.75, 0.75) })
       y -= 12
@@ -211,8 +224,9 @@ export async function gerarPdfCartao(dados: Awaited<ReturnType<typeof buscarGast
       page.drawText(dataBr(l.data), { x: colunas[0], y, size: 9, font })
       page.drawText(cortar(l.categoria ? CATEGORIA_LABEL[l.categoria] ?? l.categoria : 'Sem categoria', font, 9, colunas[2] - colunas[1] - 6), { x: colunas[1], y, size: 9, font, color: l.categoria ? rgb(0.1, 0.1, 0.1) : rgb(0.75, 0.1, 0.1) })
       page.drawText(cortar(l.descricao ?? '', font, 9, colunas[3] - colunas[2] - 8), { x: colunas[2], y, size: 9, font })
-      page.drawText(brl(l.valor), { x: colunas[3], y, size: 9, font: bold })
-      page.drawText(l.anexos.length ? String(l.anexos.length) : 'falta', { x: colunas[4], y, size: 9, font, color: l.anexos.length ? rgb(0.1, 0.1, 0.1) : rgb(0.75, 0.1, 0.1) })
+      page.drawText(l.formaPagamento === 'dinheiro' ? 'Dinheiro' : 'Cartão', { x: colunas[3], y, size: 9, font })
+      page.drawText(brl(l.valor), { x: colunas[4], y, size: 9, font: bold })
+      page.drawText(l.anexos.length ? String(l.anexos.length) : 'falta', { x: colunas[5], y, size: 9, font, color: l.anexos.length ? rgb(0.1, 0.1, 0.1) : rgb(0.75, 0.1, 0.1) })
       y -= 14
     }
 

@@ -3891,6 +3891,8 @@ export const cartaoGastos = sqliteTable('cartao_gastos', {
     enum: ['combustivel', 'alimentacao', 'hospedagem', 'pedagio', 'estacionamento', 'manutencao', 'outro'],
   }),
   descricao: text('descricao'),
+  // Pago no cartão ou em dinheiro (João, 2026-11-25; migração 0187).
+  formaPagamento: text('forma_pagamento', { enum: ['cartao', 'dinheiro'] }).notNull().default('cartao'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 

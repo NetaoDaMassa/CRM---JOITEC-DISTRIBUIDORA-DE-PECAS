@@ -116,7 +116,7 @@ export const ADMIN_LINKS = [
   // Relatório geral de gastos do cartão corporativo — era superAdmin-only
   // (pedido do João, 2026-09-15), virou delegável em 2026-09-22. Só faz
   // sentido pra Odin Compressores (é quem usa cartão corporativo hoje).
-  { to: '/admin/cartao-relatorio', label: 'Cartão de Crédito (Relatório)', icon: ScrollText, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito_relatorio' },
+  { to: '/admin/cartao-relatorio', label: 'Cartão de Crédito (Relatório)', icon: ScrollText, feature: 'cartao_credito_relatorio' },
   // Mesma tela/rota do VENDOR_LINKS abaixo — quem processa o faturamento da
   // Compretec Loja Física (Daniela) virou admin (função Financeiro) mas
   // continua precisando desse board. `funil.funilFaturamentoGeral` já é
@@ -125,7 +125,7 @@ export const ADMIN_LINKS = [
   // Mesma tela/rota do VENDOR_LINKS abaixo — igual Faturamento Geral acima:
   // admin comum concedido (ex: Roberto) usa a versão dele pelo link daqui,
   // vendedor concedido usa a de VENDOR_LINKS. Pedido do João, 2026-09-23.
-  { to: '/admin/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
+  { to: '/admin/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, feature: 'cartao_credito' },
   { to: '/admin/compras', label: 'Importações e nacionais', icon: Ship, feature: 'compras' },
   // Setor de Compras — processo completo (solicitação → cotação → negociação
   // → aprovação → pedido → recebimento → finalizado). Setor único do grupo:
@@ -285,7 +285,7 @@ export const VENDOR_LINKS = [
   // Permissões (mesmo espírito do resto do menu) — não trava aqui por
   // `canalVenda` de propósito, pra não duplicar a mesma regra em 2 lugares.
   // Pedido do João, 2026-09-15.
-  { to: '/vendedor/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'cartao_credito' },
+  { to: '/vendedor/cartao-credito', label: 'Cartão de Crédito', icon: CreditCard, feature: 'cartao_credito' },
   // Pedir liberação de crédito pro Financeiro — todas as empresas, não só
   // Odin Compressores (diferente do Cartão de Crédito acima). Mesma chave
   // de ADMIN_LINKS (ver comentário lá). Pedido do João, 2026-10-01.

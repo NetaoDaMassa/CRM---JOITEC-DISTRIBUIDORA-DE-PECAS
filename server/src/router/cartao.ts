@@ -3,7 +3,7 @@ import { desc, eq } from 'drizzle-orm'
 import { router, protectedProcedure, featureProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { cartaoGastos, cartaoGastoAnexos } from '../db/schema.js'
-import { CATEGORIAS_CARTAO, buscarGastosCartao, vendedoresComGasto } from '../lib/cartaoRelatorio.js'
+import { CATEGORIAS_CARTAO, FORMAS_CARTAO, buscarGastosCartao, vendedoresComGasto } from '../lib/cartaoRelatorio.js'
 import { mesReferenciaAtual } from '../lib/dataBr.js'
 
 const anexoInput = z.object({
@@ -40,6 +40,8 @@ export const cartaoRouter = router({
         // o cupom/NF — almoço, gasolina etc. "Outro" exige a descrição.
         categoria: z.enum(CATEGORIAS_CARTAO, { errorMap: () => ({ message: 'Escolha o tipo do gasto (almoço, gasolina...)' }) }),
         descricao: z.string().optional(),
+        // Cartão ou dinheiro (João, 2026-11-25) — obrigatório.
+        formaPagamento: z.enum(FORMAS_CARTAO, { errorMap: () => ({ message: 'Diga se pagou no cartão de crédito ou em dinheiro' }) }),
         anexos: z.array(anexoInput).min(1, 'Anexe a nota fiscal ou o cupom fiscal'),
       })
     )
@@ -53,6 +55,7 @@ export const cartaoRouter = router({
           valor: input.valor,
           categoria: input.categoria,
           descricao: input.descricao || null,
+          formaPagamento: input.formaPagamento,
         })
         .returning()
 
@@ -70,6 +73,7 @@ export const cartaoRouter = router({
         // o cupom/NF — almoço, gasolina etc. "Outro" exige a descrição.
         categoria: z.enum(CATEGORIAS_CARTAO, { errorMap: () => ({ message: 'Escolha o tipo do gasto (almoço, gasolina...)' }) }),
         descricao: z.string().optional(),
+        formaPagamento: z.enum(FORMAS_CARTAO, { errorMap: () => ({ message: 'Diga se pagou no cartão de crédito ou em dinheiro' }) }),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -80,7 +84,7 @@ export const cartaoRouter = router({
 
       await db
         .update(cartaoGastos)
-        .set({ data: input.data, valor: input.valor, categoria: input.categoria, descricao: input.descricao || null })
+        .set({ data: input.data, valor: input.valor, categoria: input.categoria, descricao: input.descricao || null, formaPagamento: input.formaPagamento })
         .where(eq(cartaoGastos.id, input.id))
       return { success: true }
     }),
@@ -105,7 +109,9 @@ export const cartaoRouter = router({
     .query(async ({ ctx, input }) => {
       const mes = mesReferenciaAtual().slice(0, 7)
       const filtro = { de: input.de ?? `${mes}-01`, ate: input.ate ?? `${mes}-31`, vendedorId: input.vendedorId }
-      const escopo = { superAdmin: !!ctx.user.superAdmin, empresaId: ctx.empresaId ?? null }
+      // 2026-11-25: quem tem a permissão vê o grupo inteiro (Rubia/financeiro;
+      // Sergio lança de várias empresas).
+      const escopo = { superAdmin: true, empresaId: ctx.empresaId ?? null }
       const [dados, vendedores] = await Promise.all([buscarGastosCartao(escopo, filtro), vendedoresComGasto(escopo)])
       return { ...filtro, ...dados, vendedores }
     }),

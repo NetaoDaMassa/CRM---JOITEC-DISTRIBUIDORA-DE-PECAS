@@ -383,7 +383,7 @@ app.post('/upload/cartao-anexo', uploadCartao.single('file'), async (req, res) =
 
 // PDF do relatório do Cartão de Crédito com TODOS os comprovantes juntos,
 // por vendedor (pedido do João, 2026-11-24). Mesma regra da tela: permissão
-// cartao_credito_relatorio; admin comum só vê a própria empresa.
+// cartao_credito_relatorio; quem tem vê todas as empresas (2026-11-25).
 app.get('/api/cartao-credito-pdf', async (req, res) => {
   const user = authenticate(req)
   if (!user) return res.status(401).json({ error: 'Não autenticado' })
@@ -396,7 +396,7 @@ app.get('/api/cartao-credito-pdf', async (req, res) => {
   try {
     const empresaId = await resolverEmpresaId(user, req.headers['x-empresa-id'])
     const filtro = { de, ate, vendedorId }
-    const dados = await buscarGastosCartao({ superAdmin: !!user.superAdmin, empresaId: empresaId ?? null }, filtro)
+    const dados = await buscarGastosCartao({ superAdmin: true, empresaId: empresaId ?? null }, filtro)
     const pdf = await gerarPdfCartao(dados, filtro, UPLOADS_DIR)
     const nome = vendedorId && dados.porVendedor[0] ? dados.porVendedor[0].vendedorNome : 'todos'
     const arquivo = `cartao-${nome}-${de}-a-${ate}.pdf`.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^\w.-]+/g, '-')
