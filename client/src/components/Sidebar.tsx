@@ -20,7 +20,7 @@ import { publicarMenu } from '../lib/menuAtual'
 // salvo como texto no banco (sidebarGroups.icone), mapeado pro componente
 // aqui. `Folder` é o fallback se algum dia salvar um nome que saia da lista.
 export const ICONES_GRUPO: Record<string, LucideIcon> = {
-  Folder, Megaphone, Ship, ShoppingBag, Wrench, Banknote, Briefcase, RotateCcw, Users, Target, Palette, UserPlus, Landmark, Activity, Layers, Wallet,
+  Folder, Megaphone, Ship, ShoppingBag, Wrench, Banknote, Briefcase, RotateCcw, Users, Target, Palette, UserPlus, Landmark, Activity, Layers, Wallet, BarChart3, Package, Tv, Settings,
 }
 export const NOMES_ICONES_GRUPO = Object.keys(ICONES_GRUPO)
 
