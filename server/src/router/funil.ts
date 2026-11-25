@@ -229,7 +229,10 @@ async function buscarFunilComFiltro(filtroFunil: SQL, ctxUserId: number, ctxIsAd
       // `clienteVinculadoId` é o que ele buscou e escolheu) — não no mais
       // antigo, pra não trocar qual card fica visível toda hora que alguém
       // adiciona um novo vínculo.
-      const [primario, secundario] = [funilA, funilB]
+      // Exceção: se só o card vinculado tem venda, ele é quem aparece — senão a
+      // venda some do Kanban (caso Evandro/Claudia 2026-11-25: cadastro novo
+      // feito pra efetivar a venda, vinculado ao antigo).
+      const [primario, secundario] = funilB.vendas.length > 0 && funilA.vendas.length === 0 ? [funilB, funilA] : [funilA, funilB]
       if (idsFundidos.has(primario.id)) continue // já é secundário de outro par — evita encadear fusões
       idsFundidos.add(secundario.id)
       const lista =
