@@ -11,7 +11,7 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import { leads, leadHistory, leadWhatsappMensagens, clientes, clienteTelefones } from '../../db/schema.js'
-import { findOrCreateLeadFromTrackingDetalhado } from '../leadsTrackingService.js'
+import { findOrCreateLeadFromTrackingDetalhado, acharLeadPorTelefone } from '../leadsTrackingService.js'
 
 export type MensagemCapturada = {
   id: string
@@ -114,8 +114,31 @@ export function telefoneBr(digitos: string | null): TelefoneBr | null {
   return { ddd, local, variantes }
 }
 
+// ---------- mensagem de formulário da Meta ----------
+// Quem preenche o formulário do anúncio e clica para falar no WhatsApp manda um
+// texto pronto ("Olá! Preenchi seu formulário... Full name: ... City: ...").
+// Lê esses campos para o lead já nascer completo (João, 2026-11-25).
+export type DadosFormulario = { nome?: string; cidade?: string; email?: string; cnpj?: string; respostas: Record<string, string> }
+export function lerFormularioMeta(texto: string): DadosFormulario | null {
+  if (!/preenchi|formul[aá]rio|full name|nome completo/i.test(texto)) return null
+  const respostas: Record<string, string> = {}
+  for (const linha of texto.split(/\n/)) {
+    const m = linha.match(/^\s*([^:]{2,80}?)\s*\??\s*:\s*(.+?)\s*$/)
+    if (m) respostas[m[1].replace(/\?$/, '').trim()] = m[2].trim()
+  }
+  const pega = (re: RegExp) => Object.entries(respostas).find(([k]) => re.test(k))?.[1]
+  const cnpj = (texto.match(/\b\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2}\b/) || [])[0]?.replace(/\D/g, '')
+  const dados: DadosFormulario = {
+    nome: pega(/full name|nome completo|^nome$/i),
+    cidade: pega(/^city$|cidade/i),
+    email: pega(/e-?mail/i),
+    cnpj: cnpj && cnpj.length === 14 ? cnpj : undefined,
+    respostas,
+  }
+  return Object.keys(respostas).length >= 2 ? dados : null
+}
+
 // ---------- achar o lead ----------
-const telefoneLimpoSql = sql`replace(replace(replace(replace(replace(replace(coalesce(${leads.phone}, ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', '')`
 
 async function leadPorJid(empresaId: number, jid: string) {
   const r = await db
@@ -130,20 +153,7 @@ async function leadPorJid(empresaId: number, jid: string) {
 
 /** Lead da empresa com o mesmo telefone (com/sem 9; com o DDD junto ou separado). */
 export async function leadPorTelefone(empresaId: number, tel: TelefoneBr) {
-  const comDdd = tel.variantes.map((v) => `${tel.ddd}${v}`)
-  const comPais = comDdd.map((v) => `55${v}`)
-  const r = await db
-    .select({ id: leads.id, ddd: leads.ddd })
-    .from(leads)
-    .where(and(
-      eq(leads.empresaId, empresaId),
-      isNull(leads.deletedAt),
-      sql`(${telefoneLimpoSql} IN (${sql.join([...comDdd, ...comPais].map((v) => sql`${v}`), sql`, `)})
-        OR (${telefoneLimpoSql} IN (${sql.join(tel.variantes.map((v) => sql`${v}`), sql`, `)}) AND (${leads.ddd} = ${tel.ddd} OR ${leads.ddd} IS NULL)))`,
-    ))
-    .orderBy(desc(leads.id))
-    .limit(1)
-  return r[0]?.id ?? null
+  return acharLeadPorTelefone(empresaId, tel.ddd, tel.local)
 }
 
 // ---------- achar cliente da carteira ----------
@@ -212,10 +222,15 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
   if (clienteId) acao = 'cliente'
 
   if (!leadId && !clienteId && !m.deMim) {
-    const nome = m.pushName || (tel ? `(${tel.ddd}) ${tel.local}` : m.telefone || 'Contato do WhatsApp')
-    const obs = `Primeira mensagem no WhatsApp: "${m.texto.slice(0, 300)}"`
+    const form = lerFormularioMeta(m.texto)
+    const nome = form?.nome || m.pushName || (tel ? `(${tel.ddd}) ${tel.local}` : m.telefone || 'Contato do WhatsApp')
+    const obs = `Primeira mensagem no WhatsApp: "${m.texto.slice(0, 600)}"`
     if (tel) {
-      const r = await findOrCreateLeadFromTrackingDetalhado({ empresaId, name: nome, phone: `${tel.ddd}${tel.local}`, source: 'whatsapp', observations: obs })
+      const r = await findOrCreateLeadFromTrackingDetalhado({
+        empresaId, name: nome, phone: `${tel.ddd}${tel.local}`, source: 'whatsapp', observations: obs,
+        email: form?.email, city: form?.cidade, cnpj: form?.cnpj,
+        metaDados: form ? { formulario: 'Respostas enviadas pelo WhatsApp', respostas: form.respostas } : undefined,
+      })
       leadId = r?.id ?? null
       vendorId = r?.vendorId ?? null
       acao = r?.criado ? 'criado' : 'anexada'

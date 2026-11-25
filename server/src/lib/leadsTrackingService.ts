@@ -1,4 +1,4 @@
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, leadHistory, notifications, leadCampaigns } from '../db/schema.js'
 import { getVendorByDDD, getRegionIdByDDD } from './leadsRoundRobin.js'
@@ -95,6 +95,32 @@ export function parseTelefone(phoneRaw: string): { ddd: number; phone: string } 
   return { ddd, phone: local.slice(2) }
 }
 
+// Acha lead da empresa pelo telefone sem depender de como foi digitado: com ou
+// sem o 9º dígito, com traço/parênteses, com o DDD junto ou separado. Usado
+// pelo lead da Meta/site E pela captura do WhatsApp — antes a Meta comparava o
+// texto exato e duplicava quando o WhatsApp tinha criado o lead com o 9
+// (João, 2026-11-25).
+export async function acharLeadPorTelefone(empresaId: number, ddd: number, localBruto: string): Promise<number | null> {
+  let local = String(localBruto || '').replace(/\D/g, '')
+  if (!local) return null
+  if (local.length === 8 && /^[6-9]/.test(local)) local = '9' + local
+  const variantes = [local, ...(local.length === 9 && local.startsWith('9') ? [local.slice(1)] : [])]
+  const comDdd = variantes.flatMap((v) => [`${ddd}${v}`, `55${ddd}${v}`])
+  const limpo = sql`replace(replace(replace(replace(replace(replace(coalesce(${leads.phone}, ''), '-', ''), ' ', ''), '(', ''), ')', ''), '+', ''), '.', '')`
+  const r = await db
+    .select({ id: leads.id })
+    .from(leads)
+    .where(and(
+      eq(leads.empresaId, empresaId),
+      isNull(leads.deletedAt),
+      sql`(${limpo} IN (${sql.join(comDdd.map((v) => sql`${v}`), sql`, `)})
+        OR (${limpo} IN (${sql.join(variantes.map((v) => sql`${v}`), sql`, `)}) AND (${leads.ddd} = ${ddd} OR ${leads.ddd} IS NULL)))`,
+    ))
+    .orderBy(desc(leads.id))
+    .limit(1)
+  return r[0]?.id ?? null
+}
+
 // Chamada a partir de POST /api/tracking/events (rota pública, sem sessão de
 // usuário logado) quando um formulário do site tem telefone — cria (ou
 // reaproveita, se já existe) o lead correspondente, com o mesmo rodízio por
@@ -117,17 +143,21 @@ export async function findOrCreateLeadFromTrackingDetalhado(
   if (!parsed) return null
   const { ddd, phone } = parsed
 
-  const existing = await db.query.leads.findFirst({
-    where: and(eq(leads.empresaId, empresaId), eq(leads.phone, phone), isNull(leads.deletedAt)),
-  })
+  const idExistente = await acharLeadPorTelefone(empresaId, ddd, phone)
+  const existing = idExistente ? await db.query.leads.findFirst({ where: eq(leads.id, idExistente) }) : undefined
   if (existing) {
     // Mesma pessoa preenchendo de novo (ou lead antigo de antes de existir
     // isso): completa o que estiver faltando, nunca sobrescreve.
-    if (metaDados && (!existing.metaDados || (cnpj && !existing.cnpj) || (compressorAtual && !existing.compressorAtual))) {
+    // Lead que nasceu pela mensagem do WhatsApp (só as respostas, sem campanha):
+    // quando a planilha da Meta chega depois, completa com campanha/anúncio.
+    let metaAntigo: MetaDadosLead | null = null
+    try { metaAntigo = existing.metaDados ? JSON.parse(existing.metaDados) : null } catch { metaAntigo = null }
+    const completarCampanha = !!(metaDados?.campanha && metaAntigo && !metaAntigo.campanha)
+    if (metaDados && (!existing.metaDados || completarCampanha || (cnpj && !existing.cnpj) || (compressorAtual && !existing.compressorAtual))) {
       await db
         .update(leads)
         .set({
-          metaDados: existing.metaDados ?? JSON.stringify(metaDados),
+          metaDados: completarCampanha ? JSON.stringify({ ...metaAntigo, ...metaDados, respostas: { ...(metaAntigo?.respostas || {}), ...(metaDados.respostas || {}) } }) : existing.metaDados ?? JSON.stringify(metaDados),
           cnpj: existing.cnpj ?? cnpj,
           compressorAtual: existing.compressorAtual ?? compressorAtual,
           city: existing.city ?? (input.city?.trim() || null),

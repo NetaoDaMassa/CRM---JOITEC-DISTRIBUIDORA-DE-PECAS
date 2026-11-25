@@ -7,6 +7,7 @@ import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, leadWhatsappMensagens } from '../db/schema.js'
 import { extrairMensagem, registrarMensagem, conversaDoLead } from '../lib/whatsapp/capturaLeads.js'
+import { findOrCreateLeadFromTrackingDetalhado } from '../lib/leadsTrackingService.js'
 
 if (!String(process.env.DATABASE_URL).includes('teste')) throw new Error('Rode só contra uma cópia (DATABASE_URL com "teste")')
 await migrate(db, { migrationsFolder: path.resolve('drizzle') })
@@ -81,5 +82,19 @@ ok(outra.length === 0, 'nada gravado em outra empresa')
 // 14) ordem da conversa
 const conv1 = await conversaDoLead(EMP, r1!.leadId!)
 ok(conv1.length >= 5 && conv1.some((m) => m.direcao === 'enviada'), `conversa do lead tem ${conv1.length} mensagens (recebidas e enviadas)`)
+// 15) formulário da Meta mandado no WhatsApp ANTES da planilha da Meta
+const textoForm = 'Olá! Preenchi seu formulário e gostaria de saber mais sobre sua empresa.\n\nVocê possui CNPJ ativo? se sim, Qual seria ?: 14648824000187\nFull name: Jeferson Rodrigues\nQual é o seu tipo de negócio?: Revenda\nCity: Apucarana\nPhone number: +554399166973\nEmail: kartjef12@gmail.com'
+const r15 = await enviar(msg('554399166973@s.whatsapp.net', textoForm, { push: 'Jef' }))
+const l15 = r15?.leadId ? await db.query.leads.findFirst({ where: eq(leads.id, r15.leadId) }) : null
+ok(r15?.acao === 'criado' && l15?.name === 'Jeferson Rodrigues' && l15?.city === 'Apucarana' && l15?.email === 'kartjef12@gmail.com' && l15?.cnpj === '14648824000187', `lê nome/cidade/e-mail/CNPJ do formulário (${l15?.name}, ${l15?.city}, ${l15?.email}, ${l15?.cnpj})`)
+const meta15 = await findOrCreateLeadFromTrackingDetalhado({ empresaId: EMP, name: 'Jeferson Rodrigues', phone: '+554399166973', source: 'meta_ads_lead', metaDados: { campanha: 'Campanha PPR', anuncio: 'Vídeo 1', respostas: { 'Qual é o seu tipo de negócio?': 'Revenda' } } })
+const l15b = await db.query.leads.findFirst({ where: eq(leads.id, r15!.leadId!) })
+ok(meta15?.id === r15?.leadId && meta15?.criado === false, 'planilha da Meta chegando depois NÃO duplica (número com/sem 9)')
+ok(/Campanha PPR/.test(l15b?.metaDados || ''), 'campanha da Meta completa o lead que veio do WhatsApp')
+// 16) Meta antes, WhatsApp depois
+const meta16 = await findOrCreateLeadFromTrackingDetalhado({ empresaId: EMP, name: 'Maria Meta', phone: '(41) 99876-5432', source: 'meta_ads_lead' })
+const r16 = await enviar(msg('5541998765432@s.whatsapp.net', textoForm.replace('+554399166973', '+5541998765432'), { push: 'Maria' }))
+ok(meta16?.criado && r16?.acao === 'anexada' && r16.leadId === meta16.id, 'Meta antes e WhatsApp depois cai no mesmo lead')
+
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTUDO CERTO')
 process.exit(falhas ? 1 : 0)
