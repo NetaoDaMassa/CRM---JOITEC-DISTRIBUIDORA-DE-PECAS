@@ -45,6 +45,23 @@ type Sessao = {
 
 const sessoes = new Map<number, Sessao>()
 const logger = pino({ level: process.env.WA_CAPTURA_LOG || 'error' })
+
+// Diário em disco (volume, sobrevive a deploy): tudo que chega do WhatsApp e
+// avisos do Baileys, por empresa — para descobrir por que uma mensagem não virou
+// lead sem depender do log do container (que some a cada deploy). 26/11.
+function arquivoDiario(empresaId: number) { return path.join(pastaBase(), `diario-empresa-${empresaId}.log`) }
+function diario(empresaId: number, linha: string) {
+  try {
+    const f = arquivoDiario(empresaId)
+    fs.mkdirSync(path.dirname(f), { recursive: true })
+    try { if (fs.statSync(f).size > 5_000_000) fs.renameSync(f, f + '.1') } catch { /* novo */ }
+    fs.appendFileSync(f, `${new Date().toISOString()} ${linha}\n`)
+  } catch { /* não atrapalha a captura */ }
+}
+function loggerDa(empresaId: number) {
+  const nivel = process.env.WA_CAPTURA_LOG || 'warn'
+  return pino({ level: nivel }, { write: (txt: string) => { diario(empresaId, `baileys ${String(txt).trim().slice(0, 1500)}`); if (/"level":(50|60)/.test(txt)) process.stderr.write(txt) } })
+}
 const chaveAtiva = (empresaId: number) => `wa_captura_${empresaId}_ativa`
 const desligadaGeral = () => process.env.WA_CAPTURA_DESLIGADA === '1'
 
@@ -110,7 +127,7 @@ async function abrir(s: Sessao): Promise<void> {
   const sock = makeWASocket({
     auth: state,
     version,
-    logger,
+    logger: loggerDa(s.empresaId),
     // Nome padrão de navegador: com nome inventado o celular removia o aparelho
     // logo depois de conectar ("device_removed", 2026-11-25). Aparece no
     // celular como "Chrome (Ubuntu)".
@@ -126,6 +143,7 @@ async function abrir(s: Sessao): Promise<void> {
   sock.ev.on('creds.update', saveCreds)
 
   sock.ev.on('connection.update', (u) => {
+    if (u.connection || u.lastDisconnect) diario(s.empresaId, `conexao ${u.connection || ''} ${(u.lastDisconnect?.error as { message?: string } | undefined)?.message || ''} ${JSON.stringify((u.lastDisconnect?.error as { output?: unknown } | undefined)?.output || '').slice(0, 300)}`)
     if (s.sock !== sock) return
     if (u.qr) {
       s.qr = u.qr
@@ -195,6 +213,9 @@ async function abrir(s: Sessao): Promise<void> {
   })
 
   sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    for (const b of messages as { key?: { remoteJid?: string; id?: string; fromMe?: boolean; remoteJidAlt?: string; senderPn?: string }; messageStubType?: number; message?: Record<string, unknown> | null; messageTimestamp?: unknown }[]) {
+      diario(s.empresaId, `upsert ${type} jid=${b.key?.remoteJid} alt=${b.key?.remoteJidAlt || b.key?.senderPn || '-'} id=${b.key?.id} deMim=${!!b.key?.fromMe} stub=${b.messageStubType ?? '-'} campos=${Object.keys(b.message || {}).join(',') || '-'} t=${String(b.messageTimestamp)}`)
+    }
     // 'notify' = mensagem nova. 'append' = mensagem que chegou enquanto a
     // captura estava fora do ar (o WhatsApp entrega quando reconecta) — antes
     // era descartada e o lead se perdia. Só aceita 'append' de depois que a
