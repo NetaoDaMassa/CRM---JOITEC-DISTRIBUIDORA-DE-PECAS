@@ -19,6 +19,7 @@ import {
   mesmoClienteNaEmpresa,
   registrarEntrada,
 } from '../lib/prospeccaoNova.js'
+import { acharDuplicados, descreverDuplicado, duplicadosQueBloqueiam } from '../lib/clienteDuplicado.js'
 
 type Role = 'admin' | 'vendor' | 'gestor'
 
@@ -142,7 +143,7 @@ export const prospeccaoRouter = router({
 
   // Confere um CNPJ/CPF antes de cadastrar: dados da Receita + se já existe
   // em alguma empresa do grupo (e com quem).
-  verificarDocumento: protectedProcedure.input(z.object({ documento: z.string().min(11) })).mutation(async ({ ctx, input }) => {
+  verificarDocumento: protectedProcedure.input(z.object({ documento: z.string().min(11), telefone: z.string().optional() })).mutation(async ({ ctx, input }) => {
     const doc = soDig(input.documento)
     if (doc.length !== 11 && doc.length !== 14) throw new Error('Digite um CNPJ (14 números) ou CPF (11 números).')
     const iguais = await db.query.clientes.findMany({
@@ -158,8 +159,12 @@ export const prospeccaoRouter = router({
     })
     const receita = doc.length === 14 ? await buscarCnpj(doc).catch(() => null) : null
     // + o mesmo cliente aqui sem CNPJ no cadastro (pelo código SAP ou pelo nome).
-    for (const c of await mesmoClienteNaEmpresa(ctx.empresaId, doc, [receita?.razaoSocial ?? '']))
-      if (!iguais.some((x) => x.id === c.id)) iguais.push(c as (typeof iguais)[number])
+    // (regra única: CNPJ, código SAP, nome e telefone — lib/clienteDuplicado.ts)
+    const aqui = await acharDuplicados(ctx.empresaId, { doc, nomes: [receita?.razaoSocial], telefones: [input.telefone, receita?.telefone] })
+    for (const c of aqui)
+      if (!iguais.some((x) => x.id === c.id))
+        iguais.push({ ...c, vendedorAtual: c.vendedorNome ? { name: c.vendedorNome } : null } as unknown as (typeof iguais)[number])
+    const infoAqui = new Map(aqui.map((d) => [d.id, d]))
     const nomeEmp = new Map((await db.query.empresas.findMany({ columns: { id: true, nome: true } })).map((e) => [e.id, e.nome]))
     const existentes = iguais.map((c) => ({
       id: c.id,
@@ -175,6 +180,8 @@ export const prospeccaoRouter = router({
           : 'no Banco de Clientes, sem vendedor',
       semDono: !c.vendedorAtualId,
       souEu: c.vendedorAtualId === ctx.user.id,
+      motivos: infoAqui.get(c.id)?.motivos ?? (c.empresaId === ctx.empresaId ? ['cnpj'] : []),
+      filial: (infoAqui.get(c.id)?.filial || infoAqui.get(c.id)?.pessoaDiferente) ?? false,
     }))
     return { existentes, receita }
   }),
@@ -197,6 +204,8 @@ export const prospeccaoRouter = router({
         proximoContato: dataYmd.optional(),
         // Só o admin: cadastrar em nome de um vendedor.
         vendedorId: z.number().optional(),
+        // Gestor confirmou que é outro cliente (nome/telefone igual, CNPJ de outra raiz).
+        confirmarOutroCliente: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -207,13 +216,14 @@ export const prospeccaoRouter = router({
       const doc = soDig(input.documento)
       {
         // Mesmo cliente já cadastrado AQUI — por CNPJ/CPF, código SAP do grupo ou nome igual.
-        const iguaisAqui = await mesmoClienteNaEmpresa(ctx.empresaId, doc, [input.razaoSocial])
+        // + telefone (João, 2026-11-26 — DIRECIONAL: mesmo telefone, CNPJ errado no cadastro antigo).
+        const iguaisAqui = await duplicadosQueBloqueiam(ctx.empresaId, { doc, nomes: [input.razaoSocial], telefones: [input.telefoneWhatsapp] })
+        const podeForcar = !!input.confirmarOutroCliente && ctx.user.role !== 'vendor'
+        const forte = iguaisAqui.some((c) => c.motivos.includes('cnpj') || c.motivos.includes('codigo'))
         const comDono = iguaisAqui.find((c) => c.vendedorAtualId)
-        if (comDono)
-          throw new Error(
-            `Esse cliente já existe nesta empresa: ${comDono.razaoSocial} (${comDono.codigo}) — ${comDono.emProspeccao && comDono.prospeccaoOrigem ? 'em prospecção' : 'na carteira'} de ${comDono.vendedorAtual?.name ?? 'outro vendedor'}. Não dá pra cadastrar de novo.`
-          )
-        const jaAqui = iguaisAqui[0]
+        if (comDono && !(podeForcar && !forte))
+          throw new Error(`Esse cliente já existe nesta empresa: ${descreverDuplicado(comDono)}. Não dá pra cadastrar de novo — se é outro cliente de verdade, peça ao gestor.`)
+        const jaAqui = podeForcar && !forte ? undefined : iguaisAqui[0]
         if (jaAqui) {
           // Já existe no banco daqui: em vez de duplicar, puxa esse cadastro.
           const ok = await assumirParaProspeccao({ clienteId: jaAqui.id, vendedorId: vendedorAtualId, origem: 'banco', alteradoPor: ctx.user.id })
@@ -417,9 +427,11 @@ export const prospeccaoRouter = router({
     return { success: true }
   }),
 
-  enviarParaCarteira: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+  enviarParaCarteira: protectedProcedure.input(z.object({ id: z.number(), liberarDuplicado: z.boolean().optional() })).mutation(async ({ ctx, input }) => {
     await assertProspectAlcancavel(input.id, ctx.empresaId, ctx.user.id, ctx.user.role)
-    await enviarProspectParaCarteira(input.id, ctx.user.id)
+    // Só o gestor (quem não é vendedor) libera prospect que bate com cliente de outro vendedor.
+    const liberadoPeloGestor = !!input.liberarDuplicado && ctx.user.role !== 'vendor'
+    await enviarProspectParaCarteira(input.id, ctx.user.id, liberadoPeloGestor ? 'liberado pelo gestor (duplicado conferido)' : undefined, { liberadoPeloGestor })
     return { success: true }
   }),
 

@@ -7,6 +7,7 @@ import { regiaoPorUf } from './regiao.js'
 import { mesReferenciaAtual } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { transferirCliente } from '../router/carteira.js'
+import { descreverDuplicado, duplicadosQueBloqueiam } from './clienteDuplicado.js'
 
 export interface ImportRowError {
   linha: number
@@ -200,6 +201,15 @@ export async function importarClientesCsv(
 
     const telefoneWhatsapp = getCol(row, 'telefone_limpo') || getCol(row, 'Telefone') || undefined
     const cidade = getCol(row, 'Cidade') || undefined
+
+    // Planilha não cria cliente que já existe (João, 2026-11-26: as importações
+    // de 28/07, 03/08 e 02/09 sem CNPJ geraram 230 duplicados). Regra única:
+    // CNPJ, código SAP, nome e telefone — lib/clienteDuplicado.ts.
+    const dupPlanilha = await duplicadosQueBloqueiam(empresaId, { doc: cnpj, nomes: [razaoSocial], telefones: [telefoneWhatsapp], codigo })
+    if (dupPlanilha.length) {
+      erros.push({ linha, motivo: `Já existe: ${descreverDuplicado(dupPlanilha[0])} — linha não importada` })
+      continue
+    }
 
     // Uma linha com problema inesperado (ex: alguma constraint que não
     // checamos acima) não pode derrubar o arquivo inteiro — sem isso, um

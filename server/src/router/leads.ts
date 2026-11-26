@@ -46,6 +46,7 @@ import {
   getMissingRequiredFields,
   getLeadEffectiveDate,
 } from '../lib/leadsStatus.js'
+import { travarDuplicado } from '../lib/clienteDuplicado.js'
 
 // Portado de /Users/weslley/Documents/odin-tubos-crm--master/server/src/router/leads.ts
 // (fase 1 do plano em /Users/weslley/.claude/plans/stateful-soaring-moore.md — núcleo
@@ -1810,6 +1811,8 @@ export const leadsRouter = router({
         estado: z.string().optional(),
         cidade: z.string().optional(),
         nomeContato: z.string().optional(),
+        // Gestor confirmou que é outro cliente (nome/telefone igual, CNPJ de outra raiz).
+        confirmarOutroCliente: z.boolean().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -1840,6 +1843,13 @@ export const leadsRouter = router({
       }
 
       const vendedorAtualId = lead.vendorId
+      // Regra única de duplicado (CNPJ, nome, telefone do lead) — lib/clienteDuplicado.ts.
+      await travarDuplicado(ctx.empresaId, {
+        doc: cnpjLimpo || cpfLimpo,
+        nomes: [input.razaoSocial],
+        telefones: [`${lead.ddd ?? ''}${lead.phone ?? ''}`],
+        podeForcar: !!input.confirmarOutroCliente && ctx.user.role !== 'vendor',
+      })
       const result = await db.insert(clientes).values({
         empresaId: ctx.empresaId,
         razaoSocial: input.razaoSocial,

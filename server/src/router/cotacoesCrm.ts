@@ -56,6 +56,7 @@ import { cpfValido } from '../lib/cpf.js'
 import { regiaoPorUf } from '../lib/regiao.js'
 import { noPiloto } from '../lib/pilotoFinanceiro.js'
 import { atualizarDadosClienteSap, catalogoAtualizadoEm, dadosClienteSap, emitenteDaFilial, sincronizarCatalogoSap } from '../lib/sapCatalogo.js'
+import { duplicadosQueBloqueiam } from '../lib/clienteDuplicado.js'
 
 const FEATURE = 'cotacoes'
 // Lista 01.BASE — usada quando o cliente não tem lista no SAP.
@@ -446,6 +447,14 @@ export const cotacoesCrmRouter = router({
           throw new TRPCError({ code: 'CONFLICT', message: `Esse cliente já existe no CRM (${existe.razaoSocial}, ${existe.codigo}) na carteira de ${dono?.name ?? 'outro vendedor'}.` })
         }
         return { id: existe.id, codigo: existe.codigo, nome: existe.razaoSocial, cidade: existe.cidade, estado: existe.estado, jaExistia: true }
+      }
+      // Mesmo cliente sem CNPJ no cadastro (nome igual, código antigo) — regra única lib/clienteDuplicado.ts.
+      const dup = (await duplicadosQueBloqueiam(ctx.empresaId, { doc, nomes: [input.nome] }))[0]
+      if (dup) {
+        if (!ctx.veTudo && dup.vendedorAtualId && dup.vendedorAtualId !== ctx.user.id)
+          throw new TRPCError({ code: 'CONFLICT', message: `Esse cliente já existe no CRM (${dup.razaoSocial}, ${dup.codigo}) na carteira de ${dup.vendedorNome ?? 'outro vendedor'}.` })
+        const c = await db.query.clientes.findFirst({ where: eq(clientes.id, dup.id), columns: { id: true, codigo: true, razaoSocial: true, cidade: true, estado: true } })
+        if (c) return { id: c.id, codigo: c.codigo, nome: c.razaoSocial, cidade: c.cidade, estado: c.estado, jaExistia: true }
       }
       const r = await db.insert(clientes).values({
         empresaId: ctx.empresaId,

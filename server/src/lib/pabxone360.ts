@@ -32,6 +32,7 @@ import { getConfigBool, getConfigNumero, getConfigTexto } from './configuracoes.
 import { TERMINAL_STATUSES, type LeadStatus } from './leadsStatus.js'
 import { contarTentativaSePendente } from '../router/contatos.js'
 import { registrarLigacaoPabxNoProspect } from './prospeccaoNova.js'
+import { avisarLigacaoClienteDeOutro } from './clienteDuplicado.js'
 
 const BASE_URL = 'https://pabxone360.com.br/suite/api'
 export const SLUGS_EMPRESAS_PABX = ['odin-compressores', 'odin-tubos', 'joitec-automacao']
@@ -580,6 +581,10 @@ export async function registrarChamadasNoCrm(
     const detalhe = `${direcao === 'OUTBOUND' ? 'feita' : 'recebida'}, ramal ${chamada.ramal ?? '?'}`
 
     if (cliente) {
+      // Ligou pra cliente de outro vendedor → avisa os dois (lib/clienteDuplicado.ts).
+      await avisarLigacaoClienteDeOutro({ clienteId: cliente.id, quemLigou: contaNaEmpresa(cliente.empresaId), direcao }).catch((e) =>
+        console.error('[pabx] aviso cliente de outro vendedor:', e instanceof Error ? e.message : e)
+      )
       const funil = await db.query.funilMensal.findFirst({
         where: and(eq(funilMensal.clienteId, cliente.id), eq(funilMensal.mesReferencia, mesReferenciaAtual()), isNull(funilMensal.deletedAt)),
       })

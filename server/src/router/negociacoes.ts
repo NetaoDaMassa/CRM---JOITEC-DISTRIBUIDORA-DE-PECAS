@@ -5,6 +5,7 @@ import { db } from '../db/client.js'
 import { cobrancasRegistro, clientesCartorio, clientesRc, clientes, empresas, users } from '../db/schema.js'
 import { agoraSqlite, hojeBrString } from '../lib/dataBr.js'
 import { DIAS_REGUA, diaDaReguaEm, enviarVencidasAoCartorio, gravarDiasCobrados, lerDiasCobrados, reguaDoVencimento } from '../lib/reguaCobranca.js'
+import { duplicadosQueBloqueiam } from '../lib/clienteDuplicado.js'
 
 async function validarCliente(clienteId: number, empresaId: number) {
   const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, clienteId), eq(clientes.empresaId, empresaId)) })
@@ -377,6 +378,11 @@ export const negociacoesRouter = router({
             ehCnpj ? eq(clientes.cnpj, documentoDigitos) : eq(clientes.cpf, documentoDigitos)
           ),
         })
+        if (!cliente) {
+          // Mesmo cliente sem CNPJ no cadastro (nome igual / código antigo): usa ele em vez de duplicar.
+          const dup = (await duplicadosQueBloqueiam(empresaAlvo.id, { doc: documentoDigitos, nomes: [razaoSocial] }))[0]
+          if (dup) cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, dup.id) })
+        }
 
         if (!cliente) {
           const result = await db.insert(clientes).values({

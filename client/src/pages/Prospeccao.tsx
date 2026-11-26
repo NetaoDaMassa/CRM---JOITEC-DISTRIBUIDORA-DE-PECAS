@@ -4,7 +4,7 @@
 // obrigatório, botões Ligar/WhatsApp/E-mail com confirmação (igual card da
 // carteira), sugestões do SAP por região e relatório. Servidor:
 // server/src/router/prospeccao.ts + lib/prospeccaoNova.ts.
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { Mail, Phone, Plus, RefreshCw, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -301,13 +301,22 @@ function FichaProspect({
     },
     onError: (e) => toast.error(e.message),
   })
+  const { user } = useAuth()
+  const ehGestor = user?.role !== 'vendor'
+  // Conferência no ganho (2026-11-26): se bater com cliente de outro vendedor,
+  // o vendedor é barrado; o gestor vê o motivo e pode liberar.
+  const [barrado, setBarrado] = useState<string | null>(null)
   const carteiraMut = trpc.prospeccao.enviarParaCarteira.useMutation({
     onSuccess: () => {
       toast.success('Enviado pra carteira — já aparece no seu Kanban do mês')
       utils.prospeccao.quadro.invalidate()
+      setBarrado(null)
       onClose()
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      if (e.message.includes('já é de outro vendedor')) setBarrado(e.message)
+      else toast.error(e.message)
+    },
   })
 
   return (
@@ -370,6 +379,16 @@ function FichaProspect({
             Enviar pra carteira
           </Button>
         </div>
+        {barrado && (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 space-y-2">
+            <p>{barrado}</p>
+            {ehGestor && (
+              <Button size="sm" variant="danger" loading={carteiraMut.isPending} onClick={() => carteiraMut.mutate({ id: p.id, liberarDuplicado: true })}>
+                Conferi — liberar mesmo assim
+              </Button>
+            )}
+          </div>
+        )}
         {p.prospeccaoMotivo && !aberto && <p className="text-xs text-red-300">Motivo: {p.prospeccaoMotivo}</p>}
 
         {aberto && (
@@ -474,27 +493,41 @@ function NovoProspectModal({ open, onClose, vendedores }: { open: boolean; onClo
     },
     onError: (e) => toast.error(e.message),
   })
+  const { user } = useAuth()
+  // Trava de duplicado (2026-11-26): mostra o motivo; o gestor pode confirmar
+  // que é outro cliente (só vale pra nome/telefone igual — CNPJ igual nunca).
+  const [erroDup, setErroDup] = useState<string | null>(null)
+  const confirmarRef = useRef(false)
+  const formRef = useRef<HTMLFormElement>(null)
   const criarMut = trpc.prospeccao.criar.useMutation({
     onSuccess: (r) => {
       toast.success(r.puxouDoBanco ? 'Já existia no Banco de Clientes — foi puxado pra sua prospecção' : 'Prospect cadastrado')
       utils.prospeccao.quadro.invalidate()
       setF(vazio)
+      setErroDup(null)
       verificarMut.reset()
       onClose()
     },
-    onError: (e) => toast.error(e.message),
+    onError: (e) => {
+      if (e.message.includes('já existe nesta empresa')) setErroDup(e.message)
+      else toast.error(e.message)
+    },
   })
   const existentes = verificarMut.data?.existentes ?? []
-  const bloqueado = existentes.some((e) => e.aqui && !e.semDono)
+  const bloqueado = existentes.some((e) => e.aqui && !e.semDono && !e.filial)
   return (
     <Modal open={open} onClose={onClose} title="Novo prospect" size="lg">
       <form
+        ref={formRef}
         className="space-y-3"
         onSubmit={(e) => {
           e.preventDefault()
           if (!f.razaoSocial.trim()) return toast.error('Preencha o nome.')
           if (!f.canal) return toast.error('Escolha de onde veio.')
+          const confirmarOutroCliente = confirmarRef.current
+          confirmarRef.current = false
           criarMut.mutate({
+            confirmarOutroCliente: confirmarOutroCliente || undefined,
             razaoSocial: f.razaoSocial,
             documento: f.documento || undefined,
             telefoneWhatsapp: f.telefone || undefined,
@@ -527,8 +560,10 @@ function NovoProspectModal({ open, onClose, vendedores }: { open: boolean; onClo
               <div className="text-sm rounded-lg bg-green-500/10 text-green-400 px-3 py-2">Não existe em nenhuma empresa do grupo. Pode cadastrar.</div>
             ) : (
               existentes.map((e) => (
-                <div key={e.id} className={`text-sm rounded-lg px-3 py-2 ${e.aqui && !e.semDono ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}>
+                <div key={e.id} className={`text-sm rounded-lg px-3 py-2 ${e.aqui && !e.semDono && !e.filial ? 'bg-red-500/10 text-red-300' : 'bg-amber-500/10 text-amber-300'}`}>
                   <b>{e.empresa}:</b> {e.razaoSocial} — {e.situacao}
+                  {e.aqui && e.motivos.length > 0 && <span className="opacity-75"> ({e.motivos.map((m) => ({ cnpj: 'mesmo CNPJ', codigo: 'mesmo código SAP', nome: 'mesmo nome', telefone: 'mesmo telefone' })[m as 'cnpj'] ?? m).join(', ')})</span>}
+                  {e.filial && ' · filial (outro CNPJ da mesma empresa) — pode cadastrar.'}
                   {e.aqui && e.semDono && ' · ao cadastrar, esse cadastro é puxado pra sua prospecção (sem duplicar).'}
                 </div>
               ))
@@ -558,6 +593,24 @@ function NovoProspectModal({ open, onClose, vendedores }: { open: boolean; onClo
           )}
         </div>
         <Textarea label="Observações (opcional)" value={f.obs} onChange={(e) => set({ obs: e.target.value })} rows={2} />
+        {erroDup && (
+          <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 space-y-2">
+            <p>{erroDup}</p>
+            {user?.role !== 'vendor' && !/mesmo CNPJ|mesmo código/.test(erroDup) && (
+              <Button
+                type="button"
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  confirmarRef.current = true
+                  formRef.current?.requestSubmit()
+                }}
+              >
+                É outro cliente — cadastrar mesmo assim
+              </Button>
+            )}
+          </div>
+        )}
         <div className="flex justify-end">
           <Button type="submit" disabled={bloqueado} loading={criarMut.isPending}>
             Cadastrar prospect

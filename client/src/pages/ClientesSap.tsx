@@ -80,7 +80,7 @@ export default function ClientesSap() {
       cidade: string | null
       vendedorSapNome: string
       ignorado: boolean
-      pareceSer: { id: number; razaoSocial: string; codigo: string; excluido: boolean; motivo?: 'cnpj' | 'nome' } | null
+      pareceSer: { id: number; razaoSocial: string; codigo: string; excluido: boolean; motivo?: 'cnpj' | 'nome' | 'telefone' } | null
       pedidos?: string[]
       vendedorSugeridoId?: number | null
       notas?: number
@@ -122,7 +122,7 @@ export default function ClientesSap() {
               </Button>
             ) : (
               <>
-                {(!c.pareceSer || c.pareceSer.motivo === 'nome') && (
+                {(!c.pareceSer || c.pareceSer.motivo !== 'cnpj') && (
                   <>
                     <select value={valorSelect} onChange={(e) => setEscolha((s) => ({ ...s, [c.codigo]: e.target.value }))} className={classeSelect} aria-label="Vendedor">
                       <option value="">Sem vendedor (Banco de Clientes)</option>
@@ -150,7 +150,7 @@ export default function ClientesSap() {
         {c.pareceSer && !c.ignorado && (
           <div className="border-t border-dark-700/70 pt-2 flex flex-wrap items-center gap-3 text-sm">
             <span className="text-dark-300">
-              {c.pareceSer.motivo === 'nome' ? 'Nome parecido com' : 'Mesmo CNPJ de'}{' '}
+              {c.pareceSer.motivo === 'nome' ? 'Nome parecido com' : c.pareceSer.motivo === 'telefone' ? 'Mesmo telefone de' : 'Mesmo CNPJ de'}{' '}
               <Link to={`/admin/clientes/${c.pareceSer.id}`} className="text-gold-400 hover:underline">
                 {c.pareceSer.razaoSocial}
               </Link>{' '}

@@ -72,6 +72,7 @@ import { expedicaoRouter } from './expedicao.js'
 import { lojaRastreamentoRouter } from './lojaRastreamento.js'
 import { pabxRouter } from './pabx.js'
 import { motivosPerdaRouter } from './motivosPerda.js'
+import { clientesDuplicadosRouter } from './clientesDuplicados.js'
 import { devolucoesRouter } from './devolucoes.js'
 import { devolucaoEcommerceRouter } from './devolucaoEcommerce.js'
 import { ordensRouter } from './ordens/index.js'
@@ -175,6 +176,7 @@ export const appRouter = router({
   clientesSap: clientesSapRouter,
   pabx: pabxRouter,
   motivosPerda: motivosPerdaRouter,
+  clientesDuplicados: clientesDuplicadosRouter,
   devolucoes: devolucoesRouter,
   devolucaoEcommerce: devolucaoEcommerceRouter,
   ordens: ordensRouter,

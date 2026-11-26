@@ -12,6 +12,7 @@ import type { SapSessao } from './sapServiceLayer.js'
 import { sincronizarItensSap, vendedoresAutomacaoSap } from './sapSyncItens.js'
 import { sincronizarVendasSap, slugDoPedidoSap, vendedoresOdinTubosSap } from './sapVendasAuto.js'
 import { nomeParecido, normalizarNome } from './nomeParecido.js'
+import { duplicadosQueBloqueiam } from './clienteDuplicado.js'
 
 // Clientes do SAP → CRM — pedido do João, 2026-11-01:
 //   1. "têm venda no SAP e não estão no CRM": cliente com nota de venda
@@ -345,8 +346,15 @@ async function destinos() {
   }
 }
 
+// Já existe nesta empresa por nome/telefone (regra única lib/clienteDuplicado.ts)?
+async function travadoPorDuplicado(cad: CadastroSap, empresaId: number) {
+  const dup = await duplicadosQueBloqueiam(empresaId, { doc: cad.cnpj ?? cad.cpf, nomes: [cad.nome], telefones: [cad.telefone], codigo: cad.codigo })
+  return dup[0] ?? null
+}
+
 // Lista do gestor: cadastros novos que não entraram sozinhos (vendedor do
-// SAP sem ligação) e ainda não estão nesta empresa.
+// SAP sem ligação, ou travados porque parecem um cliente que já existe) e
+// ainda não estão nesta empresa.
 export async function cadastrosNovosPendentes(empresaId: number) {
   const desde = await autoDesde()
   if (!desde) return { ligado: false as const, desde: null, lista: [] }
@@ -355,10 +363,19 @@ export async function cadastrosNovosPendentes(empresaId: number) {
   const indice = await indiceClientes(empresaId)
   const fora = await ignorados(empresaId)
   const nomeSap = new Map(vendedores.map((v) => [v.codigo, v.nome]))
+  // Os que tinham vendedor ligado nesta empresa mas foram travados por duplicado.
+  const travados = new Map<string, Awaited<ReturnType<typeof travadoPorDuplicado>>>()
+  for (const c of novos) {
+    const d = destino(c.vendedorSap)
+    if (!c.ativo || !d || d.empresaId !== empresaId || indice.porCodigo(c.codigo) || indice.porDoc(c)) continue
+    const t = await travadoPorDuplicado(c, empresaId)
+    if (t) travados.set(c.codigo, t)
+  }
   const lista = novos
-    .filter((c) => c.ativo && !destino(c.vendedorSap) && !indice.porCodigo(c.codigo))
+    .filter((c) => c.ativo && (!destino(c.vendedorSap) || travados.has(c.codigo)) && !indice.porCodigo(c.codigo))
     .map((c) => {
-      const parecido = indice.sugestao(c, c.nome)
+      const t = travados.get(c.codigo)
+      const parecido = t ? { id: t.id, razaoSocial: t.razaoSocial, codigo: t.codigo, deletedAt: null, motivo: t.motivos.includes('telefone') && !t.motivos.includes('nome') ? ('telefone' as const) : ('nome' as const) } : indice.sugestao(c, c.nome)
       return {
         codigo: c.codigo,
         nome: c.nome,
@@ -479,6 +496,13 @@ export async function sincronizarClientesNovosSap(): Promise<{ criados: number; 
     if (!indices.has(d.empresaId)) indices.set(d.empresaId, await indiceClientes(d.empresaId))
     const indice = indices.get(d.empresaId)!
     if (indice.porCodigo(cad.codigo) || indice.porDoc(cad)) continue
+    // Mesmo cliente já no CRM sem CNPJ / com código antigo (nome ou telefone
+    // igual — as planilhas de 28/07, 03/08 e 02/09): NÃO cria outro. Fica na
+    // lista "Clientes do SAP p/ cadastrar" pro gestor ligar o código (João, 2026-11-26).
+    if (await travadoPorDuplicado(cad, d.empresaId)) {
+      pendentes++
+      continue
+    }
     await inserirCliente(cad, d.empresaId, d.id, autor.id)
     indices.set(d.empresaId, await indiceClientes(d.empresaId))
     trazerHistorico(cad.codigo, autor.id)

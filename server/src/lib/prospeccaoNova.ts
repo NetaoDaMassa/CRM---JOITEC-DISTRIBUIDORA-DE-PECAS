@@ -10,7 +10,8 @@
 // Bruna — nunca aparece aqui.
 import { and, eq, inArray, isNull, or, sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { carteiraHistorico, clientes, funilMensal, prospeccaoRegistros } from '../db/schema.js'
+import { carteiraHistorico, clienteTelefones, clientes, funilMensal, notifications, prospeccaoRegistros } from '../db/schema.js'
+import { descreverDuplicado, duplicadosQueBloqueiam, ROTULO_MOTIVO } from './clienteDuplicado.js'
 import { agoraSqlite, hojeBrString, mesReferenciaAtual } from './dataBr.js'
 import { registrarAuditoria } from './auditoria.js'
 import { getConfigTexto } from './configuracoes.js'
@@ -80,11 +81,37 @@ export async function registrarLigacaoPabxNoProspect(p: {
 }
 
 // ── Enviar pra carteira ─────────────────────────────────────────────────────
-export async function enviarProspectParaCarteira(clienteId: number, alteradoPor: number | null, motivo = 'enviado pelo vendedor') {
+export async function enviarProspectParaCarteira(
+  clienteId: number,
+  alteradoPor: number | null,
+  motivo = 'enviado pelo vendedor',
+  opcoes: { liberadoPeloGestor?: boolean; semConferir?: boolean } = {}
+) {
   const c = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId) })
   if (!c) throw new Error('Prospect não encontrado')
   if (!c.emProspeccao) throw new Error('Este cliente já está na carteira.')
   if (!c.vendedorAtualId) throw new Error('Defina um vendedor responsável antes de enviar pra carteira.')
+  // Conferência no ganho (João, 2026-11-26 — caso DIRECIONAL BAURU): antes de
+  // entrar na carteira, confere de novo CNPJ, código, nome e telefone. Bateu
+  // com cliente de OUTRO vendedor → só o gestor libera.
+  if (!opcoes.semConferir && !opcoes.liberadoPeloGestor) {
+    const tels = [c.telefoneWhatsapp, ...(await db.query.clienteTelefones.findMany({ where: eq(clienteTelefones.clienteId, c.id), columns: { numero: true } })).map((t) => t.numero)]
+    const dup = (
+      await duplicadosQueBloqueiam(c.empresaId, { doc: c.cnpj || c.cpf, nomes: [c.razaoSocial], telefones: tels, codigo: c.codigo, ignorarIds: [c.id] })
+    ).filter((d) => d.vendedorAtualId && d.vendedorAtualId !== c.vendedorAtualId)
+    if (dup.length) {
+      const d = dup[0]
+      if (d.vendedorAtualId)
+        await db.insert(notifications).values({
+          vendedorId: d.vendedorAtualId,
+          clienteId: d.id,
+          type: 'duplicado_ganho',
+          title: 'Outro vendedor tentou mandar seu cliente pra carteira dele',
+          message: `${c.razaoSocial}: um prospect com ${d.motivos.map((m) => ROTULO_MOTIVO[m]).join(', ')} do seu cliente ${d.razaoSocial} foi barrado no "ganho" e foi pro gestor decidir.`,
+        })
+      throw new Error(`Não dá pra mandar pra carteira: esse cliente já é de outro vendedor — ${descreverDuplicado(d)}. Peça ao gestor: só ele pode liberar.`)
+    }
+  }
   await db
     .update(clientes)
     .set({ emProspeccao: false, prospeccaoEtapa: 'ganho', prospeccaoEncerradoEm: agoraSqlite(), prospeccaoProximoContato: null, updatedAt: agoraSqlite() })
@@ -116,7 +143,7 @@ export async function enviarProspectParaCarteira(clienteId: number, alteradoPor:
 export async function concluirProspeccaoPorVenda(clienteId: number) {
   const p = await ehProspectNovo(clienteId)
   if (!p || !p.vendedorAtualId) return
-  await enviarProspectParaCarteira(clienteId, null, 'venda do SAP')
+  await enviarProspectParaCarteira(clienteId, null, 'venda do SAP', { semConferir: true })
 }
 
 // ── Sugestões (SAP / vendas do CRM) ─────────────────────────────────────────

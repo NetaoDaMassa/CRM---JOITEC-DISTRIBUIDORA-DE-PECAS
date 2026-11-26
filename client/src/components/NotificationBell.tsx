@@ -27,6 +27,7 @@ function playBeep() {
 function rotuloDoTipo(tipo: string, titulo: string): string {
   const t = tipo.toLowerCase()
   if (t === 'chat_sem_resposta') return 'Chat sem resposta'
+  if (t === 'cliente_de_outro_vendedor' || t === 'duplicado_ganho') return 'Cliente de outro vendedor'
   if (t.includes('sem_contato') || t.includes('contato')) return 'Clientes sem contato'
   if (t.includes('lead')) return 'Leads'
   if (t.includes('demanda')) return 'Demandas'
@@ -41,6 +42,7 @@ function rotuloDoTipo(tipo: string, titulo: string): string {
 function iconeDoTipo(tipo: string, titulo: string): string {
   const t = `${tipo} ${titulo}`.toLowerCase()
   if (tipo === 'chat_sem_resposta') return '💬'
+  if (tipo === 'cliente_de_outro_vendedor' || tipo === 'duplicado_ganho') return '⚠️'
   if (t.includes('lead')) return '🧲'
   if (t.includes('demanda')) return '📌'
   if (t.includes('contato')) return '⏰'

@@ -47,6 +47,8 @@ import {
   situacaoNoSap,
   type DadosCadastro,
 } from '../lib/sapCadastroCliente.js'
+import { duplicadosQueBloqueiam } from '../lib/clienteDuplicado.js'
+import { codigoSap } from '../lib/codigoSap.js'
 
 export const FEATURE_APROVAR = 'aprovacao_cadastro_cliente'
 // Quem cadastra. Chave própria (não 'cotacoes') pra liberar aos poucos —
@@ -210,6 +212,15 @@ async function clienteNoCrm(l: Linha, d: DadosCadastro, cardCode: string, autorI
   const doc = campos.cnpj ? eq(clientes.cnpj, campos.cnpj) : campos.cpf ? eq(clientes.cpf, campos.cpf) : null
   let alvo = l.clienteId ? await db.query.clientes.findFirst({ where: and(eq(clientes.id, l.clienteId), eq(clientes.empresaId, l.empresaId)) }) : undefined
   if (!alvo && doc) alvo = await db.query.clientes.findFirst({ where: and(eq(clientes.empresaId, l.empresaId), doc, isNull(clientes.deletedAt)) })
+  if (!alvo) {
+    // Mesmo cliente já no CRM sem CNPJ / com código antigo (nome ou telefone igual):
+    // liga o código do SAP nele em vez de criar outro (regra única lib/clienteDuplicado.ts).
+    // Só se ele ainda não tem outro código do SAP — aí seria outro cadastro do SAP.
+    const dup = (await duplicadosQueBloqueiam(l.empresaId, { doc: campos.cnpj ?? campos.cpf, nomes: [campos.razaoSocial], telefones: [campos.telefoneWhatsapp], codigo: cardCode })).find(
+      (x) => !codigoSap(x.codigo) || codigoSap(x.codigo) === codigoSap(cardCode)
+    )
+    if (dup) alvo = await db.query.clientes.findFirst({ where: eq(clientes.id, dup.id) })
+  }
   if (alvo) {
     const codigo = alvo.codigo.startsWith('M') || alvo.codigo.startsWith('P') ? { codigo: cardCode } : alvo.codigo === cardCode ? {} : { codigoAntigo: alvo.codigoAntigo ?? alvo.codigo, codigo: cardCode }
     // Cliente "sem cadastro" da cotação (PROV-…): agora entra na carteira.

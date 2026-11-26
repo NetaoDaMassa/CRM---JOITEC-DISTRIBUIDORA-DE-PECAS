@@ -22,6 +22,7 @@ import { clientes, carteiraHistorico, funilMensal, users, prospeccaoRegistros, e
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { cnpjValido, limparCnpj } from '../lib/cnpj.js'
+import { travarDuplicado } from '../lib/clienteDuplicado.js'
 
 const SLUG_ODIN = 'odin-compressores'
 
@@ -171,10 +172,18 @@ export const prospeccaoOdinRouter = router({
 
   // ── Cadastro (campos ricos) ────────────────────────────────────────────
   criar: adminOrFeatureProcedure('prospeccao_odin')
-    .input(camposCliente.extend({ vendedorId: z.number().optional() }))
+    .input(camposCliente.extend({ vendedorId: z.number().optional(), confirmarOutroCliente: z.boolean().optional() }))
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOdin(ctx.empresaId)
       const vendedorAtualId = ctx.user.role === 'admin' && input.vendedorId ? input.vendedorId : ctx.user.id
+      // Regra única de duplicado (CNPJ, código SAP, nome, telefone) — lib/clienteDuplicado.ts.
+      await travarDuplicado(ctx.empresaId, {
+        doc: input.cnpj,
+        nomes: [input.razaoSocial],
+        telefones: [input.telefoneWhatsapp],
+        codigo: input.codigo,
+        podeForcar: !!input.confirmarOutroCliente && ctx.user.role !== 'vendor',
+      })
 
       // Região é obrigatória na tabela de clientes. Vem do formulário (região
       // DO CLIENTE — a Bruna prospecta em todas); se não vier, herda a do

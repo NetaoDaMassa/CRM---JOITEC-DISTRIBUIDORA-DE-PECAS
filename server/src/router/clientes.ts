@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { and, asc, count, desc, eq, inArray, isNull, isNotNull, like, or, sql } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas, sapImportacoes, sapItensHistorico, sapVendasHistorico } from '../db/schema.js'
+import { clientes, clienteTelefones, carteiraHistorico, funilMensal, registroContato, itensPedido, vendas, users, bancoClientesLiberacoes, revendas, sapImportacoes, sapItensHistorico, sapVendasHistorico } from '../db/schema.js'
 import { chaveItem, coberturaItensSap, dentroDaCobertura } from '../lib/sapItens.js'
 import { cnpjValido, limparCnpj, formatarCnpj } from '../lib/cnpj.js'
 import { cpfValido, limparCpf } from '../lib/cpf.js'
@@ -13,6 +13,7 @@ import { registrarAuditoria } from '../lib/auditoria.js'
 import { mesReferenciaAtual, agoraSqlite } from '../lib/dataBr.js'
 import { transferirCliente, validarVendedorDaEmpresa } from './carteira.js'
 import { assumirParaProspeccao, mesmoClienteNaEmpresa } from '../lib/prospeccaoNova.js'
+import { duplicadosQueBloqueiam, travarDuplicado } from '../lib/clienteDuplicado.js'
 
 const PAGE_SIZE = 20
 // Rótulo pra cliente sem vendedor que não veio de nenhuma importação com
@@ -395,6 +396,8 @@ export const clientesRouter = router({
         telefoneWhatsapp: z.string().optional(),
         email: z.string().optional(),
         nomeContato: z.string().optional(),
+        // Gestor confirmou que é outro cliente (nome/telefone igual, CNPJ de outra raiz).
+        confirmarOutroCliente: z.boolean().optional(),
         statusFiscal: z.enum(['isento', 'normal', 'consumidor_final']).optional(),
         ticketMedioHistorico: z.number().optional(),
         vendedorAtualId: z.number().optional(),
@@ -450,6 +453,15 @@ export const clientesRouter = router({
       // importação em massa traz) — gera um código próprio, prefixado "M"
       // pra nunca colidir com os códigos "C0xxxxx" importados.
       const codigo = input.codigo || `M${Date.now()}`
+
+      // Regra única de duplicado (CNPJ, código SAP, nome, telefone) — lib/clienteDuplicado.ts.
+      await travarDuplicado(ctx.empresaId, {
+        doc: cnpjLimpo || cpfLimpo,
+        nomes: [input.razaoSocial],
+        telefones: [input.telefoneWhatsapp],
+        codigo: input.codigo,
+        podeForcar: !!input.confirmarOutroCliente && ctx.user.role !== 'vendor',
+      })
 
       const vendedorAtualId = ctx.user.role === 'admin' ? (input.vendedorAtualId ?? null) : ctx.user.id
       if (vendedorAtualId) {
@@ -768,10 +780,11 @@ export const clientesRouter = router({
 
     // Mesmo cliente já com vendedor nesta empresa (cadastro duplicado no banco,
     // ex.: importação de 02/09 da Odin Tubos) → não deixa pegar (João, 2026-11-18).
-    const comDono = (await mesmoClienteNaEmpresa(ctx.empresaId, (cliente.cnpj ?? cliente.cpf ?? '').replace(/\D/g, ''), [cliente.razaoSocial])).find(
-      (c) => c.id !== cliente.id && c.vendedorAtualId
-    )
-    if (comDono) throw new Error(`Esse cliente já é de ${comDono.vendedorAtual?.name ?? 'outro vendedor'} (cadastro ${comDono.codigo}) — é um cadastro duplicado no banco.`)
+    const telsBanco = [cliente.telefoneWhatsapp, ...(await db.query.clienteTelefones.findMany({ where: eq(clienteTelefones.clienteId, cliente.id), columns: { numero: true } })).map((t) => t.numero)]
+    const comDono = (
+      await duplicadosQueBloqueiam(ctx.empresaId, { doc: cliente.cnpj ?? cliente.cpf, nomes: [cliente.razaoSocial], telefones: telsBanco, codigo: cliente.codigo, ignorarIds: [cliente.id] })
+    ).find((c) => c.vendedorAtualId)
+    if (comDono) throw new Error(`Esse cliente já é de ${comDono.vendedorNome ?? 'outro vendedor'} (cadastro ${comDono.codigo}, ${comDono.motivos.join('/')}) — é um cadastro duplicado no banco.`)
 
     // Prospecção nova (João, 2026-11-05): fora da Odin Compressores, o
     // "Pegar cliente" do vendedor manda pra PROSPECÇÃO dele (etapa Novo,
