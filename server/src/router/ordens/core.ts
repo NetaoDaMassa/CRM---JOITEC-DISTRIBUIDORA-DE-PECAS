@@ -13,6 +13,7 @@ import { registrarAuditoria } from '../../lib/auditoria.js'
 import { avancarEtapaPedido, moverEtapaPedido, registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { ORDER_TYPE_VALUES, getStageSequence, type OrderType } from '../../lib/ordensStages.js'
 import { listarConfigPrefixo, setConfig, apagarConfig, getConfigTexto } from '../../lib/configuracoes.js'
+import { aoCancelarPedido } from '../../lib/revendaFinanceiro.js'
 
 // "NF solicitada — faturamento antecipado" (pedido do João, 2026-11-04): o
 // faturista marca no card da Cotação de Frete/Preparação que já pediu a NF
@@ -221,6 +222,7 @@ export const ordensCoreRouter = router({
       .set({ status: 'cancelado', cancelMotivo: input.motivo, canceladoPor: ctx.user.id, canceladoEm: agoraSqlite() })
       .where(eq(ordens.id, input.id))
     await registrarHistoricoOrdem({ ordemId: input.id, userId: ctx.user.id, action: 'cancelled', description: `Pedido cancelado: ${input.motivo}`, stage: ordem.stage })
+    await aoCancelarPedido(input.id, ctx.user.id, input.motivo).catch((e) => console.error('[pagamentos odin] cancelar pedido', input.id, e))
     await registrarAuditoria({ tabela: 'ordens', registroId: input.id, acao: 'editar', campo: 'status', valorAnterior: 'ativo', valorNovo: 'cancelado', alteradoPor: ctx.user.id })
     return { ok: true }
   }),

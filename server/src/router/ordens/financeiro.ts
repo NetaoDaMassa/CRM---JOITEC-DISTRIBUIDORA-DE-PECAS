@@ -10,6 +10,7 @@ import { ordemLiberacaoFinanceira, ordemDetalhes } from '../../db/schema.js'
 import { agoraSqlite } from '../../lib/dataBr.js'
 import { registrarHistoricoOrdem } from '../../lib/ordensGates.js'
 import { assertEmpresaOrdens, assertOrdemAlcancavel } from './core.js'
+import { sincronizarPagamentoDoPedido, textoComissao } from '../../lib/revendaFinanceiro.js'
 
 // "«antes» → «depois»" pra registrar a versão da observação no histórico.
 export function diffObs(label: string, antes: string | null, depois: string | null | undefined): string {
@@ -113,16 +114,24 @@ export const ordensFinanceiroRouter = router({
         observacoes: z.string().optional(),
         prioridadeDespacho: z.enum(['normal', 'urgente', 'lead', 'direto']).optional(),
         comissaoRevenda: z.string().optional(),
+        comissaoModalidade: z.enum(['percentual', 'fixo']).nullable().optional(),
+        comissaoValor: z.number().min(0).nullable().optional(),
         revenda: z.string().optional(),
-        valorPedido: z.number().optional(),
+        valorPedido: z.number().nullable().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
       await assertEmpresaOrdens(ctx.empresaId)
       const ordem = await assertOrdemAlcancavel(input.ordemId, ctx.empresaId, ctx.user.id, ctx.user.role)
       const { ordemId, ...values } = input
+      // Comissão estruturada → também grava o texto antigo, formatado.
+      if (values.comissaoModalidade !== undefined || values.comissaoValor !== undefined) {
+        values.comissaoRevenda = values.comissaoModalidade && values.comissaoValor ? textoComissao(values.comissaoModalidade, values.comissaoValor) : ''
+      }
       await upsertDetalhes(ordemId, values)
       await registrarHistoricoOrdem({ ordemId, userId: ctx.user.id, action: 'update', description: 'Dados do pedido atualizados', stage: ordem.stage })
+      // Revenda + valor + comissão → Pagamentos Odin (Financeiro).
+      await sincronizarPagamentoDoPedido(ordemId, ctx.user.id).catch((e) => console.error('[pagamentos odin] sync pedido', ordemId, e))
       return { ok: true }
     }),
 })

@@ -30,6 +30,7 @@ import { solicitacaoCreditoRouter } from './solicitacaoCredito.js'
 import { chatRouter } from './chat.js'
 import { cartaoRouter } from './cartao.js'
 import { suframaRouter } from './suframa.js'
+import { revendaFinanceiroRouter } from './revendaFinanceiro.js'
 import { adiantamentoPixRouter } from './adiantamentoPix.js'
 import { pilotoFinanceiroRouter } from './pilotoFinanceiro.js'
 import { linksPagamentoRouter } from './linksPagamento.js'
@@ -133,6 +134,7 @@ export const appRouter = router({
   marketingFluxo: marketingFluxoRouter,
   requisicaoPosto: requisicaoPostoRouter,
   suframa: suframaRouter,
+  revendaFinanceiro: revendaFinanceiroRouter,
   adiantamentoPix: adiantamentoPixRouter,
   pilotoFinanceiro: pilotoFinanceiroRouter,
   linksPagamento: linksPagamentoRouter,

@@ -381,6 +381,25 @@ app.post('/upload/cartao-anexo', uploadCartao.single('file'), async (req, res) =
   res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
 })
 
+// NF / comprovante / documentos dos Créditos Odin e Pagamentos Odin
+// (Financeiro, 2026-11-26) — imagem ou PDF, nome aleatório no disco.
+const uploadRevendaFinanceiro = multer({
+  storage: multer.diskStorage({
+    destination: UPLOADS_DIR,
+    filename: (req, file, cb) => cb(null, `revenda-fin-${randomUUID()}${path.extname(file.originalname)}`),
+  }),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    cb(null, ['image/', 'application/pdf', 'text/xml', 'application/xml'].some((m) => file.mimetype.startsWith(m)))
+  },
+})
+app.post('/upload/revenda-financeiro-anexo', uploadRevendaFinanceiro.single('file'), async (req, res) => {
+  const user = authenticate(req)
+  if (!user) return res.status(401).json({ error: 'Não autenticado' })
+  if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado ou tipo não permitido (use imagem, PDF ou XML)' })
+  res.json({ path: `/uploads/${req.file.filename}`, nome: corrigirNomeArquivo(req.file.originalname), tipo: req.file.mimetype, tamanho: req.file.size })
+})
+
 // PDF do relatório do Cartão de Crédito com TODOS os comprovantes juntos,
 // por vendedor (pedido do João, 2026-11-24). Mesma regra da tela: permissão
 // cartao_credito_relatorio; quem tem vê todas as empresas (2026-11-25).
@@ -998,6 +1017,12 @@ async function start() {
     console.log(`\n🚀 Servidor Joitec CRM rodando em http://localhost:${PORT}`)
     console.log(`📡 tRPC disponível em http://localhost:${PORT}/trpc`)
     console.log(`💬 Chat Grupo Odin (socket) em /chat-socket`)
+    // DESLIGAR_ROTINAS=1 só no teste local com cópia do banco: não roda
+    // agendamentos, WhatsApp nem GoTo (nada sai pra fora).
+    if (process.env.DESLIGAR_ROTINAS === '1') {
+      console.log('⏸️  DESLIGAR_ROTINAS=1 — agendamentos, WhatsApp e GoTo desligados (teste local)')
+      return
+    }
     startScheduler()
     // WhatsApp → captura de leads: sobe as empresas com a captura ligada.
     db.query.empresas.findMany({ columns: { id: true } })

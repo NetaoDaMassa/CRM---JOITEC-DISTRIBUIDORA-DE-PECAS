@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Smartphone, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
-  Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
+  PiggyBank, CircleDollarSign, Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -77,6 +77,8 @@ export const FEATURES_GUIA_FINANCEIRO = [
   'aprovacao_cadastro_cliente',
   'requisicao_posto',
   'controle_suframa',
+  'creditos_odin',
+  'pagamentos_odin',
   'cartao_credito_relatorio',
   'faturamento_geral',
   'painel_financeiro',
@@ -191,6 +193,10 @@ export const ADMIN_LINKS = [
   // Controle SUFRAMA (Financeiro): PIN de cada nota de cliente da Zona Franca,
   // cross-empresa. Pedido do João, 2026-10-28.
   { to: '/admin/controle-suframa', label: 'Controle SUFRAMA', icon: KeyRound, feature: 'controle_suframa' },
+  // Revendas da Odin Compressores (Financeiro, João 2026-11-26): crédito de
+  // garantia pra abater em compras + comissões/garantias a pagar.
+  { to: '/admin/creditos-odin', label: 'Créditos Odin', icon: PiggyBank, feature: 'creditos_odin' },
+  { to: '/admin/pagamentos-odin', label: 'Pagamentos Odin', icon: CircleDollarSign, feature: 'pagamentos_odin' },
   // Controle do Estoque (pedido do João, 2026-10-29): fila de expedição que
   // nasce do picking do SAP, desempenho da equipe e cadastro da equipe. Cada
   // empresa tem o próprio estoque; Odin Compressores usa Ordens.

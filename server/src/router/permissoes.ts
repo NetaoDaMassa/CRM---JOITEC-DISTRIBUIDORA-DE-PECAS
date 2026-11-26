@@ -178,6 +178,11 @@ export const FEATURES_ADMIN = [
   // Controle SUFRAMA (Financeiro) — sem isso o save de Permissões descartava
   // a caixinha em silêncio (só entra o que está nesta lista). 2026-10-29.
   'controle_suframa',
+  // Créditos Odin / Pagamentos Odin (Financeiro, revendas da Odin
+  // Compressores) — João 2026-11-26. _aprovar = aprova/recusa crédito.
+  'creditos_odin',
+  'creditos_odin_aprovar',
+  'pagamentos_odin',
   // Controle do Estoque / Expedição (fila do SAP, separação → conferência →
   // embalagem → coleta, desempenho da equipe). Pedido do João, 2026-10-29.
   'controle_estoque',

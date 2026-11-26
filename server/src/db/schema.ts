@@ -2659,6 +2659,13 @@ export const ordemDetalhes = sqliteTable('ordem_detalhes', {
   // aqui pra ficar selecionável/editável durante todo o processo do pedido,
   // não só no Pós-venda (que já tem o seu próprio, ordemPosVenda.nomeRevenda).
   revenda: text('revenda'),
+  // Comissão estruturada (João, 2026-11-26 — Pagamentos Odin): percentual
+  // sobre o valor do pedido ou valor fixo em R$. `comissaoRevenda` (texto)
+  // continua sendo gravado com o texto formatado, pros pedidos antigos.
+  // Com revenda + valor + comissão preenchidos, o pedido gera sozinho o
+  // registro em Pagamentos Odin (lib/revendaFinanceiro.ts).
+  comissaoModalidade: text('comissao_modalidade', { enum: ['percentual', 'fixo'] }),
+  comissaoValor: real('comissao_valor'),
   valorPedido: real('valor_pedido'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
@@ -3369,6 +3376,131 @@ export const revendasRelations = relations(revendas, ({ one }) => ({
   empresa: one(empresas, { fields: [revendas.empresaId], references: [empresas.id] }),
   criadoPorUser: one(users, { fields: [revendas.criadoPor], references: [users.id] }),
 }))
+
+// ── Créditos Odin e Pagamentos Odin (Financeiro) — pedido do João, 2026-11-26 ──
+// Créditos: a revenda atendeu em garantia pela Odin e pede o valor de volta
+// como CRÉDITO pra abater em compras futuras. Fluxo igual o da Garantia:
+// Análise → Aprovação (aprova com valor / devolve pra análise / recusa).
+// O saldo da revenda = soma dos aprovados − abatimentos (revendaCreditoMovimentos).
+export const revendaCreditos = sqliteTable(
+  'revenda_creditos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    revendaId: integer('revenda_id').notNull().references(() => revendas.id),
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    clienteNome: text('cliente_nome'),
+    equipamento: text('equipamento'),
+    numeroSerie: text('numero_serie'),
+    servicoExecutado: text('servico_executado').notNull(),
+    dataAtendimento: text('data_atendimento'),
+    garantiaId: integer('garantia_id').references(() => garantias.id, { onDelete: 'set null' }),
+    valorSolicitado: real('valor_solicitado').notNull(),
+    valorAprovado: real('valor_aprovado'),
+    stage: text('stage', { enum: ['analise', 'aprovacao', 'aprovado', 'recusado'] }).notNull().default('analise'),
+    status: text('status', { enum: ['ativo', 'cancelado'] }).notNull().default('ativo'),
+    cancelMotivo: text('cancel_motivo'),
+    analiseObservacao: text('analise_observacao'),
+    decisaoObservacao: text('decisao_observacao'),
+    decididoPor: integer('decidido_por').references(() => users.id, { onDelete: 'set null' }),
+    decididoEm: text('decidido_em'),
+    responsavelId: integer('responsavel_id').references(() => users.id, { onDelete: 'set null' }),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ revendaIdx: index('revenda_creditos_revenda_idx').on(t.revendaId) })
+)
+
+// Abatimento = crédito usado numa compra da revenda. Estorno = devolve
+// crédito (ex.: compra cancelada). Excluir é lógico (fica no histórico).
+export const revendaCreditoMovimentos = sqliteTable(
+  'revenda_credito_movimentos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    revendaId: integer('revenda_id').notNull().references(() => revendas.id),
+    tipo: text('tipo', { enum: ['abatimento', 'estorno'] }).notNull(),
+    valor: real('valor').notNull(),
+    data: text('data').notNull(),
+    numeroPedido: text('numero_pedido'),
+    descricao: text('descricao'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    deletedAt: text('deleted_at'),
+    deletedPor: integer('deleted_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ revendaIdx: index('revenda_credito_movimentos_revenda_idx').on(t.revendaId) })
+)
+
+// Pagamentos: o que a Odin deve PAGAR à revenda — comissão de venda (nasce
+// sozinha do Pedido, origem 'automatico', uma por pedido) ou serviço de
+// garantia pago em dinheiro (manual). Etapas em lib/revendaFinanceiro.ts.
+export const revendaPagamentos = sqliteTable(
+  'revenda_pagamentos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    tipo: text('tipo', { enum: ['comissao', 'garantia'] }).notNull(),
+    origem: text('origem', { enum: ['automatico', 'manual'] }).notNull().default('manual'),
+    ordemId: integer('ordem_id').unique().references(() => ordens.id, { onDelete: 'set null' }),
+    revendaId: integer('revenda_id').references(() => revendas.id, { onDelete: 'set null' }),
+    revendaNome: text('revenda_nome').notNull(),
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    clienteNome: text('cliente_nome'),
+    numeroPedido: text('numero_pedido'),
+    equipamento: text('equipamento'),
+    descricao: text('descricao'),
+    valorVenda: real('valor_venda'),
+    comissaoModalidade: text('comissao_modalidade', { enum: ['percentual', 'fixo'] }),
+    comissaoPercentual: real('comissao_percentual'),
+    valor: real('valor').notNull(),
+    stage: text('stage').notNull().default('comissao_registrada'),
+    status: text('status', { enum: ['ativo', 'cancelado'] }).notNull().default('ativo'),
+    cancelMotivo: text('cancel_motivo'),
+    dataPrevistaPagamento: text('data_prevista_pagamento'),
+    dataPagamento: text('data_pagamento'),
+    nfNumero: text('nf_numero'),
+    observacoes: text('observacoes'),
+    responsavelId: integer('responsavel_id').references(() => users.id, { onDelete: 'set null' }),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ stageIdx: index('revenda_pagamentos_stage_idx').on(t.status, t.stage) })
+)
+
+export const revendaFinanceiroHistorico = sqliteTable(
+  'revenda_financeiro_historico',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tipo: text('tipo', { enum: ['credito', 'pagamento', 'movimento'] }).notNull(),
+    refId: integer('ref_id').notNull(),
+    revendaId: integer('revenda_id'),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    descricao: text('descricao').notNull(),
+    stage: text('stage'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ refIdx: index('revenda_fin_hist_ref_idx').on(t.tipo, t.refId) })
+)
+
+export const revendaFinanceiroAnexos = sqliteTable(
+  'revenda_financeiro_anexos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    tipo: text('tipo', { enum: ['credito', 'pagamento'] }).notNull(),
+    refId: integer('ref_id').notNull(),
+    categoria: text('categoria', { enum: ['nf', 'comprovante', 'outro'] }).notNull().default('outro'),
+    nomeOriginal: text('nome_original').notNull(),
+    nomeArmazenado: text('nome_armazenado').notNull(),
+    tipoArquivo: text('tipo_arquivo'),
+    tamanhoBytes: integer('tamanho_bytes'),
+    enviadoPor: integer('enviado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ refIdx: index('revenda_fin_anexos_ref_idx').on(t.tipo, t.refId) })
+)
 
 // ── Almoxarifado (estoque de máquinas Odin Compressores, portado do odincrm) ──
 // Prefixo `estoque*` pra não colidir com `maquinasCliente` (máquinas já

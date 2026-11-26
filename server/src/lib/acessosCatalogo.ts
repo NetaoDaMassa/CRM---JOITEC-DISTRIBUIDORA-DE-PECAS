@@ -120,6 +120,9 @@ export const CATALOGO: ItemCatalogo[] = [
   { id: 'solicitacao_credito', area: 'Financeiro', nome: 'Consulta/solicitação de crédito', niveis: { 2: ['solicitacao_credito'] } },
   { id: 'aprovacao_cadastro_cliente', area: 'Financeiro', nome: 'Aprovação de cadastros de cliente (SAP)', niveis: { 2: ['aprovacao_cadastro_cliente'] } },
   { id: 'controle_suframa', area: 'Financeiro', nome: 'Controle SUFRAMA', niveis: { 2: ['controle_suframa'] } },
+  // Revendas da Odin Compressores (João, 2026-11-26).
+  { id: 'creditos_odin', area: 'Financeiro', nome: 'Créditos Odin (garantia feita pela revenda → crédito)', dica: 'Gerencia: aprova, recusa ou devolve o crédito pra análise', niveis: { 2: ['creditos_odin'], 3: ['creditos_odin_aprovar'] } },
+  { id: 'pagamentos_odin', area: 'Financeiro', nome: 'Pagamentos Odin (comissões e garantias a pagar às revendas)', niveis: { 2: ['pagamentos_odin'] } },
   { id: 'requisicao_posto', area: 'Financeiro', nome: 'Requisição posto', niveis: { 2: ['requisicao_posto'] } },
   { id: 'painel_financeiro', area: 'Financeiro', nome: 'Painel Financeiro', niveis: { 1: ['painel_financeiro'] } },
 

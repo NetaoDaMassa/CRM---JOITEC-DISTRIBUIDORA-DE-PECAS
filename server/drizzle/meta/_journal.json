@@ -1331,6 +1331,20 @@
       "when": 1795820000000,
       "tag": "0189_agendamento_secador_cancelar",
       "breakpoints": true
+    },
+    {
+      "idx": 190,
+      "version": "6",
+      "when": 1795830000000,
+      "tag": "0190_creditos_pagamentos_odin",
+      "breakpoints": true
+    },
+    {
+      "idx": 191,
+      "version": "6",
+      "when": 1795840000000,
+      "tag": "0191_sidebar_creditos_pagamentos_odin",
+      "breakpoints": true
     }
   ]
 }

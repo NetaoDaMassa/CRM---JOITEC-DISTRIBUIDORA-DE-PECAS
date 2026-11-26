@@ -27,14 +27,27 @@ function EtapaPedidoForm({
   isAdmin: boolean
   readonly: boolean
   orderType: OrderType
-  data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; comissaoRevenda: string | null; revenda: string | null; observacoes: string | null } | null
+  data: { numeroPedido: string | null; prioridadeDespacho: string | null; valorPedido: number | null; comissaoRevenda: string | null; comissaoModalidade: 'percentual' | 'fixo' | null; comissaoValor: number | null; revenda: string | null; observacoes: string | null } | null
   anexos: { id: number; nomeOriginal: string; nomeArmazenado: string }[]
 }) {
   const utils = trpc.useUtils()
   const [numeroPedido, setNumeroPedido] = useState(data?.numeroPedido ?? '')
   const [prioridade, setPrioridade] = useState(data?.prioridadeDespacho ?? 'normal')
   const [valor, setValor] = useState(data?.valorPedido?.toString() ?? '')
-  const [comissaoRevenda, setComissaoRevenda] = useState(data?.comissaoRevenda ?? '')
+  // Comissão: % sobre o valor do pedido ou valor fixo (Pagamentos Odin,
+  // 2026-11-26). Pedidos antigos só têm o texto livre — fica visível embaixo.
+  // Texto antigo tipo "10%" ou "R$ 1.500" já vira o campo novo.
+  const antigo = !data?.comissaoModalidade && data?.comissaoRevenda ? data.comissaoRevenda.trim() : ''
+  const antigoPct = antigo.match(/^([\d.,]+)\s*%$/)
+  const antigoFixo = antigo.match(/^R\$\s*([\d.,]+)$/i)
+  const [comissaoModalidade, setComissaoModalidade] = useState<'percentual' | 'fixo'>(data?.comissaoModalidade ?? (antigoFixo ? 'fixo' : 'percentual'))
+  const [comissaoValor, setComissaoValor] = useState(
+    data?.comissaoValor != null ? String(data.comissaoValor).replace('.', ',') : antigoPct ? antigoPct[1] : antigoFixo ? antigoFixo[1] : ''
+  )
+  const comissaoTextoAntigo = antigo && !antigoPct && !antigoFixo ? antigo : null
+  const comissaoNum = comissaoValor.trim() ? Number(comissaoValor.replace(/\./g, '').replace(',', '.')) : null
+  const valorNum = valor ? Number(valor) : null
+  const comissaoCalculada = comissaoNum == null || Number.isNaN(comissaoNum) ? null : comissaoModalidade === 'fixo' ? comissaoNum : valorNum ? Math.round(valorNum * comissaoNum) / 100 : null
   const [revenda, setRevenda] = useState(data?.revenda ?? '')
   const { data: revendas } = trpc.revendas.listar.useQuery(undefined, { retry: false })
   const [obs, setObs] = useState(data?.observacoes ?? '')
@@ -80,7 +93,39 @@ function EtapaPedidoForm({
           <Input label="Valor do pedido" type="number" defaultValue={valor} onChange={(e) => setValor(e.target.value)} disabled={!podeEditar} />
           <Input label="Revenda responsável" list="revendas-pedido" defaultValue={revenda} onChange={(e) => setRevenda(e.target.value)} disabled={!podeEditar} />
           <datalist id="revendas-pedido">{(revendas ?? []).map((r) => <option key={r.id} value={r.nome} />)}</datalist>
-          <Input label="Comissão de revenda" defaultValue={comissaoRevenda} onChange={(e) => setComissaoRevenda(e.target.value)} disabled={!podeEditar} />
+          <div>
+            <label className="text-sm text-dark-200 font-medium mb-1 block">Comissão de revenda</label>
+            <div className="flex gap-2">
+              <div className="flex rounded-lg border border-dark-600 overflow-hidden shrink-0">
+                {(['percentual', 'fixo'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    disabled={!podeEditar}
+                    onClick={() => setComissaoModalidade(m)}
+                    className={`px-3 text-sm font-semibold transition-colors disabled:opacity-60 ${comissaoModalidade === m ? 'bg-gold-600/20 text-gold-300' : 'text-dark-400 hover:text-dark-200'}`}
+                  >
+                    {m === 'percentual' ? '%' : 'R$'}
+                  </button>
+                ))}
+              </div>
+              <input
+                inputMode="decimal"
+                value={comissaoValor}
+                onChange={(e) => setComissaoValor(e.target.value)}
+                disabled={!podeEditar}
+                placeholder={comissaoModalidade === 'percentual' ? 'Ex.: 5' : 'Ex.: 1.500,00'}
+                className="w-full bg-dark-800 border border-dark-600 rounded-lg px-3 py-2 text-sm text-dark-100 focus:outline-none focus:border-gold-600 disabled:opacity-50"
+              />
+            </div>
+            {comissaoCalculada != null && (
+              <p className="text-xs text-dark-400 mt-1">
+                Comissão a pagar: <b className="text-dark-100">{comissaoCalculada.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b>
+              </p>
+            )}
+            {comissaoTextoAntigo && <p className="text-xs text-amber-400 mt-1">Anotado antes: “{comissaoTextoAntigo}” — escolha % ou R$ e digite o número.</p>}
+          </div>
+          <p className="col-span-2 text-xs text-dark-500 -mt-1">Com revenda + valor + comissão preenchidos, o pagamento da comissão aparece sozinho no Financeiro → Pagamentos Odin.</p>
         </div>
       )}
 
@@ -115,7 +160,19 @@ function EtapaPedidoForm({
         <Button
           size="sm"
           loading={salvarMut.isPending}
-          onClick={() => salvarMut.mutate({ ordemId, numeroPedido, prioridadeDespacho: prioridade as any, valorPedido: valor ? Number(valor) : undefined, comissaoRevenda, revenda, observacoes: obs })}
+          onClick={() => {
+            if (comissaoNum != null && (Number.isNaN(comissaoNum) || comissaoNum < 0)) return toast.error('Comissão inválida — digite só o número')
+            if (comissaoModalidade === 'percentual' && comissaoNum != null && comissaoNum > 100) return toast.error('Percentual de comissão acima de 100%')
+            salvarMut.mutate({
+              ordemId,
+              numeroPedido,
+              prioridadeDespacho: prioridade as any,
+              valorPedido: valor ? Number(valor) : undefined,
+              revenda,
+              observacoes: obs,
+              ...(isPeca ? {} : { comissaoModalidade: comissaoNum ? comissaoModalidade : null, comissaoValor: comissaoNum || null }),
+            })
+          }}
         >
           Salvar
         </Button>

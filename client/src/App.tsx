@@ -68,6 +68,7 @@ import FilaHoje from './pages/vendor/FilaHoje'
 import SolicitarDesign from './pages/vendor/SolicitarDesign'
 import RequisicaoPosto from './pages/admin/RequisicaoPosto'
 import ControleSuframa from './pages/admin/ControleSuframa'
+import RevendasFinanceiroOdin from './pages/admin/RevendasFinanceiroOdin'
 import Expedicao from './pages/admin/Expedicao'
 import ExpedicaoDesempenho from './pages/admin/ExpedicaoDesempenho'
 import ExpedicaoEquipe from './pages/admin/ExpedicaoEquipe'
@@ -390,6 +391,8 @@ export default function App() {
           <Route path="admin/solicitar-design" element={<AdminGuard><FeatureGuard feature="solicitar_design"><SolicitarDesign /></FeatureGuard></AdminGuard>} />
           <Route path="admin/requisicao-posto" element={<AdminGuard><FeatureGuard feature="requisicao_posto"><RequisicaoPosto /></FeatureGuard></AdminGuard>} />
           <Route path="admin/controle-suframa" element={<AdminGuard><FeatureGuard feature="controle_suframa"><ControleSuframa /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/creditos-odin" element={<AdminGuard><FeatureGuard feature="creditos_odin"><RevendasFinanceiroOdin key="creditos" abaInicial="creditos" /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/pagamentos-odin" element={<AdminGuard><FeatureGuard feature="pagamentos_odin"><RevendasFinanceiroOdin key="pagamentos" abaInicial="pagamentos" /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao" element={<AdminGuard><FeatureGuard feature="controle_estoque"><Expedicao /></FeatureGuard></AdminGuard>} />
           <Route path="admin/painel-ecommerce" element={<AdminGuard><FeatureGuard feature="painel_ecommerce_config"><PainelEcommerceConfig /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao-desempenho" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoDesempenho /></FeatureGuard></AdminGuard>} />
