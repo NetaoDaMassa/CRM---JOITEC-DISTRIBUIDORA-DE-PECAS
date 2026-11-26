@@ -327,9 +327,9 @@ export default function EtapaPosVendaMaquina({
         ) : (
           <>
             <p className="text-xs text-dark-400 mb-3">
-              {data.tipo === 'compressor' && 'Compressor: desce para a carteira da Bruna (coluna Agendamentos). Lá ela completa venda de peça, 1ª preventiva e lembrete, e segue com o agendamento.'}
-              {data.tipo === 'acessorio' && 'Secador / trafo / reservatório / filtro / motocompressor: não tem venda de peça nem preventiva, então não vai para a Bruna. Dê o OK para concluir.'}
-              {data.tipo === 'indefinido' && 'Este pedido não tem máquina cadastrada. Escolha: se for compressor, mande para a Bruna; se for secador, trafo, reservatório, filtro ou motocompressor, dê o OK.'}
+              {data.tipo === 'compressor' && 'Tem compressor (OD): desce para a carteira da Bruna (coluna Agendamentos). Lá ela completa venda de peça, 1ª preventiva e lembrete, e segue com o agendamento.'}
+              {data.tipo === 'acessorio' && 'Só secador/SEP (sem nenhum OD): não tem venda de peça nem preventiva, então não vai para a Bruna. Dê o OK para concluir.'}
+              {data.tipo === 'indefinido' && 'Este pedido não tem máquina cadastrada. Escolha: se tiver compressor (OD), mande para a Bruna; se for só SEC/SEP, dê o OK.'}
             </p>
             {podeEditar && (
               <div className="flex flex-wrap gap-2">

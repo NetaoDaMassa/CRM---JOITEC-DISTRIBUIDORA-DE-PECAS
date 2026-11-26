@@ -1324,6 +1324,13 @@
       "when": 1795810000000,
       "tag": "0188_wa_msg_cliente",
       "breakpoints": true
+    },
+    {
+      "idx": 189,
+      "version": "6",
+      "when": 1795820000000,
+      "tag": "0189_agendamento_secador_cancelar",
+      "breakpoints": true
     }
   ]
 }

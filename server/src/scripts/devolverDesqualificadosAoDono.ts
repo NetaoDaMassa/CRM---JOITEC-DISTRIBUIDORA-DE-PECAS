@@ -27,6 +27,21 @@ import { sql } from 'drizzle-orm'
 import { db } from '../db/client.js'
 
 const APLICAR = process.argv.includes('--aplicar')
+const MARCA = 'Correção 25/11:'
+
+// O backend no ar usa o mesmo arquivo SQLite: sem espera, qualquer gravação
+// dele ao mesmo tempo dá SQLITE_BUSY (aconteceu na 1ª rodada, 2026-11-26).
+// Espera até 30 s pelo lock e ainda tenta de novo algumas vezes.
+async function gravar(q: ReturnType<typeof sql>) {
+  for (let i = 1; ; i++) {
+    try {
+      return await db.run(q)
+    } catch (e: any) {
+      if (e?.code !== 'SQLITE_BUSY' || i >= 8) throw e
+      await new Promise((r) => setTimeout(r, 2000 * i))
+    }
+  }
+}
 
 type Linha = {
   lead_id: number
@@ -44,6 +59,7 @@ type Linha = {
 }
 
 async function main() {
+  await db.run(sql`PRAGMA busy_timeout = 30000`)
   const linhas = (await db.all(sql`
     WITH ultima_desq AS (
       SELECT h.lead_id, h.user_id, h.created_at,
@@ -66,6 +82,7 @@ async function main() {
         SELECT 1 FROM lead_history t
         WHERE t.lead_id = l.id AND t.id > d.hid
           AND (t.to_vendor_id IS NOT NULL OR t.action IN ('transferido', 'reatribuicao_automatica', 'reaberto_desqualificado'))
+          AND coalesce(t.details, '') NOT LIKE ${MARCA + '%'}
       )
     ORDER BY l.empresa_id, d.user_id, l.id
   `)) as Linha[]
@@ -82,20 +99,44 @@ async function main() {
     }
 
     if (!APLICAR) continue
-    await db.run(sql`UPDATE leads SET vendor_id = ${r.desq_por}, updated_at = datetime('now') WHERE id = ${r.lead_id} AND vendor_id = ${r.vendor_id}`)
-    await db.run(sql`
-      INSERT INTO lead_history (empresa_id, lead_id, user_id, action, from_vendor_id, to_vendor_id, details)
-      VALUES (${r.empresa_id}, ${r.lead_id}, NULL, 'transferido', ${r.vendor_id}, ${r.desq_por},
-              ${`Correção 25/11: lead desqualificado tinha ido pro admin (${r.admin_nome}); volta pra quem desqualificou (${r.desq_por_nome})`})
-    `)
+    // Ordem pensada pra poder rodar de novo se cair no meio: proposta e
+    // histórico primeiro, o dono do lead por último (é ele que tira o lead
+    // da lista na próxima rodada).
     if (levaProposta) {
-      await db.run(sql`UPDATE propostas SET vendedor_id = ${r.desq_por}, updated_at = datetime('now') WHERE id = ${r.proposta_id} AND vendedor_id = ${r.vendor_id}`)
-      await db.run(sql`
+      await gravar(sql`UPDATE propostas SET vendedor_id = ${r.desq_por}, updated_at = datetime('now') WHERE id = ${r.proposta_id} AND vendedor_id = ${r.vendor_id}`)
+      await gravar(sql`
         INSERT INTO log_auditoria (tabela, registro_id, acao, campo, valor_anterior, valor_novo, alterado_por)
         VALUES ('propostas', ${r.proposta_id}, 'editar', 'vendedor_id', ${String(r.vendor_id)}, ${String(r.desq_por)}, NULL)
       `)
     }
+    await gravar(sql`
+      INSERT INTO lead_history (empresa_id, lead_id, user_id, action, from_vendor_id, to_vendor_id, details)
+      SELECT ${r.empresa_id}, ${r.lead_id}, NULL, 'transferido', ${r.vendor_id}, ${r.desq_por},
+             ${`${MARCA} lead desqualificado tinha ido pro admin (${r.admin_nome}); volta pra quem desqualificou (${r.desq_por_nome})`}
+      WHERE NOT EXISTS (SELECT 1 FROM lead_history WHERE lead_id = ${r.lead_id} AND details LIKE ${MARCA + '%'})
+    `)
+    await gravar(sql`UPDATE leads SET vendor_id = ${r.desq_por}, updated_at = datetime('now') WHERE id = ${r.lead_id} AND vendor_id = ${r.vendor_id}`)
   }
+
+  // Sobra da 1ª rodada (que gravava o lead ANTES da proposta e caiu no meio):
+  // lead já devolvido pela correção, mas a proposta dele ainda no nome do admin.
+  const sobras = (await db.all(sql`
+    SELECT p.id proposta_id, p.vendedor_id de, l.vendor_id para, l.name lead_nome
+    FROM leads l
+    JOIN propostas p ON p.id = l.convertido_para_proposta_id
+    JOIN lead_history h ON h.lead_id = l.id AND h.details LIKE ${MARCA + '%'}
+    WHERE l.deleted_at IS NULL AND p.vendedor_id = h.from_vendor_id AND l.vendor_id = h.to_vendor_id
+  `)) as { proposta_id: number; de: number; para: number; lead_nome: string }[]
+  for (const s of sobras) {
+    console.log(`  proposta #${s.proposta_id} (${s.lead_nome}) ainda no admin → acompanha o lead`)
+    if (!APLICAR) continue
+    await gravar(sql`UPDATE propostas SET vendedor_id = ${s.para}, updated_at = datetime('now') WHERE id = ${s.proposta_id} AND vendedor_id = ${s.de}`)
+    await gravar(sql`
+      INSERT INTO log_auditoria (tabela, registro_id, acao, campo, valor_anterior, valor_novo, alterado_por)
+      VALUES ('propostas', ${s.proposta_id}, 'editar', 'vendedor_id', ${String(s.de)}, ${String(s.para)}, NULL)
+    `)
+  }
+  propostas += sobras.length
 
   console.log('\nResumo:')
   for (const [k, n] of resumo) console.log(`  ${k}: ${n} lead(s)`)
