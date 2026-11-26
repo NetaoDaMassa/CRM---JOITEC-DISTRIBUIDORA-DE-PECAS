@@ -26,10 +26,16 @@ export function respostaPedeAtencao(p: { notaOdin: number | null; notaTransporta
 // peça nem preventiva (João, 2026-10-29): pedido só com esses itens não vai
 // pra carteira da Bruna e só sai do Pós-venda quando alguém der o OK.
 // 'indefinido' = pedido sem máquina registrada (a equipe escolhe).
-const ACESSORIO = /secador|trafo|transformador|reservat[oó]rio|filtro|motocompressor|moto compressor/i
+// Regra do João (2026-11-26), pelo CÓDIGO do modelo cadastrado no pedido:
+// tem algum OD (OD30, ODM27...) → carteira da Bruna; só SEC (secador) e/ou
+// SEP → não vai. Antes só olhava a palavra "secador", e SEC10/SEC30 caíam
+// como compressor (NOVELLI SEC10 / NAINE SEC30 foram parar na Bruna).
+const COMPRESSOR = /^\s*OD/i
+const ACESSORIO = /^\s*SE[CP]|secador|trafo|transformador|reservat[oó]rio|filtro|motocompressor|moto compressor/i
 export type TipoPedidoMaquina = 'compressor' | 'acessorio' | 'indefinido'
 export function tipoPorModelos(modelos: string[]): TipoPedidoMaquina {
   if (modelos.length === 0) return 'indefinido'
+  if (modelos.some((m) => COMPRESSOR.test(m))) return 'compressor'
   return modelos.every((m) => ACESSORIO.test(m)) ? 'acessorio' : 'compressor'
 }
 export async function tipoPedidoMaquina(ordemId: number): Promise<TipoPedidoMaquina> {
