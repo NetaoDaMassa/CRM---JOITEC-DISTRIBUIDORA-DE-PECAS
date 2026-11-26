@@ -8,7 +8,6 @@ import {
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
-  Copy,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -319,7 +318,6 @@ export const EXTRAS_CATALOGO: { to: string; label: string }[] = [
   { to: '/guia/', label: 'Guia do CRM' },
   { to: '/admin/guia-financeiro', label: 'Guia do Financeiro' },
   { to: '/admin/motivos-perda', label: 'Motivos de perda' },
-  { to: '/admin/clientes-duplicados', label: 'Clientes duplicados' },
   { to: '/painel-tv', label: 'Painel de TV' },
   { to: '/admin/acessos', label: 'Funções e permissões' },
   { to: '/admin/leads-regioes', label: 'Regiões de Leads' },
@@ -529,7 +527,6 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   // aba de relatório liberada (ver filtro de VENDOR_LINKS abaixo).
   const { data: piloto } = trpc.pilotoFinanceiro.eu.useQuery(undefined, { enabled: !!user, staleTime: 60_000 })
   const { data: motivosPerda } = trpc.motivosPerda.meuAcesso.useQuery(undefined, { enabled: user?.role === 'admin', staleTime: 2 * 60_000 })
-  const { data: duplicadosAcesso } = trpc.clientesDuplicados.meuAcesso.useQuery(undefined, { enabled: user?.role === 'admin', staleTime: 10 * 60_000 })
   const { data: minhasFeatures } = trpc.permissoes.minhasPermissoes.useQuery(undefined, {
     enabled: !!user && (user.role === 'vendor' || (user.role === 'admin' && !user.superAdmin)),
   })
@@ -581,8 +578,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       icon: TrendingDown,
       visivel: user?.role === 'admin' && !!motivosPerda?.visivel,
     },
-    // Clientes duplicados (2026-11-26): o gerente vê os cadastros repetidos e CNPJ suspeito.
-    { to: '/admin/clientes-duplicados', label: 'Clientes duplicados', icon: Copy, visivel: user?.role === 'admin' && !!duplicadosAcesso?.visivel },
+    // Clientes duplicados (2026-11-26): fora do menu (João: "não temos mão pra
+    // verificar") — o CRM resolve sozinho; a tela fica só pelo endereço
+    // /admin/clientes-duplicados pra conferência do João.
     { to: '/painel-tv', label: 'Painel de TV', icon: Tv, external: true, visivel: user?.role === 'admin' && !!(user.superAdmin || minhasFeatures?.includes('painel_tv')) },
     // Funções vivas (2026-11-09): uma tela só no lugar de Permissões +
     // Funções. As antigas continuam no ar pelo endereço (/admin/permissoes,

@@ -476,7 +476,7 @@ export async function ligarCodigoSap(clienteId: number, codigo: string, empresaI
 }
 
 // ── Rodada automática ───────────────────────────────────────────────────
-export async function sincronizarClientesNovosSap(): Promise<{ criados: number; pendentes: number } | null> {
+export async function sincronizarClientesNovosSap(): Promise<{ criados: number; pendentes: number; ligados: number } | null> {
   const desde = await autoDesde()
   if (!desde) return null
   const autor = await db.query.users.findFirst({ where: eq(users.superAdmin, true), columns: { id: true } })
@@ -486,6 +486,7 @@ export async function sincronizarClientesNovosSap(): Promise<{ criados: number; 
   const indices = new Map<number, Awaited<ReturnType<typeof indiceClientes>>>()
   let criados = 0
   let pendentes = 0
+  let ligados = 0
   for (const cad of novos) {
     if (!cad.ativo) continue
     const d = destino(cad.vendedorSap)
@@ -499,7 +500,25 @@ export async function sincronizarClientesNovosSap(): Promise<{ criados: number; 
     // Mesmo cliente já no CRM sem CNPJ / com código antigo (nome ou telefone
     // igual — as planilhas de 28/07, 03/08 e 02/09): NÃO cria outro. Fica na
     // lista "Clientes do SAP p/ cadastrar" pro gestor ligar o código (João, 2026-11-26).
-    if (await travadoPorDuplicado(cad, d.empresaId)) {
+    const igual = await travadoPorDuplicado(cad, d.empresaId)
+    if (igual) {
+      // Sem ninguém pra conferir lista (João, 2026-11-26): se o cadastro que já
+      // existe não tem código do SAP (planilha antiga / manual), liga o código
+      // nele sozinho e completa o CNPJ — a dona continua a mesma. Se ele já tem
+      // OUTRO código do SAP, é cadastro repetido no próprio SAP: fica pendente.
+      if (!codigoSap(igual.codigo)) {
+        try {
+          await ligarCodigoSap(igual.id, cad.codigo, d.empresaId, autor.id)
+          const doc = cad.cnpj ? { cnpj: cad.cnpj } : cad.cpf ? { cpf: cad.cpf } : null
+          const atual = await db.query.clientes.findFirst({ where: eq(clientes.id, igual.id), columns: { cnpj: true, cpf: true } })
+          if (doc && atual && !atual.cnpj && !atual.cpf && !indice.porDoc(cad)) await db.update(clientes).set(doc).where(eq(clientes.id, igual.id))
+          indices.set(d.empresaId, await indiceClientes(d.empresaId))
+          ligados++
+          continue
+        } catch (err) {
+          console.error('[sap-clientes] não ligou', cad.codigo, 'em', igual.id, err instanceof Error ? err.message : err)
+        }
+      }
       pendentes++
       continue
     }
@@ -508,7 +527,7 @@ export async function sincronizarClientesNovosSap(): Promise<{ criados: number; 
     trazerHistorico(cad.codigo, autor.id)
     criados++
   }
-  return { criados, pendentes }
+  return { criados, pendentes, ligados }
 }
 
 // "Ligar a outro cadastro": busca na empresa ativa (nome, código, CNPJ).
