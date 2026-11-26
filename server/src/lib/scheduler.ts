@@ -16,7 +16,7 @@ import { sincronizarCarrinhosAbandonadosCompretec } from './woocommerceCarrinhoA
 import { sincronizarGoogleDrive } from './googleDriveSync.js'
 import { rodarRoteiroAgendado } from './roteiro.js'
 import { enviarVencidasAoCartorio } from './reguaCobranca.js'
-import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarNfOrdensOdinSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap } from './sapAgendado.js'
+import { rodarClientesSap, rodarCatalogoSap, rodarCotacoesSap, rodarEstoqueSap, rodarExpedicaoSap, rodarNfRapidaSap, rodarNfOrdensOdinSap, rodarSincronizacaoSap, rodarVendasSap, rodarIsentosSap, rodarVendasSemSap } from './sapAgendado.js'
 import { rodarRevisaoTrocados } from './pedidosTrocados.js'
 import { sincronizarTodasMarcas } from './marketingMeta.js'
 import { gerarSemanaAgendado } from './marketingFluxo.js'
@@ -302,6 +302,10 @@ export function startScheduler() {
   cron.schedule('37 6 * * *', () => {
     rodarIsentosSap().catch((err) => console.error('[sap-isentos] erro no agendador:', err))
   }, { timezone: 'America/Sao_Paulo' })
+  // Venda manual em cadastro sem código do SAP → liga o código e o pedido — de hora em hora (:33).
+  cron.schedule('33 * * * *', () => {
+    rodarVendasSemSap().catch((err) => console.error('[vendas-sem-sap] erro no agendador:', err))
+  })
   // Cadastro novo do SAP vira cliente no CRM — de 10 em 10 minutos.
   cron.schedule('3-59/10 * * * *', () => {
     rodarClientesSap().catch((err) => console.error('[sap-clientes] erro no agendador:', err))

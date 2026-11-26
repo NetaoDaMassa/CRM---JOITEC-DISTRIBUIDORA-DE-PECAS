@@ -17,6 +17,7 @@ import { sincronizarCatalogoSap } from './sapCatalogo.js'
 import { sincronizarNfRapida } from './sapNfRapida.js'
 import { sincronizarNfOrdensOdin } from './sapNfOrdensOdin.js'
 import { sincronizarIsentosSap } from './sapIsentos.js'
+import { conferirVendasSemSap } from './vendasSemSap.js'
 
 // Rodada de hora em hora da integração com o SAP (scheduler.ts): itens das
 // notas novas + foto das contas a receber. Desligada até alguém ligar
@@ -222,5 +223,22 @@ export async function rodarIsentosSap(): Promise<void> {
     console.error('[sap-isentos] erro:', err instanceof Error ? err.message : err)
   } finally {
     rodandoIsentos = false
+  }
+}
+
+// Venda manual em cadastro sem código do SAP (lead do Marketing "M…") — de
+// hora em hora: liga o código do SAP e o pedido sozinho (lib/vendasSemSap.ts).
+let rodandoVendasSemSap = false
+
+export async function rodarVendasSemSap(): Promise<void> {
+  if (rodandoVendasSemSap || !sapConfigurado() || !(await getConfigBool('sap_sync_ativo', false))) return
+  rodandoVendasSemSap = true
+  try {
+    const r = await conferirVendasSemSap()
+    if (r.ligados || r.duplicados) console.log(`[vendas-sem-sap] ${r.ligados} ligado(s) ao SAP, ${r.duplicados} duplicado(s) esperando o gestor, ${r.semAchar} sem achar`)
+  } catch (err) {
+    console.error('[vendas-sem-sap] erro:', err instanceof Error ? err.message : err)
+  } finally {
+    rodandoVendasSemSap = false
   }
 }

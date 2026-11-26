@@ -16,6 +16,7 @@ import {
   vendedoresLigados,
   vendedoresSap,
 } from '../lib/sapClientes.js'
+import { corrigirDuplicado, lerDuplicadosPendentes } from '../lib/vendasSemSap.js'
 import { criarContaVendedorSap, ignorarVendedorSap, ligarContaVendedorSap, vendedoresNovosDaEmpresa } from '../lib/sapVendedoresNovos.js'
 
 // Clientes do SAP pra cadastrar no CRM (ver lib/sapClientes.ts). Gestor
@@ -27,6 +28,13 @@ export const clientesSapRouter = router({
   }),
 
   novos: adminProcedure.query(async ({ ctx }) => cadastrosNovosPendentes(ctx.empresaId)),
+
+  // Venda manual num cadastro sem código do SAP, mas o cliente já existe com o
+  // código (lib/vendasSemSap.ts, rodada de hora em hora).
+  vendasSemSapDuplicados: adminProcedure.query(async ({ ctx }) => (await lerDuplicadosPendentes()).filter((p) => p.empresaId === ctx.empresaId)),
+  corrigirVendaSemSap: adminProcedure.input(z.object({ clienteId: z.number() })).mutation(async ({ ctx, input }) =>
+    corrigirDuplicado(input.clienteId, ctx.empresaId, ctx.user.id)
+  ),
 
   cadastrar: adminProcedure.input(z.object({ codigo: z.string().min(2), vendedorId: z.number().nullable() })).mutation(async ({ ctx, input }) => {
     return cadastrarClienteSap(input.codigo, ctx.empresaId, input.vendedorId, ctx.user.id)

@@ -198,6 +198,8 @@ export default function ClientesSap() {
         </Button>
       </div>
 
+      <VendasSemSapDuplicados />
+
       <ComoUsar
         chave="clientes_sap"
         titulo="Como usar"
@@ -550,6 +552,53 @@ function Vendedores({ onAviso }: { onAviso: (a: { ok: boolean; texto: string }) 
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+// Venda registrada na mão num cadastro sem código do SAP (lead do Marketing),
+// mas o cliente já existe no CRM com o código — o pedido/NF do SAP caem no
+// cadastro antigo e não na venda. "Corrigir": o cadastro com a venda fica com
+// o código; o antigo vai pra lixeira ("<código>-ANTIGO"). Casos sem duplicado o
+// CRM já resolve sozinho de hora em hora (server/src/lib/vendasSemSap.ts).
+function VendasSemSapDuplicados() {
+  const utils = trpc.useUtils()
+  const { data } = trpc.clientesSap.vendasSemSapDuplicados.useQuery(undefined, { staleTime: 60_000, retry: false })
+  const [msg, setMsg] = useState<{ ok: boolean; texto: string } | null>(null)
+  const corrigir = trpc.clientesSap.corrigirVendaSemSap.useMutation({
+    onSuccess: () => {
+      setMsg({ ok: true, texto: 'Corrigido. O pedido e a NF entram no card em alguns minutos.' })
+      utils.clientesSap.vendasSemSapDuplicados.invalidate()
+    },
+    onError: (e) => setMsg({ ok: false, texto: e.message }),
+  })
+  if (!data?.length && !msg) return null
+  return (
+    <div className="bg-amber-500/10 border border-amber-500/40 rounded-2xl p-4 space-y-3">
+      <div>
+        <p className="text-sm font-semibold text-amber-200">Vendas sem pedido do SAP: cadastro duplicado ({data?.length ?? 0})</p>
+        <p className="text-xs text-dark-300">
+          A venda foi registrada num cadastro sem código do SAP, mas o cliente já existe no CRM com o código. Em <b>Corrigir</b>, o cadastro com a venda fica com o código do SAP e o antigo vai para a lixeira. O pedido e a NF passam a cair no card da venda.
+        </p>
+      </div>
+      {msg && <p className={`text-xs ${msg.ok ? 'text-emerald-300' : 'text-red-300'}`}>{msg.texto}</p>}
+      {(data ?? []).map((p) => (
+        <div key={p.clienteId} className="bg-dark-800 border border-dark-600 rounded-xl p-3 flex flex-wrap items-center gap-3">
+          <div className="min-w-0 flex-1 text-xs text-dark-300 space-y-0.5">
+            <p className="text-sm font-semibold text-dark-100">{p.razaoSocial}</p>
+            <p>
+              Venda de {formatarMoeda(p.valor)} em {dataBr(p.dataVenda)} · vendedor: {p.vendedor ?? '—'}
+              {p.pedidos.length ? ` · pedido(s) no SAP: ${p.pedidos.join(', ')}` : ''}
+            </p>
+            <p>
+              Já existe como <b>{p.razaoSocialAntigo}</b> ({p.codigoSap}) · vendedor: {p.vendedorAntigo ?? 'nenhum'} · achado pelo {p.achadoPor}
+            </p>
+          </div>
+          <Button size="sm" loading={corrigir.isPending && corrigir.variables?.clienteId === p.clienteId} onClick={() => corrigir.mutate({ clienteId: p.clienteId })}>
+            Corrigir
+          </Button>
+        </div>
+      ))}
     </div>
   )
 }
