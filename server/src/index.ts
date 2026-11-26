@@ -994,7 +994,21 @@ process.on('unhandledRejection', (motivo) => {
 
 async function start() {
   try {
-    await migrate(db, { migrationsFolder: path.resolve('drizzle') })
+    // Banco ocupado por um script em massa (docker compose run) não derruba
+    // mais o CRM: espera e tenta de novo (até ~5 min) em vez de cair em loop
+    // de reinício (2026-11-26, lote 2 de duplicados travou a subida).
+    for (let tentativa = 1; ; tentativa++) {
+      try {
+        await db.run(sql.raw('PRAGMA busy_timeout = 15000'))
+        await migrate(db, { migrationsFolder: path.resolve('drizzle') })
+        break
+      } catch (e) {
+        const ocupado = /SQLITE_BUSY|database is locked/i.test(String((e as Error)?.message ?? e))
+        if (!ocupado || tentativa >= 20) throw e
+        console.warn(`[db] banco ocupado ao subir — tentando de novo em 15s (${tentativa}/20)`)
+        await new Promise((r) => setTimeout(r, 15000))
+      }
+    }
     console.log('[db] migrações aplicadas')
     await backfillPermissoesRelatorios()
     await backfillPermissaoPainelTv()
