@@ -12,6 +12,7 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../../db/client.js'
 import { leads, leadHistory, leadWhatsappMensagens, clientes, clienteTelefones } from '../../db/schema.js'
 import { findOrCreateLeadFromTrackingDetalhado, acharLeadPorTelefone } from '../leadsTrackingService.js'
+import { getVendorByDDD, getRegionIdByDDD } from '../leadsRoundRobin.js'
 
 export type MensagemCapturada = {
   id: string
@@ -25,6 +26,8 @@ export type MensagemCapturada = {
 }
 
 // ---------- extrair o que importa da mensagem do Baileys ----------
+export const TIPO_ILEGIVEL = 'ilegivel'
+export const TEXTO_ILEGIVEL = '[Mensagem que o CRM não conseguiu abrir — veja a conversa no celular]'
 type Qualquer = Record<string, any>
 
 /** Tira os "envelopes" (mensagem temporária, ver uma vez, documento com legenda...). */
@@ -66,7 +69,7 @@ export function conteudoDaMensagem(bruta: Qualquer | null | undefined): { tipo: 
 
 const soDigitos = (s: string) => String(s || '').replace(/\D/g, '')
 /** Número de um jid do WhatsApp ("554799990000:12@s.whatsapp.net" → "554799990000"). */
-function numeroDoJid(jid?: string | null): string | null {
+export function numeroDoJid(jid?: string | null): string | null {
   if (!jid || !/@s\.whatsapp\.net$/.test(jid)) return null
   return soDigitos(jid.split('@')[0].split(':')[0]) || null
 }
@@ -79,7 +82,11 @@ export function extrairMensagem(msg: Qualquer): MensagemCapturada | null {
   // Grupo, status, lista de transmissão, canal: não é lead.
   if (/@g\.us$|@broadcast$|@newsletter$/.test(jid) || jid === 'status@broadcast') return null
   if (!/@s\.whatsapp\.net$|@lid$/.test(jid)) return null
-  const conteudo = conteudoDaMensagem(msg.message)
+  let conteudo = conteudoDaMensagem(msg.message)
+  // Mensagem que o WhatsApp entregou mas não deu para abrir (CIPHERTEXT = 2,
+  // comum na 1ª mensagem de contato novo): NÃO descarta — o contato vira lead
+  // do mesmo jeito e, se o WhatsApp reenviar legível, o texto é trocado depois.
+  if (!conteudo && !msg.message && Number(msg.messageStubType) === 2) conteudo = { tipo: TIPO_ILEGIVEL, texto: TEXTO_ILEGIVEL }
   if (!conteudo) return null
   // WhatsApp está trocando o número por identificador "@lid": tenta os campos
   // alternativos que trazem o número de verdade.
@@ -136,6 +143,15 @@ export function lerFormularioMeta(texto: string): DadosFormulario | null {
     respostas,
   }
   return Object.keys(respostas).length >= 2 ? dados : null
+}
+
+/** Telefone que a pessoa escreveu na mensagem ("Phone number: +55 12 98124-9925"). Só dígitos com 55. */
+export function telefoneNoTexto(texto: string): string | null {
+  const m = String(texto || '').match(/(?:phone(?:\s*number)?|telefone|celular|whats\s*app|fone)\s*\??\s*:\s*(\+?[\d\s().-]{10,20})/i)
+  if (!m) return null
+  let d = soDigitos(m[1])
+  if (d.length === 10 || d.length === 11) d = '55' + d
+  return telefoneBr(d) ? d : null
 }
 
 // ---------- achar o lead ----------
@@ -209,9 +225,17 @@ export function registrarMensagem(empresaId: number, m: MensagemCapturada): Prom
 async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<ResultadoCaptura> {
   const ja = await db.query.leadWhatsappMensagens.findFirst({
     where: and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.waMessageId, m.id)),
-    columns: { id: true, leadId: true },
+    columns: { id: true, leadId: true, tipo: true },
   })
-  if (ja) return { acao: 'duplicada', leadId: ja.leadId }
+  if (ja) {
+    if (ja.tipo === TIPO_ILEGIVEL && m.tipo !== TIPO_ILEGIVEL) {
+      await db.update(leadWhatsappMensagens).set({ tipo: m.tipo, texto: m.texto, ...(m.telefone ? { telefone: m.telefone } : {}) }).where(eq(leadWhatsappMensagens.id, ja.id))
+      return { acao: 'anexada', leadId: ja.leadId }
+    }
+    return { acao: 'duplicada', leadId: ja.leadId }
+  }
+  // Número escondido (@lid): usa o telefone que a pessoa escreveu (formulário da Meta).
+  if (!m.telefone && !m.deMim) m = { ...m, telefone: telefoneNoTexto(m.texto) }
 
   const tel = telefoneBr(m.telefone)
   let leadId: number | null = (await leadPorJid(empresaId, m.jid)) ?? (tel ? await leadPorTelefone(empresaId, tel) : null)
@@ -297,3 +321,63 @@ export async function conversaDoLead(empresaId: number, leadId: number) {
     .limit(1000)
 }
 
+
+// ---------- lead que nasceu sem número (WhatsApp escondeu: "@lid") ----------
+// Roda a cada poucos minutos (captura.ts). Assim que o número aparecer — pelo
+// mapa do próprio WhatsApp (lid → número) ou pelo telefone escrito na mensagem
+// — o lead é consertado sozinho: se já existe lead/cliente com esse número, a
+// conversa vai para ele e o lead sem número sai (não fica duplicado); se não,
+// o lead ganha o telefone e o vendedor pelo DDD (João, 2026-11-26: "preciso que
+// todos venham", sem ninguém conferir na mão).
+export async function consertarLeadsSemNumero(
+  empresaId: number,
+  numeroDoLid: (jid: string) => Promise<string | null>
+): Promise<number> {
+  const semNumero = await db
+    .select({ id: leads.id, vendorId: leads.vendorId })
+    .from(leads)
+    .where(and(eq(leads.empresaId, empresaId), eq(leads.source, 'whatsapp'), isNull(leads.phone), isNull(leads.deletedAt), sql`${leads.createdAt} >= datetime('now', '-30 days')`))
+    .limit(50)
+  let consertados = 0
+  for (const l of semNumero) {
+    try {
+      const msgs = await db
+        .select({ jid: leadWhatsappMensagens.jid, telefone: leadWhatsappMensagens.telefone, texto: leadWhatsappMensagens.texto })
+        .from(leadWhatsappMensagens)
+        .where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.leadId, l.id)))
+        .orderBy(leadWhatsappMensagens.id)
+        .limit(30)
+      if (!msgs.length) continue
+      const jid = msgs[0].jid
+      let numero: string | null = msgs.find((x) => x.telefone)?.telefone ?? null
+      if (!numero && /@lid$/.test(jid)) numero = await numeroDoLid(jid).catch(() => null)
+      if (!numero) for (const x of msgs) { numero = telefoneNoTexto(x.texto); if (numero) break }
+      const tel = telefoneBr(numero)
+      if (!tel) continue
+      await db.update(leadWhatsappMensagens).set({ telefone: numero }).where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.jid, jid), isNull(leadWhatsappMensagens.telefone)))
+      const outro = await acharLeadPorTelefone(empresaId, tel.ddd, tel.local)
+      const cliente = outro && outro !== l.id ? null : await clientePorTelefone(empresaId, tel)
+      const agora = new Date().toISOString()
+      if ((outro && outro !== l.id) || cliente) {
+        await db.update(leadWhatsappMensagens)
+          .set(outro && outro !== l.id ? { leadId: outro } : { leadId: null, clienteId: cliente })
+          .where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.leadId, l.id)))
+        await db.update(leads).set({ deletedAt: agora }).where(eq(leads.id, l.id))
+        const destino = outro && outro !== l.id ? `lead #${outro}` : `cliente da carteira #${cliente}`
+        await db.insert(leadHistory).values({ empresaId, leadId: l.id, action: 'unificado', details: `WhatsApp tinha escondido o número (${tel.ddd}) ${tel.local}; conversa juntada no ${destino} — este lead duplicado foi retirado` })
+        if (outro && outro !== l.id) await db.insert(leadHistory).values({ empresaId, leadId: outro, action: 'whatsapp', details: `Conversa do WhatsApp juntada a este lead (vinha do lead #${l.id}, sem número)` })
+        console.log(`[wa-captura empresa ${empresaId}] lead #${l.id} sem número juntado ao ${destino}`)
+      } else {
+        const vendorId = l.vendorId ?? (await getVendorByDDD(tel.ddd, empresaId))
+        const regionId = await getRegionIdByDDD(tel.ddd, empresaId)
+        await db.update(leads).set({ phone: `${tel.ddd}${tel.local}`, ddd: tel.ddd, vendorId, regionId, ...(vendorId && !l.vendorId ? { assignedAt: agora } : {}) }).where(eq(leads.id, l.id))
+        await db.insert(leadHistory).values({ empresaId, leadId: l.id, action: 'whatsapp', details: `Número descoberto: (${tel.ddd}) ${tel.local}${vendorId && !l.vendorId ? ' — vendedor definido pelo DDD' : ''}` })
+        console.log(`[wa-captura empresa ${empresaId}] lead #${l.id} ganhou o número (${tel.ddd}) ${tel.local}${vendorId ? ` → vendedor ${vendorId}` : ''}`)
+      }
+      consertados++
+    } catch (e) {
+      console.error(`[wa-captura empresa ${empresaId}] falha ao consertar lead #${l.id}:`, (e as Error).message)
+    }
+  }
+  return consertados
+}

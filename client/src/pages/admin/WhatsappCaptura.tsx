@@ -86,6 +86,12 @@ export default function WhatsappCaptura() {
               <span className="text-xs text-dark-500 ml-auto">{p.leads7} lead(s) pelo WhatsApp em 7 dias</span>
             </div>
             {p.precisaParear && <p className="text-sm text-red-400">O WhatsApp foi desconectado no celular. Leia o QR code de novo para voltar a capturar.</p>}
+            {p.ativa && p.caiuEm && p.estado !== 'conectado' && !p.precisaParear && (
+              <p className="text-sm text-amber-300">Fora do ar desde {quando(p.caiuEm)}. O CRM está reconectando sozinho; as mensagens que chegarem nesse meio-tempo entram quando voltar.</p>
+            )}
+            {p.quedas?.length > 0 && (
+              <p className="text-xs text-dark-500">Últimas quedas: {p.quedas.map((q) => `${quando(q.de)} → ${q.ate ? quando(q.ate) : 'ainda fora'}`).join(' · ')}</p>
+            )}
 
             <div className="flex flex-wrap gap-2">
               <Button variant={p.ativa ? 'secondary' : 'primary'} loading={ligar.isPending} onClick={() => ligar.mutate({ empresaId, ativa: !p.ativa })}>
@@ -106,7 +112,7 @@ export default function WhatsappCaptura() {
                 </ol>
               </div>
             )}
-            <p className="text-xs text-dark-500">Conversas antigas não entram: só mensagens que chegarem depois de conectar. Grupos, status e canais são ignorados. Contagem desde o último reinício do servidor: {p.contagem.recebidas} recebidas · {p.contagem.enviadas} enviadas · {p.contagem.leadsCriados} leads criados{p.contagem.erros ? ` · ${p.contagem.erros} erros` : ''}.</p>
+            <p className="text-xs text-dark-500">Conversas antigas não entram: só mensagens que chegarem depois de ligar a captura (inclusive as que chegarem com ela fora do ar, que entram quando reconecta). Mensagem que o CRM não conseguir abrir vira lead do mesmo jeito, marcada para ver no celular. Grupos, status e canais são ignorados. Contagem desde o último reinício do servidor: {p.contagem.recebidas} recebidas · {p.contagem.enviadas} enviadas · {p.contagem.leadsCriados} leads criados{p.contagem.erros ? ` · ${p.contagem.erros} erros` : ''}.</p>
             {p.ultimoEvento && <p className="text-xs text-dark-500">Último evento: {p.ultimoEvento.slice(25)}</p>}
           </div>
 

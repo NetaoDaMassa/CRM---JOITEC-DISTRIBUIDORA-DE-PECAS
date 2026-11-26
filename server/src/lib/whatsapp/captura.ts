@@ -16,8 +16,11 @@ import pino from 'pino'
 // Baileys 7 só aqui (a sessão dos avisos continua na 6.7): com a 6.7 o WhatsApp
 // aceitava o QR e derrubava o aparelho logo depois de conectar (2026-11-25).
 import makeWASocket, { useMultiFileAuthState, fetchLatestBaileysVersion, DisconnectReason, Browsers, type WASocket } from 'baileys7'
-import { getConfigBool, setConfig } from '../configuracoes.js'
-import { extrairMensagem, registrarMensagem } from './capturaLeads.js'
+import { and, eq } from 'drizzle-orm'
+import { db } from '../../db/client.js'
+import { users, notifications } from '../../db/schema.js'
+import { getConfigBool, getConfigTexto, setConfig } from '../configuracoes.js'
+import { extrairMensagem, registrarMensagem, numeroDoJid, consertarLeadsSemNumero } from './capturaLeads.js'
 
 export type EstadoCaptura = 'desligada' | 'desconectado' | 'conectando' | 'aguardando_qr' | 'conectado'
 
@@ -34,6 +37,9 @@ type Sessao = {
   parando: boolean
   ultimoEvento: string
   conectadoEm: string | null
+  caiuEm: string | null // fora do ar desde (null = conectado)
+  avisouQueda: boolean
+  quedas: { de: string; ate: string | null; motivo: string }[]
   contagem: { recebidas: number; enviadas: number; leadsCriados: number; ignoradas: number; erros: number }
 }
 
@@ -53,7 +59,7 @@ const pastaDa = (empresaId: number) => path.join(pastaBase(), `empresa-${empresa
 function sessao(empresaId: number): Sessao {
   let s = sessoes.get(empresaId)
   if (!s) {
-    s = { empresaId, sock: null, estado: 'desligada', qr: null, precisaParear: false, numero: null, tentativas: 0, timer: null, iniciando: null, parando: false, ultimoEvento: '', conectadoEm: null, contagem: { recebidas: 0, enviadas: 0, leadsCriados: 0, ignoradas: 0, erros: 0 } }
+    s = { empresaId, sock: null, estado: 'desligada', qr: null, precisaParear: false, numero: null, tentativas: 0, timer: null, iniciando: null, parando: false, ultimoEvento: '', conectadoEm: null, caiuEm: null, avisouQueda: false, quedas: [], contagem: { recebidas: 0, enviadas: 0, leadsCriados: 0, ignoradas: 0, erros: 0 } }
     sessoes.set(empresaId, s)
   }
   return s
@@ -75,6 +81,8 @@ export function statusCaptura(empresaId: number) {
     precisaParear: s.precisaParear,
     numero: s.numero,
     conectadoEm: s.conectadoEm,
+    caiuEm: s.caiuEm,
+    quedas: s.quedas.slice(-5).reverse(),
     ultimoEvento: s.ultimoEvento,
     contagem: s.contagem,
     temLoginSalvo: fs.existsSync(path.join(pastaDa(empresaId), 'creds.json')),
@@ -132,9 +140,20 @@ async function abrir(s: Sessao): Promise<void> {
       s.conectadoEm = new Date().toISOString()
       s.numero = (sock.user?.id || '').split(':')[0].split('@')[0] || null
       log(s, `conectado (${s.numero || 'número ?'})`)
+      const q = s.quedas[s.quedas.length - 1]
+      if (q && !q.ate) q.ate = s.conectadoEm
+      if (s.caiuEm && s.avisouQueda) void avisarAdmins(s, 'WhatsApp → leads voltou', `A captura do WhatsApp (${s.numero || 'empresa ' + s.empresaId}) voltou a funcionar. Mensagens recebidas enquanto estava fora entram agora.`)
+      s.caiuEm = null
+      s.avisouQueda = false
+      void marcarDesde(s.empresaId)
     }
     if (u.connection === 'close') {
       s.sock = null
+      if (!s.parando && !s.caiuEm) {
+        s.caiuEm = new Date().toISOString()
+        s.quedas.push({ de: s.caiuEm, ate: null, motivo: String((u.lastDisconnect?.error as { message?: string } | undefined)?.message || 'conexão caiu').slice(0, 120) })
+        if (s.quedas.length > 20) s.quedas.shift()
+      }
       const codigo = (u.lastDisconnect?.error as { output?: { statusCode?: number } } | undefined)?.output?.statusCode
       const erro = u.lastDisconnect?.error as { message?: string; data?: unknown } | undefined
       const detalhe = `${erro?.message || ''} ${erro?.data ? JSON.stringify(erro.data).slice(0, 300) : ''}`.trim()
@@ -144,6 +163,8 @@ async function abrir(s: Sessao): Promise<void> {
         s.precisaParear = true
         log(s, `DESCONECTADO no celular (logout). Precisa ler o QR code de novo na tela WhatsApp → captura. [${detalhe}]`, true)
         limparLogin(s.empresaId)
+        s.avisouQueda = true
+        void avisarAdmins(s, 'WhatsApp → leads DESCONECTADO', `O celular desconectou a captura do WhatsApp (${s.numero || 'empresa ' + s.empresaId}). Mensagens novas NÃO estão virando lead. Abra Marketing → WhatsApp → leads e leia o QR code de novo.`)
         return
       }
       s.estado = 'desconectado'
@@ -157,7 +178,10 @@ async function abrir(s: Sessao): Promise<void> {
       }
       // Ainda não pareado (QR expirou sem ninguém ler): não fica tentando
       // sozinho; a tela gera um QR novo quando clicar em "Mostrar QR".
-      if (!state.creds.registered) {
+      // Pareado pelo QR o Baileys deixa creds.registered=false; quem diz se já
+      // pareou é creds.me. (Antes só olhava registered e, quando a conexão caía,
+      // achava que era "QR expirou" e NÃO reconectava — ficou fora 3h49→9h30 em 26/11.)
+      if (!state.creds.registered && !state.creds.me?.id) {
         s.qr = null
         log(s, 'QR expirou sem ser lido. Clique em "Mostrar QR" para gerar outro.')
         return
@@ -170,30 +194,113 @@ async function abrir(s: Sessao): Promise<void> {
     }
   })
 
-  sock.ev.on('messages.upsert', ({ messages, type }) => {
-    // 'append' = histórico/sincronização; só 'notify' é mensagem nova de verdade.
-    if (type !== 'notify') return
+  sock.ev.on('messages.upsert', async ({ messages, type }) => {
+    // 'notify' = mensagem nova. 'append' = mensagem que chegou enquanto a
+    // captura estava fora do ar (o WhatsApp entrega quando reconecta) — antes
+    // era descartada e o lead se perdia. Só aceita 'append' de depois que a
+    // captura foi ligada e dos últimos 3 dias (conversa antiga não vira lead;
+    // repetida não duplica: o id da mensagem é único).
+    const desde = type === 'append' ? await desdeQuando(s.empresaId) : 0
     for (const bruta of messages) {
       let m
       try { m = extrairMensagem(bruta) } catch { m = null }
-      if (!m) { s.contagem.ignoradas++; continue }
-      registrarMensagem(s.empresaId, m)
+      if (!m) {
+        s.contagem.ignoradas++
+        const k = (bruta as { key?: { remoteJid?: string } })?.key
+        if (k?.remoteJid && !/@g\.us$|@broadcast$|@newsletter$/.test(k.remoteJid)) {
+          const b = bruta as { messageStubType?: number; message?: Record<string, unknown> | null }
+          console.log(`[wa-captura empresa ${s.empresaId}] ignorada (${type}) ${k.remoteJid} stub=${b.messageStubType ?? '-'} campos=${Object.keys(b.message || {}).join(',') || '-'}`)
+        }
+        continue
+      }
+      if (type === 'append') {
+        const t = Date.parse(m.enviadaEm)
+        if (!(t >= desde && t >= Date.now() - 3 * 86_400_000)) continue
+      } else if (type !== 'notify') continue
+      // WhatsApp escondeu o número (@lid): pergunta ao próprio WhatsApp qual é.
+      if (!m.telefone && /@lid$/.test(m.jid)) {
+        const pn = await numeroDoLidPara(sock, m.jid)
+        if (pn) m = { ...m, telefone: pn }
+      }
+      const msg = m
+      registrarMensagem(s.empresaId, msg)
         .then((r) => {
           if (r.acao === 'duplicada') return
-          if (m.deMim) s.contagem.enviadas++
+          if (msg.deMim) s.contagem.enviadas++
           else s.contagem.recebidas++
           if (r.acao === 'criado') {
             s.contagem.leadsCriados++
-            log(s, `lead #${r.leadId} criado (${m.pushName || m.telefone || m.jid})${r.vendorId ? ` → vendedor ${r.vendorId}` : ' sem vendedor (distribuir)'}`)
+            log(s, `lead #${r.leadId} criado (${msg.pushName || msg.telefone || msg.jid})${r.vendorId ? ` → vendedor ${r.vendorId}` : ' sem vendedor (distribuir)'}`)
           } else if (r.acao === 'cliente') {
             console.log(`[wa-captura empresa ${s.empresaId}] mensagem de cliente da carteira #${r.clienteId} (não vira lead)`)
           } else if (r.acao === 'anexada') {
-            console.log(`[wa-captura empresa ${s.empresaId}] mensagem ${m.deMim ? 'enviada' : 'recebida'} anexada ao lead #${r.leadId}`)
+            console.log(`[wa-captura empresa ${s.empresaId}] mensagem ${msg.deMim ? 'enviada' : 'recebida'} anexada ao lead #${r.leadId}`)
           }
         })
         .catch((e) => { s.contagem.erros++; log(s, `erro ao gravar mensagem: ${(e as Error).message}`, true) })
     }
   })
+}
+
+async function numeroDoLidPara(sock: WASocket, jid: string): Promise<string | null> {
+  try {
+    const pn = await (sock as unknown as { signalRepository?: { lidMapping?: { getPNForLID(l: string): Promise<string | null> } } }).signalRepository?.lidMapping?.getPNForLID(jid)
+    return numeroDoJid(pn ? pn.replace(/:\d+@/, '@') : null)
+  } catch { return null }
+}
+
+const chaveDesde = (empresaId: number) => `wa_captura_${empresaId}_desde`
+async function marcarDesde(empresaId: number) {
+  try { if (!(await getConfigTexto(chaveDesde(empresaId)))) await setConfig(chaveDesde(empresaId), new Date().toISOString()) } catch { /* ok */ }
+}
+async function desdeQuando(empresaId: number): Promise<number> {
+  const v = await getConfigTexto(chaveDesde(empresaId)).catch(() => null)
+  // Sem registro (captura ligada antes desta versão): considera 25/11, quando ela entrou no ar.
+  return Date.parse(v || '2026-11-25T00:00:00Z') || 0
+}
+
+/** Sininho para os super admins (queda longa / desconectado no celular). */
+async function avisarAdmins(s: Sessao, titulo: string, mensagem: string) {
+  try {
+    const admins = await db.select({ id: users.id }).from(users).where(and(eq(users.superAdmin, true), eq(users.isActive, true)))
+    for (const a of admins) await db.insert(notifications).values({ vendedorId: a.id, type: 'whatsapp_captura', title: titulo, message: mensagem })
+    log(s, `aviso aos admins: ${titulo}`)
+  } catch (e) {
+    console.error(`[wa-captura empresa ${s.empresaId}] falha ao avisar admins:`, (e as Error).message)
+  }
+}
+
+// Vigia a cada 2 min: (1) captura ligada e fora do ar → reconecta (não depende
+// do servidor reiniciar); (2) fora do ar há 10+ min → avisa no sininho;
+// (3) conserta leads que nasceram sem número quando o número aparecer.
+let vigia: NodeJS.Timeout | null = null
+function ligarVigia(empresaIds: number[]) {
+  if (vigia) return
+  vigia = setInterval(async () => {
+    for (const id of empresaIds) {
+      try {
+        if (!(await capturaAtiva(id))) continue
+        const s = sessao(id)
+        const pareado = fs.existsSync(path.join(pastaDa(id), 'creds.json'))
+        if (s.estado === 'desconectado' && pareado && !s.timer && !s.iniciando && !s.precisaParear) {
+          log(s, 'vigia: captura fora do ar, reconectando')
+          s.estado = 'desligada'
+          await iniciarCaptura(id)
+        }
+        if (s.estado !== 'conectado' && s.caiuEm && !s.avisouQueda && Date.now() - Date.parse(s.caiuEm) > 10 * 60_000) {
+          s.avisouQueda = true
+          await avisarAdmins(s, 'WhatsApp → leads fora do ar', `A captura do WhatsApp (${s.numero || 'empresa ' + id}) está fora do ar desde ${new Date(s.caiuEm).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' })}. O CRM está tentando reconectar sozinho; se não voltar, abra Marketing → WhatsApp → leads.`)
+        }
+        if (s.estado === 'conectado' && s.sock) {
+          const sock = s.sock
+          await consertarLeadsSemNumero(id, (jid) => numeroDoLidPara(sock, jid))
+        }
+      } catch (e) {
+        console.error(`[wa-captura] vigia empresa ${id}:`, (e as Error).message)
+      }
+    }
+  }, 2 * 60_000)
+  vigia.unref?.()
 }
 
 function limparLogin(empresaId: number) {
@@ -238,6 +345,7 @@ export async function ligarDesligarCaptura(empresaId: number, ativa: boolean) {
 export async function iniciarCapturasAtivas(empresaIds: number[]) {
   if (desligadaGeral()) { console.log('[wa-captura] desligada (WA_CAPTURA_DESLIGADA=1)'); return }
   if (process.env.DESLIGAR_AGENDADOR === '1') { console.log('[wa-captura] não sobe sozinha em dev (DESLIGAR_AGENDADOR=1)'); return }
+  ligarVigia(empresaIds)
   for (const id of empresaIds) {
     try {
       if (await capturaAtiva(id)) {

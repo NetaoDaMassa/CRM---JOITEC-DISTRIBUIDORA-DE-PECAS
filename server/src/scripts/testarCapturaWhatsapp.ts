@@ -6,7 +6,7 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
 import { leads, leadWhatsappMensagens } from '../db/schema.js'
-import { extrairMensagem, registrarMensagem, conversaDoLead } from '../lib/whatsapp/capturaLeads.js'
+import { extrairMensagem, registrarMensagem, conversaDoLead, consertarLeadsSemNumero, telefoneNoTexto, TIPO_ILEGIVEL } from '../lib/whatsapp/capturaLeads.js'
 import { findOrCreateLeadFromTrackingDetalhado } from '../lib/leadsTrackingService.js'
 
 if (!String(process.env.DATABASE_URL).includes('teste')) throw new Error('Rode só contra uma cópia (DATABASE_URL com "teste")')
@@ -95,6 +95,35 @@ ok(/Campanha PPR/.test(l15b?.metaDados || ''), 'campanha da Meta completa o lead
 const meta16 = await findOrCreateLeadFromTrackingDetalhado({ empresaId: EMP, name: 'Maria Meta', phone: '(41) 99876-5432', source: 'meta_ads_lead' })
 const r16 = await enviar(msg('5541998765432@s.whatsapp.net', textoForm.replace('+554399166973', '+5541998765432'), { push: 'Maria' }))
 ok(meta16?.criado && r16?.acao === 'anexada' && r16.leadId === meta16.id, 'Meta antes e WhatsApp depois cai no mesmo lead')
+
+// 17) caso Iractan (26/11): Meta antes; WhatsApp com número ESCONDIDO (@lid) mas telefone no texto
+ok(telefoneNoTexto('Phone number: +5512981249925') === '5512981249925' && telefoneNoTexto('Telefone: (47) 99911-2233') === '5547999112233' && telefoneNoTexto('oi') === null, 'lê telefone escrito na mensagem')
+const meta17 = await findOrCreateLeadFromTrackingDetalhado({ empresaId: EMP, name: 'Iractan Teste', phone: '(12) 98124-9925', source: 'meta_ads_lead' })
+await db.update(leads).set({ ddd: 12, phone: '981249925' }).where(eq(leads.id, meta17!.id)) // igual ao lead real da Meta
+const texto17 = 'Olá! Preenchi seu formulário e gostaria de saber mais sobre sua empresa.\n\nVocê trabalha com compressor de ar?: Sou assistente técnico\nPhone number: +5512981249925\nEmail: x@y.com'
+const r17 = await enviar(msg('263148401610998@lid', texto17, { push: 'Iractan' }))
+ok(r17?.acao === 'anexada' && r17.leadId === meta17?.id, `@lid sem número + telefone no formulário cai no lead da Meta (não duplica) [${r17?.acao} #${r17?.leadId} vs #${meta17?.id}]`)
+// 18) mensagem ilegível (CIPHERTEXT) de contato novo: vira lead mesmo assim; depois chega legível e troca o texto
+const mid18 = id()
+const r18 = await enviar({ key: { remoteJid: '5511977776666@s.whatsapp.net', fromMe: false, id: mid18 }, pushName: 'Pedro Teste', messageTimestamp: Math.floor(Date.now() / 1000), message: null, messageStubType: 2, messageStubParameters: ['No session record'] })
+ok(r18?.acao === 'criado', 'mensagem que não deu para abrir AINDA cria o lead')
+const r18b = await enviar(msg('5511977776666@s.whatsapp.net', 'Quero o cabeçote ODV20', { mid: mid18 }))
+const c18 = await conversaDoLead(EMP, r18!.leadId!)
+ok(r18b?.acao === 'anexada' && c18.length === 1 && c18[0].texto === 'Quero o cabeçote ODV20' && c18[0].tipo !== TIPO_ILEGIVEL, 'quando o WhatsApp reenvia legível, o texto é trocado (sem duplicar)')
+// 19) @lid sem número nenhum → lead sem número; vigia descobre o número depois (mapa do WhatsApp)
+const r19 = await enviar(msg('999000111222@lid', 'bom dia, tem tubo?', { push: 'Sem Numero' }))
+const l19 = await db.query.leads.findFirst({ where: eq(leads.id, r19!.leadId!) })
+ok(r19?.acao === 'criado' && !l19?.phone, 'lid sem número cria lead sem número')
+const n19 = await consertarLeadsSemNumero(EMP, async (jid) => (jid === '999000111222@lid' ? '5548991112222' : null))
+const l19b = await db.query.leads.findFirst({ where: eq(leads.id, r19!.leadId!) })
+ok(n19 >= 1 && l19b?.phone === '48991112222' && l19b?.ddd === 48, `vigia completa o número do lead (${l19b?.ddd} ${l19b?.phone})`)
+// 20) lid sem número, mas o número já é de outro lead → junta e tira o duplicado
+const meta20 = await findOrCreateLeadFromTrackingDetalhado({ empresaId: EMP, name: 'Já Existia', phone: '(31) 98355-8980', source: 'meta_ads_lead' })
+const r20 = await enviar(msg('270454124216444@lid', 'olá', { push: 'RW' }))
+await consertarLeadsSemNumero(EMP, async (jid) => (jid === '270454124216444@lid' ? '553183558980' : null))
+const l20 = await db.query.leads.findFirst({ where: eq(leads.id, r20!.leadId!) })
+const c20 = await conversaDoLead(EMP, meta20!.id)
+ok(!!l20?.deletedAt && c20.some((m) => m.texto === 'olá'), 'duplicado sem número sai e a conversa vai para o lead que já existia')
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTUDO CERTO')
 process.exit(falhas ? 1 : 0)
