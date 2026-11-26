@@ -1827,12 +1827,15 @@ export const leadWhatsappMensagens = sqliteTable('lead_whatsapp_mensagens', {
   texto: text('texto').notNull().default(''),
   pushName: text('push_name'),
   enviadaEm: text('enviada_em').notNull(),
+  // Vendedor dono do cliente abriu o card e viu a mensagem (selo "nova" some).
+  vistaEm: text('vista_em'),
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({
   msgUnica: uniqueIndex('uq_lead_wa_msg').on(t.empresaId, t.waMessageId),
   leadIdx: index('idx_lead_wa_msg_lead').on(t.leadId, t.enviadaEm),
   jidIdx: index('idx_lead_wa_msg_jid').on(t.empresaId, t.jid),
   clienteIdx: index('idx_lead_wa_msg_cliente').on(t.clienteId, t.enviadaEm),
+  naoVistaIdx: index('idx_lead_wa_msg_nao_vista').on(t.empresaId, t.clienteId, t.vistaEm),
 }))
 
 export const leadContactAttempts = sqliteTable('lead_contact_attempts', {

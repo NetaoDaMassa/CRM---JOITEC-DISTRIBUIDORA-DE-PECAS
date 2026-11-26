@@ -6,7 +6,7 @@ import { desc, eq, and, gte, sql } from 'drizzle-orm'
 import { router, superAdminProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, clientes, leadWhatsappMensagens } from '../db/schema.js'
-import { conversaDoCliente } from '../lib/whatsapp/capturaLeads.js'
+import { conversaDoCliente, clientesComMensagemNova, marcarMensagensVistas } from '../lib/whatsapp/capturaLeads.js'
 import { capturaAtiva, statusCaptura, iniciarCaptura, ligarDesligarCaptura, desconectarCaptura } from '../lib/whatsapp/captura.js'
 
 const empresaInput = z.object({ empresaId: z.number().int().min(1) })
@@ -51,8 +51,25 @@ export const whatsappCapturaRouter = router({
   conversaCliente: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
     const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, input.id), eq(clientes.empresaId, ctx.empresaId)), columns: { id: true, vendedorAtualId: true } })
     if (!cliente) throw new Error('Cliente não encontrado')
-    if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
+    if (ctx.user.role === 'vendor' && cliente.vendedorAtualId !== ctx.user.id) throw new Error('Acesso negado')
     return conversaDoCliente(ctx.empresaId, cliente.id)
+  }),
+
+  // Selo "💬 mensagem nova" nos cards (Kanban da carteira e Prospecção).
+  // Vendedor vê só os clientes dele; admin/gestor vê todos da empresa.
+  naoVistas: protectedProcedure.query(async ({ ctx }) => {
+    const linhas = await clientesComMensagemNova(ctx.empresaId, ctx.user.role === 'vendor' ? ctx.user.id : null)
+    return linhas.filter((l) => l.clienteId).map((l) => ({ clienteId: l.clienteId as number, qtd: Number(l.qtd), ultima: l.ultima, texto: String(l.texto || '').slice(0, 140) }))
+  }),
+
+  // Abriu o card e a conversa apareceu: só o VENDEDOR DONO do cliente "dá
+  // baixa" (admin olhando não tira o selo do vendedor). Cliente sem vendedor:
+  // quem abrir dá baixa.
+  marcarVistas: protectedProcedure.input(z.object({ clienteId: z.number() })).mutation(async ({ ctx, input }) => {
+    const cliente = await db.query.clientes.findFirst({ where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId)), columns: { id: true, vendedorAtualId: true } })
+    if (!cliente) throw new Error('Cliente não encontrado')
+    if (cliente.vendedorAtualId && cliente.vendedorAtualId !== ctx.user.id) return { marcadas: 0, dono: false }
+    return { marcadas: await marcarMensagensVistas(ctx.empresaId, cliente.id, cliente.vendedorAtualId ?? null), dono: true }
   }),
 
   desconectar: superAdminProcedure.input(empresaInput).mutation(async ({ input }) => {

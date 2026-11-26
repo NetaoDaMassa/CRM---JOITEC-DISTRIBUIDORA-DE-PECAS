@@ -5,8 +5,8 @@ import path from 'path'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { and, eq } from 'drizzle-orm'
 import { db } from '../db/client.js'
-import { leads, leadWhatsappMensagens } from '../db/schema.js'
-import { extrairMensagem, registrarMensagem, conversaDoLead, consertarLeadsSemNumero, telefoneNoTexto, TIPO_ILEGIVEL } from '../lib/whatsapp/capturaLeads.js'
+import { leads, leadWhatsappMensagens, clientes, notifications, users } from '../db/schema.js'
+import { extrairMensagem, registrarMensagem, conversaDoLead, consertarLeadsSemNumero, telefoneNoTexto, TIPO_ILEGIVEL, clientesComMensagemNova, marcarMensagensVistas } from '../lib/whatsapp/capturaLeads.js'
 import { findOrCreateLeadFromTrackingDetalhado } from '../lib/leadsTrackingService.js'
 
 if (!String(process.env.DATABASE_URL).includes('teste')) throw new Error('Rode só contra uma cópia (DATABASE_URL com "teste")')
@@ -124,6 +124,22 @@ await consertarLeadsSemNumero(EMP, async (jid) => (jid === '270454124216444@lid'
 const l20 = await db.query.leads.findFirst({ where: eq(leads.id, r20!.leadId!) })
 const c20 = await conversaDoLead(EMP, meta20!.id)
 ok(!!l20?.deletedAt && c20.some((m) => m.texto === 'olá'), 'duplicado sem número sai e a conversa vai para o lead que já existia')
+
+// 21) cliente da carteira/prospecção manda mensagem → selo + sininho do vendedor; some quando o vendedor abre
+const vend = await db.query.users.findFirst({ where: eq(users.empresaId, EMP), columns: { id: true } })
+const insC = await db.insert(clientes).values({ empresaId: EMP, razaoSocial: 'AD PARTS TESTE', codigo: 'TST' + Date.now(), telefoneWhatsapp: '81988887777', vendedorAtualId: vend!.id } as any)
+const cli = Number(insC.lastInsertRowid)
+const r21 = await enviar(msg('5581988887777@s.whatsapp.net', 'Preciso de um orçamento', { push: 'Augusto' }))
+await enviar(msg('5581988887777@s.whatsapp.net', 'PPR azul 1/4', { push: 'Augusto' }))
+const novas = await clientesComMensagemNova(EMP, vend!.id)
+const n21 = novas.find((x) => x.clienteId === cli)
+ok(r21?.acao === 'cliente' && Number(n21?.qtd) === 2, `selo: cliente com 2 mensagens novas (${n21?.qtd})`)
+const avisos = await db.select().from(notifications).where(and(eq(notifications.clienteId, cli), eq(notifications.type, 'whatsapp_cliente')))
+ok(avisos.length === 1 && avisos[0].vendedorId === vend!.id && !avisos[0].read, `sininho: 1 aviso para o vendedor dono (${avisos.length})`)
+await marcarMensagensVistas(EMP, cli, vend!.id)
+const depois = (await clientesComMensagemNova(EMP, vend!.id)).find((x) => x.clienteId === cli)
+const avisosDepois = await db.select().from(notifications).where(and(eq(notifications.clienteId, cli), eq(notifications.type, 'whatsapp_cliente')))
+ok(!depois && avisosDepois.every((a) => a.read), 'vendedor abriu o card: selo some e aviso fica lido')
 
 console.log(falhas ? `\n${falhas} FALHA(S)` : '\nTUDO CERTO')
 process.exit(falhas ? 1 : 0)

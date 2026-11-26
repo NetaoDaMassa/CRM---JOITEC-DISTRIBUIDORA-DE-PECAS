@@ -25,6 +25,8 @@ import { NovoCompromissoModal } from './CalendarBoard'
 import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
 import HistoricoComprasCard from './HistoricoComprasCard'
+import SeloWhatsappNovo, { useMensagensNovasWhatsapp } from './SeloWhatsappNovo'
+import ConversaWhatsappLead from './ConversaWhatsappLead'
 import InadimplenciaCliente from './InadimplenciaCliente'
 import JornadaPedidosCliente from './JornadaPedidosCliente'
 import HistoricoCotacoesSapCliente from './HistoricoCotacoesSapCliente'
@@ -512,6 +514,7 @@ export default function FunilBoard({
   // Clientes devendo no SAP (InadimplenciaCliente) → etiqueta vermelha no card.
   const { data: inadimplentes } = trpc.sapFinanceiro.inadimplentes.useQuery(undefined, { staleTime: 5 * 60_000 })
   const devendo = useMemo(() => new Map((inadimplentes ?? []).map((d) => [d.clienteId, d])), [inadimplentes])
+  const whatsNovas = useMensagensNovasWhatsapp()
   // Pedido do cliente andando no SAP/estoque (JornadaPedidosCliente) → etiqueta no card.
   const { data: jornadas } = trpc.expedicao.jornadaMapa.useQuery(undefined, { staleTime: 2 * 60_000 })
   const jornadaPor = useMemo(() => new Map((jornadas ?? []).map((j) => [j.clienteId, j])), [jornadas])
@@ -986,6 +989,7 @@ export default function FunilBoard({
                           </p>
                         )
                       })()}
+                      <SeloWhatsappNovo m={whatsNovas.get(card.clienteId)} className="mb-2" />
                       {devendo.has(card.clienteId) && (
                         <p
                           className="text-xs font-semibold text-red-300 bg-red-900/20 border border-red-700/40 rounded-lg px-2 py-1 mb-2"
@@ -2182,6 +2186,7 @@ function CardModal({
           </p>
         ) : (
         <>
+        <ConversaWhatsappLead clienteId={card.clienteId} />
         <ClienteInfoEditavel card={card} />
 
         <div>

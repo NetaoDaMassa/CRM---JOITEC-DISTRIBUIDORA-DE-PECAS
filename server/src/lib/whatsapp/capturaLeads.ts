@@ -10,7 +10,7 @@
 // Só leitura: nada aqui envia mensagem nem marca como lida.
 import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { db } from '../../db/client.js'
-import { leads, leadHistory, leadWhatsappMensagens, clientes, clienteTelefones } from '../../db/schema.js'
+import { leads, leadHistory, leadWhatsappMensagens, clientes, clienteTelefones, notifications } from '../../db/schema.js'
 import { findOrCreateLeadFromTrackingDetalhado, acharLeadPorTelefone } from '../leadsTrackingService.js'
 import { getVendorByDDD, getRegionIdByDDD } from '../leadsRoundRobin.js'
 
@@ -294,6 +294,10 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
     })
     .onConflictDoNothing()
 
+  // Cliente da carteira/prospecção mandou mensagem: avisa o vendedor dono no
+  // sininho (1 aviso por conversa enquanto ele não abrir o card).
+  if (acao === 'cliente' && clienteId && !m.deMim) await avisarVendedorDoCliente(empresaId, clienteId, m).catch((e) => console.error('[wa-captura] aviso vendedor:', (e as Error).message))
+
   // Mensagens que a empresa mandou antes de o número virar lead: liga agora.
   if (leadId && acao === 'criado') {
     await db.update(leadWhatsappMensagens).set({ leadId }).where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.jid, m.jid), isNull(leadWhatsappMensagens.leadId)))
@@ -301,10 +305,51 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
   return { acao, leadId, clienteId, vendorId }
 }
 
+async function avisarVendedorDoCliente(empresaId: number, clienteId: number, m: MensagemCapturada) {
+  const c = await db.query.clientes.findFirst({ where: eq(clientes.id, clienteId), columns: { razaoSocial: true, vendedorAtualId: true } })
+  if (!c?.vendedorAtualId) return
+  const ja = await db.query.notifications.findFirst({
+    where: and(eq(notifications.vendedorId, c.vendedorAtualId), eq(notifications.clienteId, clienteId), eq(notifications.type, 'whatsapp_cliente'), eq(notifications.read, false)),
+    columns: { id: true },
+  })
+  if (ja) return
+  await db.insert(notifications).values({
+    vendedorId: c.vendedorAtualId,
+    clienteId,
+    type: 'whatsapp_cliente',
+    title: `💬 ${c.razaoSocial} mandou mensagem no WhatsApp`,
+    message: `"${m.texto.slice(0, 160)}" — abra o card do cliente para ver a conversa.`,
+  })
+}
+
+/** Clientes com mensagem recebida que o vendedor dono ainda não viu (selo nos cards). */
+export async function clientesComMensagemNova(empresaId: number, vendedorId: number | null) {
+  return db
+    .select({ clienteId: leadWhatsappMensagens.clienteId, qtd: sql<number>`count(*)`, ultima: sql<string>`max(${leadWhatsappMensagens.enviadaEm})`, texto: sql<string>`(select x.texto from lead_whatsapp_mensagens x where x.cliente_id = ${leadWhatsappMensagens.clienteId} and x.direcao = 'recebida' order by x.enviada_em desc limit 1)` })
+    .from(leadWhatsappMensagens)
+    .innerJoin(clientes, eq(clientes.id, leadWhatsappMensagens.clienteId))
+    .where(and(
+      eq(leadWhatsappMensagens.empresaId, empresaId),
+      eq(leadWhatsappMensagens.direcao, 'recebida'),
+      isNull(leadWhatsappMensagens.vistaEm),
+      sql`${leadWhatsappMensagens.enviadaEm} >= ${new Date(Date.now() - 30 * 86_400_000).toISOString()}`,
+      ...(vendedorId ? [eq(clientes.vendedorAtualId, vendedorId)] : []),
+    ))
+    .groupBy(leadWhatsappMensagens.clienteId)
+}
+
+/** Vendedor abriu o card: mensagens recebidas viram "vistas" e o aviso do sininho é lido. */
+export async function marcarMensagensVistas(empresaId: number, clienteId: number, vendedorId: number | null) {
+  const r = await db.update(leadWhatsappMensagens).set({ vistaEm: new Date().toISOString() })
+    .where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.clienteId, clienteId), eq(leadWhatsappMensagens.direcao, 'recebida'), isNull(leadWhatsappMensagens.vistaEm)))
+  if (vendedorId) await db.update(notifications).set({ read: true }).where(and(eq(notifications.vendedorId, vendedorId), eq(notifications.clienteId, clienteId), eq(notifications.type, 'whatsapp_cliente'), eq(notifications.read, false)))
+  return Number(r.rowsAffected ?? 0)
+}
+
 /** Conversa de um cliente da carteira, em ordem (para a ficha do cliente). */
 export async function conversaDoCliente(empresaId: number, clienteId: number) {
   return db
-    .select({ id: leadWhatsappMensagens.id, direcao: leadWhatsappMensagens.direcao, tipo: leadWhatsappMensagens.tipo, texto: leadWhatsappMensagens.texto, pushName: leadWhatsappMensagens.pushName, enviadaEm: leadWhatsappMensagens.enviadaEm })
+    .select({ id: leadWhatsappMensagens.id, direcao: leadWhatsappMensagens.direcao, tipo: leadWhatsappMensagens.tipo, texto: leadWhatsappMensagens.texto, pushName: leadWhatsappMensagens.pushName, enviadaEm: leadWhatsappMensagens.enviadaEm, vistaEm: leadWhatsappMensagens.vistaEm })
     .from(leadWhatsappMensagens)
     .where(and(eq(leadWhatsappMensagens.empresaId, empresaId), eq(leadWhatsappMensagens.clienteId, clienteId)))
     .orderBy(leadWhatsappMensagens.enviadaEm, leadWhatsappMensagens.id)

@@ -16,6 +16,8 @@ import { Input, Textarea } from '../components/ui/Input'
 import Select from '../components/ui/Select'
 import Button from '../components/ui/Button'
 import Modal from '../components/ui/Modal'
+import SeloWhatsappNovo, { useMensagensNovasWhatsapp } from '../components/SeloWhatsappNovo'
+import ConversaWhatsappLead from '../components/ConversaWhatsappLead'
 import { soDigitos, usePabxDiscar } from '../components/ui/ContatoButtons'
 import { hojeBrString, primeiroDiaMesString, timeAgo } from '../lib/utils'
 import GravacoesDoContato from '../components/ui/GravacoesDoContato'
@@ -329,6 +331,7 @@ function FichaProspect({
           <span>{origemTexto(p)}</span>
           {p.vendedorNome && <span>Vendedor: {p.vendedorNome}</span>}
         </div>
+        <ConversaWhatsappLead clienteId={p.id} />
         {p.prospeccaoInfo && p.prospeccaoOrigem !== 'banco' && (
           <div className="text-xs rounded-lg bg-gold-600/10 border border-gold-600/30 text-gold-300 px-3 py-2">{p.prospeccaoInfo}</div>
         )}
@@ -827,6 +830,8 @@ export default function Prospeccao() {
   const atrasados = abertos.filter((p) => (diasAte(p.prospeccaoProximoContato) ?? -1) < 0)
   const hoje = abertos.filter((p) => diasAte(p.prospeccaoProximoContato) === 0)
   const pendentes = abertos.filter((p) => p.pendentes.length)
+  const whatsNovas = useMensagensNovasWhatsapp()
+  const comMensagem = filtrados.filter((p) => whatsNovas.has(p.id))
   const ficha = fichaId ? (lista ?? []).find((p) => p.id === fichaId) ?? null : null
 
   const abrirConfirmar = (p: Prospect) => (registroId: number, tipo: string) =>
@@ -852,6 +857,7 @@ export default function Prospeccao() {
           {ehAdmin && p.vendedorNome ? ` · ${p.vendedorNome}` : ''}
           {p.ultimoContato ? ` · último: ${p.ultimoContato.observacao}` : ''}
         </p>
+        <SeloWhatsappNovo m={whatsNovas.get(p.id)} className="mt-1 inline-block" />
       </button>
       <div className="flex flex-col items-end gap-2">
         <BotoesContato p={p} onConfirmar={abrirConfirmar(p)} />
@@ -900,7 +906,7 @@ export default function Prospeccao() {
       <div className="flex gap-1 border-b border-dark-600 overflow-x-auto">
         {(
           [
-            ['dia', 'Meu dia', atrasados.length],
+            ['dia', 'Meu dia', atrasados.length + comMensagem.length],
             ['quadro', 'Quadro', 0],
             ['sugestoes', 'Sugestões do SAP', 0],
             ['relatorio', 'Relatório', 0],
@@ -937,6 +943,7 @@ export default function Prospeccao() {
         <div className="space-y-5">
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
+              ...(comMensagem.length ? [['💬 Mandaram mensagem no WhatsApp', comMensagem.length, 'text-emerald-400'] as const] : []),
               ['Atrasados — ligar primeiro', atrasados.length, 'text-red-400'],
               ['Pra contatar hoje', hoje.length, 'text-amber-400'],
               ['Contatos pra confirmar', pendentes.length, 'text-gold-400'],
@@ -949,6 +956,7 @@ export default function Prospeccao() {
               </div>
             ))}
           </div>
+          <Bloco titulo="💬 Mandaram mensagem no WhatsApp — responder primeiro" itens={comMensagem} />
           <Bloco titulo="Contatos pra confirmar" itens={pendentes} />
           <Bloco titulo="Atrasados" itens={atrasados} />
           <Bloco titulo="Hoje" itens={hoje} vazio="Tudo em dia por hoje 👏" />
@@ -995,6 +1003,7 @@ export default function Prospeccao() {
                           className={`cursor-grab bg-dark-800 border border-dark-600 border-l-4 ${borda} rounded-xl p-2.5 space-y-1.5 hover:border-dark-500`}
                         >
                           <p className="text-sm font-medium text-dark-100 leading-tight">{p.razaoSocial}</p>
+                          <SeloWhatsappNovo m={whatsNovas.get(p.id)} />
                           <p className="text-[11px] text-dark-400">
                             {[p.cidade, p.estado].filter(Boolean).join('/') || 'Sem cidade'}
                             {ehAdmin && p.vendedorNome ? ` · ${p.vendedorNome}` : ''}
