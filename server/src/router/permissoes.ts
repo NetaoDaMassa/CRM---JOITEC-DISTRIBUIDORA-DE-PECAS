@@ -222,6 +222,9 @@ export const FEATURES_ADMIN = [
   // lá controla quem PODE PEDIR (vendedor) — nunca colide, Sidebar já separa
   // por role antes de checar a feature. Pedido do João, 2026-10-01.
   'solicitacao_credito',
+  // Admin que vende (Odin Compressores, 2026-11-27) pede crédito pela tela
+  // do vendedor sem ganhar a tela do Financeiro.
+  'pedir_credito',
   // Aprovação de cadastros de cliente feitos no CRM → SAP (Izabelly do
   // financeiro, 2026-11-12). Cross-empresa.
   'aprovacao_cadastro_cliente',

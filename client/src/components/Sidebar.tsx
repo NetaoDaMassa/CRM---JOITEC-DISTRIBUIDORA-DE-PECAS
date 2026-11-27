@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Smartphone, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
-  PiggyBank, CircleDollarSign, Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, ChartColumnDecreasing, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
+  PiggyBank, CircleDollarSign, Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, ChartColumnDecreasing, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, BadgeDollarSign, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -235,6 +235,11 @@ export const ADMIN_LINKS = [
   // que é só um registro direto) — vendedor abre a solicitação, financeiro
   // responde. Cross-empresa também. Pedido do João, 2026-10-01.
   { to: '/admin/solicitacao-credito', label: 'Consulta/Solicitação de Crédito', icon: HandCoins, feature: 'solicitacao_credito' },
+  // Gestor que VENDE (Odin Compressores: Agatta, Andreia, Roberto — João,
+  // 2026-11-27) pede crédito igual vendedor, sem ver a tela do Financeiro
+  // (que é a chave 'solicitacao_credito' acima). Chave fora do catálogo de
+  // funções, liberada direto em permissoes_admin.
+  { to: '/vendedor/solicitacao-credito', label: 'Pedir crédito ao Financeiro', icon: BadgeDollarSign, feature: 'pedir_credito' },
   // Cadastro de cliente feito no CRM → SAP: a Izabelly confere e aprova
   // (ativa no SAP). Cross-empresa. 2026-11-12.
   { to: '/admin/aprovacao-cadastros', label: 'Aprovação de cadastros', icon: UserCheck, feature: 'aprovacao_cadastro_cliente' },
