@@ -87,6 +87,7 @@ import { qualidadeRouter } from './qualidade.js'
 import { configuracoesOdinRouter } from './configuracoesOdin.js'
 import { relatoriosOdinRouter } from './relatoriosOdin.js'
 import { posVendaOdinRouter } from './posVendaOdin.js'
+import { posVendaLojaRouter } from './posVendaLoja.js'
 import { dashboardOdinRouter } from './dashboardOdin.js'
 import { calendarioOdinRouter } from './calendarioOdin.js'
 import { demandasRouter } from './demandas.js'
@@ -192,6 +193,7 @@ export const appRouter = router({
   configuracoesOdin: configuracoesOdinRouter,
   relatoriosOdin: relatoriosOdinRouter,
   posVendaOdin: posVendaOdinRouter,
+  posVendaLoja: posVendaLojaRouter,
   dashboardOdin: dashboardOdinRouter,
   calendarioOdin: calendarioOdinRouter,
   demandas: demandasRouter,

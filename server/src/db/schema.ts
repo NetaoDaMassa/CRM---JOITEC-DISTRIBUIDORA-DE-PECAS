@@ -2956,6 +2956,53 @@ export const agendamentoPecasContatos = sqliteTable('agendamento_pecas_contatos'
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
 })
 
+// Pós-venda da Compretec Loja Física (coluna antes de Perdido no Kanban) —
+// compressor vendido + agenda de manutenção. Ver lib/maquinasPosVenda.ts.
+export const clienteMaquinas = sqliteTable(
+  'cliente_maquinas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    funilMensalId: integer('funil_mensal_id').references(() => funilMensal.id, { onDelete: 'set null' }),
+    vendaId: integer('venda_id').references(() => vendas.id, { onDelete: 'set null' }),
+    tipo: text('tipo', { enum: ['pistao', 'parafuso', 'outro'] }).notNull().default('pistao'),
+    modelo: text('modelo').notNull(),
+    numeroSerie: text('numero_serie'),
+    dataVenda: text('data_venda').notNull(), // YYYY-MM-DD
+    proximoContato: text('proximo_contato'), // YYYY-MM-DD
+    // Data que definiu o próximo contato e por quê ('venda_maquina' +30,
+    // 'nova_compra' +90, 'contato' / 'manual' = vendedor escolheu).
+    baseData: text('base_data'),
+    baseMotivo: text('base_motivo', { enum: ['venda_maquina', 'nova_compra', 'contato', 'manual'] }),
+    compromissoId: integer('compromisso_id').references(() => compromissos.id, { onDelete: 'set null' }),
+    status: text('status', { enum: ['ativo', 'encerrado'] }).notNull().default('ativo'),
+    encerradoMotivo: text('encerrado_motivo'),
+    observacoes: text('observacoes'),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({
+    empresaIdx: index('idx_cliente_maquinas_empresa').on(t.empresaId, t.status, t.proximoContato),
+    clienteIdx: index('idx_cliente_maquinas_cliente').on(t.clienteId),
+  })
+)
+
+export const clienteMaquinaContatos = sqliteTable(
+  'cliente_maquina_contatos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    maquinaId: integer('maquina_id').notNull().references(() => clienteMaquinas.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    tipo: text('tipo', { enum: ['whatsapp', 'ligacao', 'visita', 'outro'] }).notNull().default('whatsapp'),
+    observacao: text('observacao').notNull(),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ maquinaIdx: index('idx_cliente_maquina_contatos_maquina').on(t.maquinaId) })
+)
+
 // Log genérico append-only (não é diff estruturado, exceto pra
 // action='stage_change', onde fieldName/oldValue/newValue vêm preenchidos) —
 // mesmo espírito de devolucaoHistoricoStatus, com os campos extras que o
@@ -4747,6 +4794,10 @@ export const agendamentosPecasRelations = relations(agendamentosPecas, ({ one, m
   vendedor: one(users, { fields: [agendamentosPecas.vendedorId], references: [users.id] }),
   revenda: one(revendas, { fields: [agendamentosPecas.revendaId], references: [revendas.id] }),
   contatos: many(agendamentoPecasContatos),
+}))
+
+export const clienteMaquinaContatosRelations = relations(clienteMaquinaContatos, ({ one }) => ({
+  user: one(users, { fields: [clienteMaquinaContatos.userId], references: [users.id] }),
 }))
 
 export const agendamentoPecasContatosRelations = relations(agendamentoPecasContatos, ({ one }) => ({

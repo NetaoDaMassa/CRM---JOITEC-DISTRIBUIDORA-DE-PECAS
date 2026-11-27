@@ -39,6 +39,7 @@ import GravacaoLigacao from './ui/GravacaoLigacao'
 import NotaSapBotoes from './NotaSapBotoes'
 import MotivoPerdaCampos, { MOTIVO_PERDA_VAZIO, MotivoPerdaTravado, erroDoMotivo, type MotivoPerdaValor } from './MotivoPerdaCampos'
 import { LigacaoWhatsappButton, NaoFoiConversaButton } from './LigacaoWhatsapp'
+import ColunaPosVendaLoja, { ModalCadastrarMaquina } from './posVendaLoja/ColunaPosVendaLoja'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
 // urgência na lateral do card (verde/amarelo/vermelho pelos dias sem contato).
@@ -530,6 +531,11 @@ export default function FunilBoard({
   const { data: garantiasSap } = trpc.historicoSap.garantiasDosCards.useQuery({ meses: mesesDosCards }, { staleTime: 5 * 60_000, enabled: mesesDosCards.length > 0 })
   const garantiaDoCard = useMemo(() => new Map((garantiasSap ?? []).map((g) => [`${g.clienteId}:${g.mes}`, g])), [garantiasSap])
   const ehOdinCompressores = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
+  // Pós-venda de máquinas (coluna antes de Perdido + botão nos cards vendidos) — só Compretec Loja Física.
+  const ehLojaFisicaPosVenda = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'compretec-loja-fisica'
+  const posVendaLoja = trpc.posVendaLoja.listar.useQuery({ vendedorId: coberturaVendedorId, todos: coberturaTodos }, { enabled: ehLojaFisicaPosVenda })
+  const clientesComMaquina = new Set(posVendaLoja.data?.clientesComMaquina ?? [])
+  const [cadastrarMaquina, setCadastrarMaquina] = useState<Card | null>(null)
   const [classificacaoFiltro, setClassificacaoFiltro] = useState<'' | 'revenda' | 'consumidor_final'>('')
   const etapasVisiveis = apenasEtapas
     ? ETAPAS.filter((e) => apenasEtapas.includes(e.value))
@@ -885,6 +891,10 @@ export default function FunilBoard({
           const cardsVisiveis = colCards.length > limiteColuna ? colCards.slice(0, limiteColuna) : colCards
           return (
             <Fragment key={etapa.value}>
+            {/* Pós-venda (Compretec Loja Física) — antes de Perdido, pedido do João 2026-11-27. */}
+            {etapa.value === 'perdido' && ehLojaFisicaPosVenda && !apenasEtapas && (
+              <ColunaPosVendaLoja vendedorId={coberturaVendedorId} todos={coberturaTodos} busca={termo} />
+            )}
             <div className="shrink-0 w-72">
               <div
                 className="flex items-center gap-2 mb-3 rounded-xl bg-dark-800/70 border border-dark-700 px-3 py-2 border-t-[3px]"
@@ -1142,6 +1152,17 @@ export default function FunilBoard({
                       {mostrarFaturamento && (card.etapa === 'fechado' || card.etapa === 'faturamento') && card.vendas.length > 0 && (
                         <BadgeFaturamento venda={card.vendas[card.vendas.length - 1]} />
                       )}
+                      {ehLojaFisicaPosVenda && (card.etapa === 'fechado' || card.etapa === 'faturamento') && card.vendas.length > 0 && !card.clienteBalcao && (
+                        clientesComMaquina.has(card.clienteId) ? (
+                          <button onClick={(e) => { e.stopPropagation(); setCadastrarMaquina(card) }} className="mt-2 text-[11px] px-2 py-0.5 rounded-md border border-teal-600/40 bg-teal-500/10 text-teal-300" title="Já está no Pós-venda. Clique para cadastrar outra máquina.">
+                            🔧 Máquina no pós-venda
+                          </button>
+                        ) : (
+                          <button onClick={(e) => { e.stopPropagation(); setCadastrarMaquina(card) }} className="mt-2 text-xs px-2 py-1 rounded-md border border-teal-500/60 bg-teal-500/15 text-teal-200 hover:bg-teal-500/25 font-medium">
+                            🔧 Vendeu compressor? Cadastrar máquina
+                          </button>
+                        )
+                      )}
                       <div className="flex items-center justify-between mt-2">
                         <div>
                           {card.valorOrcado != null && (
@@ -1217,6 +1238,16 @@ export default function FunilBoard({
           )
         })}
       </div>
+
+      {cadastrarMaquina && (
+        <ModalCadastrarMaquina
+          clienteId={cadastrarMaquina.clienteId}
+          clienteNome={cadastrarMaquina.razaoSocial}
+          funilMensalId={cadastrarMaquina.funilMensalId}
+          venda={cadastrarMaquina.vendas[cadastrarMaquina.vendas.length - 1]}
+          onClose={() => setCadastrarMaquina(null)}
+        />
+      )}
 
       {cardAberto && (
         <CardModal
