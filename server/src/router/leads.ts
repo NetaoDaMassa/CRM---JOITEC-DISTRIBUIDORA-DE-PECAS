@@ -1866,6 +1866,8 @@ export const leadsRouter = router({
         cadastradoPor: ctx.user.id,
         vendedorAtualId,
         origemMarketing: true,
+        // Lead da loja virtual/site conta no canal "site" dos relatórios de Marketing.
+        origemMarketingTipo: /^(ecommerce|site|loja)/.test(lead.source || '') ? 'site' : 'padrao',
       })
       const clienteId = Number(result.lastInsertRowid)
 
