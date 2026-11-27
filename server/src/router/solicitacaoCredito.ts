@@ -787,7 +787,7 @@ export const solicitacaoCreditoRouter = router({
           vendedorId: solicitacao.vendedorSolicitanteId,
           type: liberou ? 'credito_resposta_liberado' : 'credito_resposta_negado',
           title: `${oQue} ${liberou ? 'LIBERADA' : 'NEGADA'} — ${nome}`,
-          message: `${input.serasaLimpo ? 'Serasa limpo' : 'Serasa NÃO está limpo'}${valor}. ${input.motivoResposta.trim()} (${input.quemLiberou.trim()})`,
+          message: `${input.serasaLimpo ? 'Serasa limpo' : 'Serasa NÃO está limpo'}${valor}. ${input.motivoResposta.trim()} — ${input.quemLiberou.trim()}`,
         })
       }
 
