@@ -386,7 +386,7 @@ function PesquisarCliente() {
     <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4 space-y-3">
       <div>
         <p className="text-sm font-medium text-dark-100">Antes de pedir: esse cliente já foi consultado?</p>
-        <p className="text-xs text-dark-500">Digite o código, o CNPJ/CPF ou o nome. Vale para todas as empresas do grupo.</p>
+        <p className="text-xs text-dark-500">Digite o código, o CNPJ/CPF ou o nome. Vale para todas as empresas do grupo e também mostra a data de consulta gravada no SAP.</p>
       </div>
       <Input icon={<Search size={14} />} placeholder="Ex: C001234 ou 12.345.678/0001-90" value={texto} onChange={(e) => setTexto(e.target.value)} />
       {q.length >= 2 && isFetching && !data && <p className="text-sm text-dark-400">Procurando...</p>}
@@ -411,8 +411,19 @@ function PesquisarCliente() {
                   </span>{' '}
                   · {u.serasaLimpo ? 'Limpo' : 'Não está limpo'} · {STATUS_LABEL[u.status]} · {u.empresaNome}
                 </div>
+              ) : g.sapSerasaEm ? (
+                <div className="rounded-lg border px-3 py-2 text-sm bg-sky-500/10 border-sky-500/30 text-sky-200">
+                  <span className="font-semibold">
+                    Consultado em {dataBr(g.sapSerasaEm)} ({diasDesde(g.sapSerasaEm)})
+                  </span>{' '}
+                  · data gravada no cadastro do SAP
+                  <p className="text-xs text-sky-300/80 mt-0.5">O SAP só guarda a data da consulta. Para saber se está limpo e o limite, peça a consulta aqui embaixo.</p>
+                </div>
               ) : (
                 <div className="rounded-lg border px-3 py-2 text-sm bg-dark-700/50 border-dark-600 text-dark-300">Ainda não foi consultado.</div>
+              )}
+              {u?.serasaConsultaEm && g.sapSerasaEm && g.sapSerasaEm > u.serasaConsultaEm.slice(0, 10) && (
+                <p className="text-xs text-sky-300">No cadastro do SAP tem uma consulta mais recente: {dataBr(g.sapSerasaEm)} ({diasDesde(g.sapSerasaEm)}).</p>
               )}
               {g.pendenteDesde && (
                 <div className="rounded-lg border px-3 py-2 text-sm bg-amber-500/10 border-amber-500/30 text-amber-300">

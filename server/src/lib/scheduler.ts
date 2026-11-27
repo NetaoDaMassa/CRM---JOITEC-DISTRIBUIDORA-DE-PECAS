@@ -21,6 +21,7 @@ import { rodarRevisaoTrocados } from './pedidosTrocados.js'
 import { sincronizarTodasMarcas } from './marketingMeta.js'
 import { gerarSemanaAgendado } from './marketingFluxo.js'
 import { atualizarFotoLimites } from './sapLimiteCredito.js'
+import { atualizarFotoSerasa } from './sapSerasa.js'
 import type { ScheduledTask } from 'node-cron'
 import { sincronizarFotosMidia } from './fotosProdutos.js'
 import { registrarLigacoesCobranca } from './cobrancaLigacoes.js'
@@ -293,6 +294,10 @@ export function startScheduler() {
   // Limite de crédito dos clientes no SAP (selo no Kanban) — de 30 em 30 min.
   cron.schedule('23,53 * * * *', () => {
     atualizarFotoLimites().catch((err) => console.error('[sap-limite] erro no agendador:', err instanceof Error ? err.message : err))
+  })
+  // Data da última consulta Serasa no cadastro do SAP (busca "Antes de pedir") — de 30 em 30 min.
+  cron.schedule('26,56 * * * *', () => {
+    atualizarFotoSerasa().catch((err) => console.error('[sap-serasa] erro no agendador:', err instanceof Error ? err.message : err))
   })
   // Catálogo das Cotações do CRM — confere aos :47, refaz a cada 3 horas.
   cron.schedule('47 * * * *', () => {

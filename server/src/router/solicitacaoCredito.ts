@@ -7,6 +7,7 @@ import { agoraSqlite } from '../lib/dataBr.js'
 import { buildHistoricoCliente } from './clientes.js'
 import { QUEM_LIBERA } from './liberacaoCredito.js'
 import { businessHoursElapsedMs, toLocalDateKey, toUtcISO } from '../lib/businessHours.js'
+import { buscarSerasaSap, serasaSapDoCliente } from '../lib/sapSerasa.js'
 
 const anexoInput = z.object({
   urlArquivo: z.string(),
@@ -58,20 +59,24 @@ function montarFiltros(input: z.infer<typeof filtrosInput>) {
 }
 
 // Busca usada pelas duas telas (financeiro completo; vendedor resumido).
+// Junta 3 fontes: cadastros do CRM (mesmo CNPJ em todas as empresas),
+// pedidos feitos só com CNPJ (Odin Compressores) e a data da última consulta
+// Serasa gravada no SAP (João, 2026-11-27 — pra quem nunca foi consultado
+// pelo CRM; o SAP só tem a data, não diz se está limpo).
 async function pesquisarClienteCredito(input: { q: string }) {
   const termo = `%${input.q}%`
   const digitos = input.q.replace(/\D/g, '')
+  const soNumero = digitos.length >= 5 && /^[\d.\/\-\s]+$/.test(input.q)
   const docSql = (col: typeof clientes.cnpj | typeof clientes.cpf) => sql<string>`replace(replace(replace(replace(coalesce(${col}, ''), '.', ''), '/', ''), '-', ''), ' ', '')`
   const condicoes = [like(clientes.codigo, termo), like(clientes.codigoAntigo, termo), like(clientes.razaoSocial, termo)]
   // Só procura no CNPJ/CPF quando digitou número (senão "C000001" casaria
   // com todo CNPJ que tem 000001 no meio).
-  if (digitos.length >= 5 && /^[\d.\/\-\s]+$/.test(input.q)) condicoes.push(like(docSql(clientes.cnpj), `%${digitos}%`), like(docSql(clientes.cpf), `%${digitos}%`))
+  if (soNumero) condicoes.push(like(docSql(clientes.cnpj), `%${digitos}%`), like(docSql(clientes.cpf), `%${digitos}%`))
   const achados = await db
     .select({ id: clientes.id, cnpj: clientes.cnpj, cpf: clientes.cpf })
     .from(clientes)
     .where(or(...condicoes))
     .limit(60)
-  if (!achados.length) return { grupos: [], muitos: false }
 
   // Mesmo documento em outras empresas.
   const docs = [...new Set(achados.map((c) => (c.cnpj || c.cpf || '').replace(/\D/g, '')).filter((d) => d.length >= 11))]
@@ -83,49 +88,85 @@ async function pesquisarClienteCredito(input: { q: string }) {
     : []
   const ids = [...new Set([...achados.map((c) => c.id), ...irmaos.map((c) => c.id)])]
 
-  const cadastros = await db
-    .select({ id: clientes.id, razaoSocial: clientes.razaoSocial, codigo: clientes.codigo, cnpj: clientes.cnpj, cpf: clientes.cpf, empresaNome: empresas.nome })
-    .from(clientes)
-    .innerJoin(empresas, eq(empresas.id, clientes.empresaId))
-    .where(inArray(clientes.id, ids))
-  const pedidos = await db
-    .select({
-      id: solicitacoesCredito.id,
-      clienteId: solicitacoesCredito.clienteId,
-      empresaNome: empresas.nome,
-      vendedorNome: users.name,
-      tipo: solicitacoesCredito.tipo,
-      tipoConsulta: solicitacoesCredito.tipoConsulta,
-      status: solicitacoesCredito.status,
-      valorSolicitado: solicitacoesCredito.valorSolicitado,
-      valorLiberado: solicitacoesCredito.valorLiberado,
-      quemLiberou: solicitacoesCredito.quemLiberou,
-      serasaLimpo: solicitacoesCredito.serasaLimpo,
-      serasaConsultaEm: solicitacoesCredito.serasaConsultaEm,
-      decididoEm: solicitacoesCredito.decididoEm,
-      createdAt: solicitacoesCredito.createdAt,
-    })
-    .from(solicitacoesCredito)
-    .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
-    .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
-    .where(inArray(solicitacoesCredito.clienteId, ids))
-    .orderBy(desc(solicitacoesCredito.createdAt))
+  const cadastros = ids.length
+    ? await db
+        .select({ id: clientes.id, razaoSocial: clientes.razaoSocial, codigo: clientes.codigo, cnpj: clientes.cnpj, cpf: clientes.cpf, empresaNome: empresas.nome })
+        .from(clientes)
+        .innerJoin(empresas, eq(empresas.id, clientes.empresaId))
+        .where(inArray(clientes.id, ids))
+    : []
+  const buscarPedidos = (onde: ReturnType<typeof and>) =>
+    db
+      .select({
+        id: solicitacoesCredito.id,
+        clienteId: solicitacoesCredito.clienteId,
+        cnpjAvulso: solicitacoesCredito.cnpjAvulso,
+        nomeAvulso: solicitacoesCredito.nomeAvulso,
+        empresaNome: empresas.nome,
+        vendedorNome: users.name,
+        tipo: solicitacoesCredito.tipo,
+        tipoConsulta: solicitacoesCredito.tipoConsulta,
+        status: solicitacoesCredito.status,
+        valorSolicitado: solicitacoesCredito.valorSolicitado,
+        valorLiberado: solicitacoesCredito.valorLiberado,
+        quemLiberou: solicitacoesCredito.quemLiberou,
+        serasaLimpo: solicitacoesCredito.serasaLimpo,
+        serasaConsultaEm: solicitacoesCredito.serasaConsultaEm,
+        decididoEm: solicitacoesCredito.decididoEm,
+        createdAt: solicitacoesCredito.createdAt,
+      })
+      .from(solicitacoesCredito)
+      .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
+      .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
+      .where(onde)
+      .orderBy(desc(solicitacoesCredito.createdAt))
+  const pedidos = ids.length ? await buscarPedidos(and(inArray(solicitacoesCredito.clienteId, ids))) : []
+  // Pedidos só com CNPJ (sem cadastro) — pelo CNPJ digitado, pelo nome, ou
+  // com o mesmo CNPJ de um cadastro achado.
+  const condAvulso = [like(solicitacoesCredito.nomeAvulso, termo), ...(soNumero ? [like(solicitacoesCredito.cnpjAvulso, `%${digitos}%`)] : []), ...(docs.length ? [inArray(solicitacoesCredito.cnpjAvulso, docs)] : [])]
+  const avulsos = await buscarPedidos(and(isNull(solicitacoesCredito.clienteId), or(...condAvulso)))
 
+  type Pedido = (typeof pedidos)[number] & { clienteCodigo: string }
   type Grupo = {
     chave: string
     documento: string | null
     nome: string
     cadastros: { id: number; codigo: string; empresaNome: string; razaoSocial: string }[]
-    pedidos: ((typeof pedidos)[number] & { clienteCodigo: string })[]
-    ultimaConsulta: ((typeof pedidos)[number] & { clienteCodigo: string }) | null
+    pedidos: Pedido[]
+    ultimaConsulta: Pedido | null
+    // Data da última consulta Serasa gravada no SAP (só a data).
+    sap: { data: string; cardCode: string } | null
+    soNoSap: boolean
   }
   const grupos = new Map<string, Grupo>()
+  const novoGrupo = (chave: string, documento: string | null, nome: string): Grupo => ({ chave, documento, nome, cadastros: [], pedidos: [], ultimaConsulta: null, sap: null, soNoSap: false })
   for (const c of cadastros) {
     const doc = (c.cnpj || c.cpf || '').replace(/\D/g, '')
     const chave = doc.length >= 11 ? `doc:${doc}` : `id:${c.id}`
-    const g = grupos.get(chave) ?? { chave, documento: doc.length >= 11 ? c.cnpj || c.cpf : null, nome: c.razaoSocial, cadastros: [], pedidos: [], ultimaConsulta: null }
+    const g = grupos.get(chave) ?? novoGrupo(chave, doc.length >= 11 ? c.cnpj || c.cpf : null, c.razaoSocial)
     g.cadastros.push({ id: c.id, codigo: c.codigo, empresaNome: c.empresaNome, razaoSocial: c.razaoSocial })
     g.pedidos.push(...pedidos.filter((p) => p.clienteId === c.id).map((p) => ({ ...p, clienteCodigo: c.codigo })))
+    grupos.set(chave, g)
+  }
+  for (const p of avulsos) {
+    const doc = p.cnpjAvulso ?? ''
+    const chave = `doc:${doc}`
+    const g = grupos.get(chave) ?? novoGrupo(chave, formatarCnpj(doc), p.nomeAvulso ?? formatarCnpj(doc))
+    g.pedidos.push({ ...p, clienteCodigo: 'sem cadastro' })
+    grupos.set(chave, g)
+  }
+  for (const g of grupos.values()) {
+    const s = await serasaSapDoCliente(g.cadastros.map((c) => c.codigo), g.documento)
+    if (s) g.sap = { data: s.data, cardCode: s.cardCode }
+  }
+  // Cliente que só existe no SAP (sem cadastro no CRM) com data de consulta.
+  for (const s of await buscarSerasaSap(input.q)) {
+    const chave = s.doc.length >= 11 ? `doc:${s.doc}` : `sap:${s.cardCode}`
+    if (grupos.has(chave) || [...grupos.values()].some((g) => g.cadastros.some((c) => c.codigo.toUpperCase() === s.cardCode))) continue
+    const g = novoGrupo(chave, s.doc.length >= 11 ? formatarCnpj(s.doc) : null, s.nome)
+    g.cadastros.push({ id: 0, codigo: s.cardCode, empresaNome: 'só no SAP', razaoSocial: s.nome })
+    g.sap = { data: s.data, cardCode: s.cardCode }
+    g.soNoSap = true
     grupos.set(chave, g)
   }
   const lista = [...grupos.values()].map((g) => {
@@ -561,6 +602,8 @@ export const solicitacaoCreditoRouter = router({
             ultimaConsulta: g.ultimaConsulta
               ? { serasaConsultaEm: g.ultimaConsulta.serasaConsultaEm, serasaLimpo: g.ultimaConsulta.serasaLimpo, status: g.ultimaConsulta.status, empresaNome: g.ultimaConsulta.empresaNome }
               : null,
+            sapSerasaEm: g.sap?.data ?? null,
+            soNoSap: g.soNoSap,
             pendenteDesde: pendente?.createdAt ?? null,
             totalPedidos: g.pedidos.length,
           }

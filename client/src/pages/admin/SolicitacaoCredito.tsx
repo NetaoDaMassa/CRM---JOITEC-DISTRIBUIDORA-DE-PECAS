@@ -648,7 +648,7 @@ function PesquisarCliente({ onAbrir }: { onAbrir: (id: number) => void }) {
           onChange={(e) => setTexto(e.target.value)}
           autoFocus
         />
-        <p className="text-xs text-dark-500 mt-2">Mostra a última consulta do Serasa e todos os pedidos desse cliente, em todas as empresas (mesmo CNPJ).</p>
+        <p className="text-xs text-dark-500 mt-2">Mostra a última consulta do Serasa e todos os pedidos desse cliente, em todas as empresas (mesmo CNPJ), e a data de consulta gravada no cadastro do SAP.</p>
       </div>
 
       {q.length >= 2 && isFetching && !data && <p className="text-sm text-dark-400">Procurando...</p>}
@@ -684,6 +684,15 @@ function PesquisarCliente({ onAbrir }: { onAbrir: (id: number) => void }) {
               ) : (
                 <div className="rounded-xl border px-3 py-2 text-sm bg-dark-700/50 border-dark-600 text-dark-300">
                   {g.pedidos.length ? 'Tem pedido, mas ainda sem consulta do Serasa respondida.' : 'Nunca foi consultado por aqui.'}
+                </div>
+              )}
+              {g.sap && (!u?.serasaConsultaEm || g.sap.data > u.serasaConsultaEm.slice(0, 10)) && (
+                <div className="rounded-xl border px-3 py-2 text-sm bg-sky-500/10 border-sky-500/30 text-sky-200">
+                  <span className="font-semibold">
+                    No cadastro do SAP: última consulta Serasa {dataBr(g.sap.data)} ({haDias(diasDesde(g.sap.data))})
+                  </span>{' '}
+                  · {g.sap.cardCode}
+                  {g.soNoSap && <> · sem cadastro no CRM</>}
                 </div>
               )}
             </div>
