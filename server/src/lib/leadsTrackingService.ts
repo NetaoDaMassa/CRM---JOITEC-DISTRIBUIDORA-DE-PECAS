@@ -29,6 +29,9 @@ interface FindOrCreateLeadFromTrackingInput {
   city?: string
   cnpj?: string
   metaDados?: MetaDadosLead
+  // Quem decide o vendedor de um lead NOVO (ex.: rodízio por vendedor do
+  // WhatsApp da Compretec Loja Física). Sem isso: DDD/região de sempre.
+  escolherVendedor?: () => Promise<number | null>
 }
 
 // Resposta da pergunta "qual compressor possui atualmente?" (o nome da coluna
@@ -168,7 +171,7 @@ export async function findOrCreateLeadFromTrackingDetalhado(
     return { id: existing.id, criado: false, vendorId: existing.vendorId ?? null }
   }
 
-  const vendorId = await getVendorByDDD(ddd, empresaId)
+  const vendorId = input.escolherVendedor ? await input.escolherVendedor() : await getVendorByDDD(ddd, empresaId)
   const regionId = await getRegionIdByDDD(ddd, empresaId)
   const campaignId = await encontrarCampanhaPorUtm(empresaId, utmCampaign)
 

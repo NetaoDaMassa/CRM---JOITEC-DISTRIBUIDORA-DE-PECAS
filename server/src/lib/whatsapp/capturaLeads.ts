@@ -13,6 +13,7 @@ import { db } from '../../db/client.js'
 import { leads, leadHistory, leadWhatsappMensagens, clientes, clienteTelefones, notifications } from '../../db/schema.js'
 import { findOrCreateLeadFromTrackingDetalhado, acharLeadPorTelefone } from '../leadsTrackingService.js'
 import { getVendorByDDD, getRegionIdByDDD } from '../leadsRoundRobin.js'
+import { escolhedorDeVendedor } from './rodizioVendedor.js'
 
 export type MensagemCapturada = {
   id: string
@@ -249,31 +250,39 @@ async function registrarAgora(empresaId: number, m: MensagemCapturada): Promise<
     const form = lerFormularioMeta(m.texto)
     const nome = form?.nome || m.pushName || (tel ? `(${tel.ddd}) ${tel.local}` : m.telefone || 'Contato do WhatsApp')
     const obs = `Primeira mensagem no WhatsApp: "${m.texto.slice(0, 600)}"`
+    const escolherVendedor = await escolhedorDeVendedor(empresaId)
     if (tel) {
       const r = await findOrCreateLeadFromTrackingDetalhado({
         empresaId, name: nome, phone: `${tel.ddd}${tel.local}`, source: 'whatsapp', observations: obs,
         email: form?.email, city: form?.cidade, cnpj: form?.cnpj,
         metaDados: form ? { formulario: 'Respostas enviadas pelo WhatsApp', respostas: form.respostas } : undefined,
+        escolherVendedor,
       })
       leadId = r?.id ?? null
       vendorId = r?.vendorId ?? null
       acao = r?.criado ? 'criado' : 'anexada'
     } else {
-      // Número internacional ou escondido (@lid sem número): cria sem vendedor
-      // para alguém distribuir na mão.
+      // Número internacional ou escondido (@lid sem número): no modo DDD cria
+      // sem vendedor para alguém distribuir na mão; no rodízio por vendedor o
+      // DDD não importa, então já vai para o vendedor da vez.
+      const daVez = escolherVendedor ? await escolherVendedor() : null
+      const agoraIso = new Date().toISOString()
       const ins = await db.insert(leads).values({
         empresaId,
         name: nome,
         phone: m.telefone,
         ddd: null,
         source: 'whatsapp',
-        observations: `${obs}\n${m.telefone ? 'Número internacional' : 'WhatsApp não mostrou o número (contato com identificador oculto)'} — distribuir manualmente.`,
-        statusChangedAt: new Date().toISOString(),
+        observations: `${obs}\n${m.telefone ? 'Número internacional' : 'WhatsApp não mostrou o número (contato com identificador oculto)'}${daVez ? '' : ' — distribuir manualmente'}.`,
+        vendorId: daVez,
+        assignedAt: daVez ? agoraIso : null,
+        statusChangedAt: agoraIso,
       })
       leadId = Number(ins.lastInsertRowid)
-      vendorId = null
+      vendorId = daVez
       acao = 'criado'
-      await db.insert(leadHistory).values({ empresaId, leadId, action: 'criado', toStatus: 'novo', details: 'Lead criado pelo WhatsApp sem DDD válido — distribuir manualmente' })
+      await db.insert(leadHistory).values({ empresaId, leadId, action: 'criado', toStatus: 'novo', details: daVez ? 'Lead criado pelo WhatsApp e atribuído pelo rodízio de vendedores' : 'Lead criado pelo WhatsApp sem DDD válido — distribuir manualmente' })
+      if (daVez) await db.insert(notifications).values({ vendedorId: daVez, leadId, type: 'lead_assigned', title: 'Novo lead atribuído', message: `${nome} foi distribuído para você agora (origem: whatsapp).` })
     }
   }
 
@@ -413,10 +422,11 @@ export async function consertarLeadsSemNumero(
         if (outro && outro !== l.id) await db.insert(leadHistory).values({ empresaId, leadId: outro, action: 'whatsapp', details: `Conversa do WhatsApp juntada a este lead (vinha do lead #${l.id}, sem número)` })
         console.log(`[wa-captura empresa ${empresaId}] lead #${l.id} sem número juntado ao ${destino}`)
       } else {
-        const vendorId = l.vendorId ?? (await getVendorByDDD(tel.ddd, empresaId))
+        const escolher = l.vendorId ? undefined : await escolhedorDeVendedor(empresaId)
+        const vendorId = l.vendorId ?? (escolher ? await escolher() : await getVendorByDDD(tel.ddd, empresaId))
         const regionId = await getRegionIdByDDD(tel.ddd, empresaId)
         await db.update(leads).set({ phone: `${tel.ddd}${tel.local}`, ddd: tel.ddd, vendorId, regionId, ...(vendorId && !l.vendorId ? { assignedAt: agora } : {}) }).where(eq(leads.id, l.id))
-        await db.insert(leadHistory).values({ empresaId, leadId: l.id, action: 'whatsapp', details: `Número descoberto: (${tel.ddd}) ${tel.local}${vendorId && !l.vendorId ? ' — vendedor definido pelo DDD' : ''}` })
+        await db.insert(leadHistory).values({ empresaId, leadId: l.id, action: 'whatsapp', details: `Número descoberto: (${tel.ddd}) ${tel.local}${vendorId && !l.vendorId ? (escolher ? ' — vendedor definido pelo rodízio' : ' — vendedor definido pelo DDD') : ''}` })
         console.log(`[wa-captura empresa ${empresaId}] lead #${l.id} ganhou o número (${tel.ddd}) ${tel.local}${vendorId ? ` → vendedor ${vendorId}` : ''}`)
       }
       consertados++

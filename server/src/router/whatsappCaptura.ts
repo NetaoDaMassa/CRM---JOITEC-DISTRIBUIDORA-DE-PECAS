@@ -7,6 +7,7 @@ import { router, superAdminProcedure, protectedProcedure } from './_base.js'
 import { db } from '../db/client.js'
 import { leads, clientes, leadWhatsappMensagens } from '../db/schema.js'
 import { conversaDoCliente, clientesComMensagemNova, marcarMensagensVistas } from '../lib/whatsapp/capturaLeads.js'
+import { distribuicaoWhatsapp, salvarDistribuicaoWhatsapp, vendedoresDaEmpresa, filaDoRodizio, proximoDaVez } from '../lib/whatsapp/rodizioVendedor.js'
 import { capturaAtiva, statusCaptura, iniciarCaptura, ligarDesligarCaptura, desconectarCaptura } from '../lib/whatsapp/captura.js'
 
 const empresaInput = z.object({ empresaId: z.number().int().min(1) })
@@ -71,6 +72,25 @@ export const whatsappCapturaRouter = router({
     if (cliente.vendedorAtualId && cliente.vendedorAtualId !== ctx.user.id) return { marcadas: 0, dono: false }
     return { marcadas: await marcarMensagensVistas(ctx.empresaId, cliente.id, cliente.vendedorAtualId ?? null), dono: true }
   }),
+
+  // Como os leads novos do WhatsApp são distribuídos: DDD (padrão) ou
+  // rodízio entre vendedores escolhidos (Compretec Loja Física).
+  distribuicao: superAdminProcedure.input(empresaInput).query(async ({ input }) => {
+    const [d, vendedores, fila, proximo] = await Promise.all([
+      distribuicaoWhatsapp(input.empresaId),
+      vendedoresDaEmpresa(input.empresaId),
+      filaDoRodizio(input.empresaId),
+      proximoDaVez(input.empresaId),
+    ])
+    return { ...d, opcoes: vendedores.filter((v) => v.ativo), fila, proximo }
+  }),
+
+  salvarDistribuicao: superAdminProcedure
+    .input(empresaInput.extend({ modo: z.enum(['ddd', 'vendedor']), vendedores: z.array(z.number().int().positive()) }))
+    .mutation(async ({ input }) => {
+      await salvarDistribuicaoWhatsapp(input.empresaId, { modo: input.modo, vendedores: input.vendedores })
+      return { ok: true }
+    }),
 
   desconectar: superAdminProcedure.input(empresaInput).mutation(async ({ input }) => {
     await desconectarCaptura(input.empresaId)
