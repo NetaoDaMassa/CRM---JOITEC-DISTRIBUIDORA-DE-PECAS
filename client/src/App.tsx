@@ -86,6 +86,7 @@ import ArquivosContabilidade from './pages/admin/ArquivosContabilidade'
 import CobrancaSap from './pages/admin/CobrancaSap'
 import PilotoFinanceiro from './pages/admin/PilotoFinanceiro'
 import SolicitacaoCreditoAdmin from './pages/admin/SolicitacaoCredito'
+import CreditoTempoResposta from './pages/admin/CreditoTempoResposta'
 import SolicitacaoCreditoVendor from './pages/vendor/SolicitacaoCredito'
 import CartaoCredito from './pages/vendor/CartaoCredito'
 import CartaoCreditoRelatorio from './pages/admin/CartaoCreditoRelatorio'
@@ -409,6 +410,7 @@ export default function App() {
           <Route path="admin/arquivos-contabilidade" element={<AdminGuard><FeatureGuard feature="arquivos_contabilidade"><ArquivosContabilidade /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cobranca" element={<AdminGuard><FeatureGuard feature="cobranca_sap"><CobrancaSap /></FeatureGuard></AdminGuard>} />
           <Route path="admin/solicitacao-credito" element={<AdminGuard><FeatureGuard feature="solicitacao_credito"><SolicitacaoCreditoAdmin /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/credito-tempo-resposta" element={<AdminGuard><FeatureGuard feature="credito_tempo_resposta"><CreditoTempoResposta /></FeatureGuard></AdminGuard>} />
           <Route path="admin/cartao-relatorio" element={<AdminGuard><FeatureGuard feature="cartao_credito_relatorio"><CartaoCreditoRelatorio /></FeatureGuard></AdminGuard>} />
           <Route path="admin/motivos-perda" element={<AdminGuard><MotivosPerda /></AdminGuard>} />
           <Route path="admin/painel-perdas" element={<AdminGuard><PainelPerdas /></AdminGuard>} />

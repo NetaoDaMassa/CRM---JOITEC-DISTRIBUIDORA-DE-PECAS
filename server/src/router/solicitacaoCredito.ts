@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { and, desc, eq, gte, inArray, isNotNull, isNull, like, lte, or, sql } from 'drizzle-orm'
-import { router, adminOrFeatureProcedure, featureProcedure } from './_base.js'
+import { router, adminOrFeatureProcedure, featureProcedure, protectedProcedure, temFeature } from './_base.js'
+import { TRPCError } from '@trpc/server'
 import { db } from '../db/client.js'
 import { solicitacoesCredito, solicitacaoCreditoAnexos, solicitacaoCreditoRespostas, liberacoesCredito, clientes, empresas, users, cotacoesCrmHistorico, notifications } from '../db/schema.js'
 import { agoraSqlite } from '../lib/dataBr.js'
@@ -23,6 +24,15 @@ const clienteCodigoSql = sql<string>`coalesce(${clientes.codigo}, 'sem cadastro'
 const soDigitos = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '')
 function formatarCnpj(d: string) {
   return d.length === 14 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}` : d
+}
+
+// Tempo de resposta do financeiro (João, 2026-11-27): relatório separado,
+// só pra quem tem esta chave (João + Jessica) — nem a Rubia nem vendas veem
+// tempo nenhum. Prazo: 1 hora em horário de trabalho até a 1ª resposta.
+export const FEATURE_TEMPO_CREDITO = 'credito_tempo_resposta'
+export const PRAZO_RESPOSTA_CREDITO_MIN = 60
+async function podeVerTempo(user: { id: number; superAdmin?: boolean | null }) {
+  return !!user.superAdmin || (await temFeature(user.id, FEATURE_TEMPO_CREDITO))
 }
 
 // Filtros da fila e dos relatórios (os mesmos nas duas abas).
@@ -425,7 +435,8 @@ export const solicitacaoCreditoRouter = router({
   // memória — o volume é pequeno (dezenas/centenas por mês).
   relatorio: featureProcedure('solicitacao_credito')
     .input(filtrosInput)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      const verTempo = await podeVerTempo(ctx.user)
       const filtros = montarFiltros(input)
       const linhas = await db
         .select({
@@ -551,7 +562,7 @@ export const solicitacaoCreditoRouter = router({
           ...comPct(totais),
           serasaLimpos,
           serasaNaoLimpos,
-          tempoMedioMinutos: qtdTempoGeral ? Math.round(somaMinutosGeral / qtdTempoGeral) : null,
+          tempoMedioMinutos: verTempo && qtdTempoGeral ? Math.round(somaMinutosGeral / qtdTempoGeral) : null,
         },
         porVendedor: [...porVendedorMap.values()].map(comPct).sort((a, b) => b.pedidos - a.pedidos || a.vendedorNome.localeCompare(b.vendedorNome)),
         porDecisor: [...porDecisorMap.values()]
@@ -561,9 +572,10 @@ export const solicitacaoCreditoRouter = router({
             liberou: d.liberou,
             negou: d.negou,
             pctLiberado: d.respostas ? Math.round((d.liberou / d.respostas) * 1000) / 10 : null,
-            tempoMedioMinutos: d.qtdTempo ? Math.round(d.somaMinutos / d.qtdTempo) : null,
+            tempoMedioMinutos: verTempo && d.qtdTempo ? Math.round(d.somaMinutos / d.qtdTempo) : null,
           }))
           .sort((a, b) => b.respostas - a.respostas),
+        verTempo,
         porMes: [...porMesMap.values()].map(comPct).sort((a, b) => b.mes.localeCompare(a.mes)),
         porEmpresa: [...porEmpresaMap.values()].map(comPct).sort((a, b) => b.pedidos - a.pedidos),
         porCliente: [...porClienteMap.values()]
@@ -608,6 +620,108 @@ export const solicitacaoCreditoRouter = router({
             totalPedidos: g.pedidos.length,
           }
         }),
+      }
+    }),
+
+  // Relatório "Tempo de resposta" — cada consulta/limite com o tempo até a
+  // 1ª resposta (horário de trabalho), média geral, % no prazo de 1 hora,
+  // por quem respondeu, por mês e o que está esperando agora.
+  tempoResposta: protectedProcedure
+    .input(z.object({ dataDe: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), dataAte: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), tipo: z.enum(['consulta', 'limite']).optional() }))
+    .query(async ({ ctx, input }) => {
+      if (!(await podeVerTempo(ctx.user))) throw new TRPCError({ code: 'FORBIDDEN', message: 'Relatório restrito' })
+      const filtros = [gte(solicitacoesCredito.createdAt, input.dataDe), lte(solicitacoesCredito.createdAt, `${input.dataAte} 23:59:59`)]
+      if (input.tipo) filtros.push(eq(solicitacoesCredito.tipo, input.tipo))
+      const linhas = await db
+        .select({
+          id: solicitacoesCredito.id,
+          createdAt: solicitacoesCredito.createdAt,
+          clienteNome: clienteNomeSql,
+          clienteCodigo: clienteCodigoSql,
+          empresaNome: empresas.nome,
+          vendedorNome: users.name,
+          tipo: solicitacoesCredito.tipo,
+          status: solicitacoesCredito.status,
+          decididoEm: solicitacoesCredito.decididoEm,
+          quemLiberou: solicitacoesCredito.quemLiberou,
+        })
+        .from(solicitacoesCredito)
+        .leftJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
+        .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
+        .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
+        .where(and(...filtros))
+        .orderBy(desc(solicitacoesCredito.createdAt))
+
+      // 1ª resposta de cada pedido (respostas guardadas; antigo sem histórico = decididoEm).
+      const ids = linhas.map((l) => l.id)
+      const primeira = new Map<number, { decididoEm: string; quemLiberou: string }>()
+      for (let i = 0; i < ids.length; i += 500) {
+        const rs = await db
+          .select({ solicitacaoId: solicitacaoCreditoRespostas.solicitacaoId, decididoEm: solicitacaoCreditoRespostas.decididoEm, quemLiberou: solicitacaoCreditoRespostas.quemLiberou })
+          .from(solicitacaoCreditoRespostas)
+          .where(inArray(solicitacaoCreditoRespostas.solicitacaoId, ids.slice(i, i + 500)))
+        for (const r of rs) {
+          const atual = primeira.get(r.solicitacaoId)
+          if (!atual || r.decididoEm < atual.decididoEm) primeira.set(r.solicitacaoId, { decididoEm: r.decididoEm, quemLiberou: r.quemLiberou })
+        }
+      }
+
+      const agora = new Date().toISOString()
+      const minutos = (de: string, ate: string) => Math.round(businessHoursElapsedMs(toUtcISO(de), ate) / 60000)
+      const itens = linhas.map((l) => {
+        const resp = primeira.get(l.id) ?? (l.decididoEm ? { decididoEm: l.decididoEm, quemLiberou: l.quemLiberou ?? '—' } : null)
+        const min = resp ? minutos(l.createdAt, toUtcISO(resp.decididoEm)) : minutos(l.createdAt, agora)
+        return {
+          id: l.id,
+          createdAt: l.createdAt,
+          clienteNome: l.clienteNome,
+          clienteCodigo: l.clienteCodigo,
+          empresaNome: l.empresaNome,
+          vendedorNome: l.vendedorNome,
+          tipo: l.tipo,
+          status: l.status,
+          respondidoEm: resp?.decididoEm ?? null,
+          quemRespondeu: resp?.quemLiberou ?? null,
+          minutos: min,
+          esperando: !resp,
+          noPrazo: min <= PRAZO_RESPOSTA_CREDITO_MIN,
+        }
+      })
+
+      type G = { respostas: number; soma: number; noPrazo: number; maior: number }
+      const novoG = (): G => ({ respostas: 0, soma: 0, noPrazo: 0, maior: 0 })
+      const add = (g: G, m: number, ok: boolean) => {
+        g.respostas++
+        g.soma += m
+        if (ok) g.noPrazo++
+        if (m > g.maior) g.maior = m
+      }
+      const fim = (g: G) => ({ respostas: g.respostas, mediaMin: g.respostas ? Math.round(g.soma / g.respostas) : null, noPrazo: g.noPrazo, foraPrazo: g.respostas - g.noPrazo, pctNoPrazo: g.respostas ? Math.round((g.noPrazo / g.respostas) * 1000) / 10 : null, maiorMin: g.maior })
+      const geral = novoG()
+      const porQuem = new Map<string, G>()
+      const porTipo = new Map<string, G>()
+      const porMes = new Map<string, G>()
+      for (const it of itens) {
+        if (it.esperando) continue
+        add(geral, it.minutos, it.noPrazo)
+        for (const [mapa, chave] of [
+          [porQuem, it.quemRespondeu ?? '—'],
+          [porTipo, it.tipo],
+          [porMes, toLocalDateKey(toUtcISO(it.createdAt)).slice(0, 7)],
+        ] as const) {
+          const g = mapa.get(chave) ?? novoG()
+          add(g, it.minutos, it.noPrazo)
+          mapa.set(chave, g)
+        }
+      }
+      const esperando = itens.filter((i) => i.esperando)
+      return {
+        prazoMin: PRAZO_RESPOSTA_CREDITO_MIN,
+        geral: { ...fim(geral), esperando: esperando.length, esperandoForaPrazo: esperando.filter((i) => !i.noPrazo).length },
+        porQuem: [...porQuem.entries()].map(([quem, g]) => ({ quem, ...fim(g) })).sort((a, b) => b.respostas - a.respostas),
+        porTipo: [...porTipo.entries()].map(([tipo, g]) => ({ tipo, ...fim(g) })),
+        porMes: [...porMes.entries()].map(([mes, g]) => ({ mes, ...fim(g) })).sort((a, b) => b.mes.localeCompare(a.mes)),
+        itens,
       }
     }),
 

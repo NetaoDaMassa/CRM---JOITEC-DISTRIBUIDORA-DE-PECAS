@@ -225,6 +225,8 @@ export const FEATURES_ADMIN = [
   // Admin que vende (Odin Compressores, 2026-11-27) pede crédito pela tela
   // do vendedor sem ganhar a tela do Financeiro.
   'pedir_credito',
+  // Relatório Tempo de resposta do crédito — só João (superAdmin) e Jessica (2026-11-27).
+  'credito_tempo_resposta',
   // Aprovação de cadastros de cliente feitos no CRM → SAP (Izabelly do
   // financeiro, 2026-11-12). Cross-empresa.
   'aprovacao_cadastro_cliente',

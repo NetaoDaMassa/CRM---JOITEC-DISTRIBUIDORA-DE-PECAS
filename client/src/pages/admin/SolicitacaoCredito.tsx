@@ -533,7 +533,7 @@ function Relatorios({ f, irParaLista }: { f: Filtros; irParaLista: (p: Partial<F
         <CartaoTotal titulo="Pedidos no período" valor={t.pedidos} detalhe={`${t.consultas} consulta(s) · ${t.limites} limite(s)`} />
         <CartaoTotal titulo="Liberados" valor={t.liberados} cor="text-green-400" detalhe={`${pct(t.pctLiberado)} dos respondidos`} />
         <CartaoTotal titulo="Negados" valor={t.negados} cor="text-red-400" detalhe={`${t.pendentes} ainda pendente(s)`} />
-        <CartaoTotal titulo="Tempo médio de resposta" valor={tempoUtil(t.tempoMedioMinutos)} detalhe="em horário de trabalho, até a 1ª resposta" />
+        {data.verTempo && <CartaoTotal titulo="Tempo médio de resposta" valor={tempoUtil(t.tempoMedioMinutos)} detalhe="em horário de trabalho, até a 1ª resposta" />}
         <CartaoTotal titulo="Valor pedido" valor={moeda(t.valorSolicitado)} detalhe="soma do valor solicitado/limite desejado" />
         <CartaoTotal titulo="Valor liberado" valor={moeda(t.valorLiberado)} cor="text-green-400" detalhe="soma dos liberados" />
         <CartaoTotal titulo="Serasa limpo" valor={t.serasaLimpos} detalhe="entre os já consultados" />
@@ -565,7 +565,9 @@ function Relatorios({ f, irParaLista }: { f: Filtros; irParaLista: (p: Partial<F
           { titulo: 'Liberou', valor: (l) => <span className="text-green-400">{l.liberou}</span>, csv: (l) => l.liberou, alinhar: 'direita' },
           { titulo: 'Negou', valor: (l) => <span className="text-red-400">{l.negou}</span>, csv: (l) => l.negou, alinhar: 'direita' },
           { titulo: '% liberado', valor: (l) => pct(l.pctLiberado), csv: (l) => numCsv(l.pctLiberado), alinhar: 'direita' },
-          { titulo: 'Tempo médio de resposta', valor: (l) => tempoUtil(l.tempoMedioMinutos), csv: (l) => tempoUtil(l.tempoMedioMinutos), alinhar: 'direita' },
+          ...(data.verTempo
+            ? [{ titulo: 'Tempo médio de resposta', valor: (l: (typeof data.porDecisor)[number]) => tempoUtil(l.tempoMedioMinutos), csv: (l: (typeof data.porDecisor)[number]) => tempoUtil(l.tempoMedioMinutos), alinhar: 'direita' as const }]
+            : []),
         ]}
       />
 
