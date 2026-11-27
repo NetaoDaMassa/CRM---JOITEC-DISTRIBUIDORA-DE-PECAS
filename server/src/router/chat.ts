@@ -6,6 +6,9 @@ import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes
 import { agoraSqlite } from '../lib/dataBr.js'
 import { atrasada, limparAvisosSemResposta, pendenciaDe } from '../lib/chatSemResposta.js'
 import { emitirNovaMensagem, emitirParaUsuario, emitirParaConversa } from '../lib/chatSocket.js'
+import { assuntosDasConversas } from '../lib/chatAssunto.js'
+import { lerRespostas, salvarRespostas } from '../lib/chatRespostas.js'
+import { sugerirRespostas, sugestaoDisponivel } from '../lib/chatSugestao.js'
 import { cardsDoPedidoSap, contasDoEstoque, podeConversarSobrePedido, processoDoPedido, vendedorDonoDoPedido } from '../lib/expedicaoChat.js'
 
 const TIPO_REGISTRO_VALUES = ['lead', 'cliente', 'pedido', 'visita', 'consulta_credito'] as const
@@ -119,7 +122,54 @@ async function vendedorPodeVerOrigem(tipoOrigem: (typeof TIPO_REGISTRO_VALUES)[n
   }
 }
 
+// Citação (responder mensagem, igual WhatsApp): resumo da mensagem original.
+async function citacoesDe(ids: number[]) {
+  const unicos = [...new Set(ids.filter((x): x is number => !!x))]
+  if (!unicos.length) return new Map<number, { id: number; autorNome: string; tipo: string; texto: string | null; nomeArquivo: string | null }>()
+  const rows = await db
+    .select({ id: chatMensagens.id, autorNome: users.name, tipo: chatMensagens.tipo, texto: chatMensagens.texto, nomeArquivo: chatMensagens.nomeArquivo })
+    .from(chatMensagens)
+    .innerJoin(users, eq(users.id, chatMensagens.autorId))
+    .where(inArray(chatMensagens.id, unicos))
+  return new Map(rows.map((r) => [r.id, r]))
+}
+
+async function souParticipanteDe(conversaId: number, userId: number) {
+  return !!(await db.query.chatParticipantes.findFirst({ where: and(eq(chatParticipantes.conversaId, conversaId), eq(chatParticipantes.userId, userId)) }))
+}
+
 export const chatRouter = router({
+  // Respostas prontas (cada pessoa a sua lista) + sugestão da IA.
+  respostas: router({
+    listar: chatProcedure.query(async ({ ctx }) => ({ lista: await lerRespostas(ctx.user.id), iaDisponivel: sugestaoDisponivel() })),
+    salvar: chatProcedure.input(z.object({ lista: z.array(z.string().max(1000)) })).mutation(async ({ ctx, input }) => ({ lista: await salvarRespostas(ctx.user.id, input.lista) })),
+    sugerir: chatProcedure.input(z.object({ conversaId: z.number() })).mutation(async ({ ctx, input }) => {
+      if (!(await souParticipanteDe(input.conversaId, ctx.user.id))) throw new Error('Você não participa dessa conversa.')
+      const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId) })
+      if (!conversa) throw new Error('Conversa não encontrada')
+      const msgs = await db
+        .select({ autorId: chatMensagens.autorId, autorNome: users.name, tipo: chatMensagens.tipo, texto: chatMensagens.texto })
+        .from(chatMensagens)
+        .innerJoin(users, eq(users.id, chatMensagens.autorId))
+        .where(and(eq(chatMensagens.conversaId, input.conversaId), isNull(chatMensagens.deletedAt)))
+        .orderBy(desc(chatMensagens.createdAt))
+        .limit(15)
+      if (!msgs.length) throw new Error('Ainda não tem mensagem nessa conversa pra sugerir resposta.')
+      const assunto = (await assuntosDasConversas([conversa])).get(conversa.id)
+      const partes = [conversa.tituloSnapshot, assunto?.clienteCodigo ? `cód. ${assunto.clienteCodigo}` : null, assunto?.pedidoSap ? `pedido ${assunto.pedidoSap}` : null].filter(Boolean)
+      const sugestoes = await sugerirRespostas({
+        eu: ctx.user.name,
+        assunto: partes.join(' · '),
+        mensagens: msgs.reverse().map((m) => ({
+          autor: m.autorNome,
+          minha: m.autorId === ctx.user.id,
+          texto: m.tipo === 'texto' ? (m.texto ?? '') : m.tipo === 'imagem' ? `[mandou uma foto]${m.texto ? ` ${m.texto}` : ''}` : m.tipo === 'audio' ? '[mandou um áudio]' : `[mandou um arquivo]${m.texto ? ` ${m.texto}` : ''}`,
+        })),
+      })
+      return { sugestoes }
+    }),
+  }),
+
   // Cross-empresa de propósito — "todo mundo, grupo inteiro" (pedido do
   // João, 2026-10-02): qualquer um pode começar uma conversa direta com
   // qualquer outro, não só gente da própria empresa.
@@ -338,18 +388,20 @@ export const chatRouter = router({
       const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId) })
       if (!conversa) throw new Error('Conversa não encontrada')
 
+      const assunto = (await assuntosDasConversas([conversa])).get(conversa.id) ?? null
       if (conversa.tipoOrigem !== 'cliente' || !conversa.idOrigem) {
-        return { tipoOrigem: conversa.tipoOrigem, idOrigem: conversa.idOrigem, cliente: null }
+        return { tipoOrigem: conversa.tipoOrigem, idOrigem: conversa.idOrigem, cliente: null, assunto }
       }
       const c = await db.query.clientes.findFirst({
         where: eq(clientes.id, conversa.idOrigem),
         columns: { id: true, razaoSocial: true, codigo: true, telefoneWhatsapp: true, email: true, vendedorAtualId: true },
       })
-      if (!c) return { tipoOrigem: conversa.tipoOrigem, idOrigem: conversa.idOrigem, cliente: null }
+      if (!c) return { tipoOrigem: conversa.tipoOrigem, idOrigem: conversa.idOrigem, cliente: null, assunto }
       const vendedor = c.vendedorAtualId ? await db.query.users.findFirst({ where: eq(users.id, c.vendedorAtualId), columns: { name: true } }) : null
       return {
         tipoOrigem: conversa.tipoOrigem,
         idOrigem: conversa.idOrigem,
+        assunto,
         cliente: {
           id: c.id,
           razaoSocial: c.razaoSocial,
@@ -445,6 +497,7 @@ export const chatRouter = router({
         if (l.length < 30) l.push(m)
         msgsPorConversa.set(m.conversaId, l)
       }
+      const assuntos = await assuntosDasConversas(conversas)
       const agoraIso = new Date().toISOString()
       const naoLidasPorConversa = new Map<number, number>()
       for (const m of ultimasMensagens) {
@@ -478,6 +531,7 @@ export const chatRouter = router({
               ? outrosDaConversa.map((u) => u.name).join(', ')
               : c.tituloSnapshot ?? 'Conversa',
           outrosParticipantes: outrosDaConversa,
+          assunto: assuntos.get(c.id) ?? null,
           ultimaMensagem: ultima
             ? { texto: ultima.texto, tipo: ultima.tipo, autorId: ultima.autorId, createdAt: ultima.createdAt }
             : null,
@@ -509,7 +563,11 @@ export const chatRouter = router({
           limit: 50,
           with: { autor: { columns: { id: true, name: true, fotoUrl: true } } },
         })
-        return { mensagens: msgs.reverse(), temMais: msgs.length === 50 }
+        const cit = await citacoesDe(msgs.map((m) => m.respondeAId!))
+        return {
+          mensagens: msgs.reverse().map((m) => ({ ...m, respondeA: m.respondeAId ? cit.get(m.respondeAId) ?? null : null })),
+          temMais: msgs.length === 50,
+        }
       }),
 
     enviar: chatProcedure
@@ -522,6 +580,7 @@ export const chatRouter = router({
           nomeArquivo: z.string().optional(),
           tipoArquivoMime: z.string().optional(),
           duracaoAudioSegundos: z.number().optional(),
+          respondeAId: z.number().optional(),
         })
       )
       .mutation(async ({ ctx, input }) => {
@@ -532,6 +591,11 @@ export const chatRouter = router({
         const conversa = await db.query.chatConversas.findFirst({ where: eq(chatConversas.id, input.conversaId), columns: { deletedAt: true } })
         if (conversa?.deletedAt) throw new Error('Esse grupo foi excluído.')
         if (input.tipo === 'texto' && !input.texto?.trim()) throw new Error('Mensagem vazia.')
+        let respondeA: { id: number; autorNome: string; tipo: string; texto: string | null; nomeArquivo: string | null } | null = null
+        if (input.respondeAId) {
+          const orig = await db.query.chatMensagens.findFirst({ where: eq(chatMensagens.id, input.respondeAId), columns: { conversaId: true } })
+          if (orig?.conversaId === input.conversaId) respondeA = (await citacoesDe([input.respondeAId])).get(input.respondeAId) ?? null
+        }
 
         const agora = agoraSqlite()
         const result = await db.insert(chatMensagens).values({
@@ -543,6 +607,7 @@ export const chatRouter = router({
           nomeArquivo: input.nomeArquivo,
           tipoArquivoMime: input.tipoArquivoMime,
           duracaoAudioSegundos: input.duracaoAudioSegundos,
+          respondeAId: respondeA?.id ?? null,
           createdAt: agora,
         })
         await db.update(chatConversas).set({ ultimaMensagemEm: agora }).where(eq(chatConversas.id, input.conversaId))
@@ -570,6 +635,8 @@ export const chatRouter = router({
           nomeArquivo: input.nomeArquivo ?? null,
           tipoArquivoMime: input.tipoArquivoMime ?? null,
           duracaoAudioSegundos: input.duracaoAudioSegundos ?? null,
+          respondeAId: respondeA?.id ?? null,
+          respondeA,
           createdAt: agora,
         }
         emitirNovaMensagem(

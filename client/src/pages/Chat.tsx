@@ -1,27 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import toast from 'react-hot-toast'
-import { MessageCircleMore, Plus, X, Camera, Search, Users } from 'lucide-react'
+import { MessageCircleMore, Plus, X, Camera, Users } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
-import { timeAgo } from '../lib/utils'
-import { Badge } from '../components/ui/Badge'
 import ChatJanela from '../components/chat/ChatJanela'
 import PessoaPicker from '../components/chat/PessoaPicker'
 import NovoGrupoView from '../components/chat/NovoGrupoView'
 import Avatar from '../components/chat/Avatar'
-import { SeloSemResposta } from '../components/chat/SemResposta'
-
-const TIPO_ORIGEM_LABEL: Record<string, string> = {
-  lead: '🎯 Lead',
-  cliente: '🏢 Cliente',
-  pedido: '📦 Pedido',
-  visita: '🚗 Visita',
-  consulta_credito: '💳 Consulta de crédito',
-  expedicao: '📦 Expedição',
-  direta: '',
-  grupo: '👥 Grupo',
-}
+import ListaConversas, { EtiquetasAssunto, tituloPrincipal } from '../components/chat/ListaConversas'
 
 async function uploadMinhaFoto(file: File): Promise<string> {
   const token = localStorage.getItem('odin_token')
@@ -120,17 +107,8 @@ export default function Chat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const [buscaConversa, setBuscaConversa] = useState('')
   const conversaAtual = conversas?.find((c) => c.id === selecionada)
 
-  const termoBusca = buscaConversa.trim().toLowerCase()
-  const conversasFiltradas = !termoBusca
-    ? conversas
-    : conversas?.filter(
-        (c) =>
-          c.titulo.toLowerCase().includes(termoBusca) ||
-          c.outrosParticipantes.some((p) => p.name.toLowerCase().includes(termoBusca))
-      )
 
   return (
     <div className="p-6 h-[calc(100vh-2rem)] max-h-[900px]">
@@ -144,7 +122,7 @@ export default function Chat() {
       </div>
 
       <div className="flex gap-4 h-[calc(100%-4rem)] min-h-0">
-        <div className="w-80 shrink-0 bg-dark-800 border border-dark-600 rounded-2xl flex flex-col min-h-0 relative">
+        <div className="w-96 shrink-0 bg-dark-800 border border-dark-600 rounded-2xl flex flex-col min-h-0 relative">
           <div className="flex items-center justify-between p-3 border-b border-dark-700 shrink-0">
             <p className="text-sm font-semibold text-dark-200">Conversas</p>
             <div className="relative">
@@ -181,48 +159,8 @@ export default function Chat() {
               )}
             </div>
           </div>
-          <div className="p-2 border-b border-dark-700 shrink-0">
-            <div className="relative">
-              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-dark-500" />
-              <input
-                value={buscaConversa}
-                onChange={(e) => setBuscaConversa(e.target.value)}
-                placeholder="Buscar conversa..."
-                className="w-full bg-dark-900 border border-dark-600 rounded-lg pl-7 pr-2.5 py-1.5 text-xs text-dark-100 placeholder-dark-500 focus:outline-none focus:border-gold-600"
-              />
-            </div>
-          </div>
-          <div className="flex-1 overflow-y-auto divide-y divide-dark-700">
-            {isLoading && <p className="p-3 text-sm text-dark-500">Carregando...</p>}
-            {!isLoading && !conversas?.length && <p className="p-3 text-sm text-dark-500">Nenhuma conversa ainda.</p>}
-            {!isLoading && !!conversas?.length && !conversasFiltradas?.length && (
-              <p className="p-3 text-sm text-dark-500">Nenhuma conversa encontrada.</p>
-            )}
-            {conversasFiltradas?.map((c) => {
-              const outro = c.tipoOrigem === 'grupo' ? undefined : c.outrosParticipantes[0]
-              return (
-                <button
-                  key={c.id}
-                  onClick={() => setSelecionada(c.id)}
-                  className={`w-full text-left p-3 flex items-start gap-2.5 hover:bg-dark-700/40 transition-colors ${selecionada === c.id ? 'bg-dark-700/60' : ''}`}
-                >
-                  <Avatar nome={outro?.name ?? c.titulo} fotoUrl={outro?.fotoUrl} online={c.tipoOrigem === 'direta' ? outro?.chatOnline : undefined} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-dark-100 font-medium truncate">{c.titulo}</p>
-                      {c.naoLidas > 0 && (
-                        <Badge className="bg-gold-600/20 border-gold-600/40 text-gold-300 shrink-0">{c.naoLidas}</Badge>
-                      )}
-                    </div>
-                    <p className="text-xs text-dark-500 truncate">
-                      {TIPO_ORIGEM_LABEL[c.tipoOrigem]} {c.ultimaMensagem?.texto ?? (c.ultimaMensagem ? 'Anexo' : 'Sem mensagens ainda')}
-                    </p>
-                    {c.ultimaMensagemEm && <p className="text-[10px] text-dark-600 mt-0.5">{timeAgo(c.ultimaMensagemEm)}</p>}
-<SeloSemResposta c={c} />
-                  </div>
-                </button>
-              )
-            })}
+          <div className="flex-1 min-h-0">
+            <ListaConversas conversas={conversas} isLoading={isLoading} selecionada={selecionada} onSelecionar={setSelecionada} />
           </div>
 
           {novaConversaAberta && (
@@ -249,11 +187,12 @@ export default function Chat() {
         <div className="flex-1 bg-dark-800 border border-dark-600 rounded-2xl min-h-0 flex flex-col">
           {conversaAtual ? (
             <>
-              <div className="flex items-center gap-2 p-3 border-b border-dark-700 shrink-0">
-                <p className="text-sm font-semibold text-dark-100">{conversaAtual.titulo}</p>
-                {TIPO_ORIGEM_LABEL[conversaAtual.tipoOrigem] && (
-                  <Badge className="bg-dark-700 border-dark-600 text-dark-300">{TIPO_ORIGEM_LABEL[conversaAtual.tipoOrigem]}</Badge>
-                )}
+              <div className="p-3 border-b border-dark-700 shrink-0">
+                <p className="text-base font-semibold text-dark-50 leading-snug">{tituloPrincipal(conversaAtual)}</p>
+                <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                  <EtiquetasAssunto c={conversaAtual} grande />
+                  {conversaAtual.assunto?.responsavel && <span className="text-xs text-dark-400">👤 {conversaAtual.assunto.responsavel}</span>}
+                </div>
               </div>
               <div className="flex-1 min-h-0">
                 <ChatJanela conversaId={conversaAtual.id} onExcluida={() => setSelecionada(null)} />

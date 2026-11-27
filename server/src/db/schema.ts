@@ -4449,6 +4449,8 @@ export const chatMensagens = sqliteTable(
     // Só preenchido pra tipo='audio' — duração da nota de voz, pro player
     // mostrar sem precisar carregar o arquivo inteiro primeiro.
     duracaoAudioSegundos: integer('duracao_audio_segundos'),
+    // Resposta a uma mensagem específica (citação igual WhatsApp, 2026-11-27).
+    respondeAId: integer('responde_a_id'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
     deletedAt: text('deleted_at'),
   },
