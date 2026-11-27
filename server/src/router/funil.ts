@@ -4,6 +4,7 @@ import { chegadasNaCarteira } from '../lib/chegouNaCarteira.js'
 import { ehClienteBalcao } from '../lib/consumidorFinalBalcao.js'
 import { z } from 'zod'
 import { CATEGORIAS_PERDA, erroMotivoPerda } from '../lib/motivosPerda.js'
+import { motivoPerdaJaRegistrado, motivoPerdaMudou, MSG_MOTIVO_TRAVADO, auditarTrocaMotivo } from '../lib/motivosPerdaTrava.js'
 import { and, eq, inArray, isNotNull, isNull, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, adminProcedure, adminOrFeatureProcedure, featureProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
@@ -650,9 +651,19 @@ export const funilRouter = router({
         throw new Error('Etapa "Outras Linhas / PPR Verde" disponível só pra Odin Tubos e Conexões.')
       }
 
-      if (input.etapa === 'perdido') {
+      // Motivo de perda travado (João, 2026-11-27): card que já está Perdido
+      // com o motivo escrito não deixa reescrever o texto — o vendedor só
+      // acrescenta ("Adicionar informação", motivosPerda.complementar). E
+      // salvar de novo não muda a data da perda (antes ia pra hoje e o
+      // perdido pulava de dia/mês).
+      const motivoTravado = funil.etapa === 'perdido' && input.etapa === 'perdido' && motivoPerdaJaRegistrado(funil)
+      if (motivoTravado) {
+        if (motivoPerdaMudou(funil, input)) throw new Error(MSG_MOTIVO_TRAVADO)
+        updates.dataEntradaEtapa = funil.dataEntradaEtapa
+      } else if (input.etapa === 'perdido') {
         const erro = erroMotivoPerda(input.motivoPerdaCategoria, input.motivoPerdaObservacao, input.motivoPerdaConcorrente, input.motivoPerdaItem)
         if (erro) throw new Error(erro)
+        await auditarTrocaMotivo(funil, input.motivoPerdaCategoria!, input.motivoPerdaObservacao!, ctx.user.id)
         updates.motivoPerdaCategoria = input.motivoPerdaCategoria
         updates.motivoPerdaOpcao = input.motivoPerdaOpcao ?? null
         updates.motivoPerdaItem = input.motivoPerdaItem?.trim() || null
@@ -924,6 +935,7 @@ export const funilRouter = router({
         versao: input.versao + 1,
       }
       if (input.novaEtapa === 'perdido') {
+        await auditarTrocaMotivo(funil, input.motivoPerdaCategoria!, input.motivoPerdaObservacao!, ctx.user.id)
         updates.motivoPerdaCategoria = input.motivoPerdaCategoria
         updates.motivoPerdaOpcao = input.motivoPerdaOpcao ?? null
         updates.motivoPerdaItem = input.motivoPerdaItem?.trim() || null

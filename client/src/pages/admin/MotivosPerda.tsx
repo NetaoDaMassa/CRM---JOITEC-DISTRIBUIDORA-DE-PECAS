@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
+import { Link } from 'react-router-dom'
 import { Check, MessageSquare, Clock, Search } from 'lucide-react'
 import { trpc } from '../../lib/trpc'
 import Select from '../../components/ui/Select'
@@ -92,7 +93,10 @@ export default function MotivosPerda() {
           <h1 className="font-heading text-xl text-dark-50">Motivos de perda</h1>
           {quemVe && <p className="text-xs text-dark-400 mt-1">Você vê: {quemVe}.</p>}
         </div>
-        <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5" />
+        <div className="flex items-center gap-2">
+          <Link to="/admin/painel-perdas" className="px-3 py-1.5 rounded-lg text-sm border border-gold-600/50 text-gold-300 hover:bg-gold-600/10">📊 Painel de perdas</Link>
+          <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="bg-dark-800 border border-dark-600 rounded-lg text-sm text-dark-100 px-3 py-1.5" />
+        </div>
       </div>
 
       {isLoading && <p className="text-dark-400 text-sm">Carregando...</p>}
@@ -187,7 +191,7 @@ export default function MotivosPerda() {
                         </button>
                       ) : (
                         p.podeMarcarVisto && (
-                          <Button size="sm" variant="secondary" loading={vistoMut.isPending && vistoMut.variables?.id === p.id} onClick={() => vistoMut.mutate({ id: p.id, visto: true })}>
+                          <Button size="sm" variant="secondary" title="Só registra que você viu — o vendedor não recebe nada" loading={vistoMut.isPending && vistoMut.variables?.id === p.id} onClick={() => vistoMut.mutate({ id: p.id, visto: true })}>
                             <Check size={14} className="mr-1" /> Marcar visto
                           </Button>
                         )
@@ -214,6 +218,18 @@ export default function MotivosPerda() {
                 {p.reclassificar && p.categoriaAntiga && <p className="text-[11px] text-dark-500 mt-1">Categoria antiga: {ROTULO_CATEGORIA_PERDA[p.categoriaAntiga] ?? p.categoriaAntiga}</p>}
                 {!p.reclassificar && p.textoAntigo && p.textoAntigo !== p.observacao && (
                   <p className="text-[11px] text-dark-500 mt-1">Texto antes da reclassificação: “{p.textoAntigo}”</p>
+                )}
+
+                {p.historico.length > 0 && (
+                  <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 space-y-1">
+                    <p className="text-[11px] font-medium text-red-300">⚠ O motivo desta perda foi trocado {p.historico.length}x:</p>
+                    {p.historico.map((h, i) => (
+                      <p key={i} className="text-[11px] text-dark-300">
+                        {new Date(h.em.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })} por <b className="text-dark-100">{h.por}</b> — antes era
+                        {h.categoriaAnterior ? ` (${ROTULO_CATEGORIA_PERDA[h.categoriaAnterior] ?? h.categoriaAnterior})` : ''}: “{h.textoAnterior ?? '—'}”
+                      </p>
+                    ))}
+                  </div>
                 )}
 
                 <Comentarios id={p.id} comentarios={p.comentarios} onSalvo={invalidar} />
@@ -249,7 +265,7 @@ function Ranking({ titulo, itens, vazio }: { titulo: string; itens: [string, num
   )
 }
 
-function Comentarios({ id, comentarios, onSalvo }: { id: number; comentarios: { id: number; texto: string; autor: string; createdAt: string }[]; onSalvo: () => void }) {
+function Comentarios({ id, comentarios, onSalvo }: { id: number; comentarios: { id: number; texto: string; tipo: string; autor: string; createdAt: string }[]; onSalvo: () => void }) {
   const [aberto, setAberto] = useState(false)
   const [texto, setTexto] = useState('')
   const mut = trpc.motivosPerda.comentar.useMutation({
@@ -264,7 +280,7 @@ function Comentarios({ id, comentarios, onSalvo }: { id: number; comentarios: { 
     <div className="mt-3 border-t border-dark-700 pt-2">
       {comentarios.map((c) => (
         <p key={c.id} className="text-xs text-dark-300 mt-1">
-          <b className="text-dark-100">{c.autor}</b> <span className="text-dark-500">{new Date(c.createdAt.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>: {c.texto}
+          <b className={c.tipo === 'complemento' ? 'text-sky-300' : 'text-dark-100'}>{c.tipo === 'complemento' ? `➕ ${c.autor} (vendedor) acrescentou` : c.autor}</b> <span className="text-dark-500">{new Date(c.createdAt.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>: {c.texto}
         </p>
       ))}
       {aberto ? (

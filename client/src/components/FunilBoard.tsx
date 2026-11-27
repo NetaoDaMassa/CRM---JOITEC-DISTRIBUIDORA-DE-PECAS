@@ -37,7 +37,7 @@ import { AvatarIniciais, dispararConfete } from './ui/Visual'
 import ColunaAgendamentosPecas from './agendamentos/ColunaAgendamentosPecas'
 import GravacaoLigacao from './ui/GravacaoLigacao'
 import NotaSapBotoes from './NotaSapBotoes'
-import MotivoPerdaCampos, { MOTIVO_PERDA_VAZIO, erroDoMotivo, type MotivoPerdaValor } from './MotivoPerdaCampos'
+import MotivoPerdaCampos, { MOTIVO_PERDA_VAZIO, MotivoPerdaTravado, erroDoMotivo, type MotivoPerdaValor } from './MotivoPerdaCampos'
 import { LigacaoWhatsappButton, NaoFoiConversaButton } from './LigacaoWhatsapp'
 
 // Design novo (teste): cor de cada etapa no topo da coluna e faixa de
@@ -1683,6 +1683,8 @@ function CardModal({
     concorrente: card.motivoPerdaConcorrente ?? '',
     item: card.motivoPerdaItem ?? '',
   }))
+  // Perdido com motivo já escrito: não reescreve, só acrescenta (2026-11-27).
+  const motivoTravado = card.etapa === 'perdido' && !!card.motivoPerdaObservacao?.trim() && !card.motivoPerdaReclassificar
   const [empresaRepasse, setEmpresaRepasse] = useState(card.empresaRepasse ?? '')
   const [motivoRepasseObs, setMotivoRepasseObs] = useState(card.motivoRepasseObservacao ?? '')
   const [agendarAberto, setAgendarAberto] = useState(false)
@@ -1975,7 +1977,8 @@ function CardModal({
       }
     }
 
-    if (etapaSelecionada === 'perdido') {
+    const enviaMotivo = etapaSelecionada === 'perdido' && !motivoTravado
+    if (enviaMotivo) {
       const erro = erroDoMotivo(motivoPerda)
       if (erro) return toast.error(erro)
     }
@@ -1995,10 +1998,10 @@ function CardModal({
       tipoComprovante: (tipoComprovante || undefined) as 'cupom_fiscal' | 'nota_fiscal' | undefined,
       pdfPedidoPath,
       pdfPropostaPath,
-      motivoPerdaCategoria: etapaSelecionada === 'perdido' ? ((motivoPerda.categoria || undefined) as any) : undefined,
-      motivoPerdaItem: etapaSelecionada === 'perdido' ? motivoPerda.item.trim() || undefined : undefined,
-      motivoPerdaObservacao: etapaSelecionada === 'perdido' ? motivoPerda.observacao.trim() || undefined : undefined,
-      motivoPerdaConcorrente: etapaSelecionada === 'perdido' ? motivoPerda.concorrente.trim() || undefined : undefined,
+      motivoPerdaCategoria: enviaMotivo ? ((motivoPerda.categoria || undefined) as any) : undefined,
+      motivoPerdaItem: enviaMotivo ? motivoPerda.item.trim() || undefined : undefined,
+      motivoPerdaObservacao: enviaMotivo ? motivoPerda.observacao.trim() || undefined : undefined,
+      motivoPerdaConcorrente: enviaMotivo ? motivoPerda.concorrente.trim() || undefined : undefined,
       empresaRepasse: (empresaRepasse || undefined) as any,
       motivoRepasseObservacao: motivoRepasseObs || undefined,
       clienteIdFaturamento: card.cnpjsDisponiveis.length > 1 ? clienteIdFaturamento : undefined,
@@ -2730,11 +2733,18 @@ function CardModal({
             </>
           )}
 
-          {etapaSelecionada === 'perdido' && (
-            <>
+          {etapaSelecionada === 'perdido' &&
+            (motivoTravado ? (
+              <MotivoPerdaTravado
+                funilMensalId={card.funilMensalId}
+                categoria={card.motivoPerdaCategoria}
+                observacao={card.motivoPerdaObservacao}
+                item={card.motivoPerdaItem}
+                concorrente={card.motivoPerdaConcorrente}
+              />
+            ) : (
               <MotivoPerdaCampos valor={motivoPerda} onChange={(p) => setMotivoPerda((v) => ({ ...v, ...p }))} />
-            </>
-          )}
+            ))}
 
           {etapaSelecionada === 'consumidor_final' && (
             <>

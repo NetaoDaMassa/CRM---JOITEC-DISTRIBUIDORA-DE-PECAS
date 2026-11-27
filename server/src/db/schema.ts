@@ -1003,6 +1003,9 @@ export const funilPerdaComentarios = sqliteTable(
     funilMensalId: integer('funil_mensal_id').notNull().references(() => funilMensal.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     texto: text('texto').notNull(),
+    // 'comentario' = setor/gerente escreveu (vira notificação pro vendedor);
+    // 'complemento' = vendedor acrescentou ao motivo já travado (0193).
+    tipo: text('tipo', { enum: ['comentario', 'complemento'] }).notNull().default('comentario'),
     createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   },
   (t) => ({ porCard: index('idx_funil_perda_coment').on(t.funilMensalId) })

@@ -13,7 +13,8 @@ import { z } from 'zod'
 import { and, desc, eq, gte, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm'
 import { router, protectedProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
-import { clientes, empresas, funilMensal, funilPerdaComentarios, notifications, users } from '../db/schema.js'
+import { clientes, empresas, funilMensal, funilPerdaComentarios, logAuditoria, notifications, users } from '../db/schema.js'
+import { auditarTrocaMotivo } from '../lib/motivosPerdaTrava.js'
 import { CATEGORIAS_PERDA, categoriasDoSetor, erroMotivoPerda, SETOR_DA_CATEGORIA } from '../lib/motivosPerda.js'
 import { idsDaPessoa } from '../lib/metaLigacoes.js'
 import { agoraSqlite } from '../lib/dataBr.js'
@@ -44,6 +45,24 @@ function filtroEscopo(ctx: Ctx, a: { tudo: boolean; financeiro: boolean; compras
   if (cats.length) partes.push(inArray(funilMensal.motivoPerdaCategoria, cats as any))
   if (!partes.length) return null
   return partes.length === 1 ? partes[0] : (or(...partes) as SQL)
+}
+
+// Trocas do motivo já gravado (lib/motivosPerdaTrava.ts) — mostra o texto
+// anterior na tela, com quem trocou e quando.
+async function historicoMotivo(ids: number[]) {
+  const linhas = await db
+    .select({ funilMensalId: logAuditoria.registroId, em: logAuditoria.alteradoEm, anterior: logAuditoria.valorAnterior, por: users.name })
+    .from(logAuditoria)
+    .leftJoin(users, eq(users.id, logAuditoria.alteradoPor))
+    .where(and(eq(logAuditoria.tabela, 'funil_mensal'), eq(logAuditoria.campo, 'motivo_perda'), inArray(logAuditoria.registroId, ids)))
+    .orderBy(logAuditoria.id)
+  return linhas.map((l) => {
+    let ant: { categoria?: string | null; texto?: string | null } = {}
+    try {
+      ant = JSON.parse(l.anterior ?? '{}')
+    } catch {}
+    return { funilMensalId: l.funilMensalId, em: l.em, por: l.por ?? '—', categoriaAnterior: ant.categoria ?? null, textoAnterior: ant.texto ?? null }
+  })
 }
 
 // Quem pode marcar "visto": o setor da categoria; se a categoria não é de
@@ -125,12 +144,13 @@ export const motivosPerdaRouter = router({
       const ids = linhas.map((l) => l.id)
       const comentarios = ids.length
         ? await db
-            .select({ id: funilPerdaComentarios.id, funilMensalId: funilPerdaComentarios.funilMensalId, texto: funilPerdaComentarios.texto, createdAt: funilPerdaComentarios.createdAt, autor: users.name })
+            .select({ id: funilPerdaComentarios.id, funilMensalId: funilPerdaComentarios.funilMensalId, texto: funilPerdaComentarios.texto, tipo: funilPerdaComentarios.tipo, createdAt: funilPerdaComentarios.createdAt, autor: users.name })
             .from(funilPerdaComentarios)
             .innerJoin(users, eq(users.id, funilPerdaComentarios.userId))
             .where(inArray(funilPerdaComentarios.funilMensalId, ids))
             .orderBy(funilPerdaComentarios.createdAt)
         : []
+      const historico = ids.length ? await historicoMotivo(ids) : []
       const vistoIds = [...new Set(linhas.map((l) => l.vistoPor).filter((x): x is number => !!x))]
       const nomes = vistoIds.length ? await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, vistoIds)) : []
       const nomePorId = new Map(nomes.map((n) => [n.id, n.name]))
@@ -142,6 +162,7 @@ export const motivosPerdaRouter = router({
           vistoPorNome: l.vistoPor ? nomePorId.get(l.vistoPor) ?? null : null,
           podeMarcarVisto: podeMarcarVisto(l.categoria, a, ctx.user.superAdmin),
           comentarios: comentarios.filter((c) => c.funilMensalId === l.id),
+          historico: historico.filter((h) => h.funilMensalId === l.id),
         })),
       }
     }),
@@ -213,11 +234,15 @@ export const motivosPerdaRouter = router({
     )
     .mutation(async ({ ctx, input }) => {
       const ids = await idsDaPessoa(ctx.user.id)
-      const f = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.id), columns: { vendedorId: true, motivoPerdaReclassificar: true } })
+      const f = await db.query.funilMensal.findFirst({
+        where: eq(funilMensal.id, input.id),
+        columns: { id: true, vendedorId: true, motivoPerdaReclassificar: true, motivoPerdaCategoria: true, motivoPerdaObservacao: true },
+      })
       if (!f || !f.motivoPerdaReclassificar) throw new Error('Esse perdido não está pendente.')
       if (!ids.includes(f.vendedorId) && !ctx.user.superAdmin) throw new Error('Só o vendedor do card reclassifica.')
       const erro = erroMotivoPerda(input.categoria, input.observacao, input.concorrente, input.item)
       if (erro) throw new Error(erro)
+      await auditarTrocaMotivo(f, input.categoria, input.observacao, ctx.user.id)
       await db
         .update(funilMensal)
         .set({
@@ -231,5 +256,78 @@ export const motivosPerdaRouter = router({
         })
         .where(eq(funilMensal.id, input.id))
       return { ok: true }
+    }),
+  // Vendedor acrescenta informação a um perdido já registrado (o texto
+  // original não muda mais — João, 2026-11-27). Fica com nome e data, e o
+  // perdido volta pro "Pra eu ver" do setor/gerente.
+  complementar: protectedProcedure.input(z.object({ id: z.number(), texto: z.string().trim().min(10, 'Escreva pelo menos 10 caracteres.') })).mutation(async ({ ctx, input }) => {
+    const f = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.id), columns: { id: true, vendedorId: true, etapa: true } })
+    if (!f || f.etapa !== 'perdido') throw new Error('Esse card não está como perdido.')
+    const ids = await idsDaPessoa(ctx.user.id)
+    if (!ids.includes(f.vendedorId) && ctx.user.role !== 'admin') throw new Error('Só o vendedor do card acrescenta informação.')
+    await db.insert(funilPerdaComentarios).values({ funilMensalId: f.id, userId: ctx.user.id, texto: input.texto, tipo: 'complemento' })
+    await db.update(funilMensal).set({ motivoPerdaVistoPor: null, motivoPerdaVistoEm: null }).where(eq(funilMensal.id, f.id))
+    return { ok: true }
+  }),
+
+  // Comentários + acréscimos de um card (pro vendedor ver no próprio card).
+  doCard: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+    const f = await db.query.funilMensal.findFirst({ where: eq(funilMensal.id, input.id), columns: { id: true, vendedorId: true } })
+    if (!f) return []
+    const ids = await idsDaPessoa(ctx.user.id)
+    if (!ids.includes(f.vendedorId) && ctx.user.role !== 'admin') return []
+    return db
+      .select({ id: funilPerdaComentarios.id, texto: funilPerdaComentarios.texto, tipo: funilPerdaComentarios.tipo, createdAt: funilPerdaComentarios.createdAt, autor: users.name })
+      .from(funilPerdaComentarios)
+      .innerJoin(users, eq(users.id, funilPerdaComentarios.userId))
+      .where(eq(funilPerdaComentarios.funilMensalId, f.id))
+      .orderBy(funilPerdaComentarios.createdAt)
+  }),
+
+  // Painel de perdas (tipo Power BI) pros gerentes — João, 2026-11-27.
+  // Mesma regra de quem vê da tela Motivos de perda; superAdmin pode ver
+  // todas as empresas juntas.
+  painel: protectedProcedure
+    .input(z.object({ de: z.string().regex(/^\d{4}-\d{2}$/), ate: z.string().regex(/^\d{4}-\d{2}$/), todasEmpresas: z.boolean().optional() }))
+    .query(async ({ ctx, input }) => {
+      const a = await acessoMotivosPerda(ctx)
+      const todas = !!input.todasEmpresas && ctx.user.superAdmin
+      const escopo = todas ? sql`1 = 1` : filtroEscopo(ctx, a)
+      if (!escopo) throw new Error('Acesso negado')
+      const [ano, mes] = input.ate.split('-').map(Number)
+      const fim = mes === 12 ? `${ano + 1}-01-01` : `${ano}-${String(mes + 1).padStart(2, '0')}-01`
+      const linhas = await db
+        .select({
+          id: funilMensal.id,
+          data: funilMensal.dataEntradaEtapa,
+          valor: funilMensal.valorOrcado,
+          categoria: funilMensal.motivoPerdaCategoria,
+          categoriaAntiga: funilMensal.motivoPerdaCategoriaAntiga,
+          reclassificar: funilMensal.motivoPerdaReclassificar,
+          item: funilMensal.motivoPerdaItem,
+          concorrente: funilMensal.motivoPerdaConcorrente,
+          observacao: funilMensal.motivoPerdaObservacao,
+          vendedorId: funilMensal.vendedorId,
+          vendedorNome: users.name,
+          empresaId: users.empresaId,
+          empresaNome: empresas.nome,
+          razaoSocial: clientes.razaoSocial,
+        })
+        .from(funilMensal)
+        .innerJoin(users, eq(users.id, funilMensal.vendedorId))
+        .innerJoin(clientes, eq(clientes.id, funilMensal.clienteId))
+        .leftJoin(empresas, eq(empresas.id, users.empresaId))
+        .where(
+          and(
+            eq(funilMensal.etapa, 'perdido'),
+            isNull(funilMensal.deletedAt),
+            gte(funilMensal.dataEntradaEtapa, `${input.de}-01`),
+            lt(funilMensal.dataEntradaEtapa, fim),
+            sql`coalesce(${funilMensal.motivoPerdaCategoria}, '') <> 'cadastro_errado'`,
+            escopo
+          )
+        )
+        .orderBy(desc(funilMensal.dataEntradaEtapa))
+      return { acesso: a, podeTodasEmpresas: ctx.user.superAdmin, perdas: linhas }
     }),
 })

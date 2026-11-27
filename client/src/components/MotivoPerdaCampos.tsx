@@ -1,6 +1,11 @@
+import { useState } from 'react'
+import toast from 'react-hot-toast'
+import { Lock } from 'lucide-react'
 import Select from './ui/Select'
+import Button from './ui/Button'
 import { Input, Textarea } from './ui/Input'
-import { DICA_CATEGORIA_PERDA, MIN_CARACTERES_MOTIVO, OPCOES_CATEGORIA_PERDA, erroMotivoPerda, type CategoriaPerda } from '../lib/motivosPerda'
+import { trpc } from '../lib/trpc'
+import { DICA_CATEGORIA_PERDA, MIN_CARACTERES_MOTIVO, OPCOES_CATEGORIA_PERDA, ROTULO_CATEGORIA_PERDA, erroMotivoPerda, type CategoriaPerda } from '../lib/motivosPerda'
 
 export interface MotivoPerdaValor {
   categoria: string
@@ -55,6 +60,73 @@ export default function MotivoPerdaCampos({ valor, onChange }: { valor: MotivoPe
           </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+// Perdido com motivo já registrado (João, 2026-11-27): o texto fica travado,
+// o vendedor só acrescenta informação — com nome e data, sem apagar o que
+// estava. Mostra também o que o setor/gerente comentou.
+export function MotivoPerdaTravado({
+  funilMensalId,
+  categoria,
+  observacao,
+  item,
+  concorrente,
+}: {
+  funilMensalId: number
+  categoria: string | null
+  observacao: string | null
+  item: string | null
+  concorrente: string | null
+}) {
+  const utils = trpc.useUtils()
+  const { data: comentarios } = trpc.motivosPerda.doCard.useQuery({ id: funilMensalId })
+  const [aberto, setAberto] = useState(false)
+  const [texto, setTexto] = useState('')
+  const mut = trpc.motivosPerda.complementar.useMutation({
+    onSuccess() {
+      setTexto('')
+      setAberto(false)
+      toast.success('Informação adicionada ao motivo da perda.')
+      utils.motivosPerda.doCard.invalidate({ id: funilMensalId })
+    },
+    onError: (e) => toast.error(e.message),
+  })
+  return (
+    <div className="rounded-lg border border-dark-600 bg-dark-900/60 p-3 space-y-2">
+      <p className="text-xs text-dark-400 flex items-center gap-1.5">
+        <Lock size={12} /> Motivo da perda já registrado — não pode ser alterado, só acrescentado.
+      </p>
+      <p className="text-sm text-dark-100">
+        <b>{categoria ? ROTULO_CATEGORIA_PERDA[categoria] ?? categoria : 'Sem categoria'}</b>
+        {concorrente && <span className="text-dark-300"> · Perdeu pra: {concorrente}</span>}
+        {item && <span className="text-dark-300"> · Item: {item}</span>}
+      </p>
+      <p className="text-sm text-dark-200 whitespace-pre-line">{observacao}</p>
+      {(comentarios ?? []).map((c) => (
+        <p key={c.id} className="text-xs text-dark-300 border-t border-dark-700 pt-1.5">
+          <b className="text-dark-100">{c.tipo === 'complemento' ? `➕ ${c.autor} acrescentou` : `💬 ${c.autor}`}</b>{' '}
+          <span className="text-dark-500">{new Date(c.createdAt.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>: {c.texto}
+        </p>
+      ))}
+      {aberto ? (
+        <div className="space-y-2">
+          <Textarea rows={2} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="O que mudou ou o que faltou dizer? Ex: cliente ligou de novo e disse que já comprou na concorrência." />
+          <div className="flex gap-2 justify-end">
+            <Button size="sm" variant="secondary" onClick={() => setAberto(false)}>
+              Cancelar
+            </Button>
+            <Button size="sm" loading={mut.isPending} disabled={texto.trim().length < 10} onClick={() => mut.mutate({ id: funilMensalId, texto })}>
+              Adicionar
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button size="sm" variant="secondary" onClick={() => setAberto(true)}>
+          ➕ Adicionar informação
+        </Button>
+      )}
     </div>
   )
 }

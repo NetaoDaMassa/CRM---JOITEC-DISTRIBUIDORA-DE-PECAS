@@ -6,7 +6,7 @@ import {
   KanbanSquare, LogOut, ArrowRightLeft, Trash2,
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Smartphone, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
-  PiggyBank, CircleDollarSign, Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
+  PiggyBank, CircleDollarSign, Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, ChartColumnDecreasing, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
   Shuffle, Clapperboard,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -584,6 +584,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       icon: TrendingDown,
       visivel: user?.role === 'admin' && !!motivosPerda?.visivel,
     },
+    // Painel de perdas (2026-11-27): gráficos de perdas/valores/motivos pros gerentes.
+    { to: '/admin/painel-perdas', label: 'Painel de perdas', icon: ChartColumnDecreasing, visivel: user?.role === 'admin' && !!motivosPerda?.visivel },
     // Clientes duplicados (2026-11-26): fora do menu (João: "não temos mão pra
     // verificar") — o CRM resolve sozinho; a tela fica só pelo endereço
     // /admin/clientes-duplicados pra conferência do João.
