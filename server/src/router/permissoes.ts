@@ -5,6 +5,7 @@ import { db } from '../db/client.js'
 import { permissoesAdmin, users } from '../db/schema.js'
 import { registrarAuditoria } from '../lib/auditoria.js'
 import { gravarChavesComoExcecoes } from '../lib/acessos.js'
+import { FEATURE_CREDITO, creditoLiberadoPelaEmpresa } from '../lib/creditoVendedores.js'
 
 // Chaves fixas — 1:1 com ADMIN_LINKS em client/src/components/Sidebar.tsx.
 // superAdmin nunca depende dessa lista: sempre vê tudo (ver Sidebar/rotas).
@@ -406,7 +407,9 @@ export const permissoesRouter = router({
   minhasPermissoes: protectedProcedure.query(async ({ ctx }) => {
     if (ctx.user.superAdmin) return [...FEATURES_ADMIN]
     const linhas = await db.query.permissoesAdmin.findMany({ where: eq(permissoesAdmin.userId, ctx.user.id) })
-    return linhas.map((l) => l.feature)
+    const features = linhas.map((l) => l.feature)
+    if (!features.includes(FEATURE_CREDITO) && (await creditoLiberadoPelaEmpresa(ctx.user.id))) features.push(FEATURE_CREDITO)
+    return features
   }),
 
   // Substitui o conjunto inteiro de features liberadas pra pessoa alvo

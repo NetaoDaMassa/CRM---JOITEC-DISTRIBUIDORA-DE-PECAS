@@ -12,6 +12,15 @@ import Button from '../../components/ui/Button'
 import { Badge } from '../../components/ui/Badge'
 import ClientePicker from '../../components/ClientePicker'
 import ConversarSobreIssoButton from '../../components/chat/ConversarSobreIssoButton'
+import ComoUsar from '../../components/ui/ComoUsar'
+
+// "Contestar no WhatsApp" sai no fim de novembro (João, 2026-11-27): a
+// conversa com o financeiro passa a ser pelo "Conversar sobre isso" (chat
+// interno do CRM). Até lá o botão fica com o aviso.
+const WHATSAPP_ATE = '2026-11-30'
+function whatsappAindaVale() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) <= WHATSAPP_ATE
+}
 
 function formatarMoeda(v: number | null | undefined): string {
   return v == null ? '—' : formatarMoedaBr(v)
@@ -233,7 +242,10 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
 
       {aberto && (
         <div className="mt-3 space-y-3 text-sm">
-          <ConversarSobreIssoButton tipoOrigem="consulta_credito" idOrigem={s.id} titulo={`Consulta de crédito — ${s.clienteNome}`} />
+          <div className="space-y-1">
+            <ConversarSobreIssoButton tipoOrigem="consulta_credito" idOrigem={s.id} titulo={`Consulta de crédito — ${s.clienteNome}`} />
+            <p className="text-[11px] text-dark-500">Dúvida ou quer contestar a resposta? Use o <b>Conversar sobre isso</b>: a conversa fica no chat do CRM junto com esta consulta.</p>
+          </div>
           {s.informacoesFiscais && (
             <div>
               <p className="text-xs text-dark-500 uppercase tracking-wide">Informações fiscais</p>
@@ -291,7 +303,8 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
               )}
               {s.decididoEm && <p className="text-xs text-dark-500">{formatDateTime(s.decididoEm)}</p>}
 
-              {s.decisorWhatsapp && (
+              {s.decisorWhatsapp && whatsappAindaVale() && (
+                <div className="space-y-1">
                 <a
                   href={buildContestarCreditoWaLink({
                     decisorWhatsapp: s.decisorWhatsapp,
@@ -306,6 +319,8 @@ function LinhaSolicitacao({ s }: { s: Solicitacao }) {
                 >
                   <MessageCircle size={13} /> Contestar no WhatsApp
                 </a>
+                <p className="text-[11px] text-amber-400">Atenção: o botão do WhatsApp só fica até 30/11. Depois disso, use o <b>Conversar sobre isso</b> (chat do CRM), lá em cima.</p>
+                </div>
               )}
             </div>
           )}
@@ -390,6 +405,40 @@ export default function SolicitacaoCredito() {
           <p className="text-sm text-dark-400">Peça a liberação de crédito de um cliente da sua carteira pro Financeiro.</p>
         </div>
       </div>
+
+      <ComoUsar
+        chave="consulta_credito_vendedor"
+        titulo="Como pedir consulta ou limite de crédito (passo a passo)"
+        passos={[
+          <>
+            <b>Pesquise antes:</b> na caixa "Antes de pedir", digite o código, o CNPJ/CPF ou o nome do cliente. Se ele foi consultado há pouco tempo ou já tem pedido esperando, não precisa mandar de novo.
+          </>,
+          <>
+            Em <b>Nova solicitação</b>, escolha <b>Consulta</b> (o financeiro diz se o cliente está limpo no Serasa e qual o limite) ou <b>Limite de crédito</b> (quando precisa de limite para um pedido; informe o valor do pedido).
+          </>,
+          <>
+            Escolha o <b>cliente da sua carteira</b>. Se quiser, preencha informações fiscais e observações e anexe prints ou documentos.
+          </>,
+          <>
+            Clique em <b>Enviar solicitação</b>. Ela aparece na lista lá embaixo como <b>Pendente</b>.
+          </>,
+          <>
+            Quando o financeiro responder, o status muda para <b>Liberado</b> (com o limite em verde) ou <b>Negado</b>. Clique na solicitação para ver o motivo.
+          </>,
+          <>
+            Dúvida ou discordou da resposta? Abra a solicitação e use <b>Conversar sobre isso</b>. A conversa vai para o chat do CRM, junto com a consulta.
+          </>,
+        ]}
+        dicas={[
+          <>Um pedido pendente por cliente de cada tipo. Espere a resposta antes de pedir de novo.</>,
+          <>
+            Guia completo:{' '}
+            <a href="/guia/#credito" target="_blank" rel="noreferrer" className="text-gold-400 hover:underline">
+              Guia do Vendedor → Crédito
+            </a>
+          </>,
+        ]}
+      />
 
       <PesquisarCliente />
 

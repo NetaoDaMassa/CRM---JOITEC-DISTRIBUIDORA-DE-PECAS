@@ -347,7 +347,7 @@ export default function GuiaFinanceiro() {
           </Caixinha>
           <Caixinha titulo="3. Fica registrado">
             <p>
-              Resposta de <b>consulta</b> vai para Liberação de Crédito → Lançamentos. Pedido de <b>limite</b> fica na aba Limites. O vendedor vê a resposta na hora e pode contestar pelo WhatsApp.
+              Resposta de <b>consulta</b> vai para Liberação de Crédito → Lançamentos. Pedido de <b>limite</b> fica na aba Limites. O vendedor vê a resposta na hora e, se tiver dúvida, chama pelo <b>Conversar sobre isso</b> (chat do CRM).
             </p>
           </Caixinha>
         </Grade>
@@ -383,7 +383,7 @@ export default function GuiaFinanceiro() {
               <p>O vendedor só consegue pedir para cliente da própria carteira.</p>
               <p>Ele não consegue abrir dois pedidos iguais (mesmo cliente e mesmo tipo) enquanto um estiver pendente.</p>
               <p>
-                Na lista ele acompanha o status e, depois da resposta, vê a decisão e o botão <b>Contestar no WhatsApp</b>.
+                Na lista ele acompanha o status e, depois da resposta, vê a decisão e o botão <b>Conversar sobre isso</b> (o Contestar no WhatsApp sai em 30/11).
               </p>
             </div>
           </div>

@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm'
 import type { Context } from '../types/context.js'
 import { db } from '../db/client.js'
 import { permissoesAdmin } from '../db/schema.js'
+import { FEATURE_CREDITO, creditoLiberadoPelaEmpresa } from '../lib/creditoVendedores.js'
 
 const t = initTRPC.context<Context>().create()
 
@@ -91,7 +92,10 @@ export async function temFeature(userId: number, feature: string): Promise<boole
   const liberado = await db.query.permissoesAdmin.findFirst({
     where: and(eq(permissoesAdmin.userId, userId), eq(permissoesAdmin.feature, feature)),
   })
-  return !!liberado
+  if (liberado) return true
+  // Crédito: liberado por empresa pra todos os vendedores (lib/creditoVendedores.ts).
+  if (feature === FEATURE_CREDITO) return creditoLiberadoPelaEmpresa(userId)
+  return false
 }
 
 // Chat Grupo Odin — liberado pra todo mundo logado desde 2026-11-05 (pedido
