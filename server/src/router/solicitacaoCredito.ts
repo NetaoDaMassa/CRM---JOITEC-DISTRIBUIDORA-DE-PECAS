@@ -35,6 +35,33 @@ async function podeVerTempo(user: { id: number; superAdmin?: boolean | null }) {
   return !!user.superAdmin || (await temFeature(user.id, FEATURE_TEMPO_CREDITO))
 }
 
+// Tempo até a 1ª resposta de cada pedido (horário de trabalho). Sem
+// resposta ainda = tempo esperando até agora.
+async function temposDeResposta(linhas: { id: number; createdAt: string; decididoEm: string | null; quemLiberou: string | null }[]) {
+  const ids = linhas.map((l) => l.id)
+  const primeira = new Map<number, { decididoEm: string; quemLiberou: string }>()
+  for (let i = 0; i < ids.length; i += 500) {
+    const rs = await db
+      .select({ solicitacaoId: solicitacaoCreditoRespostas.solicitacaoId, decididoEm: solicitacaoCreditoRespostas.decididoEm, quemLiberou: solicitacaoCreditoRespostas.quemLiberou })
+      .from(solicitacaoCreditoRespostas)
+      .where(inArray(solicitacaoCreditoRespostas.solicitacaoId, ids.slice(i, i + 500)))
+    for (const r of rs) {
+      const atual = primeira.get(r.solicitacaoId)
+      if (!atual || r.decididoEm < atual.decididoEm) primeira.set(r.solicitacaoId, { decididoEm: r.decididoEm, quemLiberou: r.quemLiberou })
+    }
+  }
+  const agora = new Date().toISOString()
+  const minutos = (de: string, ate: string) => Math.round(businessHoursElapsedMs(toUtcISO(de), ate) / 60000)
+  return new Map(
+    linhas.map((l) => {
+      // Pedido antigo sem histórico de respostas = decididoEm da própria linha.
+      const resp = primeira.get(l.id) ?? (l.decididoEm ? { decididoEm: l.decididoEm, quemLiberou: l.quemLiberou ?? '—' } : null)
+      const min = resp ? minutos(l.createdAt, toUtcISO(resp.decididoEm)) : minutos(l.createdAt, agora)
+      return [l.id, { minutos: min, esperando: !resp, noPrazo: min <= PRAZO_RESPOSTA_CREDITO_MIN, respondidoEm: resp?.decididoEm ?? null, quemRespondeu: resp?.quemLiberou ?? null }] as const
+    })
+  )
+}
+
 // Filtros da fila e dos relatórios (os mesmos nas duas abas).
 const filtrosInput = z
   .object({
@@ -394,7 +421,7 @@ export const solicitacaoCreditoRouter = router({
   // propósito (mesmo padrão de liberacaoCredito.listar).
   listar: featureProcedure('solicitacao_credito')
     .input(filtrosInput)
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
       const filtros = montarFiltros(input)
 
       const linhas = await db
@@ -417,6 +444,7 @@ export const solicitacaoCreditoRouter = router({
           quemLiberou: solicitacoesCredito.quemLiberou,
           serasaLimpo: solicitacoesCredito.serasaLimpo,
           cotacaoId: solicitacoesCredito.cotacaoId,
+          decididoEm: solicitacoesCredito.decididoEm,
           createdAt: solicitacoesCredito.createdAt,
         })
         .from(solicitacoesCredito)
@@ -427,7 +455,9 @@ export const solicitacaoCreditoRouter = router({
         .orderBy(desc(solicitacoesCredito.createdAt))
         .limit(500)
 
-      return linhas
+      // Tempo de resposta em cada pedido — só pra João/Jessica (chave própria).
+      const tempos = (await podeVerTempo(ctx.user)) ? await temposDeResposta(linhas) : null
+      return linhas.map((l) => ({ ...l, tempo: tempos?.get(l.id) ?? null }))
     }),
 
   // Relatórios (João, 2026-11-16: "deixar prontos relatórios, e filtros
@@ -652,25 +682,9 @@ export const solicitacaoCreditoRouter = router({
         .where(and(...filtros))
         .orderBy(desc(solicitacoesCredito.createdAt))
 
-      // 1ª resposta de cada pedido (respostas guardadas; antigo sem histórico = decididoEm).
-      const ids = linhas.map((l) => l.id)
-      const primeira = new Map<number, { decididoEm: string; quemLiberou: string }>()
-      for (let i = 0; i < ids.length; i += 500) {
-        const rs = await db
-          .select({ solicitacaoId: solicitacaoCreditoRespostas.solicitacaoId, decididoEm: solicitacaoCreditoRespostas.decididoEm, quemLiberou: solicitacaoCreditoRespostas.quemLiberou })
-          .from(solicitacaoCreditoRespostas)
-          .where(inArray(solicitacaoCreditoRespostas.solicitacaoId, ids.slice(i, i + 500)))
-        for (const r of rs) {
-          const atual = primeira.get(r.solicitacaoId)
-          if (!atual || r.decididoEm < atual.decididoEm) primeira.set(r.solicitacaoId, { decididoEm: r.decididoEm, quemLiberou: r.quemLiberou })
-        }
-      }
-
-      const agora = new Date().toISOString()
-      const minutos = (de: string, ate: string) => Math.round(businessHoursElapsedMs(toUtcISO(de), ate) / 60000)
+      const tempos = await temposDeResposta(linhas)
       const itens = linhas.map((l) => {
-        const resp = primeira.get(l.id) ?? (l.decididoEm ? { decididoEm: l.decididoEm, quemLiberou: l.quemLiberou ?? '—' } : null)
-        const min = resp ? minutos(l.createdAt, toUtcISO(resp.decididoEm)) : minutos(l.createdAt, agora)
+        const t = tempos.get(l.id)!
         return {
           id: l.id,
           createdAt: l.createdAt,
@@ -680,11 +694,7 @@ export const solicitacaoCreditoRouter = router({
           vendedorNome: l.vendedorNome,
           tipo: l.tipo,
           status: l.status,
-          respondidoEm: resp?.decididoEm ?? null,
-          quemRespondeu: resp?.quemLiberou ?? null,
-          minutos: min,
-          esperando: !resp,
-          noPrazo: min <= PRAZO_RESPOSTA_CREDITO_MIN,
+          ...t,
         }
       })
 
@@ -725,7 +735,7 @@ export const solicitacaoCreditoRouter = router({
       }
     }),
 
-  detalhe: featureProcedure('solicitacao_credito').input(z.object({ id: z.number() })).query(async ({ input }) => {
+  detalhe: featureProcedure('solicitacao_credito').input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
     const solicitacao = await db.query.solicitacoesCredito.findFirst({ where: eq(solicitacoesCredito.id, input.id) })
     if (!solicitacao) throw new Error('Solicitação não encontrada')
 
@@ -761,6 +771,7 @@ export const solicitacaoCreditoRouter = router({
       vendedorWhatsapp: vendedor?.whatsapp ?? null,
       anexos,
       respostas: respostas.map((r) => ({ ...r, decisorNome: r.decididoPor ? decisorPorId.get(r.decididoPor) ?? null : null })),
+      tempo: (await podeVerTempo(ctx.user)) ? (await temposDeResposta([solicitacao])).get(solicitacao.id) ?? null : null,
     }
   }),
 

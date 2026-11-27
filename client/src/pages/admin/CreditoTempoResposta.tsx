@@ -84,6 +84,24 @@ export default function CreditoTempoResposta() {
           </div>
 
           <TabelaRelatorio
+            titulo="Cada consulta e limite"
+            subtitulo="tempo de cada uma, do pedido do vendedor até a 1ª resposta do financeiro (vermelho = passou de 1 hora)"
+            arquivo="credito-tempo-cada-pedido"
+            linhas={data.itens}
+            chave={(l) => l.id}
+            colunas={[
+              { titulo: 'Pedido em', valor: (l) => formatDateTime(l.createdAt), csv: (l) => l.createdAt },
+              { titulo: 'Cliente', valor: (l) => <span className="text-dark-100">{l.clienteNome} <span className="text-dark-500 text-xs">{l.clienteCodigo}</span></span>, csv: (l) => l.clienteNome },
+              { titulo: 'Tempo', valor: (l) => <span className={`font-semibold ${l.noPrazo ? 'text-green-400' : 'text-red-400'}`}>{tempoUtil(l.minutos)}</span>, csv: (l) => l.minutos, alinhar: 'direita' },
+              { titulo: 'Prazo', valor: (l) => <Selo ok={l.noPrazo} esperando={l.esperando} />, csv: (l) => (l.esperando ? 'esperando' : l.noPrazo ? 'no prazo' : 'fora do prazo') },
+              { titulo: 'Tipo', valor: (l) => TIPO[l.tipo] ?? l.tipo, csv: (l) => TIPO[l.tipo] ?? l.tipo },
+              { titulo: 'Vendedor', valor: (l) => `${l.vendedorNome} · ${l.empresaNome}`, csv: (l) => `${l.vendedorNome} (${l.empresaNome})` },
+              { titulo: 'Respondido em', valor: (l) => (l.respondidoEm ? formatDateTime(l.respondidoEm) : '—'), csv: (l) => l.respondidoEm ?? '' },
+              { titulo: 'Quem', valor: (l) => l.quemRespondeu ?? '—', csv: (l) => l.quemRespondeu ?? '' },
+            ]}
+          />
+
+          <TabelaRelatorio
             titulo="Por quem respondeu"
             subtitulo="1ª resposta de cada pedido"
             arquivo="credito-tempo-por-quem"
@@ -109,23 +127,6 @@ export default function CreditoTempoResposta() {
             />
           </div>
 
-          <TabelaRelatorio
-            titulo="Cada consulta e limite"
-            subtitulo="do pedido do vendedor até a 1ª resposta do financeiro"
-            arquivo="credito-tempo-cada-pedido"
-            linhas={data.itens}
-            chave={(l) => l.id}
-            colunas={[
-              { titulo: 'Pedido em', valor: (l) => formatDateTime(l.createdAt), csv: (l) => l.createdAt },
-              { titulo: 'Cliente', valor: (l) => <span className="text-dark-100">{l.clienteNome} <span className="text-dark-500 text-xs">{l.clienteCodigo}</span></span>, csv: (l) => l.clienteNome },
-              { titulo: 'Tipo', valor: (l) => TIPO[l.tipo] ?? l.tipo, csv: (l) => TIPO[l.tipo] ?? l.tipo },
-              { titulo: 'Vendedor', valor: (l) => `${l.vendedorNome} · ${l.empresaNome}`, csv: (l) => `${l.vendedorNome} (${l.empresaNome})` },
-              { titulo: 'Respondido em', valor: (l) => (l.respondidoEm ? formatDateTime(l.respondidoEm) : '—'), csv: (l) => l.respondidoEm ?? '' },
-              { titulo: 'Quem', valor: (l) => l.quemRespondeu ?? '—', csv: (l) => l.quemRespondeu ?? '' },
-              { titulo: 'Tempo', valor: (l) => <span className={l.noPrazo ? 'text-dark-100' : 'text-red-400 font-semibold'}>{tempoUtil(l.minutos)}</span>, csv: (l) => l.minutos, alinhar: 'direita' },
-              { titulo: 'Prazo', valor: (l) => <Selo ok={l.noPrazo} esperando={l.esperando} />, csv: (l) => (l.esperando ? 'esperando' : l.noPrazo ? 'no prazo' : 'fora do prazo') },
-            ]}
-          />
         </>
       )}
     </div>

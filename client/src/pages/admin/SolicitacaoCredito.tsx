@@ -152,6 +152,7 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <ConversarSobreIssoButton tipoOrigem="consulta_credito" idOrigem={data.id} titulo={`Consulta de crédito — ${data.clienteNome}`} />
+              <SeloTempo t={data.tempo} />
               <Badge className={STATUS_COR[data.status]}>{STATUS_LABEL[data.status]}</Badge>
             </div>
           </div>
@@ -467,6 +468,17 @@ function BarraFiltros({ f, set, mostrarStatus }: { f: Filtros; set: (p: Partial<
   )
 }
 
+// Tempo até a 1ª resposta (só João/Jessica recebem `tempo`; prazo 1 hora útil).
+function SeloTempo({ t }: { t: { minutos: number; esperando: boolean; noPrazo: boolean } | null }) {
+  if (!t) return null
+  const cor = t.noPrazo ? (t.esperando ? 'bg-amber-500/10 text-amber-300 border-amber-500/40' : 'bg-green-500/10 text-green-300 border-green-500/40') : 'bg-red-500/10 text-red-300 border-red-500/40'
+  return (
+    <span className={`text-[11px] font-semibold rounded border px-1.5 py-0.5 whitespace-nowrap ${cor}`} title="Tempo até a 1ª resposta, em horário de trabalho. Prazo: 1 hora.">
+      ⏱ {t.esperando ? `esperando há ${tempoUtil(t.minutos)}` : `respondeu em ${tempoUtil(t.minutos)}`}
+    </span>
+  )
+}
+
 function ListaPedidos({ f, onAbrir }: { f: Filtros; onAbrir: (id: number) => void }) {
   const { data: linhas, isLoading } = trpc.solicitacaoCredito.listar.useQuery(paraInput(f, true))
   return (
@@ -497,7 +509,10 @@ function ListaPedidos({ f, onAbrir }: { f: Filtros; onAbrir: (id: number) => voi
               {l.serasaLimpo != null && <> · Serasa {l.serasaLimpo ? 'limpo' : 'não limpo'}</>}
             </p>
           </div>
-          <Badge className={STATUS_COR[l.status]}>{STATUS_LABEL[l.status]}</Badge>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <Badge className={STATUS_COR[l.status]}>{STATUS_LABEL[l.status]}</Badge>
+            <SeloTempo t={l.tempo} />
+          </div>
         </button>
       ))}
     </div>
