@@ -7,7 +7,7 @@ import {
   Sun, Moon, Target, Settings, Tv, Goal, MonitorSmartphone, DatabaseBackup, CalendarDays, MessageSquareText, ListChecks, Megaphone, Send, Landmark, Wrench, Search, CheckSquare, Palette, Wallet, Banknote, Ship, ShieldCheck, Receipt, RotateCcw, Cog, PackageSearch, Briefcase, Contact, MessageCircle, Smartphone, Activity, UserPlus, MapPin,
   ChevronDown, ChevronLeft, Folder, Layers, Package, FileText, Store, Warehouse, MapPinned, Settings2, ClipboardList, FileSpreadsheet, Handshake, Zap, X, Fuel, Building2, CreditCard, Instagram, Mail, Unlock, QrCode, Link2, BadgePercent, FolderLock, BellRing, FlaskConical,
   PiggyBank, CircleDollarSign, Gauge, CalendarRange, BookUser, BookOpen, Radar, Columns3, PieChart, ChartColumnDecreasing, TrendingUp, TrendingDown, FileBarChart, BadgeCheck, ClipboardCheck, UserX, HandCoins, BadgeDollarSign, Timer, ShoppingCart, ShoppingBag, PackageOpen, ScrollText, MonitorPlay, NotebookText, KeyRound, Scale, PhoneCall, UserRoundPlus, UserCheck,
-  Shuffle, Clapperboard,
+  Shuffle, Clapperboard, HardHat,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
@@ -56,7 +56,7 @@ const EMPRESAS_ANALYTICS_MARKETING = ['joitec', 'odin-tubos', 'odin-compressores
 // 'boletos_carteira' (2026-10-30): cada vendedor só vê os boletos dos
 // próprios clientes, então fica liberado pra todos (Joitec e Odin Tubos).
 // 'conferencia_sap' (2026-10-30): idem — o vendedor só vê as próprias vendas.
-export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira', 'conferencia_sap', 'chat', 'minhas_ligacoes'])
+export const FEATURES_SEMPRE_LIBERADAS = new Set(['arquivos', 'boletos_carteira', 'conferencia_sap', 'chat', 'minhas_ligacoes', 'servicos'])
 // Piloto do financeiro (2026-11-16): o item com essa chave aparece só pra
 // quem está no piloto (Piloto do financeiro, superAdmin edita).
 const FEATURES_DO_PILOTO = new Set(['pedir_link_pagamento'])
@@ -89,6 +89,10 @@ export const FEATURES_GUIA_FINANCEIRO = [
 export const ADMIN_LINKS = [
   { to: '/admin', label: 'Dashboard', icon: LayoutDashboard, end: true, feature: 'dashboard' },
   { to: '/admin/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
+  // Serviços (João, 2026-11-27): controle de manutenção/rede de ar/instalação
+  // que substitui a planilha — por enquanto só a Loja Física (lista igual a
+  // SLUGS_SERVICOS em server/src/lib/servicos.ts).
+  { to: '/admin/servicos', label: 'Serviços', icon: HardHat, somenteEmpresas: ['compretec-loja-fisica'], feature: 'servicos' },
   { to: '/admin/demandas', label: 'Demandas', icon: ClipboardList, feature: 'demandas' },
   { to: '/admin/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
   { to: '/admin/calendario', label: 'Agenda', icon: CalendarDays, feature: 'agenda' },
@@ -257,6 +261,10 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/fila-hoje', label: 'Fila de Hoje', icon: ListChecks, feature: 'fila_hoje' },
   { to: '/vendedor/pos-venda', label: 'Fila de Pós-venda', icon: Wrench, somenteEmpresa: SO_ODIN_COMPRESSORES, feature: 'pos_venda' },
   { to: '/vendedor/kanban', label: 'Kanban', icon: KanbanSquare, feature: 'kanban' },
+  // Serviços (João, 2026-11-27): controle de manutenção/rede de ar/instalação
+  // que substitui a planilha — por enquanto só a Loja Física (lista igual a
+  // SLUGS_SERVICOS em server/src/lib/servicos.ts).
+  { to: '/vendedor/servicos', label: 'Serviços', icon: HardHat, somenteEmpresas: ['compretec-loja-fisica'], feature: 'servicos' },
   { to: '/vendedor/demandas', label: 'Demandas', icon: ClipboardList, feature: 'demandas' },
   { to: '/vendedor/calendario', label: 'Minha Agenda', icon: CalendarDays, feature: 'agenda' },
   { to: '/vendedor/clientes', label: 'Meus Clientes', icon: BookUser, feature: 'clientes' },

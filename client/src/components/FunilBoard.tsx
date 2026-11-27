@@ -24,6 +24,7 @@ import EmailsExtras from './ui/EmailsExtras'
 import { NovoCompromissoModal } from './CalendarBoard'
 import CampoOrigemMarketing, { type OrigemMarketingTipo } from './CampoOrigemMarketing'
 import HistoricoCliente from './HistoricoCliente'
+import BotaoServico from './servicos/BotaoServico'
 import HistoricoComprasCard from './HistoricoComprasCard'
 import SeloWhatsappNovo, { useMensagensNovasWhatsapp } from './SeloWhatsappNovo'
 import ConversaWhatsappLead from './ConversaWhatsappLead'
@@ -2510,6 +2511,7 @@ function CardModal({
             size="md"
           />
           <div className="flex items-center gap-2">
+            {!card.clienteBalcao && <BotaoServico clienteId={card.clienteId} />}
             <ConversarSobreIssoButton tipoOrigem="cliente" idOrigem={card.clienteId} titulo={`Cliente — ${card.razaoSocial}`} />
             <Button size="sm" variant="secondary" onClick={() => setAgendarAberto(true)}>
               📅 Agendar

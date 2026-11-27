@@ -1,4 +1,5 @@
 import GravacoesDoContato from '../../components/ui/GravacoesDoContato'
+import BotaoServico from '../../components/servicos/BotaoServico'
 import LojaVirtualLead from '../../components/LojaVirtualLead'
 import ConversaWhatsappLead from '../../components/ConversaWhatsappLead'
 import { useState, useRef } from 'react'
@@ -345,6 +346,7 @@ export default function LeadDetail() {
             )}
             <LeadContatoButtons telefone={leadTelefoneCompleto(lead.ddd, lead.phone)} email={lead.email} leadId={lead.id} size="md" />
             <ConversarSobreIssoButton tipoOrigem="lead" idOrigem={lead.id} titulo={`Lead — ${lead.name}`} />
+            <BotaoServico leadId={lead.id} />
           </div>
         </div>
 

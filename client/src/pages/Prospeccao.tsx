@@ -5,6 +5,7 @@
 // carteira), sugestões do SAP por região e relatório. Servidor:
 // server/src/router/prospeccao.ts + lib/prospeccaoNova.ts.
 import { useMemo, useRef, useState } from 'react'
+import BotaoServico from '../components/servicos/BotaoServico'
 import { Mail, Phone, Plus, RefreshCw, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { inferRouterOutputs } from '@trpc/server'
@@ -330,6 +331,7 @@ function FichaProspect({
           <span>Cód. {p.codigo}</span>
           <span>{origemTexto(p)}</span>
           {p.vendedorNome && <span>Vendedor: {p.vendedorNome}</span>}
+          <span className="ml-auto"><BotaoServico clienteId={p.id} /></span>
         </div>
         <ConversaWhatsappLead clienteId={p.id} />
         {p.prospeccaoInfo && p.prospeccaoOrigem !== 'banco' && (

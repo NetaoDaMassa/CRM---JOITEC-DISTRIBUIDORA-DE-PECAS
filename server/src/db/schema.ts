@@ -6147,3 +6147,89 @@ export const mktConhecimento = sqliteTable('mkt_conhecimento', {
   createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
   updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
 }, (t) => ({ empresa: index('idx_mkt_conhecimento_empresa').on(t.empresaId) }))
+
+// Controle de serviços (Compretec Loja Física, João 2026-11-27) — ver
+// drizzle/0197_servicos_loja.sql e router/servicos.ts.
+export const STATUS_SERVICO = ['montando_orcamento', 'aguardando_cliente', 'em_andamento', 'finalizado', 'nao_aprovou'] as const
+export const servicos = sqliteTable(
+  'servicos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    empresaId: integer('empresa_id').notNull().references(() => empresas.id),
+    vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'set null' }),
+    leadId: integer('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    origem: text('origem', { enum: ['carteira', 'marketing', 'prospeccao', 'avulso'] }).notNull().default('carteira'),
+    clienteNome: text('cliente_nome').notNull(),
+    telefone: text('telefone'),
+    manutencao: integer('manutencao', { mode: 'boolean' }).notNull().default(false),
+    redeAr: integer('rede_ar', { mode: 'boolean' }).notNull().default(false),
+    instalacao: integer('instalacao', { mode: 'boolean' }).notNull().default(false),
+    compressor: text('compressor'),
+    descricao: text('descricao'),
+    endereco: text('endereco'),
+    valorMaoObra: real('valor_mao_obra'),
+    valorMaterial: real('valor_material'),
+    status: text('status', { enum: STATUS_SERVICO }).notNull().default('montando_orcamento'),
+    statusDesde: text('status_desde').notNull().default(sql`(datetime('now'))`),
+    // Montando orçamento: resposta ao cliente em no máximo 1 dia útil.
+    prazoOrcamento: text('prazo_orcamento'),
+    orcamentoRespondidoEm: text('orcamento_respondido_em'),
+    // Aguardando cliente: data do próximo contato (vira ligação na agenda).
+    proximoContato: text('proximo_contato'),
+    compromissoId: integer('compromisso_id').references(() => compromissos.id, { onDelete: 'set null' }),
+    dataExecucao: text('data_execucao'),
+    motivoNaoAprovouCategoria: text('motivo_nao_aprovou_categoria'),
+    motivoNaoAprovou: text('motivo_nao_aprovou'),
+    finalizadoEm: text('finalizado_em'),
+    vendaId: integer('venda_id').references(() => vendas.id, { onDelete: 'set null' }),
+    funilMensalId: integer('funil_mensal_id').references(() => funilMensal.id, { onDelete: 'set null' }),
+    criadoPor: integer('criado_por').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+    updatedAt: text('updated_at').notNull().default(sql`(datetime('now'))`),
+    deletedAt: text('deleted_at'),
+  },
+  (t) => ({
+    empresaStatusIdx: index('idx_servicos_empresa_status').on(t.empresaId, t.status),
+    clienteIdx: index('idx_servicos_cliente').on(t.clienteId),
+    leadIdx: index('idx_servicos_lead').on(t.leadId),
+  })
+)
+
+export const servicoEventos = sqliteTable(
+  'servico_eventos',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    servicoId: integer('servico_id').notNull().references(() => servicos.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    // criado | status | contato | visita | edicao | nota
+    tipo: text('tipo').notNull(),
+    statusDe: text('status_de'),
+    statusPara: text('status_para'),
+    texto: text('texto'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ servicoIdx: index('idx_servico_eventos_servico').on(t.servicoId) })
+)
+
+export const servicoVisitas = sqliteTable(
+  'servico_visitas',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    servicoId: integer('servico_id').notNull().references(() => servicos.id, { onDelete: 'cascade' }),
+    vendedorId: integer('vendedor_id').references(() => users.id, { onDelete: 'set null' }),
+    // levantamento (medir/orçar) | execucao | retorno
+    objetivo: text('objetivo', { enum: ['levantamento', 'execucao', 'retorno'] }).notNull().default('levantamento'),
+    endereco: text('endereco'),
+    checkinEm: text('checkin_em').notNull(),
+    latCheckin: real('lat_checkin'),
+    lngCheckin: real('lng_checkin'),
+    precisaoCheckinM: real('precisao_checkin_m'),
+    checkoutEm: text('checkout_em'),
+    latCheckout: real('lat_checkout'),
+    lngCheckout: real('lng_checkout'),
+    observacoes: text('observacoes'),
+    createdAt: text('created_at').notNull().default(sql`(datetime('now'))`),
+  },
+  (t) => ({ servicoIdx: index('idx_servico_visitas_servico').on(t.servicoId) })
+)

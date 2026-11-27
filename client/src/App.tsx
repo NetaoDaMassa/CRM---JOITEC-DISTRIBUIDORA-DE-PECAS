@@ -76,6 +76,7 @@ import CadastroClientesSap from './pages/CadastroClientesSap'
 import AprovacaoCadastros from './pages/admin/AprovacaoCadastros'
 import LojaRastreamento from './pages/admin/LojaRastreamento'
 import LigacoesPabx from './pages/admin/LigacoesPabx'
+import Servicos from './pages/Servicos'
 import GrupoOdin from './pages/admin/GrupoOdin'
 import LiberacaoCredito from './pages/admin/LiberacaoCredito'
 import AdiantamentoPix from './pages/admin/AdiantamentoPix'
@@ -400,6 +401,7 @@ export default function App() {
           <Route path="admin/expedicao-desempenho" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoDesempenho /></FeatureGuard></AdminGuard>} />
           <Route path="admin/expedicao-equipe" element={<AdminGuard><FeatureGuard feature="controle_estoque"><ExpedicaoEquipe /></FeatureGuard></AdminGuard>} />
           <Route path="admin/loja-rastreamento" element={<AdminGuard><FeatureGuard feature="loja_rastreamento"><LojaRastreamento /></FeatureGuard></AdminGuard>} />
+          <Route path="admin/servicos" element={<AdminGuard><FeatureGuard feature="servicos"><Servicos /></FeatureGuard></AdminGuard>} />
           <Route path="admin/ligacoes" element={<AdminGuard><FeatureGuard feature="relatorio_ligacoes"><LigacoesPabx /></FeatureGuard></AdminGuard>} />
           <Route path="admin/grupo-odin" element={<AdminGuard><FeatureGuard feature="grupo_odin"><GrupoOdin /></FeatureGuard></AdminGuard>} />
           <Route path="admin/liberacao-credito" element={<AdminGuard><FeatureGuard feature="liberacao_credito"><LiberacaoCredito /></FeatureGuard></AdminGuard>} />
@@ -447,6 +449,7 @@ export default function App() {
           <Route path="vendedor/pos-venda" element={<FilaPosVenda />} />
           <Route path="vendedor/kanban" element={<VendorKanban />} />
           <Route path="vendedor/ligacoes" element={<LigacoesPabx />} />
+          <Route path="vendedor/servicos" element={<Servicos />} />
           <Route path="vendedor/demandas" element={<Demandas />} />
           <Route path="vendedor/clientes" element={<Clientes />} />
           <Route path="vendedor/boletos-carteira" element={<BoletosCarteira />} />
