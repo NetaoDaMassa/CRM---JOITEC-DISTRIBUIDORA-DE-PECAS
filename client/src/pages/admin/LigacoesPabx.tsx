@@ -341,7 +341,7 @@ export default function LigacoesPabx() {
                   label="Empresa"
                   value={empresaId}
                   onChange={(e) => setEmpresaId(e.target.value)}
-                  options={[{ value: '', label: 'As 3 empresas Odin' }, ...(filtros?.empresas ?? []).map((e) => ({ value: String(e.id), label: e.nome }))]}
+                  options={[{ value: '', label: 'Todas as empresas' }, ...(filtros?.empresas ?? []).map((e) => ({ value: String(e.id), label: e.nome }))]}
                 />
               </div>
             )}

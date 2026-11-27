@@ -259,7 +259,7 @@ export const VENDOR_LINKS = [
   { to: '/vendedor/cadastro-clientes', label: 'Cadastro de clientes (SAP)', icon: UserRoundPlus, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao'], feature: 'cadastro_cliente_sap' },
   // Minhas ligações (João, 2026-11-18): a mesma lista do relatório de
   // Ligações, só com as ligações da própria pessoa — liberado pra todos.
-  { to: '/vendedor/ligacoes', label: 'Minhas ligações', icon: PhoneCall, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao', 'odin-compressores'], feature: 'minhas_ligacoes' },
+  { to: '/vendedor/ligacoes', label: 'Minhas ligações', icon: PhoneCall, somenteEmpresas: ['joitec', 'odin-tubos', 'joitec-automacao', 'odin-compressores', 'compretec-loja-fisica'], feature: 'minhas_ligacoes' },
   { to: '/vendedor/prospeccao', label: 'Prospecção', icon: Search, ocultoEmpresa: SO_ODIN_COMPRESSORES, feature: 'prospeccao' },
   { to: '/vendedor/banco-clientes', label: 'Banco de Clientes', icon: Landmark, feature: 'banco_clientes' },
   {

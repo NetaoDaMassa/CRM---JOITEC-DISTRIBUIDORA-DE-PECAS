@@ -35,7 +35,8 @@ import { registrarLigacaoPabxNoProspect } from './prospeccaoNova.js'
 import { avisarLigacaoClienteDeOutro } from './clienteDuplicado.js'
 
 const BASE_URL = 'https://pabxone360.com.br/suite/api'
-export const SLUGS_EMPRESAS_PABX = ['odin-compressores', 'odin-tubos', 'joitec-automacao']
+// Compretec Loja Física entrou em 2026-11-27 (MicroSIP do Marcos e do Thiago, mesma conta da 360).
+export const SLUGS_EMPRESAS_PABX = ['odin-compressores', 'odin-tubos', 'joitec-automacao', 'compretec-loja-fisica']
 
 export interface CredenciaisPabx {
   usuario: string
