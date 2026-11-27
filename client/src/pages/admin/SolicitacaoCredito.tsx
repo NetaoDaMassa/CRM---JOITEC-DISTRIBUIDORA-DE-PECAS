@@ -137,6 +137,9 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
             <div>
               <p className="text-dark-100 font-medium">
                 {data.clienteNome}
+                {data.semCadastro && (
+                  <span className="ml-2 text-[11px] font-semibold rounded bg-sky-900/40 text-sky-200 border border-sky-700/50 px-1.5 py-0.5" title="Odin Compressores: o vendedor mandou só o CNPJ, a empresa não está cadastrada no CRM.">Sem cadastro — só CNPJ</span>
+                )}
                 {data.cotacaoId && (
                   <span className="ml-2 text-[11px] font-semibold rounded bg-amber-900/40 text-amber-200 border border-amber-700/50 px-1.5 py-0.5">Pedido da cotação nº {data.cotacaoId}</span>
                 )}
@@ -145,6 +148,7 @@ function DetalheSolicitacaoModal({ id, onClose }: { id: number; onClose: () => v
                 {data.tipo === 'consulta' && data.tipoConsulta ? TIPO_CONSULTA_LABEL[data.tipoConsulta] : TIPO_LABEL[data.tipo]} · Cód.{' '}
                 {data.clienteCodigo} · {data.empresaNome} · pedido de {data.vendedorNome} · {formatDateTime(data.createdAt)}
               </p>
+              {data.clienteDocumento && <p className="text-sm text-dark-200 font-mono mt-0.5">CNPJ/CPF {data.clienteDocumento}</p>}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <ConversarSobreIssoButton tipoOrigem="consulta_credito" idOrigem={data.id} titulo={`Consulta de crédito — ${data.clienteNome}`} />
@@ -596,7 +600,7 @@ function Relatorios({ f, irParaLista }: { f: Filtros; irParaLista: (p: Partial<F
         dicaClique={dica}
         arquivo="credito-clientes-mais-pedidos"
         linhas={data.porCliente}
-        chave={(l) => l.clienteId}
+        chave={(l) => l.clienteId ?? `avulso-${l.clienteNome}`}
         onClicar={(l) => irParaLista({ busca: l.clienteCodigo })}
         colunas={[
           {

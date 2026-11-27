@@ -14,6 +14,16 @@ const anexoInput = z.object({
   tipoArquivo: z.string().optional(),
 })
 
+// Pedido só com CNPJ, sem cadastro (só Odin Compressores, João 2026-11-27):
+// cliente_id vazio, nome/código vêm do que o vendedor digitou.
+const EMPRESAS_CNPJ_AVULSO = new Set(['odin-compressores'])
+const clienteNomeSql = sql<string>`coalesce(${clientes.razaoSocial}, ${solicitacoesCredito.nomeAvulso}, ${solicitacoesCredito.cnpjAvulso}, '—')`
+const clienteCodigoSql = sql<string>`coalesce(${clientes.codigo}, 'sem cadastro')`
+const soDigitos = (v: string | null | undefined) => (v ?? '').replace(/\D/g, '')
+function formatarCnpj(d: string) {
+  return d.length === 14 ? `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}` : d
+}
+
 // Filtros da fila e dos relatórios (os mesmos nas duas abas).
 const filtrosInput = z
   .object({
@@ -42,7 +52,7 @@ function montarFiltros(input: z.infer<typeof filtrosInput>) {
   if (input?.serasaLimpo) filtros.push(eq(solicitacoesCredito.serasaLimpo, input.serasaLimpo === 'sim'))
   if (input?.q) {
     const termo = `%${input.q.trim()}%`
-    filtros.push(or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo))!)
+    filtros.push(or(like(clientes.razaoSocial, termo), like(clientes.codigo, termo), like(solicitacoesCredito.nomeAvulso, termo), like(solicitacoesCredito.cnpjAvulso, `%${soDigitos(input.q) || '#'}%`))!)
   }
   return filtros
 }
@@ -146,7 +156,10 @@ export const solicitacaoCreditoRouter = router({
   solicitar: adminOrFeatureProcedure('solicitacao_credito')
     .input(
       z.object({
-        clienteId: z.number(),
+        // Ou um cliente da carteira, ou (só Odin Compressores) só o CNPJ.
+        clienteId: z.number().optional(),
+        cnpjAvulso: z.string().trim().optional(),
+        nomeAvulso: z.string().trim().optional(),
         tipo: z.enum(['consulta', 'limite']),
         // Só faz sentido (e é obrigatório) quando tipo='consulta' —
         // 'limite' não tem sub-tipo, é sempre "quanto de limite pra esse
@@ -167,14 +180,28 @@ export const solicitacaoCreditoRouter = router({
       // consulta já responde primeiro se está limpo.
       if (input.tipo === 'consulta') input.tipoConsulta = 'geral'
 
-      const cliente = await db.query.clientes.findFirst({
-        where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
-      })
-      if (!cliente) throw new Error('Cliente não encontrado')
-      // Vendedor só pode pedir crédito pra cliente que já é dele — mesma
-      // regra de qualquer outra ação de carteira. Admin pode pra qualquer um.
-      if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) {
-        throw new Error('Esse cliente não está na sua carteira')
+      let cnpjAvulso: string | null = null
+      let cliente: typeof clientes.$inferSelect | undefined
+      if (input.clienteId == null) {
+        const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, ctx.empresaId), columns: { slug: true } })
+        if (!empresa || !EMPRESAS_CNPJ_AVULSO.has(empresa.slug)) throw new Error('Escolha o cliente')
+        cnpjAvulso = soDigitos(input.cnpjAvulso)
+        if (cnpjAvulso.length !== 14) throw new Error('Digite o CNPJ completo (14 números)')
+        if (!input.nomeAvulso || input.nomeAvulso.length < 2) throw new Error('Digite o nome da empresa')
+        const pendenteAvulso = await db.query.solicitacoesCredito.findFirst({
+          where: and(eq(solicitacoesCredito.cnpjAvulso, cnpjAvulso), eq(solicitacoesCredito.status, 'pendente'), eq(solicitacoesCredito.tipo, input.tipo)),
+        })
+        if (pendenteAvulso) throw new Error('Já existe uma solicitação desse tipo pendente pra este CNPJ.')
+      } else {
+        cliente = await db.query.clientes.findFirst({
+          where: and(eq(clientes.id, input.clienteId), eq(clientes.empresaId, ctx.empresaId), isNull(clientes.deletedAt)),
+        })
+        if (!cliente) throw new Error('Cliente não encontrado')
+        // Vendedor só pode pedir crédito pra cliente que já é dele — mesma
+        // regra de qualquer outra ação de carteira. Admin pode pra qualquer um.
+        if (ctx.user.role !== 'admin' && cliente.vendedorAtualId !== ctx.user.id) {
+          throw new Error('Esse cliente não está na sua carteira')
+        }
       }
 
       // Mesmo padrão de aprovacoes.solicitar — evita o vendedor abrir vários
@@ -183,9 +210,9 @@ export const solicitacaoCreditoRouter = router({
       // desatualizados assim que o primeiro for respondido). Escopado por
       // `tipo` — pode ter uma "consulta" E uma "limite" pendentes ao mesmo
       // tempo pro mesmo cliente, são filas separadas agora.
-      const pendente = await db.query.solicitacoesCredito.findFirst({
+      const pendente = cliente && await db.query.solicitacoesCredito.findFirst({
         where: and(
-          eq(solicitacoesCredito.clienteId, input.clienteId),
+          eq(solicitacoesCredito.clienteId, cliente.id),
           eq(solicitacoesCredito.status, 'pendente'),
           eq(solicitacoesCredito.tipo, input.tipo)
         ),
@@ -193,8 +220,10 @@ export const solicitacaoCreditoRouter = router({
       if (pendente) throw new Error('Já existe uma solicitação desse tipo pendente pra este cliente.')
 
       const result = await db.insert(solicitacoesCredito).values({
-        empresaId: cliente.empresaId,
-        clienteId: cliente.id,
+        empresaId: cliente?.empresaId ?? ctx.empresaId,
+        clienteId: cliente?.id ?? null,
+        cnpjAvulso,
+        nomeAvulso: cliente ? null : input.nomeAvulso!.trim(),
         vendedorSolicitanteId: ctx.user.id,
         tipo: input.tipo,
         tipoConsulta: input.tipo === 'consulta' ? input.tipoConsulta : undefined,
@@ -228,8 +257,9 @@ export const solicitacaoCreditoRouter = router({
       .select({
         id: solicitacoesCredito.id,
         clienteId: solicitacoesCredito.clienteId,
-        clienteNome: clientes.razaoSocial,
-        clienteCodigo: clientes.codigo,
+        clienteNome: clienteNomeSql,
+        clienteCodigo: clienteCodigoSql,
+        cnpjAvulso: solicitacoesCredito.cnpjAvulso,
         tipo: solicitacoesCredito.tipo,
         tipoConsulta: solicitacoesCredito.tipoConsulta,
         status: solicitacoesCredito.status,
@@ -248,7 +278,7 @@ export const solicitacaoCreditoRouter = router({
         createdAt: solicitacoesCredito.createdAt,
       })
       .from(solicitacoesCredito)
-      .innerJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
+      .leftJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
       .where(eq(solicitacoesCredito.vendedorSolicitanteId, ctx.user.id))
       .orderBy(desc(solicitacoesCredito.createdAt))
       .limit(200)
@@ -320,8 +350,9 @@ export const solicitacaoCreditoRouter = router({
         .select({
           id: solicitacoesCredito.id,
           clienteId: solicitacoesCredito.clienteId,
-          clienteNome: clientes.razaoSocial,
-          clienteCodigo: clientes.codigo,
+          clienteNome: clienteNomeSql,
+          clienteCodigo: clienteCodigoSql,
+          cnpjAvulso: solicitacoesCredito.cnpjAvulso,
           empresaId: solicitacoesCredito.empresaId,
           empresaNome: empresas.nome,
           vendedorSolicitanteId: solicitacoesCredito.vendedorSolicitanteId,
@@ -338,7 +369,7 @@ export const solicitacaoCreditoRouter = router({
           createdAt: solicitacoesCredito.createdAt,
         })
         .from(solicitacoesCredito)
-        .innerJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
+        .leftJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
         .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
         .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
         .where(filtros.length ? and(...filtros) : undefined)
@@ -359,8 +390,9 @@ export const solicitacaoCreditoRouter = router({
         .select({
           id: solicitacoesCredito.id,
           clienteId: solicitacoesCredito.clienteId,
-          clienteNome: clientes.razaoSocial,
-          clienteCodigo: clientes.codigo,
+          clienteNome: clienteNomeSql,
+          clienteCodigo: clienteCodigoSql,
+          cnpjAvulso: solicitacoesCredito.cnpjAvulso,
           empresaId: solicitacoesCredito.empresaId,
           empresaNome: empresas.nome,
           vendedorId: solicitacoesCredito.vendedorSolicitanteId,
@@ -373,7 +405,7 @@ export const solicitacaoCreditoRouter = router({
           createdAt: solicitacoesCredito.createdAt,
         })
         .from(solicitacoesCredito)
-        .innerJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
+        .leftJoin(clientes, eq(clientes.id, solicitacoesCredito.clienteId))
         .innerJoin(empresas, eq(empresas.id, solicitacoesCredito.empresaId))
         .innerJoin(users, eq(users.id, solicitacoesCredito.vendedorSolicitanteId))
         .where(filtros.length ? and(...filtros) : undefined)
@@ -446,7 +478,7 @@ export const solicitacaoCreditoRouter = router({
       const porVendedorMap = new Map<number, Grupo & { vendedorId: number; vendedorNome: string }>()
       const porMesMap = new Map<string, Grupo & { mes: string }>()
       const porEmpresaMap = new Map<number, Grupo & { empresaId: number; empresaNome: string }>()
-      const porClienteMap = new Map<number, Grupo & { clienteId: number; clienteNome: string; clienteCodigo: string; empresaNome: string; ultimoPedido: string }>()
+      const porClienteMap = new Map<string, Grupo & { clienteId: number | null; clienteNome: string; clienteCodigo: string; empresaNome: string; ultimoPedido: string }>()
       for (const l of linhas) {
         somar(totais, l)
         if (l.serasaLimpo === true) serasaLimpos++
@@ -465,10 +497,11 @@ export const solicitacaoCreditoRouter = router({
         somar(e, l)
         porEmpresaMap.set(l.empresaId, e)
 
-        const c = porClienteMap.get(l.clienteId) ?? { ...novoGrupo(), clienteId: l.clienteId, clienteNome: l.clienteNome, clienteCodigo: l.clienteCodigo, empresaNome: l.empresaNome, ultimoPedido: l.createdAt }
+        const chaveCliente = l.clienteId != null ? `c${l.clienteId}` : `cnpj${l.cnpjAvulso}`
+        const c = porClienteMap.get(chaveCliente) ?? { ...novoGrupo(), clienteId: l.clienteId, clienteNome: l.clienteNome, clienteCodigo: l.clienteCodigo, empresaNome: l.empresaNome, ultimoPedido: l.createdAt }
         somar(c, l)
         if (l.createdAt > c.ultimoPedido) c.ultimoPedido = l.createdAt
-        porClienteMap.set(l.clienteId, c)
+        porClienteMap.set(chaveCliente, c)
       }
 
       const comPct = <T extends Grupo>(g: T) => ({ ...g, pctLiberado: pct(g) })
@@ -540,7 +573,7 @@ export const solicitacaoCreditoRouter = router({
     if (!solicitacao) throw new Error('Solicitação não encontrada')
 
     const [cliente, vendedor, anexos, respostas] = await Promise.all([
-      db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) }),
+      solicitacao.clienteId != null ? db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) }) : Promise.resolve(undefined),
       db.query.users.findFirst({ where: eq(users.id, solicitacao.vendedorSolicitanteId), columns: { id: true, name: true, whatsapp: true } }),
       db.query.solicitacaoCreditoAnexos.findMany({
         where: eq(solicitacaoCreditoAnexos.solicitacaoId, solicitacao.id),
@@ -551,7 +584,7 @@ export const solicitacaoCreditoRouter = router({
         orderBy: (r, { asc }) => [asc(r.createdAt)],
       }),
     ])
-    const empresa = cliente ? await db.query.empresas.findFirst({ where: eq(empresas.id, cliente.empresaId) }) : null
+    const empresa = await db.query.empresas.findFirst({ where: eq(empresas.id, cliente?.empresaId ?? solicitacao.empresaId) })
 
     const decisorIds = [...new Set(respostas.map((r) => r.decididoPor).filter((id): id is number => id !== null))]
     const decisores = decisorIds.length
@@ -561,8 +594,11 @@ export const solicitacaoCreditoRouter = router({
 
     return {
       ...solicitacao,
-      clienteNome: cliente?.razaoSocial ?? '—',
-      clienteCodigo: cliente?.codigo ?? '—',
+      clienteNome: cliente?.razaoSocial ?? solicitacao.nomeAvulso ?? (solicitacao.cnpjAvulso ? formatarCnpj(solicitacao.cnpjAvulso) : '—'),
+      clienteCodigo: cliente?.codigo ?? (solicitacao.cnpjAvulso ? 'sem cadastro' : '—'),
+      // CNPJ/CPF em destaque pro financeiro consultar o Serasa direto.
+      clienteDocumento: cliente?.cnpj || cliente?.cpf || (solicitacao.cnpjAvulso ? formatarCnpj(solicitacao.cnpjAvulso) : null),
+      semCadastro: solicitacao.clienteId == null,
       empresaNome: empresa?.nome ?? '—',
       vendedorNome: vendedor?.name ?? '—',
       vendedorWhatsapp: vendedor?.whatsapp ?? null,
@@ -657,9 +693,9 @@ export const solicitacaoCreditoRouter = router({
       // Registros de liberação são lançados pelo próprio financeiro. Não
       // copia mais a resposta da consulta pra lá.
       if (false as boolean) {
-        const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId) })
+        const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId!) })
         await db.insert(liberacoesCredito).values({
-          clienteId: solicitacao.clienteId,
+          clienteId: solicitacao.clienteId!,
           empresaId: solicitacao.empresaId,
           vendedorId: cliente?.vendedorAtualId ?? solicitacao.vendedorSolicitanteId,
           quemLiberou: input.quemLiberou.trim(),
@@ -673,7 +709,7 @@ export const solicitacaoCreditoRouter = router({
 
       // Veio da Cotação do CRM (venda a prazo sem limite no SAP): a resposta
       // aparece na cotação e o vendedor é avisado (João, 2026-11-11).
-      if (solicitacao.cotacaoId) {
+      if (solicitacao.cotacaoId && solicitacao.clienteId != null) {
         const valor = input.valorLiberado ? ` · ${input.valorLiberado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''
         const liberou = input.decisao === 'liberado'
         await db.insert(cotacoesCrmHistorico).values({
@@ -682,7 +718,7 @@ export const solicitacaoCreditoRouter = router({
           acao: liberou ? 'Financeiro liberou o crédito' : 'Financeiro negou o crédito',
           detalhe: `${input.motivoResposta.trim()}${valor} (${input.quemLiberou.trim()})`,
         })
-        const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId), columns: { razaoSocial: true } })
+        const cliente = await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId!), columns: { razaoSocial: true } })
         await db.insert(notifications).values({
           vendedorId: solicitacao.vendedorSolicitanteId,
           clienteId: solicitacao.clienteId,
@@ -691,6 +727,24 @@ export const solicitacaoCreditoRouter = router({
           message: liberou
             ? `O financeiro liberou a venda a prazo da cotação nº ${solicitacao.cotacaoId} (${cliente?.razaoSocial ?? ''})${valor}. Abra em Cotações e clique em Gerar pedido no SAP.`
             : `O financeiro negou a venda a prazo da cotação nº ${solicitacao.cotacaoId} (${cliente?.razaoSocial ?? ''}): ${input.motivoResposta.trim()}. Dá para mudar o prazo para À vista.`,
+        })
+      }
+
+      // Sininho + aviso animado pro vendedor em TODA resposta (João,
+      // 2026-11-27) — a da cotação já tem o aviso próprio acima.
+      if (!solicitacao.cotacaoId) {
+        const cli = solicitacao.clienteId != null
+          ? await db.query.clientes.findFirst({ where: eq(clientes.id, solicitacao.clienteId), columns: { razaoSocial: true } })
+          : null
+        const nome = cli?.razaoSocial ?? solicitacao.nomeAvulso ?? (solicitacao.cnpjAvulso ? formatarCnpj(solicitacao.cnpjAvulso) : 'cliente')
+        const liberou = input.decisao === 'liberado'
+        const oQue = solicitacao.tipo === 'limite' ? 'Limite de crédito' : 'Consulta de crédito'
+        const valor = liberou && input.valorLiberado ? ` · limite ${input.valorLiberado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}` : ''
+        await db.insert(notifications).values({
+          vendedorId: solicitacao.vendedorSolicitanteId,
+          type: liberou ? 'credito_resposta_liberado' : 'credito_resposta_negado',
+          title: `${oQue} ${liberou ? 'LIBERADA' : 'NEGADA'} — ${nome}`,
+          message: `${input.serasaLimpo ? 'Serasa limpo' : 'Serasa NÃO está limpo'}${valor}. ${input.motivoResposta.trim()} (${input.quemLiberou.trim()})`,
         })
       }
 

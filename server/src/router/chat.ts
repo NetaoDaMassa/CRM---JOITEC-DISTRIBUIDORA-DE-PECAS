@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { and, asc, desc, eq, inArray, isNull, lt, ne } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, isNull, lt, ne, sql } from 'drizzle-orm'
 import { router, chatProcedure, temFeature } from './_base.js'
 import { db } from '../db/client.js'
 import { chatConversas, chatParticipantes, chatMensagens, users, leads, clientes, ordens, visitas, solicitacoesCredito, empresas } from '../db/schema.js'
@@ -71,18 +71,33 @@ async function resolverOrigem(
     case 'consulta_credito': {
       const s = await db.query.solicitacoesCredito.findFirst({
         where: eq(solicitacoesCredito.id, idOrigem),
-        columns: { vendedorSolicitanteId: true },
+        columns: { vendedorSolicitanteId: true, nomeAvulso: true, cnpjAvulso: true },
         with: { cliente: { columns: { razaoSocial: true } }, vendedorSolicitante: { columns: { name: true } } },
       })
       return s
         ? {
-            titulo: `Consulta de crédito — ${s.cliente?.razaoSocial ?? '—'}`,
+            titulo: `Consulta de crédito — ${s.cliente?.razaoSocial ?? s.nomeAvulso ?? s.cnpjAvulso ?? '—'}`,
             vendedorId: s.vendedorSolicitanteId,
             vendedorNome: s.vendedorSolicitante?.name ?? null,
           }
         : null
     }
   }
+}
+
+// Consulta de crédito: a conversa já nasce com a Rubia (financeiro) e com
+// quem respondeu a consulta — o vendedor não precisa procurar ninguém
+// (João, 2026-11-27).
+async function contasFinanceiroDaConsulta(solicitacaoId: number): Promise<number[]> {
+  const ids = new Set<number>()
+  const rubia = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.isActive, true), sql`(lower(${users.name}) like 'rubia%' or lower(${users.name}) like 'rúbia%' or lower(${users.name}) like 'rÚbia%' or lower(${users.username}) like 'rubia%')`, sql`exists (select 1 from permissoes_admin p where p.user_id = ${users.id} and p.feature = 'solicitacao_credito')`))
+  for (const r of rubia) ids.add(r.id)
+  const s = await db.query.solicitacoesCredito.findFirst({ where: eq(solicitacoesCredito.id, solicitacaoId), columns: { decididoPor: true } })
+  if (s?.decididoPor) ids.add(s.decididoPor)
+  return [...ids]
 }
 
 async function garantirParticipante(conversaId: number, userId: number) {
@@ -256,6 +271,16 @@ export const chatRouter = router({
           if (origem?.vendedorId && origem.vendedorId !== ctx.user.id) {
             await garantirParticipante(conversaId, origem.vendedorId)
             emitirParaUsuario(origem.vendedorId, 'chat:conversaAtualizada', { conversaId })
+          }
+        }
+
+        if (input.tipoOrigem === 'consulta_credito') {
+          for (const userId of await contasFinanceiroDaConsulta(input.idOrigem)) {
+            if (userId === ctx.user.id) continue
+            const ja = await db.query.chatParticipantes.findFirst({ where: and(eq(chatParticipantes.conversaId, conversaId), eq(chatParticipantes.userId, userId)) })
+            if (ja) continue
+            await garantirParticipante(conversaId, userId)
+            emitirParaUsuario(userId, 'chat:conversaAtualizada', { conversaId })
           }
         }
 

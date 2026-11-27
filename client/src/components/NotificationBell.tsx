@@ -5,6 +5,7 @@ import { Bell } from 'lucide-react'
 import { trpc } from '../lib/trpc'
 import { useAuth } from '../contexts/AuthContext'
 import { timeAgo } from '../lib/utils'
+import CreditoRespostaPopup from './CreditoRespostaPopup'
 
 function playBeep() {
   try {
@@ -50,6 +51,7 @@ function iconeDoTipo(tipo: string, titulo: string): string {
   if (t.includes('compromisso') || t.includes('agenda')) return '🗓️'
   if (t.includes('resumo')) return '📋'
   if (t.includes('design') || t.includes('arte')) return '🎨'
+  if (tipo.startsWith('credito_resposta_')) return '💰'
   if (t.includes('credito') || t.includes('boleto')) return '💳'
   return '🔔'
 }
@@ -105,7 +107,8 @@ export default function NotificationBell() {
             desktopNotification.onclick = () => {
               window.focus()
               const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
-              if (n.conversaId) abrirConversaNoPopup(n.conversaId)
+              if (n.type.startsWith('credito_resposta_')) navigate('/vendedor/solicitacao-credito')
+              else if (n.conversaId) abrirConversaNoPopup(n.conversaId)
               else if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
               else if (n.leadId) navigate(`${basePath}/leads/${n.leadId}`)
               desktopNotification.close()
@@ -124,17 +127,19 @@ export default function NotificationBell() {
     onSuccess: () => utils.notifications.list.invalidate(),
   })
 
-  function handleNotificationClick(n: { id: number; read: boolean; clienteId: number | null; leadId: number | null; conversaId: number | null }) {
+  function handleNotificationClick(n: { id: number; type: string; read: boolean; clienteId: number | null; leadId: number | null; conversaId: number | null }) {
     if (!n.read) markReadMut.mutate({ id: n.id })
     setOpen(false)
     const basePath = user?.role === 'admin' ? '/admin' : '/vendedor'
-    if (n.conversaId) abrirConversaNoPopup(n.conversaId)
+    if (n.type.startsWith('credito_resposta_')) navigate('/vendedor/solicitacao-credito')
+    else if (n.conversaId) abrirConversaNoPopup(n.conversaId)
     else if (n.clienteId) navigate(`${basePath}/clientes/${n.clienteId}`)
     else if (n.leadId) navigate(`${basePath}/leads/${n.leadId}`)
   }
 
   return (
     <div className="relative">
+      <CreditoRespostaPopup items={items} />
       <button
         onClick={() => setOpen((o) => !o)}
         className="relative p-2 rounded-lg text-dark-300 hover:text-dark-100 hover:bg-dark-800 transition-colors"

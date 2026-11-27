@@ -1373,6 +1373,13 @@
       "when": 1795850180000,
       "tag": "0195_maquinas_pos_venda_loja",
       "breakpoints": true
+    },
+    {
+      "idx": 196,
+      "version": "6",
+      "when": 1795850280000,
+      "tag": "0196_credito_cnpj_avulso",
+      "breakpoints": true
     }
   ]
 }

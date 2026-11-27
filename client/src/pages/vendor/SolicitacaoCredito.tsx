@@ -51,6 +51,15 @@ async function fazerUpload(file: File): Promise<Anexo> {
 // CartaoCredito.tsx. Pedido do João, 2026-10-01.
 function FormularioNovaSolicitacao() {
   const utils = trpc.useUtils()
+  // Só Odin Compressores: dá pra mandar só o CNPJ, sem o cliente estar
+  // cadastrado (João, 2026-11-27).
+  const { empresaAtivaId } = useAuth()
+  const { data: empresas } = trpc.empresas.list.useQuery()
+  const podeSoCnpj = empresas?.find((e) => e.id === empresaAtivaId)?.slug === 'odin-compressores'
+  const [semCadastro, setSemCadastro] = useState(false)
+  const [cnpj, setCnpj] = useState('')
+  const [nomeEmpresa, setNomeEmpresa] = useState('')
+  const soCnpj = podeSoCnpj && semCadastro
   const [tipo, setTipo] = useState<'consulta' | 'limite'>('consulta')
   const [tipoConsulta, setTipoConsulta] = useState<'geral' | 'limpo'>('geral')
   const [cliente, setCliente] = useState<{ id: number; razaoSocial: string } | null>(null)
@@ -64,6 +73,8 @@ function FormularioNovaSolicitacao() {
     onSuccess() {
       toast.success('Solicitação enviada pro Financeiro')
       setCliente(null)
+      setCnpj('')
+      setNomeEmpresa('')
       setValorPedido('')
       setInformacoesFiscais('')
       setObservacoes('')
@@ -89,11 +100,16 @@ function FormularioNovaSolicitacao() {
   }
 
   function enviar() {
-    if (!cliente) return toast.error('Escolha o cliente')
+    if (soCnpj) {
+      if (cnpj.replace(/\D/g, '').length !== 14) return toast.error('Digite o CNPJ completo (14 números)')
+      if (nomeEmpresa.trim().length < 2) return toast.error('Digite o nome da empresa')
+    } else if (!cliente) return toast.error('Escolha o cliente')
     const pedidoNumero = tipo === 'limite' && valorPedido ? parseValorBr(valorPedido) : undefined
     if (tipo === 'limite' && valorPedido && !pedidoNumero) return toast.error('Valor do pedido inválido')
     criarMut.mutate({
-      clienteId: cliente.id,
+      clienteId: soCnpj ? undefined : cliente!.id,
+      cnpjAvulso: soCnpj ? cnpj : undefined,
+      nomeAvulso: soCnpj ? nomeEmpresa.trim() : undefined,
       tipo,
       tipoConsulta: tipo === 'consulta' ? tipoConsulta : undefined,
       valorPedido: pedidoNumero,
@@ -136,7 +152,24 @@ function FormularioNovaSolicitacao() {
         </div>
       )}
 
-      <ClientePicker label="Cliente (da sua carteira)" clienteId={cliente?.id ?? null} clienteNome={cliente?.razaoSocial ?? null} onSelect={setCliente} />
+      {podeSoCnpj && (
+        <div className="flex gap-2">
+          <Button variant={!semCadastro ? 'primary' : 'secondary'} size="sm" onClick={() => setSemCadastro(false)}>
+            Cliente cadastrado
+          </Button>
+          <Button variant={semCadastro ? 'primary' : 'secondary'} size="sm" onClick={() => setSemCadastro(true)}>
+            Só o CNPJ (sem cadastro)
+          </Button>
+        </div>
+      )}
+      {soCnpj ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Input label="CNPJ *" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0000-00" inputMode="numeric" />
+          <Input label="Nome da empresa *" value={nomeEmpresa} onChange={(e) => setNomeEmpresa(e.target.value)} placeholder="Razão social ou nome fantasia" />
+        </div>
+      ) : (
+        <ClientePicker label="Cliente (da sua carteira)" clienteId={cliente?.id ?? null} clienteNome={cliente?.razaoSocial ?? null} onSelect={setCliente} />
+      )}
 
       {tipo === 'limite' && (
         // "Limite desejado" saiu (João, 2026-11-25): vendedor confundia o valor
@@ -191,7 +224,7 @@ const TIPO_CONSULTA_LABEL: Record<string, string> = { geral: 'Consulta geral', l
 
 type Solicitacao = {
   id: number
-  clienteId: number
+  clienteId: number | null
   clienteNome: string
   clienteCodigo: string
   tipo: string

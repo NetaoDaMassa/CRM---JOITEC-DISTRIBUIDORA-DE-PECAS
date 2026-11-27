@@ -43,7 +43,7 @@ export async function assuntosDasConversas(conversas: Conv[]): Promise<Map<numbe
     ? await db.select({ id: solicitacoesCredito.id, clienteId: solicitacoesCredito.clienteId }).from(solicitacoesCredito).where(inArray(solicitacoesCredito.id, idsCredito))
     : []
   const pedidos = idsPedido.length ? await db.select({ id: ordens.id, clienteId: ordens.clienteId }).from(ordens).where(inArray(ordens.id, idsPedido)) : []
-  const todosClientes = [...new Set([...idsCliente, ...creditos.map((c) => c.clienteId), ...pedidos.map((p) => p.clienteId).filter((x): x is number => !!x)])]
+  const todosClientes = [...new Set([...idsCliente, ...creditos.map((c) => c.clienteId).filter((x): x is number => !!x), ...pedidos.map((p) => p.clienteId).filter((x): x is number => !!x)])]
   const cadastros = todosClientes.length
     ? await db.select({ id: clientes.id, razaoSocial: clientes.razaoSocial, codigo: clientes.codigo }).from(clientes).where(inArray(clientes.id, todosClientes))
     : []

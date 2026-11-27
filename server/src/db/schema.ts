@@ -4175,7 +4175,11 @@ export const solicitacoesCredito = sqliteTable(
   {
     id: integer('id').primaryKey({ autoIncrement: true }),
     empresaId: integer('empresa_id').notNull().references(() => empresas.id, { onDelete: 'cascade' }),
-    clienteId: integer('cliente_id').notNull().references(() => clientes.id, { onDelete: 'cascade' }),
+    // Sem cadastro (só Odin Compressores, João 2026-11-27): o vendedor manda
+    // só o CNPJ — cliente_id fica vazio e vale cnpj_avulso/nome_avulso.
+    clienteId: integer('cliente_id').references(() => clientes.id, { onDelete: 'cascade' }),
+    cnpjAvulso: text('cnpj_avulso'),
+    nomeAvulso: text('nome_avulso'),
     vendedorSolicitanteId: integer('vendedor_solicitante_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     status: text('status', { enum: ['pendente', 'liberado', 'negado'] }).notNull().default('pendente'),
     // 'consulta' cai na fila normal (Consulta/Solicitação de Crédito,
